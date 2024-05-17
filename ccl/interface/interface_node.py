@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum, auto
-from typing import Any, TypedDict, Optional
+from enum import auto
+from typing import TypedDict, Optional
 
 from typing_extensions import Unpack
 
 from node import Node, Identifier, Verbatim, Integer, String
-from util import try_get
+from util import try_get, ReprEnum
 
 
 class InterfaceNode(Node):
@@ -24,15 +24,7 @@ class HeaderSection(InterfaceNode):
         self.friends = friends
 
 
-class IncludeType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> IncludeType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class IncludeType(ReprEnum):
     Header = auto(), 'HEADER'
     Source = auto(), 'SOURCE'
 
@@ -64,15 +56,7 @@ class IncludeSection(InterfaceNode):
         self.directives = directives
 
 
-class FunctionAliasReturnType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> FunctionAliasReturnType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class FunctionAliasReturnType(ReprEnum):
     Void = auto(), 'void'
     Int = auto(), 'CCTK_INT'
     Real = auto(), 'CCTK_REAL'
@@ -81,15 +65,7 @@ class FunctionAliasReturnType(Enum):
     PointerToConst = auto(), 'CCTK_POINTER_TO_CONST'
 
 
-class FunctionAliasArgType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> FunctionAliasArgType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class FunctionAliasArgType(ReprEnum):
     String = auto(), 'STRING'
     Int = auto(), 'CCTK_INT'
     Real = auto(), 'CCTK_REAL'
@@ -98,15 +74,7 @@ class FunctionAliasArgType(Enum):
     PointerToConst = auto(), 'CCTK_POINTER_TO_CONST'
 
 
-class FunctionAliasArgIntent(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> FunctionAliasArgIntent:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class FunctionAliasArgIntent(ReprEnum):
     In = auto(), 'IN'
     Out = auto(), 'OUT'
     InOut = auto(), 'INOUT'
@@ -134,7 +102,8 @@ class FunctionAliasFpArg(InterfaceNode):
     fp_args: list[FunctionAliasArg]
 
     # From Cactus reference manual: function pointers may not be nested.
-    def __init__(self, fp_return_type: FunctionAliasArgType, fp_intent: FunctionAliasArgIntent, fp_name: Identifier, fp_args: list[FunctionAliasArg],
+    def __init__(self, fp_return_type: FunctionAliasArgType, fp_intent: FunctionAliasArgIntent, fp_name: Identifier,
+                 fp_args: list[FunctionAliasArg],
                  is_array: bool = False):
         self.fp_return_type = fp_return_type
         self.is_array = is_array
@@ -169,15 +138,7 @@ class UsesFunction(InterfaceNode):
         self.alias = alias
 
 
-class ProvidingLanguage(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> ProvidingLanguage:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class ProvidingLanguage(ReprEnum):
     C = auto(), 'C'
     Fortran = auto(), 'Fortran'
 
@@ -200,29 +161,13 @@ class FunctionSection(InterfaceNode):
         self.declarations = declarations
 
 
-class Access(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> Access:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class Access(ReprEnum):
     Public = auto(), 'public'
     Protected = auto(), 'protected'
     Private = auto(), 'private'
 
 
-class DataType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> DataType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class DataType(ReprEnum):
     Char = auto(), 'CHAR'
     Byte = auto(), 'BYTE'
     Int = auto(), 'INT'
@@ -230,29 +175,13 @@ class DataType(Enum):
     Complex = auto(), 'COMPLEX'
 
 
-class GroupType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> GroupType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class GroupType(ReprEnum):
     GF = auto(), 'GF'
     Array = auto(), 'ARRAY'
     Scalar = auto(), 'SCALAR'
 
 
-class DistribType(Enum):
-    representation: str
-
-    def __new__(cls, value: Any, representation: str) -> DistribType:
-        member = object.__new__(cls)
-        member._value_ = value
-        member.representation = representation
-        return member
-
+class DistribType(ReprEnum):
     Default = auto(), 'DEFAULT'
     Constant = auto(), 'CONSTANT'
 

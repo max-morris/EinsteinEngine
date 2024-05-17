@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from enum import Enum
 from typing import Any, TypeVar, Optional, Iterable
 
 from node import Node
@@ -19,3 +22,13 @@ def try_get(d: Any, x: Any) -> Optional[T]:
 
 def visit_each(v: Visitor[Any], nodes: Iterable[Node]) -> list[str]:
     return [v.visit(n) for n in nodes]
+
+
+class ReprEnum(Enum):
+    representation: str
+
+    def __new__(cls, value: Any, representation: str) -> ReprEnum:
+        member = object.__new__(cls)
+        member._value_ = value
+        member.representation = representation
+        return member
