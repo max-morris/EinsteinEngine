@@ -27,3 +27,16 @@ class String(CommonNode):
 class Integer(CommonNode):
     def __init__(self, integer: int):
         self.integer = integer
+
+
+class Float(CommonNode):
+    def __init__(self, fl: float):
+        self.fl = fl
+
+
+class Bool(CommonNode):
+    def __init__(self, b: bool):
+        self.b = b
+
+
+LiteralExpression = Verbatim | String | Integer | Float | Bool

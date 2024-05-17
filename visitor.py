@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Generic, NoReturn
 
 from node import CommonNode
-from util import *
+import util
 
 # noinspection PyUnresolvedReferences
 # MyPy needs these
@@ -21,4 +21,8 @@ class Visitor(ABC, Generic[N]):
         pass
 
     def not_implemented(self, n: N | CommonNode) -> NoReturn:
-        raise NotImplementedError(f'visit({get_class_name(n)}) not implemented in {get_class_name(self)}')
+        raise NotImplementedError(f'visit({util.get_class_name(n)}) not implemented in {util.get_class_name(self)}')
+
+
+class VisitorException(Exception):
+    pass
