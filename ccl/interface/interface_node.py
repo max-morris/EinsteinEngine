@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import auto
 from typing import TypedDict, Optional
 
@@ -13,15 +14,11 @@ class InterfaceNode(Node):
     pass
 
 
+@dataclass
 class HeaderSection(InterfaceNode):
     implements: Identifier
     inherits: list[Identifier]
     friends: list[Identifier]
-
-    def __init__(self, implements: Identifier, inherits: list[Identifier], friends: list[Identifier]):
-        self.implements = implements
-        self.inherits = inherits
-        self.friends = friends
 
 
 class IncludeType(ReprEnum):
@@ -29,31 +26,22 @@ class IncludeType(ReprEnum):
     Source = auto(), 'SOURCE'
 
 
+@dataclass
 class UsesInclude(InterfaceNode):
-    typ: IncludeType
     file_name: Verbatim
-
-    def __init__(self, file_name: Verbatim, typ: IncludeType = IncludeType.Header):
-        self.typ = typ
-        self.file_name = file_name
+    typ: IncludeType = IncludeType.Header
 
 
+@dataclass
 class IncludeIn(InterfaceNode):
-    typ: IncludeType
     file_name: Verbatim
     file_to_include: Verbatim
-
-    def __init__(self, file_name: Verbatim, file_to_include: Verbatim, typ: IncludeType = IncludeType.Header):
-        self.typ = typ
-        self.file_name = file_name
-        self.file_to_include = file_to_include
+    typ: IncludeType = IncludeType.Header
 
 
+@dataclass
 class IncludeSection(InterfaceNode):
     directives: list[UsesInclude | IncludeIn]
-
-    def __init__(self, directives: list[UsesInclude | IncludeIn]):
-        self.directives = directives
 
 
 class FunctionAliasReturnType(ReprEnum):
@@ -80,62 +68,38 @@ class FunctionAliasArgIntent(ReprEnum):
     InOut = auto(), 'INOUT'
 
 
+@dataclass
 class FunctionAliasArg(InterfaceNode):
     arg_type: FunctionAliasArgType
     arg_intent: FunctionAliasArgIntent
-    is_array: bool
     arg_name: Identifier
-
-    def __init__(self, arg_type: FunctionAliasArgType, arg_intent: FunctionAliasArgIntent, arg_name: Identifier,
-                 is_array: bool = False):
-        self.arg_type = arg_type
-        self.arg_intent = arg_intent
-        self.is_array = is_array
-        self.arg_name = arg_name
+    is_array: bool = False
 
 
+@dataclass
 class FunctionAliasFpArg(InterfaceNode):
     fp_return_type: FunctionAliasArgType
     fp_intent: FunctionAliasArgIntent
-    is_array: bool
     fp_name: Identifier
     fp_args: list[FunctionAliasArg]
-
-    # From Cactus reference manual: function pointers may not be nested.
-    def __init__(self, fp_return_type: FunctionAliasArgType, fp_intent: FunctionAliasArgIntent, fp_name: Identifier,
-                 fp_args: list[FunctionAliasArg],
-                 is_array: bool = False):
-        self.fp_return_type = fp_return_type
-        self.is_array = is_array
-        self.fp_name = fp_name
-        self.fp_args = fp_args
-        self.fp_intent = fp_intent
+    is_array: bool = False
 
 
+@dataclass
 class FunctionAlias(InterfaceNode):
     return_type: FunctionAliasReturnType
     alias: Identifier
     args: list[FunctionAliasArg | FunctionAliasFpArg]
 
-    def __init__(self, return_type: FunctionAliasReturnType, alias: Identifier,
-                 args: list[FunctionAliasArg | FunctionAliasFpArg]):
-        self.return_type = return_type
-        self.alias = alias
-        self.args = args
 
-
+@dataclass
 class RequiresFunction(InterfaceNode):
     alias: Identifier
 
-    def __init__(self, alias: Identifier):
-        self.alias = alias
 
-
+@dataclass
 class UsesFunction(InterfaceNode):
     alias: Identifier
-
-    def __init__(self, alias: Identifier):
-        self.alias = alias
 
 
 class ProvidingLanguage(ReprEnum):
@@ -143,22 +107,16 @@ class ProvidingLanguage(ReprEnum):
     Fortran = auto(), 'Fortran'
 
 
+@dataclass
 class ProvidesFunction(InterfaceNode):
     alias: Identifier
     provider: Identifier
     language: ProvidingLanguage
 
-    def __init__(self, alias: Identifier, provider: Identifier, language: ProvidingLanguage):
-        self.alias = alias
-        self.provider = provider
-        self.language = language
 
-
+@dataclass
 class FunctionSection(InterfaceNode):
     declarations: list[FunctionAlias | RequiresFunction | UsesFunction | ProvidesFunction]
-
-    def __init__(self, declarations: list[FunctionAlias | RequiresFunction | UsesFunction | ProvidesFunction]):
-        self.declarations = declarations
 
 
 class Access(ReprEnum):
@@ -233,22 +191,14 @@ class VariableGroup(InterfaceNode):
         self.group_description = try_get(kwargs, 'group_description')
 
 
+@dataclass
 class VariableSection(InterfaceNode):
     variable_groups: list[VariableGroup]
 
-    def __init__(self, variable_groups: list[VariableGroup]):
-        self.variable_groups = variable_groups
 
-
+@dataclass
 class InterfaceRoot(InterfaceNode):
     header_section: HeaderSection
     include_section: IncludeSection
     function_section: FunctionSection
     variable_section: VariableSection
-
-    def __init__(self, header_section: HeaderSection, include_section: IncludeSection,
-                 function_section: FunctionSection, variable_section: VariableSection):
-        self.header_section = header_section
-        self.include_section = include_section
-        self.function_section = function_section
-        self.variable_section = variable_section
