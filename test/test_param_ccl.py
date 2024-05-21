@@ -1,6 +1,6 @@
-from ccl.param.param_node import *
+from ccl.param.param_tree import *
 from ccl.param.param_visitor import ParamVisitor
-from node import *
+from tree import *
 
 if __name__ == '__main__':
     v = ParamVisitor()

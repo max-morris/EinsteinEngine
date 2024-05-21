@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, NoReturn
+from typing import Generic, NoReturn, Iterable, Any
 
-from node import CommonNode
+from tree import CommonNode
 import util
 
 # noinspection PyUnresolvedReferences
 # MyPy needs these
-from node import Node
+from tree import Node
 from typing import TypeVar
 
 N = TypeVar('N', bound=Node)
@@ -26,3 +26,7 @@ class Visitor(ABC, Generic[N]):
 
 class VisitorException(Exception):
     pass
+
+
+def visit_each(v: Visitor[Any], nodes: Iterable[Node]) -> list[str]:
+    return [v.visit(n) for n in nodes]

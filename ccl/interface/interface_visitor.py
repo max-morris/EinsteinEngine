@@ -1,15 +1,12 @@
-from typing import NoReturn
-
 from multimethod import multimethod
 
-from ccl.interface.interface_node import *
-from node import *
-from util import *
+from ccl.interface.interface_tree import *
+from tree import *
 
 # noinspection PyUnresolvedReferences
 # MyPy needs these
 from typing import Any
-from visitor import Visitor
+from visitor import Visitor, visit_each
 
 
 class InterfaceVisitor(Visitor[InterfaceNode]):

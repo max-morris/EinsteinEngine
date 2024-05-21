@@ -1,12 +1,11 @@
 from multimethod import multimethod
 
-from ccl.param.param_node import *
+from ccl.param.param_tree import *
 
 from typing import Any, cast
 
-from node import Identifier, Integer, Verbatim, String, Bool, Float
-from util import visit_each
-from visitor import Visitor, VisitorException
+from tree import Identifier, Integer, Verbatim, String, Bool, Float
+from visitor import Visitor, VisitorException, visit_each
 
 
 class ParamVisitor(Visitor[ParamNode]):

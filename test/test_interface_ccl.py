@@ -1,6 +1,6 @@
-from ccl.interface.interface_node import *
+from ccl.interface.interface_tree import *
 from ccl.interface.interface_visitor import InterfaceVisitor
-from node import *
+from tree import *
 
 if __name__ == '__main__':
     v = InterfaceVisitor()

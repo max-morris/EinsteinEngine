@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, TypeVar, Optional, Iterable
-
-from node import Node
-from visitor import Visitor
+from typing import Any, TypeVar, Optional
 
 
 def get_class_name(x: Any) -> str:
@@ -18,10 +15,6 @@ T = TypeVar('T')
 
 def try_get(d: Any, x: Any) -> Optional[T]:
     return d[x] if x in d else None
-
-
-def visit_each(v: Visitor[Any], nodes: Iterable[Node]) -> list[str]:
-    return [v.visit(n) for n in nodes]
 
 
 class ReprEnum(Enum):

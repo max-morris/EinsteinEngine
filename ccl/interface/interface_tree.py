@@ -6,7 +6,7 @@ from typing import TypedDict, Optional
 
 from typing_extensions import Unpack
 
-from node import Node, Identifier, Verbatim, Integer, String
+from tree import Node, Identifier, Verbatim, Integer, String, Language
 from util import try_get, ReprEnum
 
 
@@ -102,16 +102,11 @@ class UsesFunction(InterfaceNode):
     alias: Identifier
 
 
-class ProvidingLanguage(ReprEnum):
-    C = auto(), 'C'
-    Fortran = auto(), 'Fortran'
-
-
 @dataclass
 class ProvidesFunction(InterfaceNode):
     alias: Identifier
     provider: Identifier
-    language: ProvidingLanguage
+    language: Language
 
 
 @dataclass

@@ -6,7 +6,7 @@ from util import ReprEnum, try_get
 from typing import Optional, TypedDict
 from typing_extensions import Unpack
 
-from node import Node, String, Integer, Float, Identifier, Verbatim, LiteralExpression
+from tree import Node, String, Integer, Float, Identifier, Verbatim, LiteralExpression
 
 
 class ParamNode(Node):
@@ -20,7 +20,7 @@ class ParamAccess(ReprEnum):
     Shares = auto(), 'shares'
 
 
-class ExtendsUses(ReprEnum):
+class ExtendsOrUses(ReprEnum):
     Extends = auto(), 'EXTENDS'
     Uses = auto(), 'USES'
 
@@ -167,7 +167,7 @@ ParamRange = IntParamRange | RealParamRange | KeywordParamRange | StringParamRan
 
 
 class ParamOptionalArgs(TypedDict, total=False):
-    extends_uses: ExtendsUses
+    extends_uses: ExtendsOrUses
     arr_len: Integer
     alias_name: Identifier
     steerability: Steerability
@@ -184,7 +184,7 @@ class Param(ParamNode):
     param_desc: String
     range_descriptions: list[ParamRange]
     default_value: LiteralExpression
-    extends_uses: Optional[ExtendsUses]
+    extends_uses: Optional[ExtendsOrUses]
     arr_len: Optional[Integer]
     alias_name: Optional[Identifier]
     steerability: Optional[Steerability]
