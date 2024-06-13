@@ -1,6 +1,6 @@
-from ccl.schedule.schedule_tree import *
-from ccl.schedule.schedule_visitor import ScheduleVisitor
-from tree import *
+from emit.ccl.schedule.schedule_tree import *
+from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
+from emit.tree import *
 
 if __name__ == '__main__':
     v = ScheduleVisitor()

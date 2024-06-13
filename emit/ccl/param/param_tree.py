@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import auto
-from util import ReprEnum, try_get
+from emit.util import ReprEnum, try_get
 from typing import Optional, TypedDict
 from typing_extensions import Unpack
 
-from tree import Node, String, Integer, Float, Identifier, Verbatim, LiteralExpression
+from emit.tree import Node, String, Integer, Float, Identifier, Verbatim, LiteralExpression
 
 
 class ParamNode(Node):

@@ -2,7 +2,7 @@ from abc import ABC
 from dataclasses import dataclass
 from enum import auto
 
-from util import ReprEnum
+from emit.util import ReprEnum
 
 
 class Node(ABC):

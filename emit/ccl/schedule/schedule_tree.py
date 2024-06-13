@@ -3,8 +3,8 @@ from enum import auto, Enum
 from typing import TypedDict, Optional
 from typing_extensions import Unpack
 
-from tree import Node, Identifier, Integer, String, Language
-from util import ReprEnum, try_get
+from emit.tree import Node, Identifier, Integer, String, Language
+from emit.util import ReprEnum, try_get
 
 
 class ScheduleNode(Node):

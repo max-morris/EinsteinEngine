@@ -1,6 +1,6 @@
-from ccl.interface.interface_tree import *
-from ccl.interface.interface_visitor import InterfaceVisitor
-from tree import *
+from emit.ccl.interface.interface_tree import *
+from emit.ccl.interface.interface_visitor import InterfaceVisitor
+from emit.tree import *
 
 if __name__ == '__main__':
     v = InterfaceVisitor()

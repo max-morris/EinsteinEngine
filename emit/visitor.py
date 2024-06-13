@@ -3,12 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Generic, NoReturn, Iterable, Any
 
-from tree import CommonNode
-import util
+from emit.tree import CommonNode
+import emit.util as util
 
 # noinspection PyUnresolvedReferences
 # MyPy needs these
-from tree import Node
+from emit.tree import Node
 from typing import TypeVar
 
 N = TypeVar('N', bound=Node)

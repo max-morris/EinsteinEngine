@@ -2,9 +2,9 @@ from typing import Any
 
 from multimethod import multimethod
 
-from ccl.schedule.schedule_tree import *
-from tree import *
-from visitor import Visitor, visit_each
+from emit.ccl.schedule.schedule_tree import *
+from emit.tree import *
+from emit.visitor import Visitor, visit_each
 
 
 class ScheduleVisitor(Visitor[ScheduleNode]):

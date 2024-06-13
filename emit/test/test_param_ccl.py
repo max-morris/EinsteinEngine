@@ -1,6 +1,6 @@
-from ccl.param.param_tree import *
-from ccl.param.param_visitor import ParamVisitor
-from tree import *
+from emit.ccl.param.param_tree import *
+from emit.ccl.param.param_visitor import ParamVisitor
+from emit.tree import *
 
 if __name__ == '__main__':
     v = ParamVisitor()
