@@ -367,7 +367,7 @@ y = mkSymbol("y")
 z = mkSymbol("z")
 
 
-class GF:
+class ThornFunction:
     def __init__(self) -> None:
         self.symmetries = Sym()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
@@ -549,7 +549,7 @@ class GF:
 
 
 if __name__ == "__main__":
-    gf = GF()
+    gf = ThornFunction()
     B = gf.decl("B", [lc, lb])
     M = gf.decl("M", [la, lb])
 

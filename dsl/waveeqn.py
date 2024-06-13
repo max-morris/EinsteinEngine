@@ -19,7 +19,7 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 
 
 # Create a set of grid functions
-gf = GF()
+gf = ThornFunction()
 
 # Declare gfs
 p = gf.decl("p", [li])
@@ -99,7 +99,7 @@ gf.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li), "EVO")
 gf.diagnose()
 
 # Display the equations in final form
-gf.dump()
+#gf.dump()
 
 # Perform cse
 gf.cse()
