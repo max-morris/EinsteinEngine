@@ -4,7 +4,7 @@ from typing import TypedDict, Optional
 from typing_extensions import Unpack
 
 from emit.tree import Node, Identifier, Integer, String, Language
-from emit.util import ReprEnum, try_get
+from util import ReprEnum, try_get
 
 
 class ScheduleNode(Node):

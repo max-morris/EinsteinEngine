@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import auto
-from emit.util import ReprEnum, try_get
+from util import ReprEnum, try_get
 from typing import Optional, TypedDict
 from typing_extensions import Unpack
 

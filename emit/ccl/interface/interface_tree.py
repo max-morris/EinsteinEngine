@@ -7,7 +7,7 @@ from typing import TypedDict, Optional
 from typing_extensions import Unpack
 
 from emit.tree import Node, Identifier, Verbatim, Integer, String, Language
-from emit.util import try_get, ReprEnum
+from util import try_get, ReprEnum
 
 
 class InterfaceNode(Node):

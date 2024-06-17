@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Generic, NoReturn, Iterable, Any
 
 from emit.tree import CommonNode
-import emit.util as util
+import util
 
 # noinspection PyUnresolvedReferences
 # MyPy needs these

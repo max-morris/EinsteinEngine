@@ -2,11 +2,12 @@
 The waveequation! It can't be solved too many times.
 """
 
-from typing import cast, Optional, Set, Any
-from sympy import IndexedBase, Idx, symbols, Basic, Expr, Indexed, Symbol, Function
-from dsl.sympywrap import *
-from dsl.eqnlist import EqnList
 from dsl.use_indices import *
+from emit.code.cpp.cpp_visitor import CppVisitor
+from typing import cast, Any
+from sympy import Expr, Idx
+from emit.code.code_tree import Centering
+from generators.cpp_carpetx_generator import CppCarpetXGenerator
 
 
 def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
@@ -22,12 +23,12 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 gf = ThornFunction()
 
 # Declare gfs
-p = gf.decl("p", [li], "VVC")
-p_t = gf.decl("p_t", [li], "VVC")
-p_d = gf.decl("p_d", [li, lj], "VVC")
-u = gf.decl("u", [], "VVC")
+p = gf.decl("p", [li], Centering.VVC)
+p_t = gf.decl("p_t", [li], Centering.VVC)
+p_d = gf.decl("p_d", [li, lj], Centering.VVC)
+u = gf.decl("u", [], Centering.VVC)
 u_t = gf.declscalar("u_t")
-u_d = gf.decl("u_d", [ui], "VVC")
+u_d = gf.decl("u_d", [ui], Centering.VVC)
 
 siter2 = gf.decl("siter2", [li, lj])
 gf.add_sym(siter2[li, lj], li, lj)
@@ -99,7 +100,7 @@ gf.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li), "EVO")
 gf.diagnose()
 
 # Display the equations in final form
-#gf.dump()
+# gf.dump()
 
 # Perform cse
 gf.cse()
@@ -108,3 +109,11 @@ gf.cse()
 gf.dump()
 
 gf.show_tensortypes()
+
+carpetx_generator = CppCarpetXGenerator('wave_evol', gf)
+tree = carpetx_generator.generate_code()
+
+visitor = CppVisitor()
+code = visitor.visit(tree)
+
+print(code)

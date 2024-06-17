@@ -11,6 +11,8 @@ from dsl.symm import Sym
 import re
 import sys
 
+from emit.code.code_tree import Centering
+
 lookup_pair = dict()
 
 
@@ -378,7 +380,7 @@ class ThornFunction:
         self.groups: Dict[str, List[str]] = dict()
         self.props: Dict[str, List[Integer]] = dict()
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
-        self.centering: Dict[str, str] = dict()
+        self.centering: Dict[str, Optional[Centering]] = dict()
 
     def add_param(self, name: str, default: param_default_type, desc: str, values: param_values_type = None) -> Symbol:
         self.params[name] = Param(name, default, desc, values)
@@ -468,7 +470,7 @@ class ThornFunction:
 
         return ret
 
-    def decl(self, basename: str, indices: List[Idx], centering: str = "") -> IndexedBase:
+    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None) -> IndexedBase:
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
