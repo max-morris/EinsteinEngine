@@ -3,6 +3,7 @@ from typing import TypeVar, Literal, List, Dict, Union, Tuple, Any, Set, Generic
 from sympy.core.symbol import Symbol
 from sympy.core.expr import Expr
 from sympy import symbols, Function, diff, IndexedBase
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
 
@@ -102,12 +103,12 @@ class EqnList:
 
         for lhs in self.eqns:
             rhs = self.eqns[lhs]
-            print("EQN:", lhs, "=", rhs)
+            print(colorize("EQN:","cyan"),lhs,colorize("=","cyan"),rhs)
 
         if self.verbose:
-            print("Inputs:", self.inputs)
-            print("Outputs:", self.outputs)
-            print("Params:", self.params)
+            print(colorize("Inputs:","green"),self.inputs)
+            print(colorize("Outputs:","green"),self.outputs)
+            print(colorize("Params:","green"),self.params)
 
         for k in self.eqns:
             written.add(k)
@@ -115,8 +116,8 @@ class EqnList:
                 read.add(q)
 
         if self.verbose:
-            print("Read:", read)
-            print("Written:", written)
+            print(colorize("Read:","green"),read)
+            print(colorize("Written:","green"),written)
 
         for k in self.inputs:
             assert k in read, f"Symbol '{k}' is in inputs, but it is never read. {read}"
@@ -134,7 +135,7 @@ class EqnList:
                 temps.add(k)
 
         if self.verbose:
-            print("Temps:", temps)
+            print(colorize("Temps:","green"),temps)
 
         for k in temps:
             assert k in read, f"Temporary variable '{k}' is never read"
@@ -191,7 +192,7 @@ class EqnList:
                         again = True
                     else:
                         find_cycle = k
-        print("Order:", self.order)
+        print(colorize("Order:","green"),self.order)
 
         # Figure out the rest of the READ/WRITEs
         for var in self.order:
@@ -217,15 +218,15 @@ class EqnList:
                 self.read_decls[var] = spec
 
         if self.verbose:
-            print("READS:", end="")
+            print(colorize("READS:","green"),end="")
             for var, spec in self.read_decls.items():
                 if var in self.inputs:
-                    print(" ", var, "=", spec.value, sep="", end="")
+                    print(" ",var,"=",colorize(spec.value,"yellow"),sep="",end="")
             print()
-            print("WRITES:", end="")
+            print(colorize("WRITES:","green"),end="")
             for var, spec in self.write_decls.items():
                 if var in self.outputs:
-                    print(" ", var, "=", spec.value, sep="", end="")
+                    print(" ",var,"=",colorize(spec.value,"yellow"),sep="",end="")
             print()
 
         for k, v in self.eqns.items():
@@ -278,11 +279,10 @@ class EqnList:
             m = mod_eqns[i]
             self.eqns[k] = m
 
-    def dump(self) -> None:
-        print("Dumping Equations:")
+    def dump(self)->None:
+        print(colorize("Dumping Equations:","green"))
         for k in self.order:
-            print(" ", k, "=", self.eqns[k])
-
+            print(" ",colorize(k,"cyan"),"=",self.eqns[k])
 
 if __name__ == "__main__":
     a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")

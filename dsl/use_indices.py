@@ -8,6 +8,7 @@ from inspect import currentframe
 from dsl.sympywrap import *
 from dsl.eqnlist import EqnList
 from dsl.symm import Sym
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
 import re
 import sys
 
@@ -485,17 +486,17 @@ class ThornFunction:
 
         return ret
 
-    def show_tensortypes(self) -> None:
-        keys: Set[str] = set()
-        for k in self.eqnlist.inputs:
-            keys.add(str(k))
-        for k in self.eqnlist.outputs:
-            keys.add(str(k))
-        for k0 in keys:  # mypy complains if this variable is called k
-            group, indices, members = self.get_tensortype(k0)
-            print(k0, "is a member of", group, "with indices", indices, "and members", members)
+    def show_tensortypes(self)->None:
+        keys : Set[str] = set()
+        for k1 in self.eqnlist.inputs:
+            keys.add(str(k1))
+        for k2 in self.eqnlist.outputs:
+            keys.add(str(k2))
+        for k in keys:
+            group, indices, members = self.get_tensortype(k)
+            print(colorize(k,"green"),"is a member of",colorize(group,"green"),"with indices",colorize(indices,"cyan"),"and members",colorize(members,"magenta"))
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item:Union[str,Math])->Tuple[str,List[Idx],List[str]]:
         k = str(item)
         assert k in self.gfs.keys(), f"Not a defined symbol {item}"
         v = self.base_of.get(k, None)
@@ -528,7 +529,7 @@ class ThornFunction:
                     self.groups[str(out.base)] = list()
                 members = self.groups[str(out.base)]
                 members.append(str(subval))
-            print(subj, "->", subval_)
+            print(colorize(subj,"red"),colorize("->","magenta"),colorize(subval_,"cyan"))
             self.subs[subj] = subval_
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
