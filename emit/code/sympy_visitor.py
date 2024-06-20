@@ -43,7 +43,7 @@ class SympyExprVisitor:
         arg_list: list[Expr] = [self.visit(a) for a in expr.args]
 
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
-            return FunctionCall(Identifier(expr.func.name), arg_list, [])
+            return FunctionCall(Identifier(expr.func.name), arg_list, [])  # type: ignore[attr-defined]
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
         fn_type: StandardizedFunctionCallType

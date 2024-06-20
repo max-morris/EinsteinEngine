@@ -9,12 +9,12 @@ from dsl.sympywrap import *
 from dsl.eqnlist import EqnList
 from dsl.symm import Sym
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from enum import Enum
 from enum import auto
 import re
 import sys
 
 from emit.code.code_tree import Centering
+from util import ReprEnum
 
 lookup_pair = dict()
 
@@ -371,25 +371,15 @@ x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
 
-class SchedEnum(Enum):
-    name: str
 
-    def __new__(cls, value: Any, name:str) -> 'SchedEnum':
-        member = object.__new__(cls)
-        member._value = value
-        member.name = name
-        return member
-
-    def __repr__(self) -> str:
-        return self.name
-
-class Sched(SchedEnum):
+class ScheduleBin(ReprEnum):
     EVOL = auto(), 'EVOL'
     INIT = auto(), 'INIT'
 
+
 class ThornFunction:
-    def __init__(self, name: str, sched: str, tdef: "ThornDef") -> None:
-        self.sched = sched
+    def __init__(self, name: str, schedule_bin: ScheduleBin, tdef: "ThornDef") -> None:
+        self.schedule_bin = schedule_bin
         self.name = name
         plist: Set[Math] = {mkSymbol(p) for p in tdef.params.keys()}
         self.eqnlist: EqnList = EqnList(tdef.is_stencil, plist)
@@ -470,8 +460,8 @@ class ThornDef:
         self.is_stencil: Dict[UFunc, bool] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
 
-    def create_function(self, name: str, sched: str) -> ThornFunction:
-        tf = ThornFunction(name, sched, self)
+    def create_function(self, name: str, schedule_bin: ScheduleBin) -> ThornFunction:
+        tf = ThornFunction(name, schedule_bin, self)
         self.thorn_functions[name] = tf
         return tf
 
