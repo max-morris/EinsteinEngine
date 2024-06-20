@@ -39,7 +39,6 @@ class ReprEnum(Enum):
     def __repr__(self) -> str:
         return self.representation
 
-
 class CenteringEnum(Enum):
     string_repr: str
     int_repr: tuple[int, int, int]

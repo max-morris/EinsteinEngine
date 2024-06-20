@@ -9,6 +9,8 @@ from dsl.sympywrap import *
 from dsl.eqnlist import EqnList
 from dsl.symm import Sym
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from enum import Enum
+from enum import auto
 import re
 import sys
 
@@ -369,6 +371,21 @@ x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
 
+class SchedEnum(Enum):
+    name: str
+
+    def __new__(cls, value: Any, name:str) -> 'SchedEnum':
+        member = object.__new__(cls)
+        member._value = value
+        member.name = name
+        return member
+
+    def __repr__(self) -> str:
+        return self.name
+
+class Sched(SchedEnum):
+    EVOL = auto(), 'EVOL'
+    INIT = auto(), 'INIT'
 
 class ThornFunction:
     def __init__(self, name: str, sched: str, tdef: "ThornDef") -> None:

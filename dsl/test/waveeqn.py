@@ -97,13 +97,13 @@ x, y, z = gf.coords()
 res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
 
 # Add the equations we want to evolve.
-
-
-# Define wave_evo.
-fun = gf.create_function("wave_evo", "EVO")
+fun = gf.create_function("wave_evo", Sched.EVOL)
 fun.add_eqn(p_t[lj], spd * div1(u, lj)) # Evo should be an enum
 fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
-print('*** ThornFunction wave_evo:')
+
+fun = gf.create_function("wave_init", Sched.INIT)
+fun.add_eqn(u, sin(kx*x)*cos(ky*y) )
+fun.add_eqn(p[lj], sympify(0))
 
 # Ensure the equations make sense
 fun.diagnose()
