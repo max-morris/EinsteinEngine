@@ -32,7 +32,7 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self, is_stencil:Dict[UFunc,bool], params:Set[Math]) -> None:
+    def __init__(self, is_stencil: Dict[UFunc, bool], params: Set[Math]) -> None:
         self.eqns: Dict[Math, Expr] = dict()
         self.params: Set[Math] = set()
         self.inputs: Set[Math] = set()
@@ -103,12 +103,12 @@ class EqnList:
 
         for lhs in self.eqns:
             rhs = self.eqns[lhs]
-            print(colorize("EQN:","cyan"),lhs,colorize("=","cyan"),rhs)
+            print(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs)
 
         if self.verbose:
-            print(colorize("Inputs:","green"),self.inputs)
-            print(colorize("Outputs:","green"),self.outputs)
-            print(colorize("Params:","green"),self.params)
+            print(colorize("Inputs:", "green"), self.inputs)
+            print(colorize("Outputs:", "green"), self.outputs)
+            print(colorize("Params:", "green"), self.params)
 
         for k in self.eqns:
             written.add(k)
@@ -116,8 +116,8 @@ class EqnList:
                 read.add(q)
 
         if self.verbose:
-            print(colorize("Read:","green"),read)
-            print(colorize("Written:","green"),written)
+            print(colorize("Read:", "green"), read)
+            print(colorize("Written:", "green"), written)
 
         for k in self.inputs:
             assert k in read, f"Symbol '{k}' is in inputs, but it is never read. {read}"
@@ -135,7 +135,7 @@ class EqnList:
                 temps.add(k)
 
         if self.verbose:
-            print(colorize("Temps:","green"),temps)
+            print(colorize("Temps:", "green"), temps)
 
         for k in temps:
             assert k in read, f"Temporary variable '{k}' is never read"
@@ -192,7 +192,7 @@ class EqnList:
                         again = True
                     else:
                         find_cycle = k
-        print(colorize("Order:","green"),self.order)
+        print(colorize("Order:", "green"), self.order)
 
         # Figure out the rest of the READ/WRITEs
         for var in self.order:
@@ -218,15 +218,15 @@ class EqnList:
                 self.read_decls[var] = spec
 
         if self.verbose:
-            print(colorize("READS:","green"),end="")
+            print(colorize("READS:", "green"), end="")
             for var, spec in self.read_decls.items():
                 if var in self.inputs:
-                    print(" ",var,"=",colorize(spec.value,"yellow"),sep="",end="")
+                    print(" ", var, "=", colorize(spec.value, "yellow"), sep="", end="")
             print()
-            print(colorize("WRITES:","green"),end="")
+            print(colorize("WRITES:", "green"), end="")
             for var, spec in self.write_decls.items():
                 if var in self.outputs:
-                    print(" ",var,"=",colorize(spec.value,"yellow"),sep="",end="")
+                    print(" ", var, "=", colorize(spec.value, "yellow"), sep="", end="")
             print()
 
         for k, v in self.eqns.items():
@@ -279,16 +279,17 @@ class EqnList:
             m = mod_eqns[i]
             self.eqns[k] = m
 
-    def dump(self)->None:
-        print(colorize("Dumping Equations:","green"))
+    def dump(self) -> None:
+        print(colorize("Dumping Equations:", "green"))
         for k in self.order:
-            print(" ",colorize(k,"cyan"),"=",self.eqns[k])
+            print(" ", colorize(k, "cyan"), "=", self.eqns[k])
+
 
 if __name__ == "__main__":
     a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")
     try:
         div = mkFunction("div")
-        el = EqnList(dict(),set())
+        el = EqnList(dict(), set())
         el.default_read_write_spec = RWSpec.IN
         el.add_func(div, True)
         el.add_input(a)
@@ -322,7 +323,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(),set())
+        el = EqnList(dict(), set())
         el.add_eqn(r, q)  # cycle
         el.add_eqn(q, r)  # cycle
         el.add_eqn(a, r)
@@ -334,7 +335,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(),set())
+        el = EqnList(dict(), set())
         el.add_input(a)
         el.add_input(f)
         el.add_input(b)
@@ -350,7 +351,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(),set())
+        el = EqnList(dict(), set())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)
@@ -363,7 +364,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(),set())
+        el = EqnList(dict(), set())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)
