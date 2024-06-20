@@ -13,6 +13,11 @@ from emit.visitor import Visitor, visit_each
 class CppVisitor(Visitor[CodeNode]):
     sympy_visitor: SympyExprVisitor
 
+    standardized_function_calls: dict[StandardizedFunctionCallType, str] = {
+        StandardizedFunctionCallType.Sin: 'std::sin',
+        StandardizedFunctionCallType.Cos: 'std::cos'
+    }
+
     def __init__(self) -> None:
         self.sympy_visitor = SympyExprVisitor()
 
@@ -30,6 +35,10 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: Integer) -> str:
+        return f'{n.integer}'
+
+    @visit.register
+    def _(self, n: IntLiteralExpr) -> str:
         return f'{n.integer}'
 
     @visit.register
@@ -72,9 +81,25 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: FunctionCall) -> str:
+        fn_name = self.visit(n.name)
+        fn_args = ",".join(visit_each(self, n.args))
+
         if len(n.template_args) == 0:
-            return f'{self.visit(n.name)}({",".join(visit_each(self, n.args))})'
-        return f'{self.visit(n.name)}<{",".join(visit_each(self, n.template_args))}>({",".join(visit_each(self, n.args))})'
+            return f'{fn_name}({fn_args})'
+
+        template_args = ",".join(visit_each(self, n.template_args))
+
+        return f'{fn_name}<{template_args}>({fn_args})'
+
+    @visit.register
+    def _(self, n: StandardizedFunctionCall) -> str:
+        if n.type not in self.standardized_function_calls:
+            raise NotImplementedError(f'visit(StandardizedFunctionCall@{n.type}) not implemented in CppVisitor')
+
+        fn_name = self.standardized_function_calls[n.type]
+        fn_args = ",".join(visit_each(self, n.args))
+
+        return f'{fn_name}({fn_args})'
 
     @visit.register
     def _(self, n: CarpetXGridLoopCall) -> str:

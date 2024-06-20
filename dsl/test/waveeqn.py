@@ -119,10 +119,13 @@ fun.dump()
 
 fun.show_tensortypes()
 
-carpetx_generator = CppCarpetXGenerator('wave_evol', gf)
-tree = carpetx_generator.generate_code()
+for fn_name in ['wave_init', 'wave_evo']:
+    carpetx_generator = CppCarpetXGenerator(gf)
+    tree = carpetx_generator.generate_function_code(fn_name)
 
-visitor = CppVisitor()
-code = visitor.visit(tree)
+    visitor = CppVisitor()
+    code = visitor.visit(tree)
 
-print(code)
+    print(code)
+    print('=====================')
+

@@ -1,14 +1,13 @@
 import typing
 
-from dsl.use_indices import ThornFunction
+from dsl.use_indices import ThornDef, ThornFunction
 from emit.code.code_tree import *
 from emit.tree import String, Identifier
 from generators.generator_exception import GeneratorException
 
 
 class CppCarpetXGenerator:
-    fn_name: str
-    thorn_fn: ThornFunction
+    thorn_def: ThornDef
 
     boilerplate_includes: list[Identifier] = [Identifier(s) for s in
                                               ["fixmath.hxx", "cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
@@ -18,12 +17,13 @@ class CppCarpetXGenerator:
 
     boilerplate_usings: list[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
-    def __init__(self, fn_name: str, thorn_fn: ThornFunction) -> None:
-        self.fn_name = fn_name
-        self.thorn_fn = thorn_fn
+    def __init__(self, thorn_def: ThornDef) -> None:
+        self.thorn_def = thorn_def
 
-    def generate_code(self) -> CodeRoot:
+    def generate_function_code(self, which_fn: str) -> CodeRoot:
         nodes: list[CodeElem] = list()
+        thorn_fn: ThornFunction = self.thorn_def.thorn_functions[which_fn]
+        fn_name: str = thorn_fn.name
 
         for include in self.boilerplate_includes:
             nodes.append(IncludeDirective(include))
@@ -33,9 +33,9 @@ class CppCarpetXGenerator:
 
         nodes.append(Using(self.boilerplate_usings))
 
-        bases_of_outputs = {self.thorn_fn.base_of[base] for base in
-                            {str(output) for output in self.thorn_fn.eqnlist.outputs} if base in self.thorn_fn.base_of}
-        output_centerings = {self.thorn_fn.centering[base] for base in bases_of_outputs}
+        bases_of_outputs = {self.thorn_def.base_of[base] for base in
+                            {str(output) for output in thorn_fn.eqnlist.outputs} if base in self.thorn_def.base_of}
+        output_centerings = {self.thorn_def.centering[base] for base in bases_of_outputs}
 
         if None in output_centerings or len(output_centerings) == 0:
             raise GeneratorException("All output vars must have a centering.")
@@ -48,13 +48,13 @@ class CppCarpetXGenerator:
 
         nodes.append(
             ThornFunctionDecl(
-                Identifier(self.fn_name),
-                [DeclareCarpetXArgs(Identifier(self.fn_name)),
+                Identifier(fn_name),
+                [DeclareCarpetXArgs(Identifier(fn_name)),
                  DeclareCarpetParams(),
                  CarpetXGridLoopCall(
                      output_centering,
                      CarpetXGridLoopLambda(
-                         {str(lhs): SympyExpr(rhs) for lhs, rhs in self.thorn_fn.eqnlist.eqns.items()})
+                         {str(lhs): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()})
                  )]
             )
         )

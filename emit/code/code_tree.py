@@ -37,6 +37,11 @@ class IdExpr(Expr):
 
 
 @dataclass
+class IntLiteralExpr(Expr):
+    integer: int
+
+
+@dataclass
 class VerbatimExpr(Expr):
     v: Verbatim
 
@@ -160,6 +165,18 @@ class FunctionCall(Expr):
     name: Identifier
     args: list[Expr]
     template_args: list[Expr | Identifier]
+
+
+class StandardizedFunctionCallType(ReprEnum):
+    Sin = auto(), 'sin'
+    Cos = auto(), 'cos'
+    # todo: There are definitely more of these
+
+
+@dataclass
+class StandardizedFunctionCall(Expr):
+    type: StandardizedFunctionCallType
+    args: list[Expr]
 
 
 @dataclass

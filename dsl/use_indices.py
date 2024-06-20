@@ -371,10 +371,10 @@ z = mkSymbol("z")
 
 
 class ThornFunction:
-    def __init__(self, name:str, sched:str, tdef:"ThornDef") -> None:
+    def __init__(self, name: str, sched: str, tdef: "ThornDef") -> None:
         self.sched = sched
         self.name = name
-        plist : Set[Math] = {mkSymbol(p) for p in tdef.params.keys()}
+        plist: Set[Math] = {mkSymbol(p) for p in tdef.params.keys()}
         self.eqnlist: EqnList = EqnList(tdef.is_stencil, plist)
         self.tdef = tdef
 
@@ -418,17 +418,18 @@ class ThornFunction:
     def diagnose(self) -> None:
         self.eqnlist.diagnose()
 
-    def show_tensortypes(self)->None:
-        keys : Set[str] = set()
+    def show_tensortypes(self) -> None:
+        keys: Set[str] = set()
         for k1 in self.eqnlist.inputs:
             keys.add(str(k1))
         for k2 in self.eqnlist.outputs:
             keys.add(str(k2))
         for k in keys:
             group, indices, members = self.get_tensortype(k)
-            print(colorize(k,"green"),"is a member of",colorize(group,"green"),"with indices",colorize(indices,"cyan"),"and members",colorize(members,"magenta"))
+            print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
+                  colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
-    def get_tensortype(self, item:Union[str,Math])->Tuple[str,List[Idx],List[str]]:
+    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
         assert k in self.tdef.gfs.keys(), f"Not a defined symbol {item}"
         v = self.tdef.base_of.get(k, None)
@@ -436,8 +437,9 @@ class ThornFunction:
             return ("none", list(), list())  # scalar
         return (v, self.tdef.defn[v][1], self.tdef.groups[v])
 
+
 class ThornDef:
-    def __init__(self, name:str) -> None:
+    def __init__(self, name: str) -> None:
         self.name = name
         self.symmetries = Sym()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
@@ -449,9 +451,9 @@ class ThornDef:
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.is_stencil: Dict[UFunc, bool] = dict()
-        self.thorn_functions : Dict[str, ThornFunction] = dict()
+        self.thorn_functions: Dict[str, ThornFunction] = dict()
 
-    def create_function(self, name:str, sched:str)->ThornFunction:
+    def create_function(self, name: str, sched: str) -> ThornFunction:
         tf = ThornFunction(name, sched, self)
         self.thorn_functions[name] = tf
         return tf
@@ -479,7 +481,7 @@ class ThornDef:
 
     def declfun(self, funname: str, is_stencil_fun: bool) -> UFunc:
         fun = mkFunction(funname)
-        #self.eqnlist.add_func(fun, is_stencil)
+        # self.eqnlist.add_func(fun, is_stencil)
         self.is_stencil[fun] = is_stencil_fun
 
         # If possible, insert the symbol into the current environment
@@ -549,7 +551,7 @@ class ThornDef:
                     self.groups[str(out.base)] = list()
                 members = self.groups[str(out.base)]
                 members.append(str(subval))
-            print(colorize(subj,"red"),colorize("->","magenta"),colorize(subval_,"cyan"))
+            print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval_, "cyan"))
             self.subs[subj] = subval_
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:

@@ -40,4 +40,27 @@ class SympyExprVisitor:
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
-        return FunctionCall(Identifier(expr.func.name), [self.visit(a) for a in expr.args], [])
+        arg_list: list[Expr] = [self.visit(a) for a in expr.args]
+
+        if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
+            return FunctionCall(Identifier(expr.func.name), arg_list, [])
+
+        # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
+        fn_type: StandardizedFunctionCallType
+
+        if isinstance(expr, sy.sin):
+            fn_type = StandardizedFunctionCallType.Sin
+        elif isinstance(expr, sy.cos):
+            fn_type = StandardizedFunctionCallType.Cos
+        else:
+            raise NotImplementedError(f"visit({type(expr)}) not implemented in SympyExprVisitor")
+
+        return StandardizedFunctionCall(fn_type, arg_list)
+
+    @visit.register
+    def _(self, _: sy.core.numbers.Zero) -> Expr:
+        return IntLiteralExpr(0)
+
+    @visit.register
+    def _(self, _: sy.core.numbers.One) -> Expr:
+        return IntLiteralExpr(1)
