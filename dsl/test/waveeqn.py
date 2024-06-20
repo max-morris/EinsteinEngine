@@ -97,26 +97,34 @@ x, y, z = gf.coords()
 res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
 
 # Add the equations we want to evolve.
+
+
+# Define wave_evo.
 fun = gf.create_function("wave_evo", "EVO")
 fun.add_eqn(p_t[lj], spd * div1(u, lj)) # Evo should be an enum
 fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
-
-fun = gf.create_function("wave_init", "INIT")
-fun.add_eqn(u, sin(kx*x)*cos(ky*y) )
-fun.add_eqn(p[lj], sympify(0))
+print('*** ThornFunction wave_evo:')
 
 # Ensure the equations make sense
 fun.diagnose()
 
-# Display the equations in final form
-# gf.dump()
-
 # Perform cse
 fun.cse()
 
-# Display again in case there are changes
+# Dump
 fun.dump()
 
+# Show tensortypes
+fun.show_tensortypes()
+
+# Again for wave_init
+fun = gf.create_function("wave_init", "INIT")
+fun.add_eqn(u, sin(kx*x)*cos(ky*y) )
+fun.add_eqn(p[lj], sympify(0))
+print('*** ThornFunction wave_init:')
+fun.diagnose()
+fun.cse()
+fun.dump()
 fun.show_tensortypes()
 
 for fn_name in ['wave_init', 'wave_evo']:
