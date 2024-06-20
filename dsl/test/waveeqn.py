@@ -5,7 +5,7 @@ The waveequation! It can't be solved too many times.
 from dsl.use_indices import *
 from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
-from sympy import Expr, Idx
+from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
 from generators.cpp_carpetx_generator import CppCarpetXGenerator
 
@@ -20,7 +20,7 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 
 
 # Create a set of grid functions
-gf = ThornFunction()
+gf = ThornDef("waveqn")
 
 # Declare gfs
 p = gf.decl("p", [li], Centering.VVC)
@@ -40,6 +40,8 @@ gf.add_sym(g[li, lj], li, lj)
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")
+kx = gf.add_param("kx", default=1.0, desc="The wave number in the x-direction")
+ky = gf.add_param("ky", default=1.0, desc="The wave number in the y-direction")
 
 # Fill in values
 gf.fill_in(g[li, lj], flat_metric)
@@ -90,25 +92,32 @@ def to_div2(out: Expr, i: Idx, j: Idx) -> Expr:
 gf.fill_in(iter1[lj], alt=div1(u, lj), f=to_div)
 gf.fill_in(siter2[li, lj], alt=div1(p[li], lj), f=to_div2)
 
+x, y, z = gf.coords()
+
 res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
 
 # Add the equations we want to evolve.
-gf.add_eqn(p_t[lj], spd * div1(u, lj), "EVO")
-gf.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li), "EVO")
+fun = gf.create_function("wave_evo", "EVO")
+fun.add_eqn(p_t[lj], spd * div1(u, lj)) # Evo should be an enum
+fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
+
+fun = gf.create_function("wave_init", "INIT")
+fun.add_eqn(u, sin(kx*x)*cos(ky*y) )
+fun.add_eqn(p[lj], sympify(0))
 
 # Ensure the equations make sense
-gf.diagnose()
+fun.diagnose()
 
 # Display the equations in final form
 # gf.dump()
 
 # Perform cse
-gf.cse()
+fun.cse()
 
 # Display again in case there are changes
-gf.dump()
+fun.dump()
 
-gf.show_tensortypes()
+fun.show_tensortypes()
 
 carpetx_generator = CppCarpetXGenerator('wave_evol', gf)
 tree = carpetx_generator.generate_code()

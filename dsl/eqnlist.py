@@ -32,14 +32,14 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, is_stencil:Dict[UFunc,bool], params:Set[Math]) -> None:
         self.eqns: Dict[Math, Expr] = dict()
         self.params: Set[Math] = set()
         self.inputs: Set[Math] = set()
         self.outputs: Set[Math] = set()
         self.order: List[Math] = list()
         self.verbose = True
-        self.is_stencil: Dict[UFunc, bool] = dict()
+        self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.read_decls: Dict[Math, RWSpec] = dict()
         self.write_decls: Dict[Math, RWSpec] = dict()
         self.default_read_write_spec: RWSpec = RWSpec.IN
@@ -288,7 +288,7 @@ if __name__ == "__main__":
     a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")
     try:
         div = mkFunction("div")
-        el = EqnList()
+        el = EqnList(dict(),set())
         el.default_read_write_spec = RWSpec.IN
         el.add_func(div, True)
         el.add_input(a)
@@ -322,7 +322,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList()
+        el = EqnList(dict(),set())
         el.add_eqn(r, q)  # cycle
         el.add_eqn(q, r)  # cycle
         el.add_eqn(a, r)
@@ -334,7 +334,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList()
+        el = EqnList(dict(),set())
         el.add_input(a)
         el.add_input(f)
         el.add_input(b)
@@ -350,7 +350,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList()
+        el = EqnList(dict(),set())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)
@@ -363,7 +363,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList()
+        el = EqnList(dict(),set())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)

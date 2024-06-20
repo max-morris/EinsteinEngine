@@ -371,48 +371,39 @@ z = mkSymbol("z")
 
 
 class ThornFunction:
-    def __init__(self) -> None:
-        self.symmetries = Sym()
-        self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
-        self.subs: Dict[Expr, Expr] = dict()
-        self.eqnlist: EqnList = EqnList()
-        self.params: Dict[str, Param] = dict()
-        self.base_of: Dict[str, str] = dict()
-        self.groups: Dict[str, List[str]] = dict()
-        self.props: Dict[str, List[Integer]] = dict()
-        self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
-        self.centering: Dict[str, Optional[Centering]] = dict()
-
-    def add_param(self, name: str, default: param_default_type, desc: str, values: param_values_type = None) -> Symbol:
-        self.params[name] = Param(name, default, desc, values)
-        return mkSymbol(name)
+    def __init__(self, name:str, sched:str, tdef:"ThornDef") -> None:
+        self.sched = sched
+        self.name = name
+        plist : Set[Math] = {mkSymbol(p) for p in tdef.params.keys()}
+        self.eqnlist: EqnList = EqnList(tdef.is_stencil, plist)
+        self.tdef = tdef
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
-        rhs2 = self.do_subs(expand_contracted_indices(rhs2, self.symmetries))
-        if str(lhs2) in self.gfs:
+        rhs2 = self.tdef.do_subs(expand_contracted_indices(rhs2, self.tdef.symmetries))
+        if str(lhs2) in self.tdef.gfs:
             self.eqnlist.add_output(lhs2)
         for item in finder(rhs2):
-            if str(item) in self.gfs:
+            if str(item) in self.tdef.gfs:
                 # assert item.is_Symbol
                 self.eqnlist.add_input(cast(Symbol, item))
-            elif str(item) in self.params:
+            elif str(item) in self.tdef.params:
                 assert item.is_Symbol
                 self.eqnlist.add_param(cast(Symbol, item))
         self.eqnlist.add_eqn(lhs2, rhs2)
 
-    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Symbol, eqntype: str) -> None:
+    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Expr) -> None:
         lhs2: Symbol
         if type(lhs) == Indexed:
-            for tup in expand_free_indices(lhs, self.symmetries):
+            for tup in expand_free_indices(lhs, self.tdef.symmetries):
                 lhsx, inds = tup
-                lhs2 = cast(Symbol, self.do_subs(lhsx, self.subs))
-                rhs2 = self.do_subs(rhs, inds, self.subs)
-                rhs2 = self.do_subs(rhs2, inds, self.subs)
+                lhs2 = cast(Symbol, self.tdef.do_subs(lhsx, self.tdef.subs))
+                rhs2 = self.tdef.do_subs(rhs, inds, self.tdef.subs)
+                rhs2 = self.tdef.do_subs(rhs2, inds, self.tdef.subs)
                 self._add_eqn2(lhs2, rhs2)
         elif type(lhs) in [IndexedBase, Symbol]:
-            lhs2 = cast(Symbol, self.do_subs(lhs, self.subs))
-            eci = expand_contracted_indices(rhs, self.symmetries)
-            rhs2 = self.do_subs(eci, self.subs)
+            lhs2 = cast(Symbol, self.tdef.do_subs(lhs, self.tdef.subs))
+            eci = expand_contracted_indices(rhs, self.tdef.symmetries)
+            rhs2 = self.tdef.do_subs(eci, self.tdef.subs)
             self._add_eqn2(lhs2, rhs2)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
@@ -426,6 +417,48 @@ class ThornFunction:
 
     def diagnose(self) -> None:
         self.eqnlist.diagnose()
+
+    def show_tensortypes(self)->None:
+        keys : Set[str] = set()
+        for k1 in self.eqnlist.inputs:
+            keys.add(str(k1))
+        for k2 in self.eqnlist.outputs:
+            keys.add(str(k2))
+        for k in keys:
+            group, indices, members = self.get_tensortype(k)
+            print(colorize(k,"green"),"is a member of",colorize(group,"green"),"with indices",colorize(indices,"cyan"),"and members",colorize(members,"magenta"))
+
+    def get_tensortype(self, item:Union[str,Math])->Tuple[str,List[Idx],List[str]]:
+        k = str(item)
+        assert k in self.tdef.gfs.keys(), f"Not a defined symbol {item}"
+        v = self.tdef.base_of.get(k, None)
+        if v is None:
+            return ("none", list(), list())  # scalar
+        return (v, self.tdef.defn[v][1], self.tdef.groups[v])
+
+class ThornDef:
+    def __init__(self, name:str) -> None:
+        self.name = name
+        self.symmetries = Sym()
+        self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
+        self.subs: Dict[Expr, Expr] = dict()
+        self.params: Dict[str, Param] = dict()
+        self.base_of: Dict[str, str] = dict()
+        self.groups: Dict[str, List[str]] = dict()
+        self.props: Dict[str, List[Integer]] = dict()
+        self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
+        self.centering: Dict[str, Optional[Centering]] = dict()
+        self.is_stencil: Dict[UFunc, bool] = dict()
+        self.thorn_functions : Dict[str, ThornFunction] = dict()
+
+    def create_function(self, name:str, sched:str)->ThornFunction:
+        tf = ThornFunction(name, sched, self)
+        self.thorn_functions[name] = tf
+        return tf
+
+    def add_param(self, name: str, default: param_default_type, desc: str, values: param_values_type = None) -> Symbol:
+        self.params[name] = Param(name, default, desc, values)
+        return mkSymbol(name)
 
     def add_sym(self, tens: Indexed, ix1: Idx, ix2: Idx, sgn: int = 1) -> None:
         assert type(tens) == Indexed
@@ -444,9 +477,10 @@ class ThornFunction:
             i1, i2 = i2, i1
         self.symmetries.add(tens.base, i1, i2, sgn)
 
-    def declfun(self, funname: str, is_stencil: bool) -> UFunc:
+    def declfun(self, funname: str, is_stencil_fun: bool) -> UFunc:
         fun = mkFunction(funname)
-        self.eqnlist.add_func(fun, is_stencil)
+        #self.eqnlist.add_func(fun, is_stencil)
+        self.is_stencil[fun] = is_stencil_fun
 
         # If possible, insert the symbol into the current environment
         frame = currentframe()
@@ -471,6 +505,10 @@ class ThornFunction:
 
         return ret
 
+    def coords(self) -> Tuple[Symbol, Symbol, Symbol]:
+        # Note that x, y, and z are special symbols
+        return (self.declscalar("x"), self.declscalar("y"), self.declscalar("z"))
+
     def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None) -> IndexedBase:
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
@@ -485,24 +523,6 @@ class ThornFunction:
             globs[basename] = ret
 
         return ret
-
-    def show_tensortypes(self)->None:
-        keys : Set[str] = set()
-        for k1 in self.eqnlist.inputs:
-            keys.add(str(k1))
-        for k2 in self.eqnlist.outputs:
-            keys.add(str(k2))
-        for k in keys:
-            group, indices, members = self.get_tensortype(k)
-            print(colorize(k,"green"),"is a member of",colorize(group,"green"),"with indices",colorize(indices,"cyan"),"and members",colorize(members,"magenta"))
-
-    def get_tensortype(self, item:Union[str,Math])->Tuple[str,List[Idx],List[str]]:
-        k = str(item)
-        assert k in self.gfs.keys(), f"Not a defined symbol {item}"
-        v = self.base_of.get(k, None)
-        if v is None:
-            return ("none", list(), list())  # scalar
-        return (v, self.defn[v][1], self.groups[v])
 
     def fill_in(self, indexed: IndexedBase, f: fill_in_type = fill_in_default, alt: Any = None) -> None:
         for tup in expand_free_indices(indexed, self.symmetries):
@@ -534,7 +554,7 @@ class ThornFunction:
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
         result: List[Eq] = list()
-        for tup in expand_free_indices(eqn.lhs, sym):
+        for tup in expand_free_indices(eqn.lhs, self.symmetries):
             lhs, inds = tup
             result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, inds, self.subs))]
         return result
@@ -554,7 +574,7 @@ class ThornFunction:
 
 
 if __name__ == "__main__":
-    gf = ThornFunction()
+    gf = ThornDef("TST")
     B = gf.decl("B", [lc, lb])
     M = gf.decl("M", [la, lb])
 
@@ -565,7 +585,7 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(M[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == 3
+    assert n == 3, f"n = {n}"
 
     # Symmetric
     N = gf.decl("N", [la, lb])

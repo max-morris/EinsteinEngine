@@ -8,6 +8,9 @@ class Sym(Applier):
         self.sd: Dict[IndexedBase, List[Tuple[int, int, int]]] = dict()
         self.modified = False
 
+    def __repr__(self) -> str:
+        return repr(self.sd)
+
     def add(self, m: IndexedBase, p1: int, p2: int, sgn: int) -> None:
         assert p1 < p2
         assert sgn in [1, -1]
