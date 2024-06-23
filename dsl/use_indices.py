@@ -437,12 +437,7 @@ class ThornFunction:
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
-        k = str(item)
-        assert k in self.tdef.gfs.keys(), f"Not a defined symbol {item}"
-        v = self.tdef.base_of.get(k, None)
-        if v is None:
-            return ("none", list(), list())  # scalar
-        return (v, self.tdef.defn[v][1], self.tdef.groups[v])
+        return self.tdef.get_tensortype(item)
 
 
 class ThornDef:
@@ -459,6 +454,14 @@ class ThornDef:
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.is_stencil: Dict[UFunc, bool] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
+
+    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+        k = str(item)
+        assert k in self.gfs.keys(), f"Not a defined symbol {item}"
+        v = self.base_of.get(k, None)
+        if v is None:
+            return "none", list(), list()  # scalar
+        return v, self.defn[v][1], self.groups[v]
 
     def create_function(self, name: str, schedule_bin: ScheduleBin) -> ThornFunction:
         tf = ThornFunction(name, schedule_bin, self)

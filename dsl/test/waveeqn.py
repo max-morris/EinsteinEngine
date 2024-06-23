@@ -3,6 +3,9 @@ The waveequation! It can't be solved too many times.
 """
 
 from dsl.use_indices import *
+from emit.ccl.interface.interface_visitor import InterfaceVisitor
+from emit.ccl.param.param_visitor import ParamVisitor
+from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
 from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
@@ -20,7 +23,7 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 
 
 # Create a set of grid functions
-gf = ThornDef("waveqn")
+gf = ThornDef("WaveEqn")
 
 # Declare gfs
 p = gf.decl("p", [li], Centering.VVC)
@@ -100,6 +103,7 @@ res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
 fun = gf.create_function("wave_evo", ScheduleBin.EVOL)
 fun.add_eqn(p_t[lj], spd * div1(u, lj))
 fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
+print('*** ThornFunction wave_evo:')
 
 # Ensure the equations make sense
 fun.diagnose()
@@ -123,12 +127,26 @@ fun.cse()
 fun.dump()
 fun.show_tensortypes()
 
+
+carpetx_generator = CppCarpetXGenerator(gf)
+
 for fn_name in ['wave_init', 'wave_evo']:
-    carpetx_generator = CppCarpetXGenerator(gf)
-    tree = carpetx_generator.generate_function_code(fn_name)
-
-    visitor = CppVisitor()
-    code = visitor.visit(tree)
-
-    print(code)
     print('=====================')
+    code_tree = carpetx_generator.generate_function_code(fn_name)
+    code = CppVisitor().visit(code_tree)
+    print(code)
+
+print('== param.ccl ==')
+param_tree = carpetx_generator.generate_param_ccl()
+param_ccl = ParamVisitor().visit(param_tree)
+print(param_ccl)
+
+print('== interface.ccl ==')
+interface_tree = carpetx_generator.generate_interface_ccl()
+interface_ccl = InterfaceVisitor().visit(interface_tree)
+print(interface_ccl)
+
+print('== schedule.ccl ==')
+schedule_tree = carpetx_generator.generate_schedule_ccl()
+schedule_ccl = ScheduleVisitor().visit(schedule_tree)
+print(schedule_ccl)

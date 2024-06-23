@@ -7,13 +7,8 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
 
-
-class RWSpec(Enum):
-    IN = "Interior"
-    EW = "Everywhere"
-
-
 from dsl.sympywrap import *
+from emit.ccl.schedule.schedule_tree import IntentRegion
 
 
 class EqnList:
@@ -40,9 +35,9 @@ class EqnList:
         self.order: List[Math] = list()
         self.verbose = True
         self.is_stencil: Dict[UFunc, bool] = is_stencil
-        self.read_decls: Dict[Math, RWSpec] = dict()
-        self.write_decls: Dict[Math, RWSpec] = dict()
-        self.default_read_write_spec: RWSpec = RWSpec.IN
+        self.read_decls: Dict[Math, IntentRegion] = dict()
+        self.write_decls: Dict[Math, IntentRegion] = dict()
+        self.default_read_write_spec: IntentRegion = IntentRegion.Interior
 
     def add_func(self, fun: UFunc, is_stencil: bool) -> None:
         self.is_stencil[fun] = is_stencil
@@ -85,8 +80,8 @@ class EqnList:
             if sym.is_Function and self.is_stencil.get(sym.func, False):
                 for arg in sym.args:
                     sym = cast(Symbol, arg)
-                    self.read_decls[sym] = RWSpec.EW
-                    self.write_decls[self.lhs] = RWSpec.IN
+                    self.read_decls[sym] = IntentRegion.Everywhere
+                    self.write_decls[self.lhs] = IntentRegion.Interior
             return False
 
         def noop(x: Symbol) -> Symbol:
@@ -197,22 +192,22 @@ class EqnList:
         # Figure out the rest of the READ/WRITEs
         for var in self.order:
             if var in self.inputs and var not in self.read_decls:
-                self.read_decls[var] = RWSpec.EW  # self.default_read_write_spec
+                self.read_decls[var] = IntentRegion.Everywhere  # self.default_read_write_spec
             elif var in self.outputs and var not in self.write_decls:
-                spec = RWSpec.EW
+                spec = IntentRegion.Everywhere
                 for rvar in finder(self.eqns[var]):
-                    if self.read_decls.get(rvar, RWSpec.EW) == RWSpec.IN:
-                        spec = RWSpec.IN
+                    if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
+                        spec = IntentRegion.Interior
                         break
                 self.write_decls[var] = spec
             elif var in temps and var in self.write_decls and var not in self.read_decls:
                 self.read_decls[var] = self.write_decls[var]
             elif var in temps and var not in self.write_decls:
                 spec = self.default_read_write_spec
-                if spec != RWSpec.IN:
+                if spec != IntentRegion.Interior:
                     for rvar in finder(self.eqns[var]):
-                        if self.read_decls.get(rvar, RWSpec.EW) == RWSpec.IN:
-                            spec = RWSpec.IN
+                        if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
+                            spec = IntentRegion.Interior
                             break
                 self.write_decls[var] = spec
                 self.read_decls[var] = spec
@@ -290,7 +285,7 @@ if __name__ == "__main__":
     try:
         div = mkFunction("div")
         el = EqnList(dict(), set())
-        el.default_read_write_spec = RWSpec.IN
+        el.default_read_write_spec = IntentRegion.Interior
         el.add_func(div, True)
         el.add_input(a)
         el.add_eqn(c, sympify(3))
@@ -301,23 +296,23 @@ if __name__ == "__main__":
         el.add_output(d)
 
         el.diagnose()
-        assert el.read_decls[a] == RWSpec.EW
-        assert el.write_decls[d] == RWSpec.IN
-        assert el.write_decls[c] == RWSpec.EW
+        assert el.read_decls[a] == IntentRegion.Everywhere
+        assert el.write_decls[d] == IntentRegion.Interior
+        assert el.write_decls[c] == IntentRegion.Everywhere
 
-        el.default_read_write_spec = RWSpec.EW
+        el.default_read_write_spec = IntentRegion.Everywhere
         el.add_func(div, True)
         el.diagnose()
-        assert el.read_decls[a] == RWSpec.EW
-        assert el.write_decls[d] == RWSpec.IN
-        assert el.write_decls[c] == RWSpec.EW
+        assert el.read_decls[a] == IntentRegion.Everywhere
+        assert el.write_decls[d] == IntentRegion.Interior
+        assert el.write_decls[c] == IntentRegion.Everywhere
 
-        el.default_read_write_spec = RWSpec.EW
+        el.default_read_write_spec = IntentRegion.Everywhere
         el.add_func(div, False)
         el.diagnose()
-        assert el.read_decls[a] == RWSpec.EW
-        assert el.write_decls[d] == RWSpec.EW
-        assert el.write_decls[c] == RWSpec.EW
+        assert el.read_decls[a] == IntentRegion.Everywhere
+        assert el.write_decls[d] == IntentRegion.Everywhere
+        assert el.write_decls[c] == IntentRegion.Everywhere
     finally:
         print("Test zero passed")
         print()

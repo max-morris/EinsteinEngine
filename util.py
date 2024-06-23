@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, TypeVar, Optional
+from typing import Any, TypeVar, Optional, Callable
 
 
 def get_class_name(x: Any) -> str:
@@ -11,10 +11,21 @@ def get_class_name(x: Any) -> str:
 
 
 T = TypeVar('T')
+K = TypeVar('K')
+V = TypeVar('V')
 
 
 def try_get(d: Any, x: Any) -> Optional[T]:
     return d[x] if x in d else None
+
+
+def get_or_compute(d: dict[K, V], k: K, f: Callable[[K], V]):
+    if k in d:
+        return d[k]
+    else:
+        v = f(k)
+        d[k] = v
+        return v
 
 
 def indent(s: str, spaces: int = 4) -> str:
@@ -38,6 +49,7 @@ class ReprEnum(Enum):
 
     def __repr__(self) -> str:
         return self.representation
+
 
 class CenteringEnum(Enum):
     string_repr: str
