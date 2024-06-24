@@ -150,3 +150,7 @@ print('== schedule.ccl ==')
 schedule_tree = carpetx_generator.generate_schedule_ccl()
 schedule_ccl = ScheduleVisitor().visit(schedule_tree)
 print(schedule_ccl)
+
+print('== make.code.defn ==')
+makefile = carpetx_generator.generate_makefile()
+print(makefile)

@@ -45,7 +45,17 @@ class CppCarpetXGenerator:
                 group_type=GroupType.GF
             )).variable_names.append(Identifier(var_name))
 
-    def generate_schedule_ccl(self):
+    def get_src_file_name(self, which_fn: str) -> str:
+        assert which_fn in self.thorn_def.thorn_functions
+
+        return f'{self.thorn_def.name}_{which_fn}.cpp'
+
+    def generate_makefile(self) -> str:
+        srcs = [self.get_src_file_name(fn_name) for fn_name in self.thorn_def.thorn_functions.keys()]
+
+        return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
+
+    def generate_schedule_ccl(self) -> ScheduleRoot:
         storage_lines: list[StorageLine] = list()
         schedule_blocks: list[ScheduleBlock] = list()
 
@@ -98,7 +108,7 @@ class CppCarpetXGenerator:
             schedule_section=ScheduleSection(schedule_blocks)
         )
 
-    def generate_interface_ccl(self):
+    def generate_interface_ccl(self) -> InterfaceRoot:
         return InterfaceRoot(
             HeaderSection(
                 implements=Identifier(self.thorn_def.name),
@@ -110,7 +120,7 @@ class CppCarpetXGenerator:
             VariableSection(list(self.variable_groups.values()))
         )
 
-    def generate_param_ccl(self):
+    def generate_param_ccl(self) -> ParamRoot:
         params: list[Param] = list()
 
         for param_name, param_def in self.thorn_def.params.items():
