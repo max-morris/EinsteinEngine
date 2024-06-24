@@ -6,16 +6,12 @@ from emit.ccl.param.param_tree import *
 from emit.ccl.schedule.schedule_tree import *
 from emit.code.code_tree import *
 from emit.tree import String, Identifier, Bool, Integer, Float, Language
+from generators.cactus_generator import CactusGenerator
 from generators.generator_exception import GeneratorException
-from util import get_or_compute
 from typing import Optional
 
 
-class CppCarpetXGenerator:
-    thorn_def: ThornDef
-    variable_groups: dict[str, VariableGroup]
-    var_names: set[str] = set()
-
+class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: list[Identifier] = [Identifier(s) for s in
                                               ["fixmath.hxx", "cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "cmath", "tuple"]]
@@ -25,26 +21,7 @@ class CppCarpetXGenerator:
     boilerplate_usings: list[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     def __init__(self, thorn_def: ThornDef) -> None:
-        self.thorn_def = thorn_def
-        self.variable_groups = dict()
-        self.var_names = set()
-
-        for tf in self.thorn_def.thorn_functions.values():
-            for iv in tf.eqnlist.inputs:
-                self.var_names.add(str(iv))
-            for ov in tf.eqnlist.outputs:
-                self.var_names.add(str(ov))
-
-        for var_name in self.var_names:
-            group_name = self.thorn_def.base_of.get(var_name, 'scalar_gfs')
-
-            get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
-                access=Access.Public,
-                group_name=Identifier(k),
-                data_type=DataType.Real,
-                variable_names=list(),
-                group_type=GroupType.GF
-            )).variable_names.append(Identifier(var_name))
+        super().__init__(thorn_def)
 
     def get_src_file_name(self, which_fn: str) -> str:
         assert which_fn in self.thorn_def.thorn_functions
