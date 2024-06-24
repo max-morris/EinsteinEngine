@@ -447,7 +447,7 @@ class ThornDef:
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
         self.subs: Dict[Expr, Expr] = dict()
         self.params: Dict[str, Param] = dict()
-        self.base_of: Dict[str, str] = dict()
+        self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
         self.props: Dict[str, List[Integer]] = dict()
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
@@ -458,7 +458,7 @@ class ThornDef:
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
         assert k in self.gfs.keys(), f"Not a defined symbol {item}"
-        v = self.base_of.get(k, None)
+        v = self.var2base.get(k, None)
         if v is None:
             return "none", list(), list()  # scalar
         return v, self.defn[v][1], self.groups[v]
@@ -556,7 +556,7 @@ class ThornDef:
                 assert subval_.is_Symbol, f"{type(subval_)}, {subval_.__class__}, {subval_.is_Function}"
                 subval = cast(Symbol, subval_)
                 self.gfs[str(subval)] = subval
-                self.base_of[str(subval)] = str(out.base)
+                self.var2base[str(subval)] = str(out.base)
                 if str(out.base) not in self.groups:
                     self.groups[str(out.base)] = list()
                 members = self.groups[str(out.base)]

@@ -5,7 +5,7 @@ from emit.ccl.interface.interface_tree import *
 from emit.ccl.param.param_tree import *
 from emit.ccl.schedule.schedule_tree import *
 from emit.code.code_tree import *
-from emit.tree import String, Identifier, Bool, Integer, Float, Language
+from emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim
 from generators.cactus_generator import CactusGenerator
 from generators.generator_exception import GeneratorException
 from typing import Optional
@@ -19,6 +19,12 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_namespace_usings: list[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
 
     boilerplate_usings: list[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
+
+    boilerplate_div_macros: str = """
+        #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
+        #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
+        #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
+    """.strip().replace('    ', '')
 
     def __init__(self, thorn_def: ThornDef) -> None:
         super().__init__(thorn_def)
@@ -187,6 +193,10 @@ class CppCarpetXGenerator(CactusGenerator):
         thorn_fn: ThornFunction = self.thorn_def.thorn_functions[which_fn]
         fn_name: str = thorn_fn.name
 
+        # div{x,y,z} macros
+        nodes.append(Verbatim(self.boilerplate_div_macros))
+
+        # Includes, usings...
         for include in self.boilerplate_includes:
             nodes.append(IncludeDirective(include))
 
@@ -195,8 +205,36 @@ class CppCarpetXGenerator(CactusGenerator):
 
         nodes.append(Using(self.boilerplate_usings))
 
-        bases_of_outputs = {self.thorn_def.base_of[base] for base in
-                            {str(output) for output in thorn_fn.eqnlist.outputs} if base in self.thorn_def.base_of}
+        # Each variable needs to have a corresponding decl of the form
+        # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
+        # for the div macros to work; layout here really means centering.
+        for var_name in self.var_names:
+            var_centering: Optional[Centering]
+
+            # Try looking up the var's centering directly...
+            if (var_centering := self.thorn_def.centering.get(var_name, None)) is not None:
+                pass
+            # Otherwise, try looking it up by the var's base...
+            elif (var_base := self.thorn_def.var2base.get(var_name, None)) is not None:
+                var_centering = self.thorn_def.centering.get(var_base, None)
+
+            # If this var doesn't have a defined centering, skip it.
+            if var_centering is None:
+                continue
+
+            # We know the centering. Build the decl.
+            assert var_centering is not None
+            nodes.append(ConstConstructDecl(
+                Identifier('GF3D5layout'),
+                Identifier(f'{var_name}_layout'),
+                [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
+            ))
+
+        # Figure out which centering to pass to grid.loop_int_device<...>
+        # All of this function's outputs need to have the same centering. If they do, use that centering.
+        bases_of_outputs = {self.thorn_def.var2base[output_var] for output_var in
+                            {str(output) for output in thorn_fn.eqnlist.outputs} if
+                            output_var in self.thorn_def.var2base}
         output_centerings = {self.thorn_def.centering[base] for base in bases_of_outputs}
 
         if None in output_centerings or len(output_centerings) == 0:
@@ -205,9 +243,11 @@ class CppCarpetXGenerator(CactusGenerator):
         if len(output_centerings) > 1:
             raise GeneratorException(f"Output vars have mixed centerings: {output_centerings}")
 
+        # Got the centering.
         output_centering: Centering
         [output_centering] = typing.cast(set[Centering], output_centerings)
 
+        # Build the function decl and its body.
         nodes.append(
             ThornFunctionDecl(
                 Identifier(fn_name),

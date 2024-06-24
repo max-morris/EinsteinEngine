@@ -150,3 +150,7 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, _: DeclareCarpetParams) -> str:
         return f"DECLARE_CCTK_PARAMETERS;"
+
+    @visit.register
+    def _(self, n: ConstConstructDecl) -> str:
+        return f'const {self.visit(n.type)} {self.visit(n.lhs)}({", ".join(visit_each(self, n.constructor_args))});'

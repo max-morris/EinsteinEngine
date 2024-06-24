@@ -151,7 +151,7 @@ class UsingAlias(Decl):
     rhs: AnyNode
 
 
-CodeElem = Stmt | Expr | Directive
+CodeElem = Stmt | Expr | Directive | Verbatim
 
 
 @dataclass

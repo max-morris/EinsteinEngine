@@ -26,7 +26,7 @@ class CactusGenerator(ABC):
                 self.var_names.add(str(ov))
 
         for var_name in self.var_names:
-            group_name = self.thorn_def.base_of.get(var_name, 'scalar_gfs')
+            group_name = self.thorn_def.var2base.get(var_name, 'scalar_gfs')
 
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,
