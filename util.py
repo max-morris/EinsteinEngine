@@ -19,7 +19,7 @@ def try_get(d: Any, x: Any) -> Optional[T]:
     return d[x] if x in d else None
 
 
-def get_or_compute(d: dict[K, V], k: K, f: Callable[[K], V]):
+def get_or_compute(d: dict[K, V], k: K, f: Callable[[K], V]) -> V:
     if k in d:
         return d[k]
     else:

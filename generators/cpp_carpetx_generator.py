@@ -5,9 +5,10 @@ from emit.ccl.interface.interface_tree import *
 from emit.ccl.param.param_tree import *
 from emit.ccl.schedule.schedule_tree import *
 from emit.code.code_tree import *
-from emit.tree import String, Identifier, Bool, Integer, Float
+from emit.tree import String, Identifier, Bool, Integer, Float, Language
 from generators.generator_exception import GeneratorException
 from util import get_or_compute
+from typing import Optional
 
 
 class CppCarpetXGenerator:
@@ -129,7 +130,7 @@ class CppCarpetXGenerator:
             py_param_default = param_def.default
 
             param_type: ParamType
-            param_range: ParamRange
+            param_range: Optional[ParamRange]
             param_default: String | Integer | Float | Bool
 
             if py_param_type is set:
@@ -158,10 +159,10 @@ class CppCarpetXGenerator:
                     param_range = IntParamRange(IntParamDescWildcard(), String(''))
                 else:
                     assert type(py_param_range) is tuple[int, int]
-                    lo, hi = py_param_range
+                    lo_i, hi_i = typing.cast(tuple[int, int], py_param_range)
                     param_range = IntParamRange(IntParamDescRange(
-                        IntParamOpenLowerBound(Integer(lo)),
-                        IntParamOpenUpperBound(Integer(hi))
+                        IntParamOpenLowerBound(Integer(lo_i)),
+                        IntParamOpenUpperBound(Integer(hi_i))
                     ), String(''))
 
                 assert type(py_param_default) is int
@@ -173,10 +174,10 @@ class CppCarpetXGenerator:
                     param_range = RealParamRange(RealParamDescWildcard(), String(''))
                 else:
                     assert type(py_param_range) is tuple[float, float]
-                    lo, hi = py_param_range
+                    lo_f, hi_f = typing.cast(tuple[float, float], py_param_range)
                     param_range = RealParamRange(RealParamDescRange(
-                        RealParamOpenLowerBound(Float(lo)),
-                        RealParamOpenUpperBound(Float(hi))
+                        RealParamOpenLowerBound(Float(lo_f)),
+                        RealParamOpenUpperBound(Float(hi_f))
                     ), String(''))
 
                 assert type(py_param_default) is float
