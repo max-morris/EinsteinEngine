@@ -154,3 +154,7 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: ConstConstructDecl) -> str:
         return f'const {self.visit(n.type)} {self.visit(n.lhs)}({", ".join(visit_each(self, n.constructor_args))});'
+
+    @visit.register
+    def _(self, n: VerbatimExpr) -> str:
+        return n.v.text

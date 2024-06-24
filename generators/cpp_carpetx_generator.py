@@ -21,6 +21,7 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_usings: list[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     boilerplate_div_macros: str = """
+        #define CARPETX_GF3D5
         #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
         #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
@@ -208,6 +209,9 @@ class CppCarpetXGenerator(CactusGenerator):
         # Each variable needs to have a corresponding decl of the form
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
         # for the div macros to work; layout here really means centering.
+
+        declared_layouts: set[Centering] = set()
+
         for var_name in self.var_names:
             var_centering: Optional[Centering]
 
@@ -222,8 +226,23 @@ class CppCarpetXGenerator(CactusGenerator):
             if var_centering is None:
                 continue
 
-            # We know the centering. Build the decl.
             assert var_centering is not None
+
+            # Make sure the referenced layout has a preceding, corresponding decl of the form
+            # `const GF3D5layout ${LAYOUT_NAME}_layout(cctkGH, {$I, $J, $K});`
+            if var_centering not in declared_layouts:
+                declared_layouts.add(var_centering)
+
+                i, j, k = var_centering.int_repr
+                centering_init_list = f'{{{i}, {j}, {k}}}'
+
+                nodes.append(ConstConstructDecl(
+                    Identifier('GF3D5layout'),
+                    Identifier(f'{var_centering.string_repr}_layout'),
+                    [IdExpr(Identifier('cctkGH')), VerbatimExpr(Verbatim(centering_init_list))]
+                ))
+
+            # Now build the var's centering decl.
             nodes.append(ConstConstructDecl(
                 Identifier('GF3D5layout'),
                 Identifier(f'{var_name}_layout'),
