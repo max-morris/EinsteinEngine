@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import auto
-from typing import Optional, Union, List, Dict
+from typing import Optional, Union, List, Dict, Sequence
 
 import sympy as sy
 
@@ -181,9 +181,9 @@ class StandardizedFunctionCall(Expr):
 
 @dataclass
 class CarpetXGridLoopLambda(Expr):
-    preceding: List[CodeElem]
+    preceding: Sequence[CodeElem]
     equations: Dict[str, SympyExpr]
-    succeeding: List[CodeElem]
+    succeeding: Sequence[CodeElem]
 
 
 @dataclass

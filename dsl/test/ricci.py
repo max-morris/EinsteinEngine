@@ -60,7 +60,7 @@ carpetx_generator = CppCarpetXGenerator(gf)
 for fn_name in gf.thorn_functions.keys():
     print('=====================')
     code_tree = carpetx_generator.generate_function_code(fn_name)
-    code = CppVisitor().visit(code_tree)
+    code = CppVisitor(carpetx_generator).visit(code_tree)
     print(code)
 
 print('== param.ccl ==')

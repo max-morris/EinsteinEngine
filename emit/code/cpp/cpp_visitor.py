@@ -6,12 +6,14 @@ import util
 from emit.code.code_tree import *
 from emit.code.sympy_visitor import SympyExprVisitor
 from emit.tree import *
+from generators.cactus_generator import CactusGenerator
 from util import indent
 from emit.visitor import Visitor, visit_each
 from typing import Dict
 
 
 class CppVisitor(Visitor[CodeNode]):
+    generator: CactusGenerator
     sympy_visitor: SympyExprVisitor
 
     standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
@@ -19,8 +21,11 @@ class CppVisitor(Visitor[CodeNode]):
         StandardizedFunctionCallType.Cos: 'std::cos'
     }
 
-    def __init__(self) -> None:
-        self.sympy_visitor = SympyExprVisitor()
+    def __init__(self, generator: CactusGenerator) -> None:
+        self.generator = generator
+        self.sympy_visitor = SympyExprVisitor(
+            lambda s, in_div: f'access({s})' if not in_div and s in self.generator.var_names else s
+        )
 
     @multimethod
     def visit(self, n: CodeNode) -> str:
@@ -104,7 +109,7 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: CarpetXGridLoopCall) -> str:
-        centering_args = [f'{n.centering.string_repr}_layout[{i}]' for i in range(3)]
+        centering_args = [f'{n.centering.string_repr}_centered[{i}]' for i in range(3)]
         return f"grid.loop_int_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register

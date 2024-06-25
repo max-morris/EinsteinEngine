@@ -22,6 +22,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
     boilerplate_div_macros: str = """
         #define CARPETX_GF3D5
+        #define access(GF) (GF(GF ## _layout, p.I))
         #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
         #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
@@ -274,6 +275,9 @@ class CppCarpetXGenerator(CactusGenerator):
             ConstAssignDecl(Identifier('auto&'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
         ]
 
+        def lhs_substitution(s: str) -> str:
+            return f'access({s})' if s in self.var_names else s
+
         # Build the function decl and its body.
         nodes.append(
             ThornFunctionDecl(
@@ -285,7 +289,7 @@ class CppCarpetXGenerator(CactusGenerator):
                      output_centering,
                      CarpetXGridLoopLambda(
                          xyz_decls,
-                         {str(lhs): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()},
+                         {lhs_substitution(str(lhs)): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()},
                          []),
                  )]
             )

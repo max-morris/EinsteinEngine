@@ -1,5 +1,5 @@
 import typing
-from typing import Any
+from typing import Callable, List, Optional
 
 # noinspection PyUnresolvedReferences
 import sympy as sy
@@ -10,6 +10,15 @@ from emit.tree import *
 
 
 class SympyExprVisitor:
+    substitution_fn: Callable[[str, bool], str]
+    inside_div: bool
+
+    div_fns: List[str] = [f'div{s}' for s in ['x', 'y', 'z']]
+
+    def __init__(self, substitution_fn: Optional[Callable[[str, bool], str]] = None):
+        self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
+        self.inside_div = False
+
     @multimethod
     def visit(self, expr: sy.Basic) -> Expr:
         raise NotImplementedError(f'visit({expr.func}) not implemented in SympyVisitor')
@@ -30,7 +39,7 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.Symbol) -> Expr:
         assert len(expr.args) == 0
-        return IdExpr(Identifier(expr.name))
+        return IdExpr(Identifier(self.substitution_fn(expr.name, self.inside_div)))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
@@ -40,9 +49,13 @@ class SympyExprVisitor:
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
-        arg_list: list[Expr] = [self.visit(a) for a in expr.args]
+        arg_list: list[Expr]
 
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
+            if expr.func.name in self.div_fns:  # type: ignore[attr-defined]
+                self.inside_div = True
+            arg_list = [self.visit(a) for a in expr.args]
+            self.inside_div = False
             return FunctionCall(Identifier(expr.func.name), arg_list, [])  # type: ignore[attr-defined]
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
@@ -55,6 +68,7 @@ class SympyExprVisitor:
         else:
             raise NotImplementedError(f"visit({type(expr)}) not implemented in SympyExprVisitor")
 
+        arg_list = [self.visit(a) for a in expr.args]
         return StandardizedFunctionCall(fn_type, arg_list)
 
     @visit.register
