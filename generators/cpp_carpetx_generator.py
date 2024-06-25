@@ -212,6 +212,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
         # for the div macros to work; layout here really means centering.
 
+        decls: list[CodeElem] = list()
         declared_layouts: set[Centering] = set()
 
         for var_name in self.var_names:
@@ -238,14 +239,14 @@ class CppCarpetXGenerator(CactusGenerator):
                 i, j, k = var_centering.int_repr
                 centering_init_list = f'{{{i}, {j}, {k}}}'
 
-                nodes.append(ConstConstructDecl(
+                decls.append(ConstConstructDecl(
                     Identifier('GF3D5layout'),
                     Identifier(f'{var_centering.string_repr}_layout'),
                     [IdExpr(Identifier('cctkGH')), VerbatimExpr(Verbatim(centering_init_list))]
                 ))
 
             # Now build the var's centering decl.
-            nodes.append(ConstConstructDecl(
+            decls.append(ConstConstructDecl(
                 Identifier('GF3D5layout'),
                 Identifier(f'{var_name}_layout'),
                 [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
@@ -268,20 +269,24 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centering: Centering
         [output_centering] = typing.cast(Set[Centering], output_centerings)
 
+        # x, y, and z are special
+        xyz_decls = [
+            ConstAssignDecl(Identifier('auto&'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
+        ]
+
         # Build the function decl and its body.
         nodes.append(
             ThornFunctionDecl(
                 Identifier(fn_name),
                 [DeclareCarpetXArgs(Identifier(fn_name)),
                  DeclareCarpetParams(),
-                 # x, y, and z are special
-                 ConstAssignDecl(Identifier('auto&'), Identifier('x'), IdExpr(Identifier('p.x'))),
-                 ConstAssignDecl(Identifier('auto&'), Identifier('y'), IdExpr(Identifier('p.y'))),
-                 ConstAssignDecl(Identifier('auto&'), Identifier('z'), IdExpr(Identifier('p.z'))),
+                 *decls,
                  CarpetXGridLoopCall(
                      output_centering,
                      CarpetXGridLoopLambda(
-                         {str(lhs): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()})
+                         xyz_decls,
+                         {str(lhs): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()},
+                         []),
                  )]
             )
         )

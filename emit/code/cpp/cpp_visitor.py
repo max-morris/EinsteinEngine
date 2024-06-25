@@ -104,14 +104,25 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: CarpetXGridLoopCall) -> str:
-        centering_args = [f'{n.centering.string_repr}_centered[{i}]' for i in range(3)]
-        return f"grid.loop_int_device<{', '.join(centering_args)}, CCTK_VECSIZE>(grid.nghostzones, {self.visit(n.fn)});"
+        centering_args = [f'{n.centering.string_repr}_layout[{i}]' for i in range(3)]
+        return f"grid.loop_int_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:
         equations = '\n'.join([f'{lhs} = {self.visit(rhs)};' for lhs, rhs in n.equations.items()])
-        return (f"[=] CCTK_DEVICE(const PointDesc& p) CCTK_ATTRIBUTE_ALWAYS_INLINE {{\n"
-                f"{indent(equations)}"
+        preceding = '\n'.join(visit_each(self, n.preceding))
+        succeeding = '\n'.join(visit_each(self, n.succeeding))
+
+        if len(preceding) > 0:
+            preceding = '\n' + preceding
+
+        if len(succeeding) > 0:
+            succeeding = '\n' + succeeding
+
+        return (f"[=] CCTK_DEVICE(const PointDesc& p) CCTK_ATTRIBUTE_ALWAYS_INLINE {{"
+                f"{indent(preceding)}"
+                f"\n{indent(equations)}"
+                f"{indent(succeeding)}"
                 f"\n}}")
 
     @visit.register

@@ -181,7 +181,9 @@ class StandardizedFunctionCall(Expr):
 
 @dataclass
 class CarpetXGridLoopLambda(Expr):
+    preceding: List[CodeElem]
     equations: Dict[str, SympyExpr]
+    succeeding: List[CodeElem]
 
 
 @dataclass
