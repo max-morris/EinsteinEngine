@@ -24,9 +24,14 @@ class Verbatim(CommonNode):
     text: str
 
 
-@dataclass
+@dataclass(init=False)
 class String(CommonNode):
     text: str
+    single_quotes: bool
+
+    def __init__(self, text: str, single_quotes: bool = False):
+        self.text = text
+        self.single_quotes = single_quotes
 
 
 @dataclass

@@ -6,9 +6,9 @@ from emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, G
 from emit.ccl.param.param_tree import ParamRoot
 from emit.ccl.schedule.schedule_tree import ScheduleRoot
 from emit.code.code_tree import CodeRoot
-from emit.tree import Identifier
+from emit.tree import Identifier, String
 from util import get_or_compute, OrderedSet
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 
 
 class CactusGenerator(ABC):
@@ -36,13 +36,18 @@ class CactusGenerator(ABC):
         for var_name in self.var_names:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
 
+            tags: Optional[String] = None
+            if (var_rhs := self.thorn_def.rhs.get(var_name)) is not None:
+                tags = String(f'rhs="{self.thorn_def.name}::{var_rhs}"', single_quotes=True)
+
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,
                 group_name=Identifier(k),
                 data_type=DataType.Real,
                 variable_names=list(),
                 group_type=GroupType.GF,
-                centering=self.thorn_def.centering.get(group_name, None)
+                centering=self.thorn_def.centering.get(group_name, None),
+                tags=tags
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod

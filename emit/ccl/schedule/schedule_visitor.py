@@ -27,7 +27,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
     @visit.register
     def _(self, n: String) -> str:
-        return f'"{n.text}"'
+        return f'"{n.text}"' if not n.single_quotes else f"'{n.text}'"
 
     @visit.register
     def _(self, n: Bool) -> str:
