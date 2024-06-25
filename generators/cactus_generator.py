@@ -37,7 +37,7 @@ class CactusGenerator(ABC):
             group_name = self.thorn_def.var2base.get(var_name, var_name)
 
             tags: Optional[String] = None
-            if (var_rhs := self.thorn_def.rhs.get(var_name)) is not None:
+            if (var_rhs := self.thorn_def.rhs.get(group_name)) is not None:
                 tags = String(f'rhs="{self.thorn_def.name}::{var_rhs}"', single_quotes=True)
 
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
