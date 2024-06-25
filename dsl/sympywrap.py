@@ -4,6 +4,7 @@ from sympy import cse as cse_, IndexedBase, Idx, Symbol, Expr, Eq, Basic, sympif
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 Math = Union[Symbol, IndexedBase, Idx]
 

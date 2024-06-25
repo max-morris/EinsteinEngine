@@ -216,12 +216,12 @@ class EqnList:
             print(colorize("READS:", "green"), end="")
             for var, spec in self.read_decls.items():
                 if var in self.inputs:
-                    print(" ", var, "=", colorize(spec.value, "yellow"), sep="", end="")
+                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
             print()
             print(colorize("WRITES:", "green"), end="")
             for var, spec in self.write_decls.items():
                 if var in self.outputs:
-                    print(" ", var, "=", colorize(spec.value, "yellow"), sep="", end="")
+                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
             print()
 
         for k, v in self.eqns.items():

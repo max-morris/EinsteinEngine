@@ -40,6 +40,10 @@ uk, lk = mkPair('k')
 ua, la = mkPair('a')
 ub, lb = mkPair('b')
 uc, lc = mkPair('c')
+ud, ld = mkPair('d')
+ui, li = mkPair('i')
+uj, lj = mkPair('j')
+uk, lk = mkPair('k')
 u0, l0 = mkPair('0')
 u1, l1 = mkPair('1')
 u2, l2 = mkPair('2')
@@ -375,6 +379,7 @@ z = mkSymbol("z")
 class ScheduleBin(ReprEnum):
     EVOL = auto(), 'EVOL'
     INIT = auto(), 'INIT'
+    ANALYSIS = auto(), 'ANALYSIS'
 
 
 class ThornFunction:
@@ -575,9 +580,10 @@ class ThornDef:
     #    return self.do_subs(expand_contracted_indices(arg, self.symmetries), self.subs)
 
     def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
-        for i in range(20):
+        for i in range(200):
             new_arg = arg
             new_arg = expand_contracted_indices(new_arg, self.symmetries)
+            new_arg = self.symmetries.apply(new_arg)
             new_arg = do_subs(new_arg, self.subs, *subs)
             if new_arg == arg:
                 return arg
