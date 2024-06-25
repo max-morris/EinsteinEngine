@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
+from util import OrderedSet
+
 Math = Union[Symbol, IndexedBase, Idx]
 
 
@@ -112,4 +114,4 @@ def finder(expr: Expr) -> Set[Math]:
         return msym
 
     do_replace(expr, m, r)
-    return set(result.values())
+    return OrderedSet(result.values())

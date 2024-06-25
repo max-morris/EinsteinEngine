@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, TypeVar, Optional, Callable
+from typing import Any, TypeVar, Optional, Callable, Generic, Iterator
 
 
 def get_class_name(x: Any) -> str:
@@ -66,7 +66,10 @@ class CenteringEnum(Enum):
         return self.string_repr
 
 
-class OrderedSet(set):
-    def __iter__(self):
+T0 = TypeVar('T0')
+
+
+class OrderedSet(set[T0], Generic[T0]):
+    def __iter__(self) -> Iterator[T0]:
         r = set.__iter__(self)
         return sorted(list(r), key=lambda a: repr(a)).__iter__()

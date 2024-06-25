@@ -81,12 +81,12 @@ def is_letter_index(sym: Basic) -> bool:
     return n < ord0 or n > ord9
 
 
-def get_indices(xpr: Expr) -> Set[Idx]:
+def get_indices(xpr: Expr) -> OrderedSet[Idx]:
     """ Return all indices of IndexedBase objects in xpr. """
-    ret = OrderedSet()
-    for sym in finder(xpr):
-        if is_letter_index(sym):
-            ret.add(cast(Idx, sym))
+    ret: OrderedSet[Idx] = OrderedSet()
+    for symbol in finder(xpr):
+        if is_letter_index(symbol):
+            ret.add(cast(Idx, symbol))
     return ret
     ###
     if type(xpr) in [multype, addtype, powtype]:
@@ -157,11 +157,11 @@ assert not is_pair(ui, lj)
 assert not is_pair(li, uj)
 
 
-def get_free_indices(xpr: Expr) -> Set[Idx]:
+def get_free_indices(xpr: Expr) -> OrderedSet[Idx]:
     """ Return all uncontracted indices in xpr. """
     indices = list(get_indices(xpr))
     indices = sorted(indices, key=byname)
-    ret = OrderedSet()
+    ret: OrderedSet[Idx] = OrderedSet()
     i = 0
     while i < len(indices):
         if i + 1 < len(indices) and is_pair(indices[i], indices[i + 1]):
@@ -176,11 +176,11 @@ M = mkIndexedBase('M', (3, 3))
 assert sorted(list(get_free_indices(M[ui, uj] * M[lj, lk])), key=byname) == [ui, lk]
 
 
-def get_contracted_indices(xpr: Expr) -> Set[Idx]:
+def get_contracted_indices(xpr: Expr) -> OrderedSet[Idx]:
     """ Return all contracted indices in xpr. """
     indices = list(get_indices(xpr))
     indices = sorted(indices, key=byname)
-    ret = OrderedSet()
+    ret: OrderedSet[Idx] = OrderedSet()
     i = 0
     while i < len(indices):
         if i + 1 < len(indices) and is_pair(indices[i], indices[i + 1]):
@@ -346,20 +346,20 @@ class Param:
             return self.get_min_max()
 
     def get_type(self) -> Type[Any]:
-        if self.values == None:
+        if self.values is None:
             return type(self.default)
-        elif type(self.values) == set:
-            assert type(self.default) == str
+        elif isinstance(self.values, set):
+            assert isinstance(self.default, str)
             return set  # keywords
-        elif type(self.values) == str:
+        elif isinstance(self.values, str):
             # values is a regex
-            assert type(self.default) == str
+            assert isinstance(self.default, str)
             return str
-        elif type(self.values) == tuple and len(self.values) == 2:
+        elif isinstance(self.values, tuple) and len(self.values) == 2:
             assert type(self.default) in [int, float]
             assert type(self.values[0]) in [int, float]
             assert type(self.values[1]) in [int, float]
-            if type(self.default) == float or type(self.values[0]) == float or type(self.values[1]) == float:
+            if isinstance(self.default, float) or isinstance(self.values[0], float) or isinstance(self.values[1], float):
                 return float
             else:
                 return int
@@ -583,7 +583,7 @@ class ThornDef:
         for i in range(200):
             new_arg = arg
             new_arg = expand_contracted_indices(new_arg, self.symmetries)
-            new_arg = self.symmetries.apply(new_arg)
+            new_arg = cast(Expr, self.symmetries.apply(new_arg))
             new_arg = do_subs(new_arg, self.subs, *subs)
             if new_arg == arg:
                 return arg
@@ -592,7 +592,7 @@ class ThornDef:
 
 
 if __name__ == "__main__":
-    gf = ThornDef("TST")
+    gf = ThornDef("ARR", "TST")
     B = gf.decl("B", [lc, lb])
     M = gf.decl("M", [la, lb])
 

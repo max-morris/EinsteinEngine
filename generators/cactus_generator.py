@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 
 from dsl.use_indices import ThornDef
 from emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot
@@ -6,20 +7,20 @@ from emit.ccl.param.param_tree import ParamRoot
 from emit.ccl.schedule.schedule_tree import ScheduleRoot
 from emit.code.code_tree import CodeRoot
 from emit.tree import Identifier
-from util import get_or_compute
+from util import get_or_compute, OrderedSet
 
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
-    variable_groups: dict[str, VariableGroup]
-    var_names: set[str] = set()
+    variable_groups: OrderedDict[str, VariableGroup]
+    var_names: OrderedSet[str]
 
     vars_to_ignore: set[str] = {'x', 'y', 'z'}
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
-        self.variable_groups = dict()
-        self.var_names = set()
+        self.variable_groups = OrderedDict()
+        self.var_names = OrderedSet()
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqnlist.inputs:
