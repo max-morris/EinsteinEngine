@@ -8,14 +8,15 @@ from emit.ccl.schedule.schedule_tree import ScheduleRoot
 from emit.code.code_tree import CodeRoot
 from emit.tree import Identifier
 from util import get_or_compute, OrderedSet
+from typing import Dict, Set
 
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
-    variable_groups: OrderedDict[str, VariableGroup]
+    variable_groups: Dict[str, VariableGroup]
     var_names: OrderedSet[str]
 
-    vars_to_ignore: set[str] = {'x', 'y', 'z'}
+    vars_to_ignore: Set[str] = {'x', 'y', 'z'}
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def

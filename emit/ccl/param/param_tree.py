@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import auto
 from util import ReprEnum, try_get
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, Union
 from typing_extensions import Unpack
 
 from emit.tree import Node, String, Integer, Float, Identifier, Verbatim, LiteralExpression
@@ -69,8 +69,8 @@ class IntParamOpenUpperBound(ParamNode):
     integer: Integer
 
 
-IntParamLowerBound = IntParamDescWildcard | IntParamDescSingle | IntParamClosedLowerBound | IntParamOpenLowerBound
-IntParamUpperBound = IntParamDescWildcard | IntParamDescSingle | IntParamClosedUpperBound | IntParamOpenUpperBound
+IntParamLowerBound = Union[IntParamDescWildcard, IntParamDescSingle, IntParamClosedLowerBound, IntParamOpenLowerBound]
+IntParamUpperBound = Union[IntParamDescWildcard, IntParamDescSingle, IntParamClosedUpperBound, IntParamOpenUpperBound]
 
 
 @dataclass
@@ -86,7 +86,7 @@ class IntParamDescRangeWithStep(ParamNode):
     step: Integer
 
 
-IntParamDesc = IntParamDescWildcard | IntParamDescSingle | IntParamDescRange | IntParamDescRangeWithStep
+IntParamDesc = Union[IntParamDescWildcard, IntParamDescSingle, IntParamDescRange, IntParamDescRangeWithStep]
 
 
 @dataclass
@@ -125,8 +125,8 @@ class RealParamOpenUpperBound(ParamNode):
     real: Float
 
 
-RealParamLowerBound = RealParamDescWildcard | RealParamDescSingle | RealParamClosedLowerBound | RealParamOpenLowerBound
-RealParamUpperBound = RealParamDescWildcard | RealParamDescSingle | RealParamClosedUpperBound | RealParamOpenUpperBound
+RealParamLowerBound = Union[RealParamDescWildcard, RealParamDescSingle, RealParamClosedLowerBound, RealParamOpenLowerBound]
+RealParamUpperBound = Union[RealParamDescWildcard, RealParamDescSingle, RealParamClosedUpperBound, RealParamOpenUpperBound]
 
 
 @dataclass
@@ -142,7 +142,7 @@ class RealParamDescRangeWithStep(ParamNode):
     step: Float
 
 
-RealParamDesc = RealParamDescWildcard | RealParamDescSingle | RealParamDescRange | RealParamDescRangeWithStep
+RealParamDesc = Union[RealParamDescWildcard, RealParamDescSingle, RealParamDescRange, RealParamDescRangeWithStep]
 
 
 @dataclass
@@ -163,7 +163,7 @@ class StringParamRange(ParamNode):
     comment: String
 
 
-ParamRange = IntParamRange | RealParamRange | KeywordParamRange | StringParamRange
+ParamRange = Union[IntParamRange, RealParamRange, KeywordParamRange, StringParamRange]
 
 
 class ParamOptionalArgs(TypedDict, total=False):

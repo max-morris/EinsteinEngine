@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import auto
-from typing import Optional
+from typing import Optional, Union, List, Dict
 
 import sympy as sy
 
@@ -23,7 +23,7 @@ class CodeNode(Node):
     pass
 
 
-AnyNode = CodeNode | CommonNode
+AnyNode = Union[CodeNode, CommonNode]
 
 
 @dataclass
@@ -62,7 +62,7 @@ class BinOpExpr(Expr):
 @dataclass
 class NArityOpExpr(Expr):
     op: Operator
-    args: list[Expr]
+    args: List[Expr]
 
 
 @dataclass
@@ -132,7 +132,7 @@ class ConstAssignDecl(Decl):
 class ConstConstructDecl(Decl):
     type: Identifier
     lhs: Identifier
-    constructor_args: list[Expr]
+    constructor_args: List[Expr]
 
 
 @dataclass
@@ -142,7 +142,7 @@ class UsingNamespace(Decl):
 
 @dataclass
 class Using(Decl):
-    ids: list[Identifier]
+    ids: List[Identifier]
 
 
 @dataclass
@@ -151,20 +151,20 @@ class UsingAlias(Decl):
     rhs: AnyNode
 
 
-CodeElem = Stmt | Expr | Directive | Verbatim
+CodeElem = Union[Stmt, Expr, Directive, Verbatim]
 
 
 @dataclass
 class ThornFunctionDecl(Decl):
     name: Identifier
-    body: list[CodeElem]
+    body: List[CodeElem]
 
 
 @dataclass
 class FunctionCall(Expr):
     name: Identifier
-    args: list[Expr]
-    template_args: list[Expr | Identifier]
+    args: List[Expr]
+    template_args: List[Union[Expr, Identifier]]
 
 
 class StandardizedFunctionCallType(ReprEnum):
@@ -176,12 +176,12 @@ class StandardizedFunctionCallType(ReprEnum):
 @dataclass
 class StandardizedFunctionCall(Expr):
     type: StandardizedFunctionCallType
-    args: list[Expr]
+    args: List[Expr]
 
 
 @dataclass
 class CarpetXGridLoopLambda(Expr):
-    equations: dict[str, SympyExpr]
+    equations: Dict[str, SympyExpr]
 
 
 @dataclass
@@ -192,4 +192,4 @@ class CarpetXGridLoopCall(Stmt):
 
 @dataclass
 class CodeRoot(CodeNode):
-    children: list[CodeElem]
+    children: List[CodeElem]

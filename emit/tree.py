@@ -1,3 +1,4 @@
+from typing import Union
 from abc import ABC
 from dataclasses import dataclass
 from enum import auto
@@ -48,4 +49,4 @@ class Language(ReprEnum):
     Fortran = auto(), 'Fortran'
 
 
-LiteralExpression = Verbatim | String | Integer | Float | Bool
+LiteralExpression = Union[Verbatim, String, Integer, Float, Bool]

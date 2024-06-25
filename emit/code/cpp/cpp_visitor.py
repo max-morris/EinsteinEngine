@@ -8,12 +8,13 @@ from emit.code.sympy_visitor import SympyExprVisitor
 from emit.tree import *
 from util import indent
 from emit.visitor import Visitor, visit_each
+from typing import Dict
 
 
 class CppVisitor(Visitor[CodeNode]):
     sympy_visitor: SympyExprVisitor
 
-    standardized_function_calls: dict[StandardizedFunctionCallType, str] = {
+    standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
         StandardizedFunctionCallType.Sin: 'std::sin',
         StandardizedFunctionCallType.Cos: 'std::cos'
     }

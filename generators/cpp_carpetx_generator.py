@@ -8,17 +8,17 @@ from emit.code.code_tree import *
 from emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim
 from generators.cactus_generator import CactusGenerator
 from generators.generator_exception import GeneratorException
-from typing import Optional
+from typing import Optional, List, Set
 
 
 class CppCarpetXGenerator(CactusGenerator):
-    boilerplate_includes: list[Identifier] = [Identifier(s) for s in
+    boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "cmath", "tuple"]]
 
-    boilerplate_namespace_usings: list[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
+    boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
 
-    boilerplate_usings: list[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
+    boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     boilerplate_div_macros: str = """
         #define CARPETX_GF3D5
@@ -266,7 +266,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Got the centering.
         output_centering: Centering
-        [output_centering] = typing.cast(set[Centering], output_centerings)
+        [output_centering] = typing.cast(Set[Centering], output_centerings)
 
         # Build the function decl and its body.
         nodes.append(

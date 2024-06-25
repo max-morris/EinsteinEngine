@@ -1,3 +1,4 @@
+from typing import Union, List
 from dataclasses import dataclass
 from enum import auto, Enum
 from typing import TypedDict, Optional
@@ -14,17 +15,17 @@ class ScheduleNode(Node):
 @dataclass
 class StorageDecl(ScheduleNode):
     group: Identifier
-    time_levels: Integer | Identifier
+    time_levels: Union[Integer, Identifier]
 
 
 @dataclass
 class StorageLine(ScheduleNode):
-    decls: list[StorageDecl]
+    decls: List[StorageDecl]
 
 
 @dataclass
 class StorageSection(ScheduleNode):
-    lines: list[StorageLine]
+    lines: List[StorageLine]
 
 
 class AtOrIn(ReprEnum):
@@ -53,15 +54,15 @@ class ScheduleBlockOptionalArgs(TypedDict, total=False):
     alias: Identifier
     while_var: Identifier
     if_var: Identifier
-    before: list[Identifier]
-    after: list[Identifier]
+    before: List[Identifier]
+    after: List[Identifier]
     lang: Language
     storage: StorageLine
-    trigger: list[Identifier]
-    sync: list[Identifier]
-    options: list[Identifier]
-    reads: list[Intent]
-    writes: list[Intent]
+    trigger: List[Identifier]
+    sync: List[Identifier]
+    options: List[Identifier]
+    reads: List[Intent]
+    writes: List[Intent]
 
 
 @dataclass(init=False)
@@ -74,15 +75,15 @@ class ScheduleBlock(ScheduleNode):
     alias: Optional[Identifier]
     while_var: Optional[Identifier]
     if_var: Optional[Identifier]
-    before: Optional[list[Identifier]]
-    after: Optional[list[Identifier]]
+    before: Optional[List[Identifier]]
+    after: Optional[List[Identifier]]
     lang: Optional[Language]
     storage: Optional[StorageLine]
-    trigger: Optional[list[Identifier]]
-    sync: Optional[list[Identifier]]
-    options: Optional[list[Identifier]]
-    reads: Optional[list[Intent]]
-    writes: Optional[list[Intent]]
+    trigger: Optional[List[Identifier]]
+    sync: Optional[List[Identifier]]
+    options: Optional[List[Identifier]]
+    reads: Optional[List[Intent]]
+    writes: Optional[List[Intent]]
 
     def __init__(self, group_or_function: GroupOrFunction, name: Identifier, at_or_in: AtOrIn, schedule_bin: Identifier,
                  description: String, **kwargs: Unpack[ScheduleBlockOptionalArgs]):
@@ -113,7 +114,7 @@ class ScheduleBlock(ScheduleNode):
 
 @dataclass
 class ScheduleSection(ScheduleNode):
-    schedule_blocks: list[ScheduleBlock]
+    schedule_blocks: List[ScheduleBlock]
 
 
 @dataclass
