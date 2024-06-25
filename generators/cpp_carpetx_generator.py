@@ -272,6 +272,10 @@ class CppCarpetXGenerator(CactusGenerator):
                 Identifier(fn_name),
                 [DeclareCarpetXArgs(Identifier(fn_name)),
                  DeclareCarpetParams(),
+                 # x, y, and z are special
+                 ConstAssignDecl(Identifier('auto&'), Identifier('x'), IdExpr(Identifier('p.x'))),
+                 ConstAssignDecl(Identifier('auto&'), Identifier('y'), IdExpr(Identifier('p.y'))),
+                 ConstAssignDecl(Identifier('auto&'), Identifier('z'), IdExpr(Identifier('p.z'))),
                  CarpetXGridLoopCall(
                      output_centering,
                      CarpetXGridLoopLambda(

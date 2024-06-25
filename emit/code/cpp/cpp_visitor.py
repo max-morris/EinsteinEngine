@@ -152,6 +152,10 @@ class CppVisitor(Visitor[CodeNode]):
         return f"DECLARE_CCTK_PARAMETERS;"
 
     @visit.register
+    def _(self, n: ConstAssignDecl) -> str:
+        return f'const {self.visit(n.type)} {self.visit(n.lhs)} = {self.visit(n.rhs)};'
+
+    @visit.register
     def _(self, n: ConstConstructDecl) -> str:
         return f'const {self.visit(n.type)} {self.visit(n.lhs)}({", ".join(visit_each(self, n.constructor_args))});'
 
