@@ -123,6 +123,9 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
         if n.tags is not None:
             s += f' TAGS={self.visit(n.tags)}'
 
+        if n.centering is not None:
+            s += f' CENTERING={{ {n.centering.string_repr} }}'
+
         s += '\n{\n    '
 
         s += ', '.join(visit_each(self, n.variable_names))

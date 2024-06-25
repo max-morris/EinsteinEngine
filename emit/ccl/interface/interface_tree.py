@@ -6,6 +6,7 @@ from typing import TypedDict, Optional
 
 from typing_extensions import Unpack
 
+from emit.code.code_tree import Centering
 from emit.tree import Node, Identifier, Verbatim, Integer, String, Language
 from util import try_get, ReprEnum
 
@@ -150,6 +151,7 @@ class VariableGroupOptionalArgs(TypedDict, total=False):
     stagger_spec: String
     tags: String
     group_description: String
+    centering: Centering
 
 
 class VariableGroup(InterfaceNode):
@@ -167,6 +169,7 @@ class VariableGroup(InterfaceNode):
     stagger_spec: Optional[String]
     tags: Optional[String]
     group_description: Optional[String]
+    centering: Optional[Centering]
 
     def __init__(self, access: Access, group_name: Identifier, data_type: DataType, variable_names: list[Identifier],
                  **kwargs: Unpack[VariableGroupOptionalArgs]):
@@ -184,6 +187,7 @@ class VariableGroup(InterfaceNode):
         self.stagger_spec = try_get(kwargs, 'stagger_spec')
         self.tags = try_get(kwargs, 'tags')
         self.group_description = try_get(kwargs, 'group_description')
+        self.centering = try_get(kwargs, 'centering')
 
 
 @dataclass

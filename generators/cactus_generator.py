@@ -36,13 +36,13 @@ class CactusGenerator(ABC):
         for var_name in self.var_names:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
 
-            # todo: add CENTERING
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,
                 group_name=Identifier(k),
                 data_type=DataType.Real,
                 variable_names=list(),
-                group_type=GroupType.GF
+                group_type=GroupType.GF,
+                centering=self.thorn_def.centering.get(group_name, None)
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod
