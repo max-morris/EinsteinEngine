@@ -54,3 +54,30 @@ fun3.diagnose()
 #for k,v in gf.subs.items():
 #    print(k,"-->",v)
 #print(gf.do_subs(xxx))
+
+carpetx_generator = CppCarpetXGenerator(gf)
+
+for fn_name in gf.thorn_functions.keys():
+    print('=====================')
+    code_tree = carpetx_generator.generate_function_code(fn_name)
+    code = CppVisitor().visit(code_tree)
+    print(code)
+
+print('== param.ccl ==')
+param_tree = carpetx_generator.generate_param_ccl()
+param_ccl = ParamVisitor().visit(param_tree)
+print(param_ccl)
+
+print('== interface.ccl ==')
+interface_tree = carpetx_generator.generate_interface_ccl()
+interface_ccl = InterfaceVisitor().visit(interface_tree)
+print(interface_ccl)
+
+print('== schedule.ccl ==')
+schedule_tree = carpetx_generator.generate_schedule_ccl()
+schedule_ccl = ScheduleVisitor().visit(schedule_tree)
+print(schedule_ccl)
+
+print('== make.code.defn ==')
+makefile = carpetx_generator.generate_makefile()
+print(makefile)
