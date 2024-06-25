@@ -34,8 +34,9 @@ class CactusGenerator(ABC):
                     self.var_names.add(var_name)
 
         for var_name in self.var_names:
-            group_name = self.thorn_def.var2base.get(var_name, 'scalar_gfs')
+            group_name = self.thorn_def.var2base.get(var_name, var_name)
 
+            # todo: add CENTERING
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,
                 group_name=Identifier(k),
