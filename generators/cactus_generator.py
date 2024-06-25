@@ -20,7 +20,7 @@ class CactusGenerator(ABC):
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
-        self.variable_groups = OrderedDict()
+        self.variable_groups = dict()
         self.var_names = OrderedSet()
 
         for tf in self.thorn_def.thorn_functions.values():

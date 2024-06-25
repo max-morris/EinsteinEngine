@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, TypeVar, Optional, Callable, Generic, Iterator
+from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
 
 
 def get_class_name(x: Any) -> str:
@@ -84,7 +84,7 @@ class ScheduleBinEnum(Enum):
 T0 = TypeVar('T0')
 
 
-class OrderedSet(set[T0], Generic[T0]):
+class OrderedSet(Set[T0], Generic[T0]):
     def __iter__(self) -> Iterator[T0]:
         r = set.__iter__(self)
         return sorted(list(r), key=lambda a: repr(a)).__iter__()
