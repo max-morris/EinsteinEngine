@@ -66,6 +66,21 @@ class CenteringEnum(Enum):
         return self.string_repr
 
 
+class ScheduleBinEnum(Enum):
+    generic_name: str
+    is_builtin: bool
+
+    def __new__(cls, value: Any, generic_name: str, is_builtin: bool) -> ScheduleBinEnum:
+        member = object.__new__(cls)
+        member._value_ = value
+        member.generic_name = generic_name
+        member.is_builtin = is_builtin
+        return member
+
+    def __repr__(self) -> str:
+        return self.generic_name
+
+
 T0 = TypeVar('T0')
 
 

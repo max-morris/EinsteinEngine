@@ -56,6 +56,8 @@ class CppCarpetXGenerator(CactusGenerator):
             schedule_bin: Identifier
             if fn.schedule_bin is ScheduleBin.INIT:
                 schedule_bin = Identifier('initial')
+            elif fn.schedule_bin is ScheduleBin.ANALYSIS:
+                schedule_bin = Identifier('analysis')
             else:
                 assert fn.schedule_bin is ScheduleBin.EVOL
                 schedule_bin = Identifier('ODESolvers_RHS')
@@ -80,7 +82,7 @@ class CppCarpetXGenerator(CactusGenerator):
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
-                at_or_in=AtOrIn.At,
+                at_or_in=AtOrIn.At if fn.schedule_bin.is_builtin else AtOrIn.In,
                 schedule_bin=schedule_bin,
                 description=String(fn_name),
                 lang=Language.C,

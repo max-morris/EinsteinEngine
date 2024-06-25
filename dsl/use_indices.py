@@ -14,7 +14,7 @@ import re
 import sys
 
 from emit.code.code_tree import Centering
-from util import ReprEnum, OrderedSet
+from util import ReprEnum, OrderedSet, ScheduleBinEnum
 
 lookup_pair = dict()
 
@@ -375,10 +375,10 @@ y = mkSymbol("y")
 z = mkSymbol("z")
 
 
-class ScheduleBin(ReprEnum):
-    EVOL = auto(), 'EVOL'
-    INIT = auto(), 'INIT'
-    ANALYSIS = auto(), 'ANALYSIS'
+class ScheduleBin(ScheduleBinEnum):
+    EVOL = auto(), 'EVOL', False
+    INIT = auto(), 'INIT', True
+    ANALYSIS = auto(), 'ANALYSIS', True
 
 
 class ThornFunction:
