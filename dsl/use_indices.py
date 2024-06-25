@@ -459,6 +459,7 @@ class ThornDef:
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.is_stencil: Dict[UFunc, bool] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
+        self.rhs : Dict[str,Math] = dict()
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
@@ -526,7 +527,9 @@ class ThornDef:
         # Note that x, y, and z are special symbols
         return (self.declscalar("x"), self.declscalar("y"), self.declscalar("z"))
 
-    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None) -> IndexedBase:
+    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, rhs : Optional[Math] = None) -> IndexedBase:
+        if rhs is not None:
+            self.rhs[basename] = rhs
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))

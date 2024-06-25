@@ -31,11 +31,11 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 gf = ThornDef("TestWave", "WaveEqn")
 
 # Declare gfs
-p = gf.decl("p", [li], Centering.VVC)
 p_t = gf.decl("p_t", [li], Centering.VVC)
+p = gf.decl("p", [li], Centering.VVC, rhs=p_t)
 p_d = gf.decl("p_d", [li, lj], Centering.VVC)
-u = gf.decl("u", [], Centering.VVC)
-u_t = gf.declscalar("u_t")
+u_t = gf.decl("u_t", [], Centering.VVC)
+u = gf.decl("u", [], Centering.VVC, rhs=u_t)
 u_d = gf.decl("u_d", [ui], Centering.VVC)
 
 siter2 = gf.decl("siter2", [li, lj])
