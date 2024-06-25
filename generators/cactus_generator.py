@@ -14,6 +14,8 @@ class CactusGenerator(ABC):
     variable_groups: dict[str, VariableGroup]
     var_names: set[str] = set()
 
+    vars_to_ignore: set[str] = {'x', 'y', 'z'}
+
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
         self.variable_groups = dict()
@@ -21,9 +23,13 @@ class CactusGenerator(ABC):
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqnlist.inputs:
-                self.var_names.add(str(iv))
+                var_name = str(iv)
+                if var_name not in self.vars_to_ignore:
+                    self.var_names.add(var_name)
             for ov in tf.eqnlist.outputs:
-                self.var_names.add(str(ov))
+                var_name = str(ov)
+                if var_name not in self.vars_to_ignore:
+                    self.var_names.add(var_name)
 
         for var_name in self.var_names:
             group_name = self.thorn_def.var2base.get(var_name, 'scalar_gfs')

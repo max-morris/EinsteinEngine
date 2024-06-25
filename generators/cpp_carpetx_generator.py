@@ -64,16 +64,16 @@ class CppCarpetXGenerator(CactusGenerator):
             writes: list[Intent] = list()
 
             for var, spec in fn.eqnlist.read_decls.items():
-                if var in fn.eqnlist.inputs:
+                if var in fn.eqnlist.inputs and (var_name := str(var)) not in self.vars_to_ignore:
                     reads.append(Intent(
-                        name=Identifier(str(var)),
+                        name=Identifier(var_name),
                         region=spec
                     ))
 
             for var, spec in fn.eqnlist.write_decls.items():
-                if var in fn.eqnlist.outputs:
+                if var in fn.eqnlist.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     writes.append(Intent(
-                        name=Identifier(str(var)),
+                        name=Identifier(var_name),
                         region=spec
                     ))
 

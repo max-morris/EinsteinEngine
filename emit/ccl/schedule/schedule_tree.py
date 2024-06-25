@@ -104,6 +104,12 @@ class ScheduleBlock(ScheduleNode):
         self.reads = try_get(kwargs, 'reads')
         self.writes = try_get(kwargs, 'writes')
 
+        if self.reads is not None and len(self.reads) == 0:
+            self.reads = None
+
+        if self.writes is not None and len(self.writes) == 0:
+            self.writes = None
+
 
 @dataclass
 class ScheduleSection(ScheduleNode):
