@@ -181,7 +181,7 @@ class CppCarpetXGenerator(CactusGenerator):
             assert param_range is not None or param_type is ParamType.Bool
 
             params.append(Param(
-                param_access=ParamAccess.Global,
+                param_access=ParamAccess.Restricted,
                 param_type=param_type,
                 param_name=Identifier(param_name),
                 param_desc=String(param_def.desc),

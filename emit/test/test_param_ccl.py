@@ -7,7 +7,7 @@ if __name__ == '__main__':
 
     p = ParamRoot([
         Param(
-            param_access=ParamAccess.Global,
+            param_access=ParamAccess.Restricted,
             param_type=ParamType.Keyword,
             param_name=Identifier('Foo'),
             param_desc=String('test test'),
