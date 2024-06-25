@@ -73,6 +73,12 @@ class CppVisitor(Visitor[CodeNode]):
         return typing.cast(str, self.visit(exp))
 
     @visit.register
+    def _(self, n: BinOpExpr) -> str:
+        if n.op is Operator.Pow:
+            return f'std::pow({self.visit(n.lhs)}, {self.visit(n.rhs)})'
+        return f'{self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)}'
+
+    @visit.register
     def _(self, n: NArityOpExpr) -> str:
         assert n.op != Operator.Pow
 

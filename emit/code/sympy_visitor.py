@@ -78,3 +78,11 @@ class SympyExprVisitor:
     @visit.register
     def _(self, _: sy.core.numbers.One) -> Expr:
         return IntLiteralExpr(1)
+
+    @visit.register
+    def _(self, _: sy.core.numbers.NegativeOne) -> Expr:
+        return IntLiteralExpr(-1)
+
+    @visit.register
+    def _(self, expr: sy.core.numbers.Integer) -> Expr:
+        return IntLiteralExpr(expr.p)
