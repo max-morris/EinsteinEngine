@@ -13,7 +13,7 @@ from typing import Optional
 
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: list[Identifier] = [Identifier(s) for s in
-                                              ["fixmath.hxx", "cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
+                                              ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "cmath", "tuple"]]
 
     boilerplate_namespace_usings: list[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
