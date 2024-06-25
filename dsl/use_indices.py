@@ -14,10 +14,9 @@ import re
 import sys
 
 from emit.code.code_tree import Centering
-from util import ReprEnum
+from util import ReprEnum, OrderedSet
 
 lookup_pair = dict()
-
 
 def mkPair(s: str) -> Tuple[Idx, Idx]:
     assert len(s)
@@ -84,7 +83,7 @@ def is_letter_index(sym: Basic) -> bool:
 
 def get_indices(xpr: Expr) -> Set[Idx]:
     """ Return all indices of IndexedBase objects in xpr. """
-    ret = set()
+    ret = OrderedSet()
     for sym in finder(xpr):
         if is_letter_index(sym):
             ret.add(cast(Idx, sym))
@@ -162,7 +161,7 @@ def get_free_indices(xpr: Expr) -> Set[Idx]:
     """ Return all uncontracted indices in xpr. """
     indices = list(get_indices(xpr))
     indices = sorted(indices, key=byname)
-    ret = set()
+    ret = OrderedSet()
     i = 0
     while i < len(indices):
         if i + 1 < len(indices) and is_pair(indices[i], indices[i + 1]):
@@ -181,7 +180,7 @@ def get_contracted_indices(xpr: Expr) -> Set[Idx]:
     """ Return all contracted indices in xpr. """
     indices = list(get_indices(xpr))
     indices = sorted(indices, key=byname)
-    ret = set()
+    ret = OrderedSet()
     i = 0
     while i < len(indices):
         if i + 1 < len(indices) and is_pair(indices[i], indices[i + 1]):
@@ -431,7 +430,7 @@ class ThornFunction:
         self.eqnlist.diagnose()
 
     def show_tensortypes(self) -> None:
-        keys: Set[str] = set()
+        keys: Set[str] = OrderedSet()
         for k1 in self.eqnlist.inputs:
             keys.add(str(k1))
         for k2 in self.eqnlist.outputs:
@@ -446,7 +445,8 @@ class ThornFunction:
 
 
 class ThornDef:
-    def __init__(self, name: str) -> None:
+    def __init__(self, arr: str, name: str) -> None:
+        self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()

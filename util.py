@@ -64,3 +64,9 @@ class CenteringEnum(Enum):
 
     def __repr__(self) -> str:
         return self.string_repr
+
+
+class OrderedSet(set):
+    def __iter__(self):
+        r = set.__iter__(self)
+        return sorted(list(r), key=lambda a: repr(a)).__iter__()

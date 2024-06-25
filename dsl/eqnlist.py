@@ -6,10 +6,10 @@ from sympy import symbols, Function, diff, IndexedBase
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
+from util import OrderedSet
 
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
-
 
 class EqnList:
     """
@@ -29,9 +29,9 @@ class EqnList:
 
     def __init__(self, is_stencil: Dict[UFunc, bool], params: Set[Math]) -> None:
         self.eqns: Dict[Math, Expr] = dict()
-        self.params: Set[Math] = set()
-        self.inputs: Set[Math] = set()
-        self.outputs: Set[Math] = set()
+        self.params: Set[Math] = OrderedSet()
+        self.inputs: Set[Math] = OrderedSet()
+        self.outputs: Set[Math] = OrderedSet()
         self.order: List[Math] = list()
         self.verbose = True
         self.is_stencil: Dict[UFunc, bool] = is_stencil
@@ -63,13 +63,13 @@ class EqnList:
 
     def diagnose(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
-        needed: Set[Math] = set()
+        needed: Set[Math] = OrderedSet()
         complete: Dict[Math, int] = dict()
-        temps: Set[Math] = set()
+        temps: Set[Math] = OrderedSet()
         self.order = list()
 
-        read: Set[Math] = set()
-        written: Set[Math] = set()
+        read: Set[Math] = OrderedSet()
+        written: Set[Math] = OrderedSet()
 
         self.read_decls.clear()
         self.write_decls.clear()
@@ -284,7 +284,7 @@ if __name__ == "__main__":
     a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")
     try:
         div = mkFunction("div")
-        el = EqnList(dict(), set())
+        el = EqnList(dict(), OrderedSet())
         el.default_read_write_spec = IntentRegion.Interior
         el.add_func(div, True)
         el.add_input(a)
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), set())
+        el = EqnList(dict(), OrderedSet())
         el.add_eqn(r, q)  # cycle
         el.add_eqn(q, r)  # cycle
         el.add_eqn(a, r)
@@ -330,7 +330,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), set())
+        el = EqnList(dict(), OrderedSet())
         el.add_input(a)
         el.add_input(f)
         el.add_input(b)
@@ -346,7 +346,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), set())
+        el = EqnList(dict(), OrderedSet())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)
@@ -359,7 +359,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), set())
+        el = EqnList(dict(), OrderedSet())
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)

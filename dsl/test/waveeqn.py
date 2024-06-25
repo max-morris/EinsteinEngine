@@ -11,6 +11,11 @@ from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
 from generators.cpp_carpetx_generator import CppCarpetXGenerator
+from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
+import nrpy.helpers.conditional_file_updater as cfu
+import os
+
+cfu.verbose = True
 
 
 def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
@@ -23,7 +28,7 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 
 
 # Create a set of grid functions
-gf = ThornDef("WaveEqn")
+gf = ThornDef("TestWave", "WaveEqn")
 
 # Declare gfs
 p = gf.decl("p", [li], Centering.VVC)
@@ -128,29 +133,51 @@ fun.dump()
 fun.show_tensortypes()
 
 
-carpetx_generator = CppCarpetXGenerator(gf)
+def cppCarpetXGenerator(gf):
+    base_dir = os.path.join(gf.arrangement, gf.name)
+    os.makedirs(base_dir, exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "src"), exist_ok=True)
 
-for fn_name in ['wave_init', 'wave_evo']:
-    print('=====================')
-    code_tree = carpetx_generator.generate_function_code(fn_name)
-    code = CppVisitor().visit(code_tree)
-    print(code)
+    carpetx_generator = CppCarpetXGenerator(gf)
 
-print('== param.ccl ==')
-param_tree = carpetx_generator.generate_param_ccl()
-param_ccl = ParamVisitor().visit(param_tree)
-print(param_ccl)
+    for fn_name in gf.thorn_functions.keys():
+        print('=====================')
+        code_tree = carpetx_generator.generate_function_code(fn_name)
+        code = CppVisitor().visit(code_tree)
+        #print(code)
+        code_fname = os.path.join(base_dir, "src", carpetx_generator.get_src_file_name(fn_name))
+        with ConditionalFileUpdater(code_fname) as fd:
+            fd.write(code)
 
-print('== interface.ccl ==')
-interface_tree = carpetx_generator.generate_interface_ccl()
-interface_ccl = InterfaceVisitor().visit(interface_tree)
-print(interface_ccl)
+    print('== param.ccl ==')
+    param_tree = carpetx_generator.generate_param_ccl()
+    param_ccl = ParamVisitor().visit(param_tree)
+    #print(param_ccl)
+    param_ccl_fname = os.path.join(base_dir, "param.ccl")
+    with ConditionalFileUpdater(param_ccl_fname) as fd:
+        fd.write(param_ccl)
 
-print('== schedule.ccl ==')
-schedule_tree = carpetx_generator.generate_schedule_ccl()
-schedule_ccl = ScheduleVisitor().visit(schedule_tree)
-print(schedule_ccl)
+    print('== interface.ccl ==')
+    interface_tree = carpetx_generator.generate_interface_ccl()
+    interface_ccl = InterfaceVisitor().visit(interface_tree)
+    #print(interface_ccl)
+    interface_ccl_fname = os.path.join(base_dir, "interface.ccl")
+    with ConditionalFileUpdater(interface_ccl_fname) as fd:
+        fd.write(interface_ccl)
 
-print('== make.code.defn ==')
-makefile = carpetx_generator.generate_makefile()
-print(makefile)
+    print('== schedule.ccl ==')
+    schedule_tree = carpetx_generator.generate_schedule_ccl()
+    schedule_ccl = ScheduleVisitor().visit(schedule_tree)
+    #print(schedule_ccl)
+    schedule_ccl_fname = os.path.join(base_dir, "schedule.ccl")
+    with ConditionalFileUpdater(schedule_ccl_fname) as fd:
+        fd.write(schedule_ccl)
+
+    print('== make.code.defn ==')
+    makefile = carpetx_generator.generate_makefile()
+    #print(makefile)
+    makefile_fname = os.path.join(base_dir, "src/make.code.defn")
+    with ConditionalFileUpdater(makefile_fname) as fd:
+        fd.write(makefile)
+
+cppCarpetXGenerator(gf)
