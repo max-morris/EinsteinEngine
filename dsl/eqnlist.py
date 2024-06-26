@@ -82,6 +82,11 @@ class EqnList:
                     sym = cast(Symbol, arg)
                     self.read_decls[sym] = IntentRegion.Everywhere
                     self.write_decls[self.lhs] = IntentRegion.Interior
+            if sym.is_Function and not self.is_stencil.get(sym.func, False):
+                for arg in sym.args:
+                    sym = cast(Symbol, arg)
+                    self.read_decls[sym] = IntentRegion.Everywhere
+                    self.write_decls[self.lhs] = IntentRegion.Everywhere
             return False
 
         def noop(x: Symbol) -> Symbol:

@@ -105,7 +105,7 @@ x, y, z = gf.coords()
 res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
 
 # Add the equations we want to evolve.
-fun = gf.create_function("wave_evo", ScheduleBin.EVOL)
+fun = gf.create_function("newwave_evo", ScheduleBin.EVOL)
 fun.add_eqn(p_t[lj], spd * div1(u, lj))
 fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
 print('*** ThornFunction wave_evo:')
@@ -123,7 +123,7 @@ fun.dump()
 fun.show_tensortypes()
 
 # Again for wave_init
-fun = gf.create_function("wave_init", ScheduleBin.INIT)
+fun = gf.create_function("newwave_init", ScheduleBin.INIT)
 fun.add_eqn(u, sin(kx * x) * cos(ky * y))
 fun.add_eqn(p[lj], sympify(0))
 print('*** ThornFunction wave_init:')
