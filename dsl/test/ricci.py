@@ -37,7 +37,7 @@ gf.fill_in(Ric[la, lb], lambda _, a, b: mkSymbol(f"RicDD{to_num(a)}{to_num(b)}")
 gf.fill_in(iter4[la, lb, lc, ud], alt=div1(G[ud, la, lb], lc),
            f=lambda _, a, b, c, d: mkSymbol(f"affUDD{to_num(d)}{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
 
-fun = gf.create_function("setGL", ScheduleBin.ANALYSIS)
+fun = gf.create_function("setGL", ScheduleBin.Analysis)
 fun.add_eqn(G[la, lb, lc], div1(g[lb, lc], la) + div1(g[la, lc], lb) - div1(g[la, lb], lc))
 fun2 = gf.create_function("setGU", ScheduleBin.Analysis)
 fun2.add_eqn(G[ua, lb, lc], g[ua, ud] * G[ld, lb, lc])

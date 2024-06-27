@@ -269,7 +269,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
-        output_centerings = {var_centerings[str(v)] for v in thorn_fn.eqnlist.outputs}
+        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqnlist.outputs if str(var) in self.var_names}
 
         if None in output_centerings or len(output_centerings) == 0:
             raise GeneratorException(f"All output vars must have a centering: {self.thorn_def.centering.items()}")
@@ -281,11 +281,7 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centering: Centering
         [output_centering] = output_centerings
 
-        output_regions: set[IntentRegion] = set()
-
-        for var, spec in thorn_fn.eqnlist.write_decls.items():
-            if str(var) in self.var_names:
-                output_regions.add(spec)
+        output_regions = {spec for var, spec in thorn_fn.eqnlist.write_decls.items() if str(var) in self.var_names}
 
         if None in output_regions or len(output_regions) == 0:
             raise GeneratorException(f"All output vars must have a write region.")
