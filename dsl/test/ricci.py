@@ -6,14 +6,14 @@ from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
-from generators.cpp_carpetx_generator import CppCarpetXGenerator
+from generators.cpp_carpetx_generator import cppCarpetXGenerator
 
 # Create a set of grid functions
 gf = ThornDef("TestRicci", "Ricci")
 
 # Declare gfs
-g = gf.decl("g", [li, lj], Centering.VVC)
-G = gf.decl("G", [ua, lb, lc], Centering.VVC)
+g = gf.decl("metric_lower", [li, lj], Centering.VVC)
+G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
 Ric = gf.decl("Ric", [la, lb], Centering.VVC)
 iter3 = gf.decl("iter3", [la, lb, lc], Centering.VVC)
 iter4 = gf.decl("iter4", [la, lb, lc, ld], Centering.VVC)
@@ -51,35 +51,4 @@ fun.diagnose()
 fun2.diagnose()
 fun3.diagnose()
 
-# xxx = div1(g[lb,lc], la) + div1(g[la,lc], lb) - div1(g[la,lb], lc)
-# xxx = xxx.subs({la:l0, lb:l1, lc:l2})
-# for k,v in gf.subs.items():
-#    print(k,"-->",v)
-# print(gf.do_subs(xxx))
-
-carpetx_generator = CppCarpetXGenerator(gf)
-
-for fn_name in gf.thorn_functions.keys():
-    print('=====================')
-    code_tree = carpetx_generator.generate_function_code(fn_name)
-    code = CppVisitor(carpetx_generator).visit(code_tree)
-    print(code)
-
-print('== param.ccl ==')
-param_tree = carpetx_generator.generate_param_ccl()
-param_ccl = ParamVisitor().visit(param_tree)
-print(param_ccl)
-
-print('== interface.ccl ==')
-interface_tree = carpetx_generator.generate_interface_ccl()
-interface_ccl = InterfaceVisitor().visit(interface_tree)
-print(interface_ccl)
-
-print('== schedule.ccl ==')
-schedule_tree = carpetx_generator.generate_schedule_ccl()
-schedule_ccl = ScheduleVisitor().visit(schedule_tree)
-print(schedule_ccl)
-
-print('== make.code.defn ==')
-makefile = carpetx_generator.generate_makefile()
-print(makefile)
+cppCarpetXGenerator(gf)

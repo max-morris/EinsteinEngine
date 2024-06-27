@@ -573,6 +573,7 @@ class ThornDef:
                 assert subval_.is_Symbol, f"{type(subval_)}, {subval_.__class__}, {subval_.is_Function}"
                 subval = cast(Symbol, subval_)
                 self.gfs[str(subval)] = subval
+                self.centering[str(subval)] = self.centering[str(out.base)]
                 self.var2base[str(subval)] = str(out.base)
                 if str(out.base) not in self.groups:
                     self.groups[str(out.base)] = list()
