@@ -113,7 +113,7 @@ class CppCarpetXGenerator(CactusGenerator):
         return InterfaceRoot(
             HeaderSection(
                 implements=Identifier(self.thorn_def.name),
-                inherits=[],
+                inherits=[Identifier('CarpetX')],
                 friends=[]
             ),
             IncludeSection([]),
