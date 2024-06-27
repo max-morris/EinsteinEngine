@@ -23,6 +23,8 @@ gf.add_sym(G[ua, lb, lc], lb, lc)
 gf.add_sym(iter3[ua, lb, lc], lb, lc)
 gf.add_sym(iter4[la, lb, lc, ld], la, lb)
 
+div1 = gf.declfun("div1", True)
+
 gf.fill_in(g[la, lb], lambda _, i, j: mkSymbol(f"gDD{to_num(i)}{to_num(j)}"))
 gf.fill_in(iter3[lc, la, lb], alt=div1(g[la, lb], lc),
            f=lambda _, a, b, c: mkSymbol(f"gDD{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
@@ -34,8 +36,6 @@ gf.fill_in(G[ua, lb, lc], lambda _, a, b, c: mkSymbol(f"affUDD{to_num(a)}{to_num
 gf.fill_in(Ric[la, lb], lambda _, a, b: mkSymbol(f"RicDD{to_num(a)}{to_num(b)}"))
 gf.fill_in(iter4[la, lb, lc, ud], alt=div1(G[ud, la, lb], lc),
            f=lambda _, a, b, c, d: mkSymbol(f"affUDD{to_num(d)}{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
-
-div1 = gf.declfun("div1", True)
 
 fun = gf.create_function("setGL", ScheduleBin.ANALYSIS)
 fun.add_eqn(G[la, lb, lc], div1(g[lb, lc], la) + div1(g[la, lc], lb) - div1(g[la, lb], lc))
