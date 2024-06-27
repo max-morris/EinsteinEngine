@@ -377,9 +377,10 @@ z = mkSymbol("z")
 
 
 class ScheduleBin(ScheduleBinEnum):
-    EVOL = auto(), 'EVOL', False
-    INIT = auto(), 'INIT', True
-    ANALYSIS = auto(), 'ANALYSIS', True
+    Evolve = auto(), 'Evolve', False
+    Init = auto(), 'Init', True
+    Analysis = auto(), 'Analysis', True
+    EstimateError = auto(), 'EstimateError', False
 
 
 class ThornFunction:

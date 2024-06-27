@@ -101,7 +101,7 @@ gf.fill_in(siter2[li, lj], alt=div2(v, li, lj), f=to_div2)
 x, y, z = gf.coords()
 
 # Add the equations we want to evolve.
-fun = gf.create_function("newwave_evo", ScheduleBin.EVOL)
+fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
 fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div2(v, li, lj))
 print('*** ThornFunction wave_evo:')
@@ -119,7 +119,7 @@ fun.dump()
 fun.show_tensortypes()
 
 # Again for wave_init
-fun = gf.create_function("newwave_init", ScheduleBin.INIT)
+fun = gf.create_function("newwave_init", ScheduleBin.Init)
 fun.add_eqn(v, sin(kx * x) * sin(ky * y))
 fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
 print('*** ThornFunction wave_init:')

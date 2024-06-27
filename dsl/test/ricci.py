@@ -39,9 +39,9 @@ gf.fill_in(iter4[la, lb, lc, ud], alt=div1(G[ud, la, lb], lc),
 
 fun = gf.create_function("setGL", ScheduleBin.ANALYSIS)
 fun.add_eqn(G[la, lb, lc], div1(g[lb, lc], la) + div1(g[la, lc], lb) - div1(g[la, lb], lc))
-fun2 = gf.create_function("setGU", ScheduleBin.ANALYSIS)
+fun2 = gf.create_function("setGU", ScheduleBin.Analysis)
 fun2.add_eqn(G[ua, lb, lc], g[ua, ud] * G[ld, lb, lc])
-fun3 = gf.create_function("setRic", ScheduleBin.ANALYSIS)
+fun3 = gf.create_function("setRic", ScheduleBin.Analysis)
 fun3.add_eqn(Ric[li, lj],
              div1(G[ua, li, lj], la) - div1(G[ua, la, li], lj) + G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[
                  ub, la, lj])

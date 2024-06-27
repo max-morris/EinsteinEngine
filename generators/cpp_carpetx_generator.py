@@ -64,12 +64,14 @@ class CppCarpetXGenerator(CactusGenerator):
 
         for fn_name, fn in self.thorn_def.thorn_functions.items():
             schedule_bin: Identifier
-            if fn.schedule_bin is ScheduleBin.INIT:
+            if fn.schedule_bin is ScheduleBin.Init:
                 schedule_bin = Identifier('initial')
-            elif fn.schedule_bin is ScheduleBin.ANALYSIS:
+            elif fn.schedule_bin is ScheduleBin.Analysis:
                 schedule_bin = Identifier('analysis')
+            elif fn.schedule_bin is ScheduleBin.EstimateError:
+                schedule_bin = Identifier('ODESolvers_EstimateError')
             else:
-                assert fn.schedule_bin is ScheduleBin.EVOL
+                assert fn.schedule_bin is ScheduleBin.Evolve
                 schedule_bin = Identifier('ODESolvers_RHS')
 
             reads: list[Intent] = list()
