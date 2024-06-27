@@ -6,22 +6,27 @@ from dsl.use_indices import ThornDef
 from emit.ccl.interface.interface_visitor import InterfaceVisitor
 from emit.ccl.param.param_visitor import ParamVisitor
 from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
+from emit.code.code_tree import CodeNode
 from emit.code.cpp.cpp_visitor import CppVisitor
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 
+from emit.visitor import Visitor
 from generators.cactus_generator import CactusGenerator
 from generators.cpp_carpetx_generator import CppCarpetXGenerator
 
 G = TypeVar('G', bound=CactusGenerator)
+CV = TypeVar('CV', bound=Visitor[CodeNode])
 
 
-class ThornWizard(ABC, Generic[G]):
+class ThornWizard(ABC, Generic[G, CV]):
     thorn_def: ThornDef
     generator: G
+    code_visitor: CV
 
-    def __init__(self, thorn_def: ThornDef, generator: G) -> None:
+    def __init__(self, thorn_def: ThornDef, generator: G, code_visitor: CV) -> None:
         self.thorn_def = thorn_def
         self.generator = generator
+        self.code_visitor = code_visitor
 
     def generate_thorn(self) -> None:
         base_dir = os.path.join(self.thorn_def.arrangement, self.thorn_def.name)
@@ -31,7 +36,7 @@ class ThornWizard(ABC, Generic[G]):
         for fn_name in self.thorn_def.thorn_functions.keys():
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
-            code = CppVisitor(self.generator).visit(code_tree)
+            code = self.code_visitor.visit(code_tree)
             # print(code)
             code_fname = os.path.join(base_dir, "src", self.generator.get_src_file_name(fn_name))
             with ConditionalFileUpdater(code_fname) as fd:
@@ -79,8 +84,8 @@ class ThornWizard(ABC, Generic[G]):
             fd.write(makefile)
 
 
-class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator]):
+class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
     def __init__(self, thorn_def: ThornDef, generator: Optional[CppCarpetXGenerator] = None):
         if generator is None:
             generator = CppCarpetXGenerator(thorn_def)
-        super().__init__(thorn_def, generator)
+        super().__init__(thorn_def, generator, CppVisitor(generator))
