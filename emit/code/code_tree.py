@@ -4,6 +4,7 @@ from typing import Optional, Union, List, Dict, Sequence
 
 import sympy as sy
 
+from emit.ccl.schedule.schedule_tree import IntentRegion
 from emit.tree import Node, Identifier, String, Verbatim, CommonNode
 from util import ReprEnum, CenteringEnum
 
@@ -189,6 +190,7 @@ class CarpetXGridLoopLambda(Expr):
 @dataclass
 class CarpetXGridLoopCall(Stmt):
     centering: Centering
+    write_destination: IntentRegion
     fn: CarpetXGridLoopLambda
 
 

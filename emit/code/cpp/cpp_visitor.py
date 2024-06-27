@@ -116,7 +116,17 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: CarpetXGridLoopCall) -> str:
         centering_args = [f'{n.centering.string_repr}_centered[{i}]' for i in range(3)]
-        return f"grid.loop_int_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
+        loop_kind: str
+
+        if n.write_destination is IntentRegion.Everywhere:
+            loop_kind = 'all'
+        elif n.write_destination is IntentRegion.Interior:
+            loop_kind = 'int'
+        else:
+            assert n.write_destination is IntentRegion.Boundary
+            loop_kind = 'bnd'
+
+        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:

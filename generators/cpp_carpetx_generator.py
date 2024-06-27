@@ -279,6 +279,21 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centering: Centering
         [output_centering] = typing.cast(Set[Centering], output_centerings)
 
+        output_regions: set[IntentRegion] = set()
+
+        for var, spec in thorn_fn.eqnlist.write_decls.items():
+            if str(var) in self.var_names:
+                output_regions.add(spec)
+
+        if None in output_regions or len(output_regions) == 0:
+            raise GeneratorException(f"All output vars must have a write region.")
+
+        if len(output_regions) > 1:
+            raise GeneratorException(f"Output vars have mixed write regions.")
+
+        output_region: IntentRegion
+        [output_region] = typing.cast(Set[IntentRegion], output_regions)
+
         # x, y, and z are special
         xyz_decls = [
             ConstAssignDecl(Identifier('auto&'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
@@ -296,6 +311,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  *decls,
                  CarpetXGridLoopCall(
                      output_centering,
+                     output_region,
                      CarpetXGridLoopLambda(
                          xyz_decls,
                          {lhs_substitution(str(lhs)): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()},
