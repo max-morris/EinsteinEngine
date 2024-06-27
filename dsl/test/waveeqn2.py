@@ -10,11 +10,12 @@ from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
-from generators.cpp_carpetx_generator import cppCarpetXGenerator
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 import nrpy.helpers.conditional_file_updater as cfu
 from math import pi
 import os
+
+from generators.wizards import cpp_carpetx_wizard
 
 cfu.verbose = True
 
@@ -33,9 +34,9 @@ gf = ThornDef("TestWave", "WaveEqn")
 
 # Declare gfs
 v_t = gf.decl("v_t", [li], Centering.VVC)
-v   = gf.decl("v", [li], Centering.VVC, rhs=v_t)
+v = gf.decl("v", [li], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
-u   = gf.decl("u", [], Centering.VVC, rhs=u_t)
+u = gf.decl("u", [], Centering.VVC, rhs=u_t)
 
 siter2 = gf.decl("siter2", [li, lj])
 gf.add_sym(siter2[li, lj], li, lj)
@@ -47,8 +48,8 @@ gf.add_sym(g[li, lj], li, lj)
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")
-kx = gf.add_param("kx", default=pi/20, desc="The wave number in the x-direction")
-ky = gf.add_param("ky", default=pi/20, desc="The wave number in the y-direction")
+kx = gf.add_param("kx", default=pi / 20, desc="The wave number in the x-direction")
+ky = gf.add_param("ky", default=pi / 20, desc="The wave number in the y-direction")
 
 # Fill in values
 gf.fill_in(g[li, lj], flat_metric)
@@ -88,7 +89,7 @@ def to_div2(out: Expr, i: Idx, j: Idx) -> Expr:
     elif n == 1:
         ret = divyy(v)
     elif n == 2:
-        ret = sympify(0) #divzz(v)
+        ret = sympify(0)  # divzz(v)
     else:
         assert False
     return cast(Expr, ret)
@@ -102,14 +103,14 @@ x, y, z = gf.coords()
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.EVOL)
 fun.add_eqn(v_t, u)
-fun.add_eqn(u_t, spd**2 * g[ui, uj] * div2(v, li, lj))
+fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div2(v, li, lj))
 print('*** ThornFunction wave_evo:')
 
 # Ensure the equations make sense
 fun.diagnose()
 
 # Perform cse
-#fun.cse()
+# fun.cse()
 
 # Dump
 fun.dump()
@@ -120,12 +121,11 @@ fun.show_tensortypes()
 # Again for wave_init
 fun = gf.create_function("newwave_init", ScheduleBin.INIT)
 fun.add_eqn(v, sin(kx * x) * sin(ky * y))
-fun.add_eqn(u, sympify(0)) #kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
+fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
 print('*** ThornFunction wave_init:')
 fun.diagnose()
-#fun.cse()
+# fun.cse()
 fun.dump()
 fun.show_tensortypes()
 
-
-cppCarpetXGenerator(gf)
+cpp_carpetx_wizard(gf)

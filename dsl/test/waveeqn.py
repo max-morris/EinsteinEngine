@@ -10,11 +10,12 @@ from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
-from generators.cpp_carpetx_generator import cppCarpetXGenerator
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 import nrpy.helpers.conditional_file_updater as cfu
 from math import pi
 import os
+
+from generators.wizards import cpp_carpetx_wizard
 
 cfu.verbose = True
 
@@ -49,8 +50,8 @@ gf.add_sym(g[li, lj], li, lj)
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")
-kx = gf.add_param("kx", default=pi/20, desc="The wave number in the x-direction")
-ky = gf.add_param("ky", default=pi/20, desc="The wave number in the y-direction")
+kx = gf.add_param("kx", default=pi / 20, desc="The wave number in the x-direction")
+ky = gf.add_param("ky", default=pi / 20, desc="The wave number in the y-direction")
 
 # Fill in values
 gf.fill_in(g[li, lj], flat_metric)
@@ -129,12 +130,11 @@ fun.add_eqn(u, sin(kx * x) * sin(ky * y))
 fun.add_eqn(p[l0], kx * cos(kx * x) * sin(ky * y))
 fun.add_eqn(p[l1], ky * sin(kx * x) * cos(ky * y))
 fun.add_eqn(p[l2], sympify(0))
-    
+
 print('*** ThornFunction wave_init:')
 fun.diagnose()
 fun.cse()
 fun.dump()
 fun.show_tensortypes()
 
-
-cppCarpetXGenerator(gf)
+cpp_carpetx_wizard(gf)
