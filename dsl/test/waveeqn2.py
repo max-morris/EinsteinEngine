@@ -128,4 +128,8 @@ fun.diagnose()
 fun.dump()
 fun.show_tensortypes()
 
+fun = gf.create_function("refine", ScheduleBin.EstimateError)
+regrid_error = gf.decl("regrid_error", [], Centering.CCC)
+fun.add_eqn(regrid_error, 10/((x-20)**2 + (y-20)**2))
+
 CppCarpetXWizard(gf).generate_thorn()
