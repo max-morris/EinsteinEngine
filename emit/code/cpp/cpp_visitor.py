@@ -10,6 +10,7 @@ from generators.cactus_generator import CactusGenerator
 from util import indent
 from emit.visitor import Visitor, visit_each
 from typing import Dict
+from emit.ccl.schedule.schedule_tree import IntentRegion
 
 
 class CppVisitor(Visitor[CodeNode]):

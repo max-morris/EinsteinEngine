@@ -277,7 +277,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Got the centering.
         output_centering: Centering
-        [output_centering] = typing.cast(Set[Centering], output_centerings)
+        [output_centering] = output_centerings
 
         output_regions: set[IntentRegion] = set()
 
@@ -294,7 +294,7 @@ class CppCarpetXGenerator(CactusGenerator):
             )
 
         output_region: IntentRegion
-        [output_region] = typing.cast(Set[IntentRegion], output_regions)
+        [output_region] = output_regions
 
         # x, y, and z are special
         xyz_decls = [

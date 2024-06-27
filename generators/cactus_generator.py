@@ -50,7 +50,7 @@ class CactusGenerator(ABC):
                 variable_names=list(),
                 group_type=GroupType.GF,
                 centering=self.thorn_def.centering.get(group_name, None),  # type: ignore[arg-type]
-                tags=tags  # type: ignore[arg-type]
+                tags=tags
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod
