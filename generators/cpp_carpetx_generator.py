@@ -11,6 +11,7 @@ from generators.generator_exception import GeneratorException
 from typing import Optional, List, Set
 from util import OrderedSet
 
+
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
@@ -223,6 +224,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         decls: list[CodeElem] = list()
         declared_layouts: set[Centering] = set()
+        var_centerings: dict[str, Centering] = dict()
 
         for var_name in self.var_names:
             var_centering: Optional[Centering]
@@ -239,6 +241,8 @@ class CppCarpetXGenerator(CactusGenerator):
                 continue
 
             assert var_centering is not None
+
+            var_centerings[var_name] = var_centering
 
             # Make sure the referenced layout has a preceding, corresponding decl of the form
             # `const GF3D5layout ${LAYOUT_NAME}_layout(cctkGH, {$I, $J, $K});`
@@ -263,10 +267,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
-        output_centerings = OrderedSet()
-        tfunc = self.thorn_def.thorn_functions[which_fn]
-        for var in tfunc.eqnlist.outputs:
-            output_centerings.add(self.thorn_def.centering[str(var)])
+        output_centerings = {var_centerings[str(v)] for v in thorn_fn.eqnlist.outputs}
 
         if None in output_centerings or len(output_centerings) == 0:
             raise GeneratorException(f"All output vars must have a centering: {self.thorn_def.centering.items()}")
@@ -305,6 +306,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return CodeRoot(nodes)
 
+
 # TODO: Maybe move this to another file
 import os
 from emit.ccl.interface.interface_visitor import InterfaceVisitor
@@ -312,6 +314,7 @@ from emit.ccl.param.param_visitor import ParamVisitor
 from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
 from emit.code.cpp.cpp_visitor import CppVisitor
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
+
 
 def cppCarpetXGenerator(gf):
     base_dir = os.path.join(gf.arrangement, gf.name)
@@ -324,7 +327,7 @@ def cppCarpetXGenerator(gf):
         print('=====================')
         code_tree = carpetx_generator.generate_function_code(fn_name)
         code = CppVisitor(carpetx_generator).visit(code_tree)
-        #print(code)
+        # print(code)
         code_fname = os.path.join(base_dir, "src", carpetx_generator.get_src_file_name(fn_name))
         with ConditionalFileUpdater(code_fname) as fd:
             fd.write(code)
@@ -332,7 +335,7 @@ def cppCarpetXGenerator(gf):
     print('== param.ccl ==')
     param_tree = carpetx_generator.generate_param_ccl()
     param_ccl = ParamVisitor().visit(param_tree)
-    #print(param_ccl)
+    # print(param_ccl)
     param_ccl_fname = os.path.join(base_dir, "param.ccl")
     with ConditionalFileUpdater(param_ccl_fname) as fd:
         fd.write(param_ccl)
@@ -340,7 +343,7 @@ def cppCarpetXGenerator(gf):
     print('== interface.ccl ==')
     interface_tree = carpetx_generator.generate_interface_ccl()
     interface_ccl = InterfaceVisitor().visit(interface_tree)
-    #print(interface_ccl)
+    # print(interface_ccl)
     interface_ccl_fname = os.path.join(base_dir, "interface.ccl")
     with ConditionalFileUpdater(interface_ccl_fname) as fd:
         fd.write(interface_ccl)
@@ -348,7 +351,7 @@ def cppCarpetXGenerator(gf):
     print('== schedule.ccl ==')
     schedule_tree = carpetx_generator.generate_schedule_ccl()
     schedule_ccl = ScheduleVisitor().visit(schedule_tree)
-    #print(schedule_ccl)
+    # print(schedule_ccl)
     schedule_ccl_fname = os.path.join(base_dir, "schedule.ccl")
     with ConditionalFileUpdater(schedule_ccl_fname) as fd:
         fd.write(schedule_ccl)
@@ -358,14 +361,14 @@ def cppCarpetXGenerator(gf):
 # Configuration definitions for thorn WaveToyNRPy
 REQUIRES Arith Loop
     """.strip()
-    #print(configuration_ccl)
+    # print(configuration_ccl)
     configuration_ccl_fname = os.path.join(base_dir, "configuration.ccl")
     with ConditionalFileUpdater(configuration_ccl_fname) as fd:
         fd.write(configuration_ccl)
 
     print('== make.code.defn ==')
     makefile = carpetx_generator.generate_makefile()
-    #print(makefile)
+    # print(makefile)
     makefile_fname = os.path.join(base_dir, "src/make.code.defn")
     with ConditionalFileUpdater(makefile_fname) as fd:
         fd.write(makefile)

@@ -7,7 +7,6 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
 from util import OrderedSet
-from here import here
 
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
