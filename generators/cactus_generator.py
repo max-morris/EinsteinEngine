@@ -16,7 +16,8 @@ class CactusGenerator(ABC):
     variable_groups: Dict[str, VariableGroup]
     var_names: OrderedSet[str]
 
-    vars_to_ignore: Set[str] = {'x', 'y', 'z', 'regrid_error'}
+    vars_to_ignore: Set[str] = {'x', 'y', 'z'}
+    vars_predeclared: Set[str] = {'regrid_error'}
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
@@ -33,7 +34,7 @@ class CactusGenerator(ABC):
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
 
-        for var_name in self.var_names:
+        for var_name in [v for v in self.var_names if v not in self.vars_predeclared]:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
 
             tags: Optional[String] = None

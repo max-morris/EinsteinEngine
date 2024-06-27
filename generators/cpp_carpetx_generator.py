@@ -87,7 +87,9 @@ class CppCarpetXGenerator(CactusGenerator):
             for var, spec in fn.eqnlist.write_decls.items():
                 if var in fn.eqnlist.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     writes.append(Intent(
-                        name=Identifier(var_name),
+                        # TODO: This is so that regrid_error -> CarpetX::regrid_error. We may want to do this in a
+                        #  better way if more such cases arise.
+                        name=Identifier(var_name if var_name not in self.vars_predeclared else f'CarpetX::{var_name}'),
                         region=spec
                     ))
 
