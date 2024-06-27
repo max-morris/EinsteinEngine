@@ -15,7 +15,7 @@ import nrpy.helpers.conditional_file_updater as cfu
 from math import pi
 import os
 
-from generators.wizards import cpp_carpetx_wizard
+from generators.wizards import CppCarpetXWizard
 
 cfu.verbose = True
 
@@ -128,4 +128,4 @@ fun.diagnose()
 fun.dump()
 fun.show_tensortypes()
 
-cpp_carpetx_wizard(gf)
+CppCarpetXWizard(gf).generate_thorn()

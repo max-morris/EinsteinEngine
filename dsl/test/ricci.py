@@ -6,7 +6,7 @@ from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
-from generators.wizards import cpp_carpetx_wizard
+from generators.wizards import CppCarpetXWizard
 
 # Create a set of grid functions
 gf = ThornDef("TestRicci", "Ricci")
@@ -51,4 +51,4 @@ fun.diagnose()
 fun2.diagnose()
 fun3.diagnose()
 
-cpp_carpetx_wizard(gf)
+CppCarpetXWizard(gf).generate_thorn()
