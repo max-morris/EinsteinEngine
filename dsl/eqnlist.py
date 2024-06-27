@@ -7,6 +7,7 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
 from util import OrderedSet
+from here import here
 
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
@@ -37,7 +38,8 @@ class EqnList:
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.read_decls: Dict[Math, IntentRegion] = dict()
         self.write_decls: Dict[Math, IntentRegion] = dict()
-        self.default_read_write_spec: IntentRegion = IntentRegion.Interior
+        # TODO: need a better default
+        self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere #Interior
 
     def add_func(self, fun: UFunc, is_stencil: bool) -> None:
         self.is_stencil[fun] = is_stencil
@@ -77,16 +79,20 @@ class EqnList:
         self.lhs: Math
 
         def ftrace(sym: Symbol) -> bool:
-            if sym.is_Function and self.is_stencil.get(sym.func, False):
-                for arg in sym.args:
-                    sym = cast(Symbol, arg)
-                    self.read_decls[sym] = IntentRegion.Everywhere
-                    self.write_decls[self.lhs] = IntentRegion.Interior
-            if sym.is_Function and not self.is_stencil.get(sym.func, False):
-                for arg in sym.args:
-                    sym = cast(Symbol, arg)
-                    self.read_decls[sym] = IntentRegion.Everywhere
-                    self.write_decls[self.lhs] = IntentRegion.Everywhere
+            print(f">>> ftrace({sym})")
+            if sym.is_Function:
+                if self.is_stencil.get(sym.func, False):
+                    for arg in sym.args:
+                        sym2 = cast(Symbol, arg)
+                        self.read_decls[sym2] = IntentRegion.Everywhere
+                        self.write_decls[self.lhs] = IntentRegion.Interior
+                        print("  >>> Everywhere", sym2)
+                else:
+                    for arg in sym.args:
+                        sym2 = cast(Symbol, arg)
+                        self.read_decls[sym2] = IntentRegion.Everywhere
+                        self.write_decls[self.lhs] = IntentRegion.Everywhere
+                        print("  >>> Everywhere", sym2)
             return False
 
         def noop(x: Symbol) -> Symbol:

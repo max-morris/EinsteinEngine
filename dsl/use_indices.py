@@ -405,11 +405,20 @@ class ThornFunction:
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Expr) -> None:
         lhs2: Symbol
         if type(lhs) == Indexed:
+            count = 0
             for tup in expand_free_indices(lhs, self.tdef.symmetries):
+                count += 1
                 lhsx, inds = tup
                 lhs2 = cast(Symbol, self.tdef.do_subs(lhsx, self.tdef.subs))
                 rhs2 = self.tdef.do_subs(rhs, inds, self.tdef.subs)
                 rhs2 = self.tdef.do_subs(rhs2, inds, self.tdef.subs)
+                self._add_eqn2(lhs2, rhs2)
+            if count == 0:
+                inds = lhs.args[1:]
+                for ind in inds:
+                    assert is_numeric_index(ind)
+                lhs2 = self.tdef.do_subs(lhs, self.tdef.subs)
+                rhs2 = self.tdef.do_subs(rhs, self.tdef.subs)
                 self._add_eqn2(lhs2, rhs2)
         elif type(lhs) in [IndexedBase, Symbol]:
             lhs2 = cast(Symbol, self.tdef.do_subs(lhs, self.tdef.subs))

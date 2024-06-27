@@ -9,7 +9,7 @@ from emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbat
 from generators.cactus_generator import CactusGenerator
 from generators.generator_exception import GeneratorException
 from typing import Optional, List, Set
-
+from util import OrderedSet
 
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
@@ -20,12 +20,20 @@ class CppCarpetXGenerator(CactusGenerator):
 
     boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
+    # TODO: We want to be able to
+    # specify a header file with thes
+    # or alternate defs.
     boilerplate_div_macros: str = """
         #define CARPETX_GF3D5
         #define access(GF) (GF(GF ## _layout, p.I))
+        // 1st derivatives
         #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
         #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
+        // 2nd derivatives
+        #define divxx(GF) (GF(GF ## _layout, p.I + p.DI[0]) + GF(GF ## _layout, p.I - p.DI[0]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
+        #define divyy(GF) (GF(GF ## _layout, p.I + p.DI[1]) + GF(GF ## _layout, p.I - p.DI[1]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
+        #define divzz(GF) (GF(GF ## _layout, p.I + p.DI[2]) + GF(GF ## _layout, p.I - p.DI[2]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
     """.strip().replace('    ', '')
 
     def __init__(self, thorn_def: ThornDef) -> None:
@@ -255,16 +263,16 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
-        bases_of_outputs = {self.thorn_def.var2base[output_var] for output_var in
-                            {str(output) for output in thorn_fn.eqnlist.outputs} if
-                            output_var in self.thorn_def.var2base}
-        output_centerings = {self.thorn_def.centering[base] for base in bases_of_outputs}
+        output_centerings = OrderedSet()
+        tfunc = self.thorn_def.thorn_functions[which_fn]
+        for var in tfunc.eqnlist.outputs:
+            output_centerings.add(self.thorn_def.centering[str(var)])
 
         if None in output_centerings or len(output_centerings) == 0:
-            raise GeneratorException("All output vars must have a centering.")
+            raise GeneratorException(f"All output vars must have a centering: {self.thorn_def.centering.items()}")
 
         if len(output_centerings) > 1:
-            raise GeneratorException(f"Output vars have mixed centerings: {output_centerings}")
+            raise GeneratorException(f"Output vars have mixed centerings")
 
         # Got the centering.
         output_centering: Centering
@@ -296,3 +304,68 @@ class CppCarpetXGenerator(CactusGenerator):
         )
 
         return CodeRoot(nodes)
+
+# TODO: Maybe move this to another file
+import os
+from emit.ccl.interface.interface_visitor import InterfaceVisitor
+from emit.ccl.param.param_visitor import ParamVisitor
+from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
+from emit.code.cpp.cpp_visitor import CppVisitor
+from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
+
+def cppCarpetXGenerator(gf):
+    base_dir = os.path.join(gf.arrangement, gf.name)
+    os.makedirs(base_dir, exist_ok=True)
+    os.makedirs(os.path.join(base_dir, "src"), exist_ok=True)
+
+    carpetx_generator = CppCarpetXGenerator(gf)
+
+    for fn_name in gf.thorn_functions.keys():
+        print('=====================')
+        code_tree = carpetx_generator.generate_function_code(fn_name)
+        code = CppVisitor(carpetx_generator).visit(code_tree)
+        #print(code)
+        code_fname = os.path.join(base_dir, "src", carpetx_generator.get_src_file_name(fn_name))
+        with ConditionalFileUpdater(code_fname) as fd:
+            fd.write(code)
+
+    print('== param.ccl ==')
+    param_tree = carpetx_generator.generate_param_ccl()
+    param_ccl = ParamVisitor().visit(param_tree)
+    #print(param_ccl)
+    param_ccl_fname = os.path.join(base_dir, "param.ccl")
+    with ConditionalFileUpdater(param_ccl_fname) as fd:
+        fd.write(param_ccl)
+
+    print('== interface.ccl ==')
+    interface_tree = carpetx_generator.generate_interface_ccl()
+    interface_ccl = InterfaceVisitor().visit(interface_tree)
+    #print(interface_ccl)
+    interface_ccl_fname = os.path.join(base_dir, "interface.ccl")
+    with ConditionalFileUpdater(interface_ccl_fname) as fd:
+        fd.write(interface_ccl)
+
+    print('== schedule.ccl ==')
+    schedule_tree = carpetx_generator.generate_schedule_ccl()
+    schedule_ccl = ScheduleVisitor().visit(schedule_tree)
+    #print(schedule_ccl)
+    schedule_ccl_fname = os.path.join(base_dir, "schedule.ccl")
+    with ConditionalFileUpdater(schedule_ccl_fname) as fd:
+        fd.write(schedule_ccl)
+
+    print('== configuration.ccl ==')
+    configuration_ccl = """
+# Configuration definitions for thorn WaveToyNRPy
+REQUIRES Arith Loop
+    """.strip()
+    #print(configuration_ccl)
+    configuration_ccl_fname = os.path.join(base_dir, "configuration.ccl")
+    with ConditionalFileUpdater(configuration_ccl_fname) as fd:
+        fd.write(configuration_ccl)
+
+    print('== make.code.defn ==')
+    makefile = carpetx_generator.generate_makefile()
+    #print(makefile)
+    makefile_fname = os.path.join(base_dir, "src/make.code.defn")
+    with ConditionalFileUpdater(makefile_fname) as fd:
+        fd.write(makefile)

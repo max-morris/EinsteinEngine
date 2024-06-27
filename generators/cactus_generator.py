@@ -39,6 +39,9 @@ class CactusGenerator(ABC):
             tags: Optional[String] = None
             if (var_rhs := self.thorn_def.rhs.get(group_name)) is not None:
                 tags = String(f'rhs="{self.thorn_def.name}::{var_rhs}"', single_quotes=True)
+            else:
+                # TODO: long-term we don't want this, CarpetX currently needs it
+                tags = String(f'checkpoint="no"', single_quotes=True)
 
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,

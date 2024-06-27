@@ -32,12 +32,10 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 gf = ThornDef("TestWave", "WaveEqn")
 
 # Declare gfs
-p_t = gf.decl("p_t", [li], Centering.VVC)
-p = gf.decl("p", [li], Centering.VVC, rhs=p_t)
-p_d = gf.decl("p_d", [li, lj], Centering.VVC)
+v_t = gf.decl("v_t", [li], Centering.VVC)
+v   = gf.decl("v", [li], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
-u = gf.decl("u", [], Centering.VVC, rhs=u_t)
-u_d = gf.decl("u_d", [ui], Centering.VVC)
+u   = gf.decl("u", [], Centering.VVC, rhs=u_t)
 
 siter2 = gf.decl("siter2", [li, lj])
 gf.add_sym(siter2[li, lj], li, lj)
@@ -56,18 +54,16 @@ ky = gf.add_param("ky", default=pi/20, desc="The wave number in the y-direction"
 gf.fill_in(g[li, lj], flat_metric)
 gf.fill_in(g[ui, uj], flat_metric)
 
-# Fill in with defaults
-gf.fill_in(p[li], lambda _, i: mkSymbol(f"pD{to_num(i)}"))
-gf.fill_in(p_t[li], lambda _, i: mkSymbol(f"p_tD{to_num(i)}"))
-
 # Fill in the deriv variables with a function call
 #
 div1 = gf.declfun("div1", True)
 divx = gf.declfun("divx", True)
 divy = gf.declfun("divy", True)
 divz = gf.declfun("divz", True)
-gf.fill_in(p_d[li, lj], lambda _, i, j: div1(p[j], i))
-gf.fill_in(u_d[li], lambda _, i: div1(u, i))
+div2 = gf.declfun("div2", True)
+divxx = gf.declfun("divxx", True)
+divyy = gf.declfun("divyy", True)
+divzz = gf.declfun("divzz", True)
 
 
 def to_div(out: Expr, j: Idx) -> Expr:
@@ -88,34 +84,32 @@ def to_div2(out: Expr, i: Idx, j: Idx) -> Expr:
     n = to_num(j)
     ret: Any
     if n == 0:
-        ret = divx(p[i])
+        ret = divxx(v)
     elif n == 1:
-        ret = divy(p[i])
+        ret = divyy(v)
     elif n == 2:
-        ret = divz(p[i])
+        ret = sympify(0) #divzz(v)
     else:
         assert False
     return cast(Expr, ret)
 
 
 gf.fill_in(iter1[lj], alt=div1(u, lj), f=to_div)
-gf.fill_in(siter2[li, lj], alt=div1(p[li], lj), f=to_div2)
+gf.fill_in(siter2[li, lj], alt=div2(v, li, lj), f=to_div2)
 
 x, y, z = gf.coords()
 
-res = gf.do_subs(spd * g[ui, uj] * div1(p[lj], li))
-
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.EVOL)
-fun.add_eqn(p_t[lj], spd * div1(u, lj))
-fun.add_eqn(u_t, spd * g[ui, uj] * div1(p[lj], li))
+fun.add_eqn(v_t, u)
+fun.add_eqn(u_t, spd**2 * g[ui, uj] * div2(v, li, lj))
 print('*** ThornFunction wave_evo:')
 
 # Ensure the equations make sense
 fun.diagnose()
 
 # Perform cse
-fun.cse()
+#fun.cse()
 
 # Dump
 fun.dump()
@@ -125,14 +119,11 @@ fun.show_tensortypes()
 
 # Again for wave_init
 fun = gf.create_function("newwave_init", ScheduleBin.INIT)
-fun.add_eqn(u, sin(kx * x) * sin(ky * y))
-fun.add_eqn(p[l0], kx * cos(kx * x) * sin(ky * y))
-fun.add_eqn(p[l1], ky * sin(kx * x) * cos(ky * y))
-fun.add_eqn(p[l2], sympify(0))
-    
+fun.add_eqn(v, sin(kx * x) * sin(ky * y))
+fun.add_eqn(u, sympify(0)) #kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
 print('*** ThornFunction wave_init:')
 fun.diagnose()
-fun.cse()
+#fun.cse()
 fun.dump()
 fun.show_tensortypes()
 

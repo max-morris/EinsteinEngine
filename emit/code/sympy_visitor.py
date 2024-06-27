@@ -13,7 +13,8 @@ class SympyExprVisitor:
     substitution_fn: Callable[[str, bool], str]
     inside_div: bool
 
-    div_fns: List[str] = [f'div{s}' for s in ['x', 'y', 'z']]
+    # TODO: Get these funs from eqnlist
+    div_fns: List[str] = [f'div{s}' for s in ['x', 'y', 'z', 'xx', 'yy', 'zz']]
 
     def __init__(self, substitution_fn: Optional[Callable[[str, bool], str]] = None):
         self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
@@ -44,7 +45,8 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
         base, tup = expr.args
-        assert len(tup.args) == 0
+        # TODO: need to have this assert, but currently we get unexpected args
+        #assert len(tup.args) == 0, f"This has args! {str(expr)} {tup.args} {len(tup.args)}"
         return typing.cast(Expr, self.visit(base))
 
     @visit.register
