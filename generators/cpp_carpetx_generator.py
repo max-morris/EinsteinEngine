@@ -289,7 +289,9 @@ class CppCarpetXGenerator(CactusGenerator):
             raise GeneratorException(f"All output vars must have a write region.")
 
         if len(output_regions) > 1:
-            raise GeneratorException(f"Output vars have mixed write regions.")
+            raise GeneratorException(
+                f"Output vars have mixed write regions: {list(thorn_fn.eqnlist.write_decls.items())}"
+            )
 
         output_region: IntentRegion
         [output_region] = typing.cast(Set[IntentRegion], output_regions)
