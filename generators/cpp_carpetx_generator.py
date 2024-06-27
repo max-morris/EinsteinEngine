@@ -272,7 +272,7 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqnlist.outputs if str(var) in self.var_names}
 
         if None in output_centerings or len(output_centerings) == 0:
-            raise GeneratorException(f"All output vars must have a centering: {self.thorn_def.centering.items()}")
+            raise GeneratorException(f"All output vars must have a centering: {thorn_fn.name} {output_centerings}")
 
         if len(output_centerings) > 1:
             raise GeneratorException(f"Output vars have mixed centerings")
