@@ -134,6 +134,7 @@ fun.add_eqn(p[l2], sympify(0))
 print('*** ThornFunction wave_init:')
 fun.diagnose()
 fun.cse()
+fun.diagnose()
 fun.dump()
 fun.show_tensortypes()
 

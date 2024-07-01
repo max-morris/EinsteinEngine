@@ -25,6 +25,7 @@ gf.add_sym(iter4[la, lb, lc, ld], la, lb)
 
 div1 = gf.declfun("div1", True)
 
+# Need to automate these
 gf.fill_in(g[la, lb], lambda _, i, j: mkSymbol(f"gDD{to_num(i)}{to_num(j)}"))
 gf.fill_in(iter3[lc, la, lb], alt=div1(g[la, lb], lc),
            f=lambda _, a, b, c: mkSymbol(f"gDD{to_num(a)}{to_num(b)}_dD{to_num(c)}"))

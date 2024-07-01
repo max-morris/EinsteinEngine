@@ -57,45 +57,17 @@ gf.fill_in(g[ui, uj], flat_metric)
 
 # Fill in the deriv variables with a function call
 #
-div1 = gf.declfun("div1", True)
-divx = gf.declfun("divx", True)
-divy = gf.declfun("divy", True)
-divz = gf.declfun("divz", True)
 div2 = gf.declfun("div2", True)
 divxx = gf.declfun("divxx", True)
 divyy = gf.declfun("divyy", True)
 divzz = gf.declfun("divzz", True)
 
-
-def to_div(out: Expr, j: Idx) -> Expr:
-    n = to_num(j)
-    ret: Any
-    if n == 0:
-        ret = divx(*out.args[:-1])
-    elif n == 1:
-        ret = divy(*out.args[:-1])
-    elif n == 2:
-        ret = divz(*out.args[:-1])
-    else:
-        assert False
-    return cast(Expr, ret)
-
-
 def to_div2(out: Expr, i: Idx, j: Idx) -> Expr:
-    n = to_num(j)
-    ret: Any
-    if n == 0:
-        ret = divxx(v)
-    elif n == 1:
-        ret = divyy(v)
-    elif n == 2:
-        ret = sympify(0)  # divzz(v)
-    else:
-        assert False
+    n = to_num(j) # l0 -> 0
+    arg = out.args[0] # div(v, i, j) -> v
+    ret : Any = [divxx(arg), divyy(arg), sympify(0)][n]
     return cast(Expr, ret)
 
-
-gf.fill_in(iter1[lj], alt=div1(u, lj), f=to_div)
 gf.fill_in(siter2[li, lj], alt=div2(v, li, lj), f=to_div2)
 
 x, y, z = gf.coords()
@@ -124,7 +96,8 @@ fun.add_eqn(v, sin(kx * x) * sin(ky * y))
 fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
 print('*** ThornFunction wave_init:')
 fun.diagnose()
-# fun.cse()
+fun.cse()
+fun.diagnose()
 fun.dump()
 fun.show_tensortypes()
 

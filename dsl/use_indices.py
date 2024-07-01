@@ -111,7 +111,7 @@ num9 = ord('9')
 
 def is_numeric_index(x: Idx) -> bool:
     s = str(x)
-    assert len(s) == 2
+    assert len(s) == 2, f"x={x}"
     n = ord(s[1])
     return num0 <= n and n <= num9
 
@@ -416,7 +416,8 @@ class ThornFunction:
                 rhs2 = self.tdef.do_subs(rhs2, inds, self.tdef.subs)
                 self._add_eqn2(lhs2, rhs2)
             if count == 0:
-                for ind in cast(Tuple[Idx], lhs.args):
+                # TODO: Understand what's going on with arg 0
+                for ind in cast(Tuple[Idx], lhs.args[1:]):
                     assert is_numeric_index(ind)
                 lhs2 = cast(Symbol, self.tdef.do_subs(lhs, self.tdef.subs))
                 rhs2 = self.tdef.do_subs(rhs, self.tdef.subs)
@@ -594,7 +595,7 @@ class ThornDef:
     #    return self.do_subs(expand_contracted_indices(arg, self.symmetries), self.subs)
 
     def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
-        for i in range(200):
+        for i in range(20):
             new_arg = arg
             new_arg = expand_contracted_indices(new_arg, self.symmetries)
             new_arg = cast(Expr, self.symmetries.apply(new_arg))
