@@ -65,7 +65,7 @@ fun.add_eqn(v_t, u)
 fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
 print('*** ThornFunction wave_evo:')
 
-fun.bake(do_cse=False)
+fun.bake()
 
 # Dump
 fun.dump()

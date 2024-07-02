@@ -140,9 +140,17 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:
-        equations = '\n'.join([f'{lhs} = {self.visit(rhs)};' for lhs, rhs in n.equations.items()])
         preceding = '\n'.join(visit_each(self, n.preceding))
         succeeding = '\n'.join(visit_each(self, n.succeeding))
+
+        equations_list = list()
+        for lhs, rhs in n.equations.items():
+            if lhs in n.temporaries:
+                equations_list.append(f'const auto {lhs} = {self.visit(rhs)};')
+            else:
+                equations_list.append(f'{lhs} = {self.visit(rhs)};')
+
+        equations = '\n'.join(equations_list)
 
         if len(preceding) > 0:
             preceding = '\n' + preceding

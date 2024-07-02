@@ -42,6 +42,7 @@ class EqnList:
         # TODO: need a better default
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.thorn_def: "dsl.use_indices.ThornDef" = thorn_def
+        self.temporaries: Set[Math] = OrderedSet()
 
     def add_param(self, lhs: Symbol) -> None:
         assert lhs not in self.outputs, f"The symbol '{lhs}' is alredy in outputs"
@@ -66,7 +67,6 @@ class EqnList:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
         needed: Set[Math] = OrderedSet()
         complete: Dict[Math, int] = dict()
-        temps: Set[Math] = OrderedSet()
         self.order = list()
 
         read: Set[Math] = OrderedSet()
@@ -130,21 +130,21 @@ class EqnList:
 
         for k in written:
             if k not in self.outputs:
-                temps.add(k)
+                self.temporaries.add(k)
 
         for k in read:
             if k not in self.inputs and k not in self.params:
-                temps.add(k)
+                self.temporaries.add(k)
 
         if self.verbose:
-            print(colorize("Temps:", "green"), temps)
+            print(colorize("Temps:", "green"), self.temporaries)
 
-        for k in temps:
+        for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
             assert k in written, f"Temporary variable '{k}' is never written"
 
         for k in read:
-            assert k in self.inputs or self.params or temps, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
+            assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
         for k in self.outputs:
             # The outputs are all needed
@@ -227,11 +227,11 @@ class EqnList:
                         spec = IntentRegion.Interior
                         break
                 self.write_decls[var] = spec
-            elif var in temps and var in self.write_decls and var not in self.read_decls:
+            elif var in self.temporaries and var in self.write_decls and var not in self.read_decls:
                 # temporaries don't really have reads/writes, we figure out
                 # what they would be just to connect the reads/writes of the inputs/outputs.
                 self.read_decls[var] = self.write_decls[var]
-            elif var in temps and var not in self.write_decls:
+            elif var in self.temporaries and var not in self.write_decls:
                 if default_write_spec is None:
                     default_write_spec = IntentRegion.Everywhere
                 spec = default_write_spec

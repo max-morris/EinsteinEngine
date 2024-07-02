@@ -185,6 +185,7 @@ class CarpetXGridLoopLambda(Expr):
     preceding: Sequence[CodeElem]
     equations: Dict[str, SympyExpr]
     succeeding: Sequence[CodeElem]
+    temporaries: Sequence[str]
 
 
 @dataclass

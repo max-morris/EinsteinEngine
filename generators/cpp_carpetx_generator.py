@@ -1,4 +1,5 @@
 import typing
+from collections import OrderedDict
 
 from dsl.use_indices import ThornDef, ThornFunction, ScheduleBin
 from emit.ccl.interface.interface_tree import *
@@ -22,8 +23,8 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     # TODO: We want to be able to
-    # specify a header file with thes
-    # or alternate defs.
+    #  specify a header file with these
+    #  or alternate defs.
     boilerplate_div_macros: str = """
         #define CARPETX_GF3D5
         #define access(GF) (GF(GF ## _layout, p.I))
@@ -214,6 +215,8 @@ class CppCarpetXGenerator(CactusGenerator):
         thorn_fn: ThornFunction = self.thorn_def.thorn_functions[which_fn]
         fn_name: str = thorn_fn.name
 
+        assert thorn_fn.been_baked
+
         # div{x,y,z} macros
         nodes.append(Verbatim(self.boilerplate_div_macros))
 
@@ -308,6 +311,13 @@ class CppCarpetXGenerator(CactusGenerator):
         def lhs_substitution(s: str) -> str:
             return f'access({s})' if s in self.var_names else s
 
+        # Prepare the equations. They need to be in the right order, and some LHSs need to be wrapped in access()
+        eqn_list = thorn_fn.eqn_list
+        eqns = OrderedDict(
+            [(lhs_substitution(str(lhs)), SympyExpr(rhs)) for lhs, rhs in
+             sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0]))]
+        )
+
         # Build the function decl and its body.
         nodes.append(
             ThornFunctionDecl(
@@ -318,10 +328,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,
-                     CarpetXGridLoopLambda(
-                         xyz_decls,
-                         {lhs_substitution(str(lhs)): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqn_list.eqns.items()},
-                         []),
+                     CarpetXGridLoopLambda(xyz_decls, eqns, [], [str(lhs) for lhs in eqn_list.eqns.keys() if lhs in thorn_fn.eqn_list.temporaries]),
                  )]
             )
         )
