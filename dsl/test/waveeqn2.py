@@ -23,7 +23,9 @@ cfu.verbose = True
 def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
     i = to_num(ni)
     j = to_num(nj)
-    if i == j:
+    if i == 2 or j == 2:
+        return sympify(0)
+    elif i == j:
         return sympify(1)
     else:
         return sympify(0)
@@ -55,27 +57,12 @@ ky = gf.add_param("ky", default=pi / 20, desc="The wave number in the y-directio
 gf.fill_in(g[li, lj], flat_metric)
 gf.fill_in(g[ui, uj], flat_metric)
 
-# Fill in the deriv variables with a function call
-#
-div2 = gf.declfun("div2", True)
-divxx = gf.declfun("divxx", True)
-divyy = gf.declfun("divyy", True)
-divzz = gf.declfun("divzz", True)
-
-def to_div2(out: Expr, i: Idx, j: Idx) -> Expr:
-    n = to_num(j) # l0 -> 0
-    arg = out.args[0] # div(v, i, j) -> v
-    ret : Any = [divxx(arg), divyy(arg), sympify(0)][n]
-    return cast(Expr, ret)
-
-gf.fill_in(siter2[li, lj], alt=div2(v, li, lj), f=to_div2)
-
 x, y, z = gf.coords()
 
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
-fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div2(v, li, lj))
+fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
 print('*** ThornFunction wave_evo:')
 
 # Ensure the equations make sense

@@ -368,13 +368,48 @@ class Param:
 
 
 ####
+# Generic derivatives
+div = mkFunction("div")
+
+# First derivatives
+for i in range(3):
+    divnm = "div"+"xyz"[i]
+    globals()[divnm] = mkFunction(divnm)
+
+# Second derivatives
+for i in range(3):
+    for j in range(i,3):
+        divnm = "div"+"xyz"[i]+"xyz"[j]
+        globals()[divnm] = mkFunction(divnm)
+
+def to_div(out: Expr) -> Expr:
+    nm = "div"
+    for k in out.args[1:]:
+        nm += "xyz"[to_num(k)]
+    divnn = mkFunction(nm)
+    arg = out.args[0] # div(v, i, j) -> v
+    return cast(Expr, divnn(arg))
+
+class ApplyDiv(Applier):
+    def __init__(self):
+        self.val = None
+    def m(self, expr):
+        if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+            self.val = to_div(expr)
+            return True
+        else:
+            self.val = None
+            return False
+    def r(self, expr):
+        return self.val
+    def apply(self, arg):
+        return arg.replace(self.m, self.r)
+
 # TODO: This really shouldn't be visible
-div1 = mkFunction("div1")
 val = mkSymbol("val")
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
-
 
 class ScheduleBin(ScheduleBinEnum):
     Evolve = auto(), 'Evolve', False
@@ -468,9 +503,19 @@ class ThornDef:
         self.props: Dict[str, List[Integer]] = dict()
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
-        self.is_stencil: Dict[UFunc, bool] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs : Dict[str,Math] = dict()
+        self.is_stencil: Dict[UFunc, bool] = {
+            mkFunction("divx"):True,
+            mkFunction("divxx"):True,
+            mkFunction("divy"):True,
+            mkFunction("divxy"):True,
+            mkFunction("divyy"):True,
+            mkFunction("divz"):True,
+            mkFunction("divxz"):True,
+            mkFunction("divyz"):True,
+            mkFunction("divzz"):True
+        }
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
@@ -595,10 +640,12 @@ class ThornDef:
     #    return self.do_subs(expand_contracted_indices(arg, self.symmetries), self.subs)
 
     def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
+        divs = ApplyDiv()
         for i in range(20):
             new_arg = arg
             new_arg = expand_contracted_indices(new_arg, self.symmetries)
             new_arg = cast(Expr, self.symmetries.apply(new_arg))
+            new_arg = cast(Expr, divs.apply(new_arg))
             new_arg = do_subs(new_arg, self.subs, *subs)
             if new_arg == arg:
                 return arg
