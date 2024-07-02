@@ -24,8 +24,17 @@ class CppVisitor(Visitor[CodeNode]):
 
     def __init__(self, generator: CactusGenerator) -> None:
         self.generator = generator
+
+        stencil_fns = [str(fn) for fn, fn_is_stencil in generator.thorn_def.is_stencil.items() if fn_is_stencil]
+
+        def substitution_fn(f: str, in_stencil_args: bool) -> str:
+            if not in_stencil_args and f in self.generator.var_names:
+                return f'access({f})'
+            return f
+
         self.sympy_visitor = SympyExprVisitor(
-            lambda s, in_div: f'access({s})' if not in_div and s in self.generator.var_names else s
+            stencil_fns=stencil_fns,
+            substitution_fn=substitution_fn
         )
 
     @multimethod

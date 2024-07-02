@@ -69,7 +69,6 @@ class ThornWizard(ABC, Generic[G, CV]):
 
         print('== configuration.ccl ==')
         configuration_ccl = """
-        # Configuration definitions for thorn WaveToyNRPy
         REQUIRES Arith Loop
             """.strip()
         # print(configuration_ccl)

@@ -25,11 +25,11 @@ class CactusGenerator(ABC):
         self.var_names = OrderedSet()
 
         for tf in self.thorn_def.thorn_functions.values():
-            for iv in tf.eqnlist.inputs:
+            for iv in tf.eqn_list.inputs:
                 var_name = str(iv)
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
-            for ov in tf.eqnlist.outputs:
+            for ov in tf.eqn_list.outputs:
                 var_name = str(ov)
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)

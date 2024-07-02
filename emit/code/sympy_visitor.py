@@ -11,14 +11,13 @@ from emit.tree import *
 
 class SympyExprVisitor:
     substitution_fn: Callable[[str, bool], str]
-    inside_div: bool
+    visiting_stencil_fn_args: bool
+    stencil_fns: List[str]
 
-    # TODO: Get these funs from eqnlist
-    div_fns: List[str] = [f'div{s}' for s in ['x', 'y', 'z', 'xx', 'yy', 'zz']] + ["stencil"]
-
-    def __init__(self, substitution_fn: Optional[Callable[[str, bool], str]] = None):
+    def __init__(self, *, stencil_fns: Optional[List[str]] = None, substitution_fn: Optional[Callable[[str, bool], str]] = None):
         self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
-        self.inside_div = False
+        self.stencil_fns = stencil_fns if stencil_fns is not None else list()
+        self.visiting_stencil_fn_args = False
 
     @multimethod
     def visit(self, expr: sy.Basic) -> Expr:
@@ -40,7 +39,7 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.Symbol) -> Expr:
         assert len(expr.args) == 0
-        return IdExpr(Identifier(self.substitution_fn(expr.name, self.inside_div)))
+        return IdExpr(Identifier(self.substitution_fn(expr.name, self.visiting_stencil_fn_args)))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
@@ -53,10 +52,10 @@ class SympyExprVisitor:
         arg_list: list[Expr]
 
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
-            if expr.func.name in self.div_fns:  # type: ignore[attr-defined]
-                self.inside_div = True
+            if expr.func.name in self.stencil_fns:  # type: ignore[attr-defined]
+                self.visiting_stencil_fn_args = True
             arg_list = [self.visit(a) for a in expr.args]
-            self.inside_div = False
+            self.visiting_stencil_fn_args = False
             return FunctionCall(Identifier(expr.func.name), arg_list, [])  # type: ignore[attr-defined]
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)

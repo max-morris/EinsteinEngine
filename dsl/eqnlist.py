@@ -6,10 +6,13 @@ from sympy import symbols, Function, diff, IndexedBase
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
+
+import dsl.use_indices
 from util import OrderedSet
 
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
+
 
 class EqnList:
     """
@@ -27,21 +30,18 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self, is_stencil: Dict[UFunc, bool], params: Set[Math]) -> None:
+    def __init__(self, thorn_def: "dsl.use_indices.ThornDef") -> None:
         self.eqns: Dict[Math, Expr] = dict()
         self.params: Set[Math] = OrderedSet()
         self.inputs: Set[Math] = OrderedSet()
         self.outputs: Set[Math] = OrderedSet()
         self.order: List[Math] = list()
         self.verbose = True
-        self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.read_decls: Dict[Math, IntentRegion] = dict()
         self.write_decls: Dict[Math, IntentRegion] = dict()
         # TODO: need a better default
-        self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere #Interior
-
-    def add_func(self, fun: UFunc, is_stencil: bool) -> None:
-        self.is_stencil[fun] = is_stencil
+        self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
+        self.thorn_def: "dsl.use_indices.ThornDef" = thorn_def
 
     def add_param(self, lhs: Symbol) -> None:
         assert lhs not in self.outputs, f"The symbol '{lhs}' is alredy in outputs"
@@ -79,7 +79,7 @@ class EqnList:
 
         def ftrace(sym: Symbol) -> bool:
             if sym.is_Function:
-                if self.is_stencil.get(sym.func, False):
+                if self.thorn_def.is_stencil.get(sym.func, False):
                     for arg in sym.args:
                         sym2 = cast(Symbol, arg)
                         self.read_decls[sym2] = IntentRegion.Everywhere
@@ -210,7 +210,7 @@ class EqnList:
                 default_write_spec = val
 
         # Figure out the rest of the READ/WRITEs
-        spec : IntentRegion
+        spec: IntentRegion
         for var in self.order:
             if var in self.inputs and var not in self.read_decls:
                 if default_read_spec is None:
@@ -315,9 +315,9 @@ if __name__ == "__main__":
     a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")
     try:
         div = mkFunction("div")
-        el = EqnList(dict(), OrderedSet())
+        el = EqnList(dsl.use_indices.ThornDef('Foo', 'Bar'))
         el.default_read_write_spec = IntentRegion.Interior
-        el.add_func(div, True)
+        # el.add_func(div, True)
         el.add_input(a)
         el.add_eqn(c, sympify(3))
         el.add_eqn(b, 2 * c + sympify(8))
@@ -332,14 +332,14 @@ if __name__ == "__main__":
         assert el.write_decls[c] == IntentRegion.Everywhere
 
         el.default_read_write_spec = IntentRegion.Everywhere
-        el.add_func(div, True)
+        # el.add_func(div, True)
         el.diagnose()
         assert el.read_decls[a] == IntentRegion.Everywhere
         assert el.write_decls[d] == IntentRegion.Interior
         assert el.write_decls[c] == IntentRegion.Everywhere
 
         el.default_read_write_spec = IntentRegion.Everywhere
-        el.add_func(div, False)
+        # el.add_func(div, False)
         el.diagnose()
         assert el.read_decls[a] == IntentRegion.Everywhere
         assert el.write_decls[d] == IntentRegion.Everywhere
@@ -349,7 +349,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), OrderedSet())
+        el = EqnList(dsl.use_indices.ThornDef('Foo', 'Bar'))
         el.add_eqn(r, q)  # cycle
         el.add_eqn(q, r)  # cycle
         el.add_eqn(a, r)
@@ -361,7 +361,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), OrderedSet())
+        el = EqnList(dsl.use_indices.ThornDef('Foo', 'Bar'))
         el.add_input(a)
         el.add_input(f)
         el.add_input(b)
@@ -377,7 +377,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), OrderedSet())
+        el = EqnList(dsl.use_indices.ThornDef('Foo', 'Bar'))
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)
@@ -390,7 +390,7 @@ if __name__ == "__main__":
         print()
 
     try:
-        el = EqnList(dict(), OrderedSet())
+        el = EqnList(dsl.use_indices.ThornDef('Foo', 'Bar'))
         el.add_input(a)
         el.add_input(f)
         el.add_output(d)

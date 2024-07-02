@@ -77,15 +77,15 @@ class CppCarpetXGenerator(CactusGenerator):
             reads: list[Intent] = list()
             writes: list[Intent] = list()
 
-            for var, spec in fn.eqnlist.read_decls.items():
-                if var in fn.eqnlist.inputs and (var_name := str(var)) not in self.vars_to_ignore:
+            for var, spec in fn.eqn_list.read_decls.items():
+                if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
                     reads.append(Intent(
                         name=Identifier(var_name),
                         region=spec
                     ))
 
-            for var, spec in fn.eqnlist.write_decls.items():
-                if var in fn.eqnlist.outputs and (var_name := str(var)) not in self.vars_to_ignore:
+            for var, spec in fn.eqn_list.write_decls.items():
+                if var in fn.eqn_list.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     writes.append(Intent(
                         # TODO: This is so that regrid_error -> CarpetX::regrid_error. We may want to do this in a
                         #  better way if more such cases arise.
@@ -271,7 +271,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
-        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqnlist.outputs if str(var) in self.var_names}
+        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqn_list.outputs if str(var) in self.var_names}
 
         if None in output_centerings or len(output_centerings) == 0:
             raise GeneratorException(f"All output vars must have a centering: {thorn_fn.name} {output_centerings}")
@@ -283,14 +283,14 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centering: Centering
         [output_centering] = output_centerings
 
-        output_regions = {spec for var, spec in thorn_fn.eqnlist.write_decls.items() if str(var) in self.var_names}
+        output_regions = {spec for var, spec in thorn_fn.eqn_list.write_decls.items() if str(var) in self.var_names}
 
         if None in output_regions or len(output_regions) == 0:
             raise GeneratorException(f"All output vars must have a write region.")
 
         if len(output_regions) > 1:
             raise GeneratorException(
-                f"Output vars have mixed write regions: {list(thorn_fn.eqnlist.write_decls.items())}"
+                f"Output vars have mixed write regions: {list(thorn_fn.eqn_list.write_decls.items())}"
             )
 
         output_region: IntentRegion
@@ -316,7 +316,7 @@ class CppCarpetXGenerator(CactusGenerator):
                      output_region,
                      CarpetXGridLoopLambda(
                          xyz_decls,
-                         {lhs_substitution(str(lhs)): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqnlist.eqns.items()},
+                         {lhs_substitution(str(lhs)): SympyExpr(rhs) for lhs, rhs in thorn_fn.eqn_list.eqns.items()},
                          []),
                  )]
             )

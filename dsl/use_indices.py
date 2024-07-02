@@ -18,6 +18,7 @@ from util import ReprEnum, OrderedSet, ScheduleBinEnum
 
 lookup_pair = dict()
 
+
 def mkPair(s: str) -> Tuple[Idx, Idx]:
     assert len(s)
     u, l = mkIdxs(f"u{s} l{s}")
@@ -373,26 +374,29 @@ div = mkFunction("div")
 
 # First derivatives
 for i in range(3):
-    divnm = "div"+"xyz"[i]
+    divnm = "div" + "xyz"[i]
     globals()[divnm] = mkFunction(divnm)
 
 # Second derivatives
 for i in range(3):
-    for j in range(i,3):
-        divnm = "div"+"xyz"[i]+"xyz"[j]
+    for j in range(i, 3):
+        divnm = "div" + "xyz"[i] + "xyz"[j]
         globals()[divnm] = mkFunction(divnm)
+
 
 def to_div(out: Expr) -> Expr:
     nm = "div"
     for k in out.args[1:]:
         nm += "xyz"[to_num(k)]
     divnn = mkFunction(nm)
-    arg = out.args[0] # div(v, i, j) -> v
+    arg = out.args[0]  # div(v, i, j) -> v
     return cast(Expr, divnn(arg))
+
 
 class ApplyDiv(Applier):
     def __init__(self):
         self.val = None
+
     def m(self, expr):
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             self.val = to_div(expr)
@@ -400,16 +404,20 @@ class ApplyDiv(Applier):
         else:
             self.val = None
             return False
+
     def r(self, expr):
         return self.val
+
     def apply(self, arg):
         return arg.replace(self.m, self.r)
+
 
 # TODO: This really shouldn't be visible
 val = mkSymbol("val")
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
+
 
 class ScheduleBin(ScheduleBinEnum):
     Evolve = auto(), 'Evolve', False
@@ -419,67 +427,66 @@ class ScheduleBin(ScheduleBinEnum):
 
 
 class ThornFunction:
-    def __init__(self, name: str, schedule_bin: ScheduleBin, tdef: "ThornDef") -> None:
+    def __init__(self, name: str, schedule_bin: ScheduleBin, thorn_def: "ThornDef") -> None:
         self.schedule_bin = schedule_bin
         self.name = name
-        plist: Set[Math] = {mkSymbol(p) for p in tdef.params.keys()}
-        self.eqnlist: EqnList = EqnList(tdef.is_stencil, plist)
-        self.tdef = tdef
+        self.thorn_def = thorn_def
+        self.eqn_list: EqnList = EqnList(thorn_def)
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
-        rhs2 = self.tdef.do_subs(expand_contracted_indices(rhs2, self.tdef.symmetries))
-        if str(lhs2) in self.tdef.gfs:
-            self.eqnlist.add_output(lhs2)
+        rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
+        if str(lhs2) in self.thorn_def.gfs:
+            self.eqn_list.add_output(lhs2)
         for item in finder(rhs2):
-            if str(item) in self.tdef.gfs:
+            if str(item) in self.thorn_def.gfs:
                 # assert item.is_Symbol
-                self.eqnlist.add_input(cast(Symbol, item))
-            elif str(item) in self.tdef.params:
+                self.eqn_list.add_input(cast(Symbol, item))
+            elif str(item) in self.thorn_def.params:
                 assert item.is_Symbol
-                self.eqnlist.add_param(cast(Symbol, item))
-        self.eqnlist.add_eqn(lhs2, rhs2)
+                self.eqn_list.add_param(cast(Symbol, item))
+        self.eqn_list.add_eqn(lhs2, rhs2)
 
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Expr) -> None:
         lhs2: Symbol
         if type(lhs) == Indexed:
             count = 0
-            for tup in expand_free_indices(lhs, self.tdef.symmetries):
+            for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
                 count += 1
                 lhsx, inds = tup
-                lhs2 = cast(Symbol, self.tdef.do_subs(lhsx, self.tdef.subs))
-                rhs2 = self.tdef.do_subs(rhs, inds, self.tdef.subs)
-                rhs2 = self.tdef.do_subs(rhs2, inds, self.tdef.subs)
+                lhs2 = cast(Symbol, self.thorn_def.do_subs(lhsx, self.thorn_def.subs))
+                rhs2 = self.thorn_def.do_subs(rhs, inds, self.thorn_def.subs)
+                rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
                 self._add_eqn2(lhs2, rhs2)
             if count == 0:
                 # TODO: Understand what's going on with arg 0
                 for ind in cast(Tuple[Idx], lhs.args[1:]):
                     assert is_numeric_index(ind)
-                lhs2 = cast(Symbol, self.tdef.do_subs(lhs, self.tdef.subs))
-                rhs2 = self.tdef.do_subs(rhs, self.tdef.subs)
+                lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+                rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
                 self._add_eqn2(lhs2, rhs2)
         elif type(lhs) in [IndexedBase, Symbol]:
-            lhs2 = cast(Symbol, self.tdef.do_subs(lhs, self.tdef.subs))
-            eci = expand_contracted_indices(rhs, self.tdef.symmetries)
-            rhs2 = self.tdef.do_subs(eci, self.tdef.subs)
+            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+            eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
+            rhs2 = self.thorn_def.do_subs(eci, self.thorn_def.subs)
             self._add_eqn2(lhs2, rhs2)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
 
     def cse(self) -> None:
-        self.eqnlist.cse()
+        self.eqn_list.cse()
 
     def dump(self) -> None:
-        self.eqnlist.dump()
+        self.eqn_list.dump()
 
     def diagnose(self) -> None:
-        self.eqnlist.diagnose()
+        self.eqn_list.diagnose()
 
     def show_tensortypes(self) -> None:
         keys: Set[str] = OrderedSet()
-        for k1 in self.eqnlist.inputs:
+        for k1 in self.eqn_list.inputs:
             keys.add(str(k1))
-        for k2 in self.eqnlist.outputs:
+        for k2 in self.eqn_list.outputs:
             keys.add(str(k2))
         for k in keys:
             group, indices, members = self.get_tensortype(k)
@@ -487,7 +494,7 @@ class ThornFunction:
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
-        return self.tdef.get_tensortype(item)
+        return self.thorn_def.get_tensortype(item)
 
 
 class ThornDef:
@@ -504,17 +511,17 @@ class ThornDef:
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
-        self.rhs : Dict[str,Math] = dict()
+        self.rhs: Dict[str, Math] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
-            mkFunction("divx"):True,
-            mkFunction("divxx"):True,
-            mkFunction("divy"):True,
-            mkFunction("divxy"):True,
-            mkFunction("divyy"):True,
-            mkFunction("divz"):True,
-            mkFunction("divxz"):True,
-            mkFunction("divyz"):True,
-            mkFunction("divzz"):True
+            mkFunction("divx"): True,
+            mkFunction("divxx"): True,
+            mkFunction("divy"): True,
+            mkFunction("divxy"): True,
+            mkFunction("divyy"): True,
+            mkFunction("divz"): True,
+            mkFunction("divxz"): True,
+            mkFunction("divyz"): True,
+            mkFunction("divzz"): True
         }
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
@@ -583,7 +590,8 @@ class ThornDef:
         # Note that x, y, and z are special symbols
         return (self.declscalar("x"), self.declscalar("y"), self.declscalar("z"))
 
-    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, rhs : Optional[Math] = None) -> IndexedBase:
+    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, *,
+             rhs: Optional[Math] = None) -> IndexedBase:
         if rhs is not None:
             self.rhs[basename] = rhs
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
