@@ -432,6 +432,7 @@ class ThornFunction:
         self.name = name
         self.thorn_def = thorn_def
         self.eqn_list: EqnList = EqnList(thorn_def)
+        self.been_baked: bool = False
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
@@ -447,6 +448,9 @@ class ThornFunction:
         self.eqn_list.add_eqn(lhs2, rhs2)
 
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Expr) -> None:
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
         lhs2: Symbol
         if type(lhs) == Indexed:
             count = 0
@@ -481,6 +485,16 @@ class ThornFunction:
 
     def diagnose(self) -> None:
         self.eqn_list.diagnose()
+
+    def bake(self, *, do_cse: bool = True):
+        if self.been_baked:
+            raise Exception("bake should not be called more than once")
+
+        if do_cse:
+            self.cse()
+        self.diagnose()
+
+        self.been_baked = True
 
     def show_tensortypes(self) -> None:
         keys: Set[str] = OrderedSet()

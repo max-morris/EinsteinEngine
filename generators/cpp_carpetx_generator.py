@@ -40,6 +40,10 @@ class CppCarpetXGenerator(CactusGenerator):
     def __init__(self, thorn_def: ThornDef) -> None:
         super().__init__(thorn_def)
 
+        unbaked_fns = {name for name, fn in thorn_def.thorn_functions.items() if not fn.been_baked}
+        if len(unbaked_fns) > 0:
+            raise GeneratorException(f"One or more functions have not been baked. Namely: {unbaked_fns}")
+
     def get_src_file_name(self, which_fn: str) -> str:
         assert which_fn in self.thorn_def.thorn_functions
 

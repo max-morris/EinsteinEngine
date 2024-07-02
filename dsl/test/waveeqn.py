@@ -65,12 +65,7 @@ fun.add_eqn(v_t, u)
 fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
 print('*** ThornFunction wave_evo:')
 
-# Ensure the equations make sense
-fun.diagnose()
-
-# Perform cse
-#fun.cse()
-#fun.diagnose()
+fun.bake(do_cse=False)
 
 # Dump
 fun.dump()
@@ -83,15 +78,13 @@ fun = gf.create_function("newwave_init", ScheduleBin.Init)
 fun.add_eqn(v, sin(kx * x) * sin(ky * y))
 fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
 print('*** ThornFunction wave_init:')
-fun.diagnose()
-fun.cse()
-fun.diagnose()
+fun.bake()
 fun.dump()
 fun.show_tensortypes()
 
 fun = gf.create_function("refine", ScheduleBin.EstimateError)
 regrid_error = gf.decl("regrid_error", [], Centering.CCC)
 fun.add_eqn(regrid_error, 10/((x-20)**2 + (y-20)**2))
-fun.diagnose()
+fun.bake(do_cse=False)
 
 CppCarpetXWizard(gf).generate_thorn()
