@@ -36,7 +36,7 @@ gf = ThornDef("TestWave", "WaveEqn")
 
 # Declare gfs
 v_t = gf.decl("v_t", [li], Centering.VVC)
-v = gf.decl("v", [li], Centering.VVC, rhs=v_t)
+v = gf.decl("v", [], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
 u = gf.decl("u", [], Centering.VVC, rhs=u_t)
 
@@ -69,7 +69,8 @@ print('*** ThornFunction wave_evo:')
 fun.diagnose()
 
 # Perform cse
-# fun.cse()
+#fun.cse()
+#fun.diagnose()
 
 # Dump
 fun.dump()
