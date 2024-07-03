@@ -12,7 +12,7 @@ from generators.wizards import CppCarpetXWizard
 gf = ThornDef("TestRicci", "Ricci")
 
 # Declare gfs
-g = gf.decl("metric_lower", [li, lj], Centering.VVC)
+g = gf.decl("g", [li, lj], Centering.VVC)
 G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
 Ric = gf.decl("Ric", [la, lb], Centering.VVC)
 iter3 = gf.decl("iter3", [la, lb, lc], Centering.VVC)
@@ -23,33 +23,27 @@ gf.add_sym(G[ua, lb, lc], lb, lc)
 gf.add_sym(iter3[ua, lb, lc], lb, lc)
 gf.add_sym(iter4[la, lb, lc, ld], la, lb)
 
-div1 = gf.declfun("div1", True)
-
-# Need to automate these
-gf.fill_in(g[la, lb], lambda _, i, j: mkSymbol(f"gDD{to_num(i)}{to_num(j)}"))
-gf.fill_in(iter3[lc, la, lb], alt=div1(g[la, lb], lc),
-           f=lambda _, a, b, c: mkSymbol(f"gDD{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
-gf.fill_in(g[ua, ub], lambda _, i, j: mkSymbol(f"gUU{to_num(i)}{to_num(j)}"))
-gf.fill_in(iter3[lc, ua, ub], alt=div1(g[ua, ub], lc),
-           f=lambda _, a, b, c: mkSymbol(f"gUU{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
-gf.fill_in(G[la, lb, lc], lambda _, a, b, c: mkSymbol(f"affDDD{to_num(a)}{to_num(b)}{to_num(c)}"))
-gf.fill_in(G[ua, lb, lc], lambda _, a, b, c: mkSymbol(f"affUDD{to_num(a)}{to_num(b)}{to_num(c)}"))
-gf.fill_in(Ric[la, lb], lambda _, a, b: mkSymbol(f"RicDD{to_num(a)}{to_num(b)}"))
-gf.fill_in(iter4[la, lb, lc, ud], alt=div1(G[ud, la, lb], lc),
-           f=lambda _, a, b, c, d: mkSymbol(f"affUDD{to_num(d)}{to_num(a)}{to_num(b)}_dD{to_num(c)}"))
+gf.fill_in(g[la, lb])
+gf.fill_in(iter3[lc, la, lb], alt=div(g[la, lb], lc))
+gf.fill_in(g[ua, ub])
+gf.fill_in(iter3[lc, ua, ub], alt=div(g[ua, ub], lc))
+gf.fill_in(G[la, lb, lc])
+gf.fill_in(G[ua, lb, lc])
+gf.fill_in(Ric[la, lb])
+gf.fill_in(iter4[la, lb, lc, ud], alt=div(G[ud, la, lb], lc))
 
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
-fun.add_eqn(G[la, lb, lc], div1(g[lb, lc], la) + div1(g[la, lc], lb) - div1(g[la, lb], lc))
+fun.add_eqn(G[la, lb, lc], div(g[lb, lc], la) + div(g[la, lc], lb) - div(g[la, lb], lc))
 fun2 = gf.create_function("setGU", ScheduleBin.Analysis)
 fun2.add_eqn(G[ua, lb, lc], g[ua, ud] * G[ld, lb, lc])
 fun3 = gf.create_function("setRic", ScheduleBin.Analysis)
 fun3.add_eqn(Ric[li, lj],
-             div1(G[ua, li, lj], la) - div1(G[ua, la, li], lj) + G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[
-                 ub, la, lj])
+             div(G[ua, li, lj], la) - div(G[ua, la, li], lj) + 
+             G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
 # Ensure the equations make sense
-fun.diagnose()
-fun2.diagnose()
-fun3.diagnose()
+fun.bake()
+fun2.bake()
+fun3.bake()
 
 CppCarpetXWizard(gf).generate_thorn()

@@ -270,7 +270,21 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
     return output
 
 
-def mksymbol_for_tensor(out: Indexed) -> Symbol:
+def _mksymbol_for_tensor(sym, *args):
+    newstr = str(sym.base)
+    for ind in sym.args[1:]:
+        if is_lower(ind):
+            newstr += "D"
+        elif is_upper(ind):
+            newstr += "U"
+        else:
+            assert False
+    for ind in sym.args[1:]:
+        newstr += str(to_num(ind))
+    return newstr
+
+
+def mksymbol_for_tensor(sym: Indexed) -> Symbol:
     """
     Define a symbol for a tensor using standard NRPy+ rules.
     For an upper index put a U, for a lower index put a D.
@@ -281,17 +295,20 @@ def mksymbol_for_tensor(out: Indexed) -> Symbol:
 
     :return: a new sympy symbol
     """
-    base: str = str(out.args[0])
-    for i in out.args[1:]:
-        assert type(i) == Idx
-        if is_upper(i):
-            base += "U"
-        else:
-            base += "D"
-    for i in out.args[1:]:
-        assert type(i) == Idx
-        base += str(get_numeric_index_value(i))
-    return mkSymbol(base)
+    if sym.is_Function and hasattr(sym, "name") and sym.name == "div":
+        newstr = _mksymbol_for_tensor(sym.args[0]) + "_d"
+        for ind in sym.args[1:]:
+            if is_lower(ind):
+                newstr += "D"
+            elif is_upper(ind):
+                newstr += "U"
+            else:
+                assert False
+        for ind in sym.args[1:]:
+            newstr += str(to_num(ind))
+        return mkSymbol(newstr)
+    else:
+        return mkSymbol(_mksymbol_for_tensor(sym))
 
 
 # It's horrible that Python can't let me type this any other way
@@ -399,6 +416,10 @@ class ApplyDiv(Applier):
 
     def m(self, expr):
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+            for arg in expr.args[1:]:
+                if not is_numeric_index(arg):
+                    self.val = None
+                    return False
             self.val = to_div(expr)
             return True
         else:
@@ -631,7 +652,7 @@ class ThornDef:
             if alt is None:
                 subj = out
             else:
-                subj = self.do_subs(alt, indrep)
+                subj = do_subs(alt, indrep)
             subval_ = f(subj, *inds)
 
             if subval_.is_Number:
