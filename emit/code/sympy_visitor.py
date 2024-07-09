@@ -52,11 +52,12 @@ class SympyExprVisitor:
         arg_list: list[Expr]
 
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
-            if expr.func.name in self.stencil_fns:  # type: ignore[attr-defined]
+            assert hasattr(expr.func, 'name')
+            if expr.func.name in self.stencil_fns:
                 self.visiting_stencil_fn_args = True
             arg_list = [self.visit(a) for a in expr.args]
             self.visiting_stencil_fn_args = False
-            return FunctionCall(Identifier(expr.func.name), arg_list, [])  # type: ignore[attr-defined]
+            return FunctionCall(Identifier(expr.func.name), arg_list, [])
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
         fn_type: StandardizedFunctionCallType
