@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import TypeVar, Literal, List, Dict, Union, Tuple, Any, Set, Generic, Iterator, Optional, Type, cast, Any
 
 from sympy.core.symbol import Symbol
@@ -43,6 +44,10 @@ class EqnList:
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.thorn_def: "dsl.use_indices.ThornDef" = thorn_def
         self.temporaries: Set[Math] = OrderedSet()
+
+    @cached_property
+    def variables(self):
+        return self.inputs | self.outputs | self.temporaries
 
     def add_param(self, lhs: Symbol) -> None:
         assert lhs not in self.outputs, f"The symbol '{lhs}' is alredy in outputs"

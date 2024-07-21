@@ -237,7 +237,15 @@ class CppCarpetXGenerator(CactusGenerator):
         declared_layouts: set[Centering] = set()
         var_centerings: dict[str, Centering] = dict()
 
+        used_var_names = [str(v) for v in thorn_fn.eqn_list.variables]
+
+        # This loop builds the centering decls for each used var
         for var_name in self.var_names:
+
+            # If a var is not used in this function, skip it
+            if var_name not in used_var_names:
+                continue
+
             var_centering: Optional[Centering]
 
             # Try looking up the var's centering directly...
