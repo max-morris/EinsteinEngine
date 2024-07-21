@@ -87,3 +87,9 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.core.numbers.Integer) -> Expr:
         return IntLiteralExpr(expr.p)
+
+    @visit.register
+    def _(self, expr: sy.core.numbers.Rational) -> Expr:
+        # TODO: May need to do something extra to avoid
+        #  floor division in c++
+        return BinOpExpr(expr.p, Operator.Div, expr.q)

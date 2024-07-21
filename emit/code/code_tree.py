@@ -51,6 +51,7 @@ class Operator(ReprEnum):
     Add = auto(), "+"
     Mul = auto(), "*"
     Pow = auto(), "^"
+    Div = auto(), "/"
 
 
 @dataclass
