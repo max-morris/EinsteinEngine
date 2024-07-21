@@ -306,6 +306,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # x, y, and z are special
         xyz_decls = [
             ConstAssignDecl(Identifier('auto&'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
+            if s in [str(i) for i in thorn_fn.eqn_list.inputs]
         ]
 
         def lhs_substitution(s: str) -> str:
