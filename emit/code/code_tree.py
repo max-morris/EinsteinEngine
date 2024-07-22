@@ -43,6 +43,11 @@ class IntLiteralExpr(Expr):
 
 
 @dataclass
+class FloatLiteralExpr(Expr):
+    fl: float
+
+
+@dataclass
 class VerbatimExpr(Expr):
     v: Verbatim
 

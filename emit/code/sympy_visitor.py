@@ -90,6 +90,5 @@ class SympyExprVisitor:
 
     @visit.register
     def _(self, expr: sy.core.numbers.Rational) -> Expr:
-        # TODO: May need to do something extra to avoid
-        #  floor division in c++
-        return BinOpExpr(expr.p, Operator.Div, expr.q)
+        # Cast to floats to avoid floor division in e.g. C++
+        return BinOpExpr(FloatLiteralExpr(float(expr.p)), Operator.Div, FloatLiteralExpr(float(expr.q)))

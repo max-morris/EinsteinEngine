@@ -46,7 +46,7 @@ class EqnList:
         self.temporaries: Set[Math] = OrderedSet()
 
     @cached_property
-    def variables(self):
+    def variables(self) -> Set[Math]:
         return self.inputs | self.outputs | self.temporaries
 
     def add_param(self, lhs: Symbol) -> None:
