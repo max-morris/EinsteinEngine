@@ -233,7 +233,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
         # for the div macros to work; layout here really means centering.
 
-        decls: list[CodeElem] = list()
+        layout_decls: list[CodeElem] = list()
         declared_layouts: set[Centering] = set()
         var_centerings: dict[str, Centering] = dict()
 
@@ -271,14 +271,14 @@ class CppCarpetXGenerator(CactusGenerator):
                 i, j, k = var_centering.int_repr
                 centering_init_list = f'{{{i}, {j}, {k}}}'
 
-                decls.append(ConstConstructDecl(
+                layout_decls.append(ConstConstructDecl(
                     Identifier('GF3D5layout'),
                     Identifier(f'{var_centering.string_repr}_layout'),
                     [IdExpr(Identifier('cctkGH')), VerbatimExpr(Verbatim(centering_init_list))]
                 ))
 
             # Now build the var's centering decl.
-            decls.append(ConstConstructDecl(
+            layout_decls.append(ConstConstructDecl(
                 Identifier('GF3D5layout'),
                 Identifier(f'{var_name}_layout'),
                 [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
@@ -317,6 +317,12 @@ class CppCarpetXGenerator(CactusGenerator):
             if s in [str(i) for i in thorn_fn.eqn_list.inputs]
         ]
 
+        # DXI, DYI, DZI decls
+        di_decls = [
+            ConstAssignDecl(Identifier('auto'), Identifier(s), BinOpExpr(FloatLiteralExpr(1.0), Operator.Div, VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))))
+            for n, s in enumerate(['DXI', 'DYI', 'DZI'])
+        ]
+
         def lhs_substitution(s: str) -> str:
             return f'access({s})' if s in self.var_names else s
 
@@ -333,7 +339,8 @@ class CppCarpetXGenerator(CactusGenerator):
                 Identifier(fn_name),
                 [DeclareCarpetXArgs(Identifier(fn_name)),
                  DeclareCarpetParams(),
-                 *decls,
+                 *layout_decls,
+                 *di_decls,
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,
