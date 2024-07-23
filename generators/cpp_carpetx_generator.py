@@ -29,7 +29,7 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_div_macros: str = """
         #define access(GF) (GF(GF ## _layout, p.I))
         // 1st derivatives
-        #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
+        #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
         #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
         // 2nd derivatives
