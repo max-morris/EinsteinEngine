@@ -3,10 +3,6 @@ The waveequation! It can't be solved too many times.
 """
 
 from dsl.use_indices import *
-from emit.ccl.interface.interface_visitor import InterfaceVisitor
-from emit.ccl.param.param_visitor import ParamVisitor
-from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
-from emit.code.cpp.cpp_visitor import CppVisitor
 from typing import cast, Any
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
@@ -39,14 +35,10 @@ gf = ThornDef("TestWave", "WaveEqn")
 gf.set_div_stencil(5)
 
 # Declare gfs
-v_t = gf.decl("v_t", [li], Centering.VVC)
+v_t = gf.decl("v_t", [], Centering.VVC)
 v = gf.decl("v", [], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
 u = gf.decl("u", [], Centering.VVC, rhs=u_t)
-
-siter2 = gf.decl("siter2", [li, lj])
-gf.add_sym(siter2[li, lj], li, lj)
-iter1 = gf.decl("iter1", [li])
 
 # Declare the metric
 g = gf.decl("g", [li, lj])
