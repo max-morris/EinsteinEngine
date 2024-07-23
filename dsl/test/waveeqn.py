@@ -34,6 +34,10 @@ def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
 # Create a set of grid functions
 gf = ThornDef("TestWave", "WaveEqn")
 
+# Use a NRPy calculated stencil instead
+# of simply calling functions such as divx()
+gf.set_div_stencil(5)
+
 # Declare gfs
 v_t = gf.decl("v_t", [li], Centering.VVC)
 v = gf.decl("v", [], Centering.VVC, rhs=v_t)

@@ -6,7 +6,7 @@ from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, I
 from sympy.core.function import UndefinedFunction as UFunc
 from inspect import currentframe
 from dsl.sympywrap import *
-from dsl.eqnlist import EqnList
+from dsl.eqnlist import EqnList, DXI, DYI, DZI
 from dsl.symm import Sym
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from enum import auto
@@ -15,6 +15,9 @@ import sys
 
 from emit.code.code_tree import Centering
 from util import ReprEnum, OrderedSet, ScheduleBinEnum
+from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
+
+stencil = mkFunction("stencil")
 
 lookup_pair = dict()
 
@@ -270,9 +273,10 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
     return output
 
 
-def _mksymbol_for_tensor(sym, *args):
+def _mksymbol_for_tensor(sym:Indexed, *args:Idx)->str:
     newstr = str(sym.base)
     for ind in sym.args[1:]:
+        assert isinstance(ind, Idx)
         if is_lower(ind):
             newstr += "D"
         elif is_upper(ind):
@@ -280,6 +284,7 @@ def _mksymbol_for_tensor(sym, *args):
         else:
             assert False
     for ind in sym.args[1:]:
+        assert isinstance(ind, Idx)
         newstr += str(to_num(ind))
     return newstr
 
@@ -296,8 +301,10 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
     :return: a new sympy symbol
     """
     if sym.is_Function and hasattr(sym, "name") and sym.name == "div":
+        assert isinstance(sym.args[0], Indexed)
         newstr = _mksymbol_for_tensor(sym.args[0]) + "_d"
         for ind in sym.args[1:]:
+            assert isinstance(ind, Idx)
             if is_lower(ind):
                 newstr += "D"
             elif is_upper(ind):
@@ -305,6 +312,7 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
             else:
                 assert False
         for ind in sym.args[1:]:
+            assert isinstance(ind, Idx)
             newstr += str(to_num(ind))
         return mkSymbol(newstr)
     else:
@@ -404,6 +412,7 @@ for i in range(3):
 def to_div(out: Expr) -> Expr:
     nm = "div"
     for k in out.args[1:]:
+        assert isinstance(k, Idx)
         nm += "xyz"[to_num(k)]
     divnn = mkFunction(nm)
     arg = out.args[0]  # div(v, i, j) -> v
@@ -411,12 +420,13 @@ def to_div(out: Expr) -> Expr:
 
 
 class ApplyDiv(Applier):
-    def __init__(self):
-        self.val = None
+    def __init__(self)->None:
+        self.val:Optional[Expr] = None
 
-    def m(self, expr):
+    def m(self, expr:Expr)->bool:
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             for arg in expr.args[1:]:
+                assert isinstance(arg, Idx)
                 if not is_numeric_index(arg):
                     self.val = None
                     return False
@@ -426,11 +436,110 @@ class ApplyDiv(Applier):
             self.val = None
             return False
 
-    def r(self, expr):
+    def r(self, expr:Basic)->Optional[Expr]:
         return self.val
 
-    def apply(self, arg):
-        return arg.replace(self.m, self.r)
+    def apply(self, arg:Basic)->Basic:
+        return cast(Basic, arg.replace(self.m, self.r)) # type: ignore[no-untyped-call]
+
+def mkterm(v:Basic, i:int, j:int, k:int)->Any:
+    """
+    Create a stencil term for output. Note that
+    the 0,0,0 element is special.
+    """
+    if i==0 and j==0 and k==0:
+        return v
+    else:
+        return stencil(v,i,j,k)
+
+class ApplyDivN(Applier):
+    """
+    Use NRPy to calculate the stencil coefficients.
+    """
+    def __init__(self, n:int)->None:
+        self.val:Optional[Expr] = None
+        self.n = n
+        self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n,0)
+
+    def m(self, expr:Expr)->bool:
+        if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+            if len(expr.args)==2:
+                if expr.args[1] == l0:
+                    print("deriv x")
+                    for term in self.fd_matrix.col(1):
+                        print("Term: ",term)
+            elif len(expr.args)==3:
+                if expr.args[1:] == (l0, l0):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(2)
+                    for i in range(len(coefs)):
+                        term = coefs[i]
+                        new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, 0, 0)
+                    new_expr *= DXI**2
+                    self.val = new_expr
+                elif expr.args[1:] == (l1, l1):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(2)
+                    for i in range(len(coefs)):
+                        term = coefs[i]
+                        new_expr += term*mkterm(expr.args[0], 0, i-len(coefs)//2, 0)
+                    new_expr *= DYI**2
+                    self.val = new_expr
+                elif expr.args[1:] == (l2, l2):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(2)
+                    for i in range(len(coefs)):
+                        term = coefs[i]
+                        new_expr += term*mkterm(expr.args[0], 0, 0, i-len(coefs)//2)
+                    new_expr *= DZI**2
+                    self.val = new_expr
+                elif expr.args[1:] in ((l0, l1), (l1, l0)):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(1)
+                    for i in range(len(coefs)):
+                        termi = coefs[i]
+                        for j in range(len(coefs)):
+                            term = coefs[j]*termi
+                            new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, j-len(coefs)//2, 0)
+                    new_expr *= DXI*DYI
+                    print(">>+",new_expr)
+                    self.val = new_expr
+                elif expr.args[1:] in ((l0, l2), (l2, l0)):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(1)
+                    for i in range(len(coefs)):
+                        termi = coefs[i]
+                        for j in range(len(coefs)):
+                            term = coefs[j]*termi
+                            new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, 0, j-len(coefs)//2)
+                    new_expr *= DXI*DZI
+                    self.val = new_expr
+                elif expr.args[1:] in ((l1, l2), (l2, l1)):
+                    new_expr = sympify(0)
+                    coefs = self.fd_matrix.col(1)
+                    for i in range(len(coefs)):
+                        termi = coefs[i]
+                        for j in range(len(coefs)):
+                            term = coefs[j]*termi
+                            new_expr += term*mkterm(expr.args[0], 0, i-len(coefs)//2, j-len(coefs)//2)
+                    new_expr *= DZI*DYI
+                    self.val = new_expr
+                else:
+                    print(">>?",expr.args[1:])
+            else:
+                print("args:",expr.args)
+            if self.val is None:
+                raise Exception()
+            return True
+        else:
+            self.val = None
+            return False
+
+    def r(self, expr:Expr)->Optional[Expr]:
+        return self.val
+
+    def apply(self, arg:Basic)->Basic:
+        return cast(Basic, arg.replace(self.m, self.r)) # type: ignore[no-untyped-call]
 
 
 # TODO: This really shouldn't be visible
@@ -507,7 +616,7 @@ class ThornFunction:
     def diagnose(self) -> None:
         self.eqn_list.diagnose()
 
-    def bake(self, *, do_cse: bool = True):
+    def bake(self, *, do_cse: bool = True)->None:
         if self.been_baked:
             raise Exception("bake should not be called more than once")
 
@@ -534,6 +643,7 @@ class ThornFunction:
 
 class ThornDef:
     def __init__(self, arr: str, name: str) -> None:
+        self.apply_div : Applier = ApplyDiv()
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
@@ -548,6 +658,7 @@ class ThornDef:
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Math] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
+            mkFunction("stencil"): True,
             mkFunction("divx"): True,
             mkFunction("divxx"): True,
             mkFunction("divy"): True,
@@ -558,6 +669,11 @@ class ThornDef:
             mkFunction("divyz"): True,
             mkFunction("divzz"): True
         }
+
+    def set_div_stencil(self, n : int)->None:
+        assert n % 2 == 1, "n must be odd"
+        assert n > 1, "n must be > 1"
+        self.apply_div = ApplyDivN(n)
 
     def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
@@ -683,7 +799,7 @@ class ThornDef:
     #    return self.do_subs(expand_contracted_indices(arg, self.symmetries), self.subs)
 
     def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
-        divs = ApplyDiv()
+        divs = self.apply_div
         for i in range(20):
             new_arg = arg
             new_arg = expand_contracted_indices(new_arg, self.symmetries)

@@ -27,15 +27,16 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     boilerplate_div_macros: str = """
         #define CARPETX_GF3D5
-        #define access(GF) (GF(GF ## _layout, p.I))
+        #define access(GF) (GF(p.I))
         // 1st derivatives
-        #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
+        #define divx(GF) (GF(p.I + p.DI[0]) - GF(p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
         #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
         // 2nd derivatives
         #define divxx(GF) (GF(GF ## _layout, p.I + p.DI[0]) + GF(GF ## _layout, p.I - p.DI[0]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
         #define divyy(GF) (GF(GF ## _layout, p.I + p.DI[1]) + GF(GF ## _layout, p.I - p.DI[1]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
         #define divzz(GF) (GF(GF ## _layout, p.I + p.DI[2]) + GF(GF ## _layout, p.I - p.DI[2]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
+        #define stencil(GF, IX, IY, IZ) (GF(p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
     """.strip().replace('    ', '')
 
     def __init__(self, thorn_def: ThornDef) -> None:
@@ -217,12 +218,12 @@ class CppCarpetXGenerator(CactusGenerator):
 
         assert thorn_fn.been_baked
 
-        # div{x,y,z} macros
-        nodes.append(Verbatim(self.boilerplate_div_macros))
-
         # Includes, usings...
         for include in self.boilerplate_includes:
             nodes.append(IncludeDirective(include))
+
+        # div{x,y,z} macros
+        nodes.append(Verbatim(self.boilerplate_div_macros))
 
         for ns in self.boilerplate_namespace_usings:
             nodes.append(UsingNamespace(ns))
@@ -305,7 +306,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         if len(output_regions) > 1:
             raise GeneratorException(
-                f"Output vars have mixed write regions: {list(thorn_fn.eqn_list.write_decls.items())}"
+                f"Output vars for '{which_fn}' have mixed write regions: {list(thorn_fn.eqn_list.write_decls.items())}"
             )
 
         output_region: IntentRegion

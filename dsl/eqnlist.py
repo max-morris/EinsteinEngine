@@ -14,6 +14,12 @@ from util import OrderedSet
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
 
+# These symbols represent the inverse of the
+# spatial discretization.
+DXI = mkSymbol("DXI")
+DYI = mkSymbol("DYI")
+DZI = mkSymbol("DZI")
+
 
 class EqnList:
     """
@@ -44,6 +50,12 @@ class EqnList:
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.thorn_def: "dsl.use_indices.ThornDef" = thorn_def
         self.temporaries: Set[Math] = OrderedSet()
+
+        # The modeling system treats these special
+        # symbols as parameters.
+        self.add_param(DXI)
+        self.add_param(DYI)
+        self.add_param(DZI)
 
     @cached_property
     def variables(self) -> Set[Math]:
