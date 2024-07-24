@@ -62,18 +62,18 @@ class EqnList:
         return self.inputs | self.outputs | self.temporaries
 
     def add_param(self, lhs: Symbol) -> None:
-        assert lhs not in self.outputs, f"The symbol '{lhs}' is alredy in outputs"
-        assert lhs not in self.inputs, f"The symbol '{lhs}' is alredy in outputs"
+        assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
+        assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
         self.params.add(lhs)
 
     def add_input(self, lhs: Math) -> None:
-        assert lhs not in self.outputs, f"The symbol '{lhs}' is alredy in outputs"
-        assert lhs not in self.params, f"The symbol '{lhs}' is alredy in outputs"
+        assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
+        assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.inputs.add(lhs)
 
     def add_output(self, lhs: Math) -> None:
-        assert lhs not in self.inputs, f"The symbol '{lhs}' is alredy in outputs"
-        assert lhs not in self.params, f"The symbol '{lhs}' is alredy in outputs"
+        assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
+        assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.outputs.add(lhs)
 
     def add_eqn(self, lhs: Math, rhs: Expr) -> None:
