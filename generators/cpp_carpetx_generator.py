@@ -28,6 +28,7 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_setup: str = "#define CARPETX_GF3D5"
     boilerplate_div_macros: str = """
         #define access(GF) (GF(GF ## _layout, p.I))
+        #define noop(OP) (OP)
         // 1st derivatives
         #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
         #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))

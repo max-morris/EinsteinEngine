@@ -18,6 +18,7 @@ from util import ReprEnum, OrderedSet, ScheduleBinEnum
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 stencil = mkFunction("stencil")
+noop = mkFunction("noop")
 
 lookup_pair = dict()
 
@@ -452,6 +453,12 @@ def mkterm(v:Basic, i:int, j:int, k:int)->Any:
     else:
         return stencil(v,i,j,k)
 
+def sort_exprs(expr):
+    sort_key = 2*expr[0].p/expr[0].q
+    if sort_key < 0:
+        sort_key = -sort_key+1
+    return sort_key
+
 class ApplyDivN(Applier):
     """
     Use NRPy to calculate the stencil coefficients.
@@ -463,6 +470,8 @@ class ApplyDivN(Applier):
 
     def m(self, expr:Expr)->bool:
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+            new_expr = list()
+            dxt = sympify(1)
             if len(expr.args)==2:
                 if expr.args[1] == l0:
                     print("deriv x")
@@ -470,62 +479,64 @@ class ApplyDivN(Applier):
                         print("Term: ",term)
             elif len(expr.args)==3:
                 if expr.args[1:] == (l0, l0):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, 0, 0)
-                    new_expr *= DXI**2
-                    self.val = new_expr
+                        new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, 0))]
+                    dxt = DXI**2
                 elif expr.args[1:] == (l1, l1):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += term*mkterm(expr.args[0], 0, i-len(coefs)//2, 0)
-                    new_expr *= DYI**2
-                    self.val = new_expr
+                        new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, 0))]
+                    dxt = DYI**2
                 elif expr.args[1:] == (l2, l2):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += term*mkterm(expr.args[0], 0, 0, i-len(coefs)//2)
-                    new_expr *= DZI**2
-                    self.val = new_expr
+                        new_expr += [(term, mkterm(expr.args[0], 0, 0, i-len(coefs)//2))]
+                    dxt = DZI**2
                 elif expr.args[1:] in ((l0, l1), (l1, l0)):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
                             term = coefs[j]*termi
-                            new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, j-len(coefs)//2, 0)
-                    new_expr *= DXI*DYI
-                    print(">>+",new_expr)
-                    self.val = new_expr
+                            new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, j-len(coefs)//2, 0))]
+                    dxt = DXI*DYI
                 elif expr.args[1:] in ((l0, l2), (l2, l0)):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
                             term = coefs[j]*termi
-                            new_expr += term*mkterm(expr.args[0], i-len(coefs)//2, 0, j-len(coefs)//2)
-                    new_expr *= DXI*DZI
-                    self.val = new_expr
+                            new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, j-len(coefs)//2))]
+                    dxt = DXI*DZI
                 elif expr.args[1:] in ((l1, l2), (l2, l1)):
-                    new_expr = sympify(0)
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
                             term = coefs[j]*termi
-                            new_expr += term*mkterm(expr.args[0], 0, i-len(coefs)//2, j-len(coefs)//2)
-                    new_expr *= DZI*DYI
-                    self.val = new_expr
+                            new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, j-len(coefs)//2))]
+                    dxt = DYI*DZI
                 else:
-                    print(">>?",expr.args[1:])
+                    raise Exception()
+                new_expr = sorted(new_expr, key=sort_exprs)
+                self.val = sympify(0)
+                i = 0
+                while i < len(new_expr):
+                    if i + 1 < len(new_expr) and abs(new_expr[i][0]) == abs(new_expr[i+1][0]):
+                        # We use noop for grouping because otherwise, Sympy will change things
+                        if new_expr[i][0]  !=     new_expr[i+1][0]:
+                            self.val += new_expr[i][0]*noop(new_expr[i][1] - new_expr[i+1][1])
+                        else:
+                            self.val += new_expr[i][0]*noop(new_expr[i][1] + new_expr[i+1][1])
+                        i += 2
+                    else:
+                        self.val += new_expr[i][0]*new_expr[i][1]
+                        i += 1
+                self.val = noop(self.val)*dxt
             else:
                 print("args:",expr.args)
             if self.val is None:
