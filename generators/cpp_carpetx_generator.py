@@ -282,11 +282,13 @@ class CppCarpetXGenerator(CactusGenerator):
                 ))
 
             # Now build the var's centering decl.
-            layout_decls.append(ConstConstructDecl(
-                Identifier('GF3D5layout'),
-                Identifier(f'{var_name}_layout'),
-                [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
-            ))
+            # layout_decls.append(ConstConstructDecl(
+            #     Identifier('GF3D5layout'),
+            #     Identifier(f'{var_name}_layout'),
+            #     [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
+            # ))
+
+            layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
