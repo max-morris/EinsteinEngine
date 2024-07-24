@@ -32,13 +32,14 @@ gf = ThornDef("TestWave", "WaveEqn")
 
 # Use a NRPy calculated stencil instead
 # of simply calling functions such as divx()
-gf.set_div_stencil(5)
+gf.set_div_stencil(3)
 
 # Declare gfs
 v_t = gf.decl("v_t", [], Centering.VVC)
 v = gf.decl("v", [], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
 u = gf.decl("u", [], Centering.VVC, rhs=u_t)
+f = gf.decl("f", [], Centering.VVC)
 
 # Declare the metric
 g = gf.decl("g", [li, lj])
@@ -73,6 +74,7 @@ fun.show_tensortypes()
 fun = gf.create_function("newwave_init", ScheduleBin.Init)
 fun.add_eqn(v, sin(kx * x) * sin(ky * y))
 fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
+fun.add_eqn(f, spd*(spd + kx))
 print('*** ThornFunction wave_init:')
 fun.bake()
 fun.dump()
@@ -80,8 +82,8 @@ fun.show_tensortypes()
 
 fun = gf.create_function("refine", ScheduleBin.EstimateError)
 regrid_error = gf.decl("regrid_error", [], Centering.CCC)
-#fun.add_eqn(regrid_error, 2*v*v) #10/((x-20)**2 + (y-20)**2))
-fun.add_eqn(regrid_error, 10/((x-20)**2 + (y-20)**2))
+#fun.add_eqn(regrid_error, 2*v*v)
+fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
 fun.bake(do_cse=False)
 
 CppCarpetXWizard(gf).generate_thorn()
