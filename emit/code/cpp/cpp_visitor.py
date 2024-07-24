@@ -90,7 +90,7 @@ class CppVisitor(Visitor[CodeNode]):
     def _(self, n: BinOpExpr) -> str:
         if n.op is Operator.Pow:
             return f'std::pow({self.visit(n.lhs)}, {self.visit(n.rhs)})'
-        return f'{self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)}'
+        return f'({self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)})'
 
     @visit.register
     def _(self, n: NArityOpExpr) -> str:
@@ -99,11 +99,11 @@ class CppVisitor(Visitor[CodeNode]):
         if len(n.args) == 0:
             return ''
 
-        st: str = self.visit(n.args[0])
+        st: str = f'({self.visit(n.args[0])}'
         for a in n.args[1:]:
             st += f' {n.op.representation} {self.visit(a)}'
 
-        return st
+        return f'{st})'
 
     @visit.register
     def _(self, n: FunctionCall) -> str:
