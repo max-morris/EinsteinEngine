@@ -2,7 +2,7 @@
 Use the Sympy Indexed type for relativity expressions.
 """
 from typing import Union, Set, Dict, List, Any, cast, Callable, Tuple, Optional, Type
-from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, Integer
+from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, Integer, Rational
 from sympy.core.function import UndefinedFunction as UFunc
 from inspect import currentframe
 from dsl.sympywrap import *
@@ -453,8 +453,8 @@ def mkterm(v:Basic, i:int, j:int, k:int)->Any:
     else:
         return stencil(v,i,j,k)
 
-def sort_exprs(expr):
-    sort_key = 2*expr[0].p/expr[0].q
+def sort_exprs(expr: Tuple[Any,Any])->float:
+    sort_key: float = 2*expr[0].p/expr[0].q
     if sort_key < 0:
         sort_key = -sort_key+1
     return sort_key
@@ -479,19 +479,19 @@ class ApplyDivN(Applier):
                         print("Term: ",term)
             elif len(expr.args)==3:
                 if expr.args[1:] == (l0, l0):
-                    coefs = self.fd_matrix.col(2)
+                    coefs = 2*self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
                         new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, 0))]
                     dxt = DXI**2
                 elif expr.args[1:] == (l1, l1):
-                    coefs = self.fd_matrix.col(2)
+                    coefs = 2*self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
                         new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, 0))]
                     dxt = DYI**2
                 elif expr.args[1:] == (l2, l2):
-                    coefs = self.fd_matrix.col(2)
+                    coefs = 2*self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
                         new_expr += [(term, mkterm(expr.args[0], 0, 0, i-len(coefs)//2))]
@@ -536,7 +536,7 @@ class ApplyDivN(Applier):
                     else:
                         self.val += new_expr[i][0]*new_expr[i][1]
                         i += 1
-                self.val = noop(self.val)*dxt
+                self.val = self.val*dxt
             else:
                 print("args:",expr.args)
             if self.val is None:
@@ -572,7 +572,7 @@ class ThornFunction:
         self.schedule_bin = schedule_bin
         self.name = name
         self.thorn_def = thorn_def
-        self.eqn_list: EqnList = EqnList(thorn_def)
+        self.eqn_list: EqnList = EqnList(thorn_def.is_stencil)
         self.been_baked: bool = False
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:

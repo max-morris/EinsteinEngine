@@ -13,6 +13,8 @@ import os
 
 from generators.wizards import CppCarpetXWizard
 
+# If we change our configuration, this will show us diffs of the
+# new output and the old.
 cfu.verbose = True
 
 
@@ -39,7 +41,6 @@ v_t = gf.decl("v_t", [], Centering.VVC)
 v = gf.decl("v", [], Centering.VVC, rhs=v_t)
 u_t = gf.decl("u_t", [], Centering.VVC)
 u = gf.decl("u", [], Centering.VVC, rhs=u_t)
-f = gf.decl("f", [], Centering.VVC)
 
 # Declare the metric
 g = gf.decl("g", [li, lj])
@@ -61,7 +62,6 @@ fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
 fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
 print('*** ThornFunction wave_evo:')
-
 fun.bake()
 
 # Dump
@@ -74,7 +74,6 @@ fun.show_tensortypes()
 fun = gf.create_function("newwave_init", ScheduleBin.Init)
 fun.add_eqn(v, sin(kx * x) * sin(ky * y))
 fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
-fun.add_eqn(f, spd*(spd + kx))
 print('*** ThornFunction wave_init:')
 fun.bake()
 fun.dump()
