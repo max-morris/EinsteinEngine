@@ -16,7 +16,8 @@ from util import OrderedSet
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
-                                               "loop_device.hxx", "simd.hxx", "cmath", "tuple"]]
+                                               "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
+                                               "cmath", "tuple"]]
 
     boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
 
@@ -27,17 +28,17 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     boilerplate_setup: str = "#define CARPETX_GF3D5"
     boilerplate_div_macros: str = """
-        #define access(GF) (GF(GF ## _layout, p.I))
+        #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define noop(OP) (OP)
         // 1st derivatives
-        #define divx(GF) (GF(GF ## _layout, p.I + p.DI[0]) - GF(GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
-        #define divy(GF) (GF(GF ## _layout, p.I + p.DI[1]) - GF(GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
-        #define divz(GF) (GF(GF ## _layout, p.I + p.DI[2]) - GF(GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
+        #define divx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) - GF(p.mask, GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
+        #define divy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) - GF(p.mask, GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
+        #define divz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) - GF(p.mask, GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
         // 2nd derivatives
-        #define divxx(GF) (GF(GF ## _layout, p.I + p.DI[0]) + GF(GF ## _layout, p.I - p.DI[0]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
-        #define divyy(GF) (GF(GF ## _layout, p.I + p.DI[1]) + GF(GF ## _layout, p.I - p.DI[1]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
-        #define divzz(GF) (GF(GF ## _layout, p.I + p.DI[2]) + GF(GF ## _layout, p.I - p.DI[2]) - 2*GF(GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
-        #define stencil(GF, IX, IY, IZ) (GF(GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
+        #define divxx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) + GF(p.mask, GF ## _layout, p.I - p.DI[0]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
+        #define divyy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) + GF(p.mask, GF ## _layout, p.I - p.DI[1]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
+        #define divzz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) + GF(p.mask, GF ## _layout, p.I - p.DI[2]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
+        #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
     """.strip().replace('    ', '')
 
     def __init__(self, thorn_def: ThornDef) -> None:
@@ -317,11 +318,30 @@ class CppCarpetXGenerator(CactusGenerator):
         output_region: IntentRegion
         [output_region] = output_regions
 
-        # x, y, and z are special
+        input_var_strs = [str(i) for i in thorn_fn.eqn_list.inputs]
+
+        # x, y, and z are special, but x is extra special
         xyz_decls = [
-            ConstAssignDecl(Identifier('auto&'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
-            if s in [str(i) for i in thorn_fn.eqn_list.inputs]
+            ConstAssignDecl(Identifier('auto'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['y', 'z']
+            if s in input_var_strs
         ]
+
+        if 'x' in input_var_strs:
+            xyz_decls = [
+                ConstAssignDecl(
+                    Identifier('vreal'),
+                    Identifier('x'),
+                    BinOpExpr(
+                        IdExpr(Identifier('p.x')),
+                        Operator.Add,
+                        BinOpExpr(
+                            VerbatimExpr(Verbatim('Arith::iota<vreal>()')),
+                            Operator.Mul,
+                            IdExpr(Identifier('p.dx'))
+                        )
+                    )
+                )
+            ] + xyz_decls
 
         # DXI, DYI, DZI decls
         di_decls = [
@@ -345,6 +365,8 @@ class CppCarpetXGenerator(CactusGenerator):
                 Identifier(fn_name),
                 [DeclareCarpetXArgs(Identifier(fn_name)),
                  DeclareCarpetParams(),
+                 UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
+                 ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
                  *layout_decls,
                  *di_decls,
                  CarpetXGridLoopCall(

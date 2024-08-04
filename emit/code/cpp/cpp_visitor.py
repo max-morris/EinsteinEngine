@@ -140,7 +140,7 @@ class CppVisitor(Visitor[CodeNode]):
             assert n.write_destination is IntentRegion.Boundary
             loop_kind = 'bnd'
 
-        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
+        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}, vsize>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:
@@ -195,6 +195,10 @@ class CppVisitor(Visitor[CodeNode]):
         return f"using {','.join(visit_each(self, n.ids))};"
 
     @visit.register
+    def _(self, n: UsingAlias) -> str:
+        return f"using {self.visit(n.lhs)} = {self.visit(n.rhs)};"
+
+    @visit.register
     def _(self, n: DeclareCarpetXArgs) -> str:
         return f"DECLARE_CCTK_ARGUMENTSX_{self.visit(n.fn_name)};"
 
@@ -209,6 +213,10 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: ConstAssignDecl) -> str:
         return f'const {self.visit(n.type)} {self.visit(n.lhs)} = {self.visit(n.rhs)};'
+
+    @visit.register
+    def _(self, n: ConstExprAssignDecl) -> str:
+        return f'constexpr {self.visit(n.type)} {self.visit(n.lhs)} = {self.visit(n.rhs)};'
 
     @visit.register
     def _(self, n: ConstConstructDecl) -> str:

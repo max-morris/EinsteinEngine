@@ -136,6 +136,13 @@ class ConstAssignDecl(Decl):
 
 
 @dataclass
+class ConstExprAssignDecl(Decl):
+    type: Identifier
+    lhs: Identifier
+    rhs: Expr
+
+
+@dataclass
 class ConstConstructDecl(Decl):
     type: Identifier
     lhs: Identifier
