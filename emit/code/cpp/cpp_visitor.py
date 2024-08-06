@@ -18,8 +18,8 @@ class CppVisitor(Visitor[CodeNode]):
     sympy_visitor: SympyExprVisitor
 
     standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
-        StandardizedFunctionCallType.Sin: 'std::sin',
-        StandardizedFunctionCallType.Cos: 'std::cos'
+        StandardizedFunctionCallType.Sin: 'sin',
+        StandardizedFunctionCallType.Cos: 'cos'
     }
 
     def __init__(self, generator: CactusGenerator) -> None:
@@ -89,7 +89,7 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: BinOpExpr) -> str:
         if n.op is Operator.Pow:
-            return f'std::pow({self.visit(n.lhs)}, {self.visit(n.rhs)})'
+            return f'pown({self.visit(n.lhs)}, {self.visit(n.rhs)})'
         return f'({self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)})'
 
     @visit.register
