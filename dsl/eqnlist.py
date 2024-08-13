@@ -41,6 +41,7 @@ class EqnList:
         self.params: Set[Math] = OrderedSet()
         self.inputs: Set[Math] = OrderedSet()
         self.outputs: Set[Math] = OrderedSet()
+        self.temps: Set[Math] = OrderedSet()
         self.order: List[Math] = list()
         self.verbose = True
         self.read_decls: Dict[Math, IntentRegion] = dict()
@@ -66,12 +67,18 @@ class EqnList:
         self.params.add(lhs)
 
     def add_input(self, lhs: Math) -> None:
-        assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
+        # TODO: Automatically assign temps?
+        #assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
+        if lhs in self.outputs:
+            self.temps.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.inputs.add(lhs)
 
     def add_output(self, lhs: Math) -> None:
-        assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
+        # TODO: Automatically assign temps?
+        #assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
+        if lhs in self.inputs:
+            self.temps.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.outputs.add(lhs)
 
@@ -92,6 +99,13 @@ class EqnList:
         self.write_decls.clear()
 
         self.lhs: Math
+
+        # TODO: Automatically assign temps?
+        for temp in self.temps:
+            if temp in self.outputs:
+                self.outputs.remove(temp)
+            if temp in self.inputs:
+                self.inputs.remove(temp)
 
         def ftrace(sym: Symbol) -> bool:
             if sym.is_Function:
@@ -166,6 +180,8 @@ class EqnList:
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
             assert k in written, f"Temporary variable '{k}' is never written"
+            assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
+            assert k not in self.inputs, f"Temporary variable '{k}' in inputs"
 
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
@@ -293,6 +309,28 @@ class EqnList:
         for k in self.eqns:
             assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
 
+        class FindBad:
+            def __init__(self,outer:EqnList)->None:
+                self.outer = outer
+                self.msg: Optional[str] = None
+            def m(self, expr:Expr)->bool:
+                if expr.is_Function:
+                    if self.outer.is_stencil.get(expr.func, False):
+                        for arg in expr.args:
+                            if arg in self.outer.temporaries:
+                                self.msg = f"Temporary passed to stencil: call='{expr}' arg='{arg}'"
+                            break # only check the first arg
+                return False
+            def exc(self)->None:
+                if self.msg is not None:
+                    raise Exception(self.msg)
+            def r(self, expr:Expr)->Expr:
+                return expr
+        fb = FindBad(self)
+        for eqn in self.eqns.items():
+            do_replace(eqn[1], fb.m, fb.r)
+            fb.exc()
+
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
         subs: Dict[Math, Symbol] = dict()
@@ -311,14 +349,47 @@ class EqnList:
 
         self.eqns = new_eqns
 
+    def uncse(self) -> None:
+        print("Call UnCSE")
+        class UndoCSE:
+            def __init__(self, outer:EqnList)->None:
+                self.outer = outer
+                self.value:Optional[Expr] = None
+            def m(self, expr:Expr)->bool:
+                self.value = None
+                if expr.is_Function and self.outer.is_stencil.get(expr.func, False) and len(expr.args)>0:
+                    arg = expr.args[0]
+                    assert arg is not None
+                    while arg in self.outer.temporaries:
+                        assert arg is not None
+                        assert isinstance(arg, Symbol)
+                        print("UNDO:",arg,'->',end=' ')
+                        arg = self.outer.eqns[arg]
+                        print(arg)
+                        args_list = list(expr.args)
+                        args_list[0] = arg
+                        args = tuple(args_list)
+                        self.value = expr.func(*args)
+                        print("UNDO:",expr,"->",self.value)
+                return self.value is not None
+            def r(self, expr:Expr)->Expr:
+                assert self.value is not None
+                return self.value
+        undo = UndoCSE(self)
+        for eqn in self.eqns.items():
+            self.eqns[eqn[0]] = do_replace(eqn[1], undo.m, undo.r)
+
     def cse(self) -> None:
         """ Invoke Sympy's CSE method, but ensure that the order of the resulting assignments is correct. """
+        print("Call CSE")
         indexes: List[Math] = list()
         old_eqns: List[Expr] = list()
         for k in self.eqns:
             indexes.append(k)
             old_eqns.append(self.eqns[k])
         new_eqns, mod_eqns = cse(old_eqns)
+        for eqn in new_eqns:
+            self.temporaries.add(eqn[0])
         e: Tuple[Symbol, Expr]
         for e in new_eqns:
             assert e[0] not in self.inputs and e[0] not in self.params and e[0] not in self.eqns
@@ -328,6 +399,7 @@ class EqnList:
             v = old_eqns[i]
             m = mod_eqns[i]
             self.eqns[k] = m
+        self.uncse()
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
@@ -344,8 +416,8 @@ if __name__ == "__main__":
         el.default_read_write_spec = IntentRegion.Interior
         # el.add_func(div, True)
         el.add_input(a)
-        el.add_eqn(c, sympify(3))
-        el.add_eqn(b, 2 * c + sympify(8))
+        el.add_eqn(c, do_sympify(3))
+        el.add_eqn(b, 2 * c + do_sympify(8))
         el.add_eqn(f, div(a) + c)
         el.add_eqn(d, b + c + f)
         el.add_output(c)

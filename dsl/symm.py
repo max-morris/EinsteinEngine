@@ -38,7 +38,8 @@ class Sym(Applier):
 
         return False
 
-    def replace(self, expr: Indexed) -> Any:
+    def replace(self, expr: Expr) -> Expr:
+        assert isinstance(expr, Indexed)
         syms = self.sd.get(expr.base, list())
         args = [cast(Idx, a) for a in expr.args[1:]]
         retsgn = 1
@@ -53,7 +54,8 @@ class Sym(Applier):
                 retsgn *= sgn
             elif s1 == s2 and sgn < 0:
                 self.modified = True
-                return sympify(0)
+                return do_sympify(0)
+        ret : Expr
         if retsgn == 1:
             ret = expr.base.__getitem__(tuple(args))
         else:
@@ -65,7 +67,8 @@ class Sym(Applier):
         self.modified = True
         while self.modified:
             self.modified = False
-            expr = expr.replace(self.match, self.replace)  # type: ignore[no-untyped-call]
+            assert isinstance(expr, Expr)
+            expr = do_replace(expr, self.match, self.replace)
         return expr
 
 

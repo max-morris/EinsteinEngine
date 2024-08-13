@@ -1,6 +1,6 @@
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set
-from sympy import cse as cse_, IndexedBase, Idx, Symbol, Expr, Eq, Basic, sympify as sympify_, Expr, Mul, Indexed, \
-    Function
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
+from sympy import cse as cse_, IndexedBase, Idx, Symbol, Expr, Eq, Basic, sympify, Expr, Mul, Indexed, \
+    Function, Matrix, zeros, Wild, diff, simplify
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
@@ -22,6 +22,14 @@ IndexType = Union[Idx, Mul]
 
 cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 
+def do_inv(e:Matrix)->Matrix:
+    return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
+
+def do_sympify(e:Union[int,Expr])->Expr:
+    return cast(Expr, sympify(e)) # type: ignore[no-untyped-call]
+
+def do_simplify(e:Union[int,Expr])->Expr:
+    return cast(Expr, simplify(e)) # type: ignore[no-untyped-call]
 
 def cse(arg: List[Expr]) -> cse_return:
     return cast(cse_return, cse_(arg))  # type: ignore[no-untyped-call]
@@ -34,6 +42,18 @@ def mkIdx(name: str) -> Idx:
 def mkSymbol(name: str) -> Symbol:
     return Symbol(name)  # type: ignore[no-untyped-call]
 
+def mkWild(name: str, exclude:List[Any]=list(), properties:List[Any]=list()) -> Wild:
+    return Wild(name, exclude=exclude, properties=properties)  # type: ignore[no-untyped-call]
+
+symar = Union[Symbol,Expr,int,List['symar']]
+def mkMatrix(array: symar) -> Matrix:
+    return Matrix(array)  # type: ignore[no-untyped-call]
+
+
+def mkZeros(*tup: int) -> Matrix:
+    res = zeros(*tup) # type: ignore[no-untyped-call]
+    assert isinstance(res, Matrix)
+    return res
 
 def mkFunction(name: str) -> UFunc:
     return Function(name)  # type: ignore[no-any-return]
@@ -53,10 +73,6 @@ def mkIndexedBase(basename: str, shape: Tuple[int, ...]) -> IndexedBase:
 
 def mkIndexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
     return Indexed(base, *args)  # type: ignore[no-untyped-call]
-
-
-def sympify(arg: Any) -> Expr:
-    return cast(Expr, sympify_(arg))  # type: ignore[no-untyped-call]
 
 
 do_subs_table_type = Union[
@@ -91,9 +107,16 @@ call_replace = Union[
     Callable[[Math], Expr]]
 
 
-def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> None:
-    sym.replace(func_m, func_r)  # type: ignore[no-untyped-call]
+def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> Expr:
+    ret = sym.replace(func_m, func_r)  # type: ignore[no-untyped-call]
+    assert isinstance(ret, Expr)
+    return ret
 
+def do_diff(expr:Expr, sym:Symbol)->Expr:
+    return cast(Expr, diff(expr, sym)) # type: ignore[no-untyped-call]
+
+def do_match(expr:Expr, pat:Wild)->Optional[Dict[Wild, Expr]]:
+    return cast(Optional[Dict[Wild, Expr]], expr.match(pat)) # type: ignore[no-untyped-call]
 
 def finder(expr: Expr) -> Set[Math]:
     result: Dict[str, Math] = dict()

@@ -1,4 +1,5 @@
 from dsl.use_indices import *
+from dsl.sympywrap import mkMatrix, do_inv, do_sympify
 from emit.ccl.interface.interface_visitor import InterfaceVisitor
 from emit.ccl.param.param_visitor import ParamVisitor
 from emit.ccl.schedule.schedule_visitor import ScheduleVisitor
@@ -13,37 +14,50 @@ gf = ThornDef("TestRicci", "Ricci")
 
 # Declare gfs
 g = gf.decl("g", [li, lj], Centering.VVC)
+x,y,z = gf.mk_coords()
 G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
 Ric = gf.decl("Ric", [la, lb], Centering.VVC)
-iter3 = gf.decl("iter3", [la, lb, lc], Centering.VVC)
-iter4 = gf.decl("iter4", [la, lb, lc, ld], Centering.VVC)
 
 gf.add_sym(g[li, lj], li, lj)
 gf.add_sym(G[ua, lb, lc], lb, lc)
-gf.add_sym(iter3[ua, lb, lc], lb, lc)
-gf.add_sym(iter4[la, lb, lc, ld], la, lb)
+gf.add_sym(Ric[la,lb], la, lb)
 
-gf.fill_in(g[la, lb])
-gf.fill_in(iter3[lc, la, lb], alt=div(g[la, lb], lc))
-gf.fill_in(g[ua, ub])
-gf.fill_in(iter3[lc, ua, ub], alt=div(g[ua, ub], lc))
-gf.fill_in(G[la, lb, lc])
-gf.fill_in(G[ua, lb, lc])
-gf.fill_in(Ric[la, lb])
-gf.fill_in(iter4[la, lb, lc, ud], alt=div(G[ud, la, lb], lc))
+gf.mk_subst(g[la, lb])
+
+gmat = gf.get_matrix(g[la,lb])
+imat = do_inv(gmat)
+opt1 = False
+if opt1:
+    gf.mk_subst(g[ua,ub]) # g[u0,u0] -> gUU00
+else:
+    gf.mk_subst(g[ua, ub], imat)
+gf.mk_subst(div(g[la, lb], lc)) # div(g[l0,l1],l2) -> gDD01_dD2
+gf.mk_subst(div(g[ua, ub], lc))
+opt2 = False
+if opt2:
+    gf.mk_subst(G[la, lb, lc])
+    gf.mk_subst(G[ua, lb, lc])
+else:
+    gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
+    gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
+    
+gf.mk_subst(Ric[la, lb])
+#gf.mk_subst(div(G[ud, la, lb], lc))
 
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
-fun.add_eqn(G[la, lb, lc], div(g[lb, lc], la) + div(g[la, lc], lb) - div(g[la, lb], lc))
-fun2 = gf.create_function("setGU", ScheduleBin.Analysis)
-fun2.add_eqn(G[ua, lb, lc], g[ua, ud] * G[ld, lb, lc])
-fun3 = gf.create_function("setRic", ScheduleBin.Analysis)
-fun3.add_eqn(Ric[li, lj],
+
+if opt1:
+    fun.add_eqn(g[ua, ub], imat)
+if opt2:
+    fun.add_eqn(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
+    fun.add_eqn(G[ua, lb, lc], g[ud,ua]*G[la, lb, lc])
+
+#gf.mk_subst(Ric[li, lj],
+fun.add_eqn(Ric[li, lj],
              div(G[ua, li, lj], la) - div(G[ua, la, li], lj) + 
              G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
 # Ensure the equations make sense
 fun.bake()
-fun2.bake()
-fun3.bake()
 
 CppCarpetXWizard(gf).generate_thorn()

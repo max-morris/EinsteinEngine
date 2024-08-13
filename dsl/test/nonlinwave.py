@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 """
 The waveequation! It can't be solved too many times.
 """
 
 from dsl.use_indices import *
-from dsl.sympywrap import *
 from typing import cast, Any
+from dsl.sympywrap import do_sympify
 from sympy import Expr, Idx, cos, sin
 from emit.code.code_tree import Centering
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
@@ -14,14 +13,6 @@ from math import pi
 import os
 
 from generators.wizards import CppCarpetXWizard
-
-class Message:
-    def __init__(self)->None:
-        print("BEGIN MESSAGE")
-    def __del__(self)->None:
-        print("END MESSAGE")
-
-msg = Message()
 
 # If we change our configuration, this will show us diffs of the
 # new output and the old.
@@ -70,7 +61,7 @@ x, y, z = gf.mk_coords()
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
-fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
+fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj) + g[ui,uj]*div(v,li)*div(v, lj))
 print('*** ThornFunction wave_evo:')
 fun.bake()
 
