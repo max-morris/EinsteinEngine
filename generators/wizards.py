@@ -1,7 +1,9 @@
 import os
+import sys
 from abc import ABC
 from typing import TypeVar, Generic, Optional
 
+from util import OrderedSet
 from dsl.use_indices import ThornDef
 from emit.ccl.interface.interface_visitor import InterfaceVisitor
 from emit.ccl.param.param_visitor import ParamVisitor
@@ -33,7 +35,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         os.makedirs(base_dir, exist_ok=True)
         os.makedirs(os.path.join(base_dir, "src"), exist_ok=True)
 
-        for fn_name in self.thorn_def.thorn_functions.keys():
+        for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys()):
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)
@@ -68,9 +70,15 @@ class ThornWizard(ABC, Generic[G, CV]):
             fd.write(schedule_ccl)
 
         print('== configuration.ccl ==')
-        configuration_ccl = """
-        REQUIRES Arith Loop
-            """.strip()
+        configuration_ccl = f"""
+REQUIRES Arith Loop {self.thorn_def.name}_gen
+
+PROVIDES {self.thorn_def.name}_gen
+{{
+   SCRIPT bin/generate.py
+   LANG python3
+}}
+""".strip()
         # print(configuration_ccl)
         configuration_ccl_fname = os.path.join(base_dir, "configuration.ccl")
         with ConditionalFileUpdater(configuration_ccl_fname) as fd:
@@ -82,6 +90,18 @@ class ThornWizard(ABC, Generic[G, CV]):
         makefile_fname = os.path.join(base_dir, "src/make.code.defn")
         with ConditionalFileUpdater(makefile_fname) as fd:
             fd.write(makefile)
+
+        PYTHON = os.path.abspath(sys.executable)
+
+        # We want the currently executing script
+        with open(sys.argv[0], "r") as fd:
+            generate_py = fd.read()
+
+        generate_py_fname = os.path.join(base_dir, "bin/generate.py")
+        os.makedirs(os.path.dirname(generate_py_fname), exist_ok=True)
+        if not os.path.exists(generate_py_fname):
+            with open(generate_py_fname, "w") as fd:
+                fd.write(generate_py)
 
 
 class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):

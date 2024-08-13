@@ -54,7 +54,7 @@ class CppCarpetXGenerator(CactusGenerator):
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
     def generate_makefile(self) -> str:
-        srcs = [self.get_src_file_name(fn_name) for fn_name in self.thorn_def.thorn_functions.keys()]
+        srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -372,7 +372,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,
-                     CarpetXGridLoopLambda(xyz_decls, eqns, [], [str(lhs) for lhs in eqn_list.eqns.keys() if lhs in thorn_fn.eqn_list.temporaries]),
+                     CarpetXGridLoopLambda(xyz_decls, eqns, [], [str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries]),
                  )]
             )
         )
