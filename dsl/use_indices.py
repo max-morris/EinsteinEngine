@@ -1049,10 +1049,10 @@ class ThornDef:
             iter_var_base:IndexedBase = self.decl("iter_var", indexes)
             iter_var = iter_var_base[indexes]
             self.symmetries.sd[iter_var_base] = iter_syms
-        print("<<","indexed:",indexed)
-        print("  ","iter_var:",iter_var)
-        print("  ","iter_syms:",iter_syms)
-        print("  ","indexes:",indexes)
+        #print("<<","indexed:",indexed)
+        #print("  ","iter_var:",iter_var)
+        #print("  ","iter_syms:",iter_syms)
+        #print("  ","indexes:",indexes)
 
         if isinstance(f, Matrix):
             set_matrix = f
