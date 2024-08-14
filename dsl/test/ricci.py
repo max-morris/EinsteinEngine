@@ -13,7 +13,7 @@ from generators.wizards import CppCarpetXWizard
 gf = ThornDef("TestRicci", "Ricci")
 
 # Declare gfs
-g = gf.decl("g", [li, lj], Centering.VVC)
+g = gf.decl("g", [li, lj], Centering.VVC, from_thorn="ADMBaseX")
 x,y,z = gf.mk_coords()
 G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
 Ric = gf.decl("Ric", [la, lb], Centering.VVC)

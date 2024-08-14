@@ -860,6 +860,7 @@ class ThornDef:
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Math] = dict()
         self.temp: OrderedSet[str] = OrderedSet()
+        self.from_thorn: Dict[str,str] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
             mkFunction("stencil"): True,
             mkFunction("divx"): True,
@@ -952,13 +953,15 @@ class ThornDef:
         return self.coords
 
     def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp:bool = False,
-             rhs: Optional[Math] = None) -> IndexedBase:
+             rhs: Optional[Math] = None, from_thorn:Optional[str] = None) -> IndexedBase:
         if rhs is not None:
             self.rhs[basename] = rhs
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
+        if from_thorn is not None:
+            self.from_thorn[basename] = from_thorn
         if temp:
             self.temp.add(basename)
 
