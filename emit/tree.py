@@ -18,6 +18,12 @@ class CommonNode(Node):
 class Identifier(CommonNode):
     identifier: str
 
+    def __eq__(self, __value: object) -> bool:
+        return isinstance(__value, Identifier) and self.identifier.__eq__(__value.identifier)
+
+    def __hash__(self) -> int:
+        return self.identifier.__hash__()
+
 
 @dataclass
 class Verbatim(CommonNode):
