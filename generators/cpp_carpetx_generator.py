@@ -87,17 +87,19 @@ class CppCarpetXGenerator(CactusGenerator):
 
             for var, spec in fn.eqn_list.read_decls.items():
                 if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
+                    qualified_var_name = self._get_qualified_var_name(var_name)
+
                     reads.append(Intent(
-                        name=Identifier(var_name),
+                        name=Identifier(qualified_var_name),
                         region=spec
                     ))
 
             for var, spec in fn.eqn_list.write_decls.items():
                 if var in fn.eqn_list.outputs and (var_name := str(var)) not in self.vars_to_ignore:
+                    qualified_var_name = self._get_qualified_var_name(var_name)
+
                     writes.append(Intent(
-                        # TODO: This is so that regrid_error -> CarpetX::regrid_error. We may want to do this in a
-                        #  better way if more such cases arise.
-                        name=Identifier(var_name if var_name not in self.vars_predeclared else f'CarpetX::{var_name}'),
+                        name=Identifier(qualified_var_name),
                         region=spec
                     ))
 
@@ -118,10 +120,15 @@ class CppCarpetXGenerator(CactusGenerator):
         )
 
     def generate_interface_ccl(self) -> InterfaceRoot:
+        inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
+
+        # We always want to inherit from CarpetX even if no vars explicitly need it
+        inherits_from.add(Identifier('CarpetX'))
+
         return InterfaceRoot(
             HeaderSection(
                 implements=Identifier(self.thorn_def.name),
-                inherits=[Identifier('CarpetX')],
+                inherits=[*inherits_from],
                 friends=[]
             ),
             IncludeSection([]),

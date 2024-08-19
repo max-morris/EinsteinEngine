@@ -2,7 +2,8 @@
 Use the Sympy Indexed type for relativity expressions.
 """
 from typing import Union, Set, Dict, List, Any, cast, Callable, Tuple, Optional, Type, TypeVar, Literal
-from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, Integer, Rational, Matrix, Wild, Number, Pow
+from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, Integer, Rational, Matrix, Wild, Number, \
+    Pow
 from sympy.core.function import UndefinedFunction as UFunc
 from inspect import currentframe
 from dsl.sympywrap import *
@@ -19,15 +20,16 @@ from util import ReprEnum, OrderedSet, ScheduleBinEnum
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
-    "set_dimension", "get_dimension", "lookup_pair",
-    "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
-    "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
+           "set_dimension", "get_dimension", "lookup_pair",
+           "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
+           "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
 ####
 # Generic derivatives
 div = mkFunction("div")
 
 lookup_pair = dict()
+
 
 def mkPair(s: str) -> Tuple[Idx, Idx]:
     assert len(s)
@@ -74,34 +76,40 @@ pp2 = mkWild("pp2", exclude=[0, 1])
 pnum = mkWild("pnn1", properties=[lambda x: isinstance(x, Number)])
 pn0 = mkWild("pn0", exclude=[0, 1], properties=[lambda x: isinstance(x, Number)])
 pind = mkWild("pind", properties=[lambda x: isinstance(x, Indexed)])
-is_ln = mkWild("is_l0", exclude=[0], properties=[lambda x : x in [l0,l1,l2,l3]])
-is_ln2 = mkWild("is_l2", exclude=[0], properties=[lambda x : x in [l0,l1,l2]])
-is_t = mkWild("is_t", properties=[lambda x : x.is_Symbol or x.is_Function])
+is_ln = mkWild("is_l0", exclude=[0], properties=[lambda x: x in [l0, l1, l2, l3]])
+is_ln2 = mkWild("is_l2", exclude=[0], properties=[lambda x: x in [l0, l1, l2]])
+is_t = mkWild("is_t", properties=[lambda x: x.is_Symbol or x.is_Function])
 
-def is_func_of_xyz(arg:Expr, coords:List[Symbol])->bool:
+
+def is_func_of_xyz(arg: Expr, coords: List[Symbol]) -> bool:
     class check:
-        def __init__(self)->None:
+        def __init__(self) -> None:
             self.found_xyz = False
             self.found_indexed = False
-        def m(self, expr:Expr)->bool:
+
+        def m(self, expr: Expr) -> bool:
             if expr in coords:
                 self.found_xyz = True
             elif type(expr) == Indexed:
                 self.found_indexed = True
             return False
-        def r(self, expr:Expr)->Expr:
+
+        def r(self, expr: Expr) -> Expr:
             return expr
+
     ck = check()
     do_replace(arg, ck.m, ck.r)
     return ck.found_xyz and not ck.found_indexed
 
+
 class DivMaker(Applier):
-    def __init__(self, params:Set[str], coords:List[Symbol])->None:
-        self.res:Optional[Expr] = None
+    def __init__(self, params: Set[str], coords: List[Symbol]) -> None:
+        self.res: Optional[Expr] = None
         self.coords = coords
-        self.ppar = mkWild("ppar", properties=[lambda x : str(x) in params])
-        self.isxyz = mkWild("isxyz", properties=[lambda x : is_func_of_xyz(x,coords)])
-    def repl(self, expr:Expr)->Optional[Expr]:
+        self.ppar = mkWild("ppar", properties=[lambda x: str(x) in params])
+        self.isxyz = mkWild("isxyz", properties=[lambda x: is_func_of_xyz(x, coords)])
+
+    def repl(self, expr: Expr) -> Optional[Expr]:
         # Div of constants
         if do_match(expr, div(pnum, p0)):
             return do_sympify(0)
@@ -119,35 +127,35 @@ class DivMaker(Applier):
             assert isinstance(q1, Idx)
             assert isinstance(q2, Idx)
             if to_num(q1) > to_num(q2):
-                return cast(Expr, div(q0,q2,q1))
+                return cast(Expr, div(q0, q2, q1))
 
         # Div of Div
-        g = do_match(expr, div(div(p0,p1),p2))
+        g = do_match(expr, div(div(p0, p1), p2))
         if g:
             q0, q1, q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, div(q0,q1,q2))
+            return cast(Expr, div(q0, q1, q2))
 
         # Div of a sum
-        g = do_match(expr, div(p0+p1, p2))
+        g = do_match(expr, div(p0 + p1, p2))
         if g:
             q0, q1, q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, div(q0, q2)+div(q1, q2))
-        g = do_match(expr, div(p0+p1, p2, p3))
+            return cast(Expr, div(q0, q2) + div(q1, q2))
+        g = do_match(expr, div(p0 + p1, p2, p3))
         if g:
             q0, q1, q2, q3 = g[p0], g[p1], g[p2], g[p3]
-            return cast(Expr, div(div(q0, q2)+div(q1, q2), q3))
+            return cast(Expr, div(div(q0, q2) + div(q1, q2), q3))
 
         # Div of a product
-        g = do_match(expr, div(pp1*pp2, p2))
+        g = do_match(expr, div(pp1 * pp2, p2))
         if g:
             q0, q1, q2 = g[pp1], g[pp2], g[p2]
-            return cast(Expr, div(q0, q2)*q1 + q0*div(q1, q2))
+            return cast(Expr, div(q0, q2) * q1 + q0 * div(q1, q2))
 
         # Div of power
         g = do_match(expr, div(Pow(p0, pn0), p1))
         if g:
             q0, q1, q2 = g[p0], g[pn0], g[p1]
-            return cast(Expr, q1*Pow(q0,q1-1)*div(q0, q2))
+            return cast(Expr, q1 * Pow(q0, q1 - 1) * div(q0, q2))
 
         # Div of an indexed quantity
         if do_match(expr, div(pind, p2)):
@@ -162,17 +170,22 @@ class DivMaker(Applier):
             return do_diff(q0, self.coords[to_num(q1)])
 
         return None
-    def m(self, expr:Expr)->bool:
+
+    def m(self, expr: Expr) -> bool:
         self.res = self.repl(expr)
         return self.res is not None
-    def r(self, expr:Expr)->Expr:
+
+    def r(self, expr: Expr) -> Expr:
         assert self.res is not None
         return self.res
 
-    def apply(self, arg:Basic)->Basic:
-        return cast(Basic, arg.replace(self.m, self.r)) # type: ignore[no-untyped-call]
+    def apply(self, arg: Basic) -> Basic:
+        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
+
 
 TA = TypeVar("TA")
+
+
 def chkcast(obj: Any, typ: Type[TA]) -> TA:
     """
     Checked cast
@@ -181,32 +194,35 @@ def chkcast(obj: Any, typ: Type[TA]) -> TA:
     return obj
 
 
-def sub_inds(idx:Idx, values:Dict[Idx, Idx])->Idx:
+def sub_inds(idx: Idx, values: Dict[Idx, Idx]) -> Idx:
     return chkcast(do_subs(idx, values), Idx)
 
-def toNumTup2(li : List[Idx], values:Dict[Idx, Idx])->Tuple[int,...]:
+
+def toNumTup2(li: List[Idx], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
     return tuple([to_num(sub_inds(x, values)) for x in li])
 
-def toNumTup(li : Tuple[Basic,...], values:Dict[Idx, Idx])->Tuple[int,...]:
+
+def toNumTup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
     return toNumTup2([chkcast(x, Idx) for x in li], values)
 
 
 stencil = mkFunction("stencil")
 noop = mkFunction("noop")
 
-
 multype = Mul  # type(i*j)
 addtype = type(ui + uj)
 eqtype = Eq
 powtype = type(ui ** uj)
 
-dimension:int = 3
+dimension: int = 3
 
-def set_dimension(d:int)->None:
+
+def set_dimension(d: int) -> None:
     global dimension
     dimension = d
 
-def get_dimension()->int:
+
+def get_dimension() -> int:
     return dimension
 
 
@@ -259,6 +275,7 @@ def is_numeric_index(x: Idx) -> bool:
     assert len(s) == 2, f"x={x}"
     n = ord(s[1])
     return num0 <= n and n <= num9
+
 
 def is_lower(x: Idx) -> bool:
     s = str(x)
@@ -407,7 +424,7 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
     return output
 
 
-def _mksymbol_for_tensor(sym:Indexed, *args:Idx)->str:
+def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> str:
     newstr = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
@@ -519,7 +536,8 @@ class Param:
             assert type(self.default) in [int, float]
             assert type(self.values[0]) in [int, float]
             assert type(self.values[1]) in [int, float]
-            if isinstance(self.default, float) or isinstance(self.values[0], float) or isinstance(self.values[1], float):
+            if isinstance(self.default, float) or isinstance(self.values[0], float) or isinstance(self.values[1],
+                                                                                                  float):
                 return float
             else:
                 return int
@@ -550,10 +568,10 @@ def to_div(out: Expr) -> Expr:
 
 
 class ApplyDiv(Applier):
-    def __init__(self)->None:
-        self.val:Optional[Expr] = None
+    def __init__(self) -> None:
+        self.val: Optional[Expr] = None
 
-    def m(self, expr:Expr)->bool:
+    def m(self, expr: Expr) -> bool:
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             for arg in expr.args[1:]:
                 assert isinstance(arg, Idx)
@@ -566,122 +584,126 @@ class ApplyDiv(Applier):
             self.val = None
             return False
 
-    def r(self, expr:Basic)->Optional[Expr]:
+    def r(self, expr: Basic) -> Optional[Expr]:
         return self.val
 
-    def apply(self, arg:Basic)->Basic:
-        return cast(Basic, arg.replace(self.m, self.r)) # type: ignore[no-untyped-call]
+    def apply(self, arg: Basic) -> Basic:
+        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
 
-def mkterm(v:Basic, i:int, j:int, k:int)->Any:
+
+def mkterm(v: Basic, i: int, j: int, k: int) -> Any:
     """
     Create a stencil term for output. Note that
     the 0,0,0 element is special.
     """
-    if i==0 and j==0 and k==0:
+    if i == 0 and j == 0 and k == 0:
         return v
     else:
-        return stencil(v,i,j,k)
+        return stencil(v, i, j, k)
 
-def sort_exprs(expr: Tuple[Any,Any])->float:
-    sort_key: float = 2*expr[0].p/expr[0].q
+
+def sort_exprs(expr: Tuple[Any, Any]) -> float:
+    sort_key: float = 2 * expr[0].p / expr[0].q
     if sort_key < 0:
-        sort_key = -sort_key+1
+        sort_key = -sort_key + 1
     return sort_key
+
 
 class ApplyDivN(Applier):
     """
     Use NRPy to calculate the stencil coefficients.
     """
-    def __init__(self, n:int)->None:
-        self.val:Optional[Expr] = None
-        self.n = n
-        self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n,0)
 
-    def m(self, expr:Expr)->bool:
+    def __init__(self, n: int) -> None:
+        self.val: Optional[Expr] = None
+        self.n = n
+        self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
+
+    def m(self, expr: Expr) -> bool:
         if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             new_expr = list()
             dxt = do_sympify(1)
-            if len(expr.args)==2:
+            if len(expr.args) == 2:
                 coefs = self.fd_matrix.col(1)
                 if expr.args[1] == l0:
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, 0))]
+                        new_expr += [(term, mkterm(expr.args[0], i - len(coefs) // 2, 0, 0))]
                     dxt = DXI
                 elif expr.args[1] == l1:
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, 0))]
+                        new_expr += [(term, mkterm(expr.args[0], 0, i - len(coefs) // 2, 0))]
                     dxt = DYI
                 elif expr.args[1] == l2:
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], 0, 0, i-len(coefs)//2))]
+                        new_expr += [(term, mkterm(expr.args[0], 0, 0, i - len(coefs) // 2))]
                     dxt = DZI
-            elif len(expr.args)==dimension:
+            elif len(expr.args) == dimension:
                 if expr.args[1:] == (l0, l0):
-                    coefs = 2*self.fd_matrix.col(2)
+                    coefs = 2 * self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, 0))]
-                    dxt = DXI**2
+                        new_expr += [(term, mkterm(expr.args[0], i - len(coefs) // 2, 0, 0))]
+                    dxt = DXI ** 2
                 elif expr.args[1:] == (l1, l1):
-                    coefs = 2*self.fd_matrix.col(2)
+                    coefs = 2 * self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, 0))]
-                    dxt = DYI**2
+                        new_expr += [(term, mkterm(expr.args[0], 0, i - len(coefs) // 2, 0))]
+                    dxt = DYI ** 2
                 elif expr.args[1:] == (l2, l2):
-                    coefs = 2*self.fd_matrix.col(2)
+                    coefs = 2 * self.fd_matrix.col(2)
                     for i in range(len(coefs)):
                         term = coefs[i]
-                        new_expr += [(term, mkterm(expr.args[0], 0, 0, i-len(coefs)//2))]
-                    dxt = DZI**2
+                        new_expr += [(term, mkterm(expr.args[0], 0, 0, i - len(coefs) // 2))]
+                    dxt = DZI ** 2
                 elif expr.args[1:] in ((l0, l1), (l1, l0)):
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
-                            term = coefs[j]*termi
-                            new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, j-len(coefs)//2, 0))]
-                    dxt = DXI*DYI
+                            term = coefs[j] * termi
+                            new_expr += [(term, mkterm(expr.args[0], i - len(coefs) // 2, j - len(coefs) // 2, 0))]
+                    dxt = DXI * DYI
                 elif expr.args[1:] in ((l0, l2), (l2, l0)):
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
-                            term = coefs[j]*termi
-                            new_expr += [(term, mkterm(expr.args[0], i-len(coefs)//2, 0, j-len(coefs)//2))]
-                    dxt = DXI*DZI
+                            term = coefs[j] * termi
+                            new_expr += [(term, mkterm(expr.args[0], i - len(coefs) // 2, 0, j - len(coefs) // 2))]
+                    dxt = DXI * DZI
                 elif expr.args[1:] in ((l1, l2), (l2, l1)):
                     coefs = self.fd_matrix.col(1)
                     for i in range(len(coefs)):
                         termi = coefs[i]
                         for j in range(len(coefs)):
-                            term = coefs[j]*termi
-                            new_expr += [(term, mkterm(expr.args[0], 0, i-len(coefs)//2, j-len(coefs)//2))]
-                    dxt = DYI*DZI
+                            term = coefs[j] * termi
+                            new_expr += [(term, mkterm(expr.args[0], 0, i - len(coefs) // 2, j - len(coefs) // 2))]
+                    dxt = DYI * DZI
                 else:
                     raise Exception()
 
-            if len(new_expr)>0:
+            if len(new_expr) > 0:
                 new_expr = sorted(new_expr, key=sort_exprs)
                 self.val = do_sympify(0)
                 i = 0
                 while i < len(new_expr):
-                    if i + 1 < len(new_expr) and abs(new_expr[i][0]) == abs(new_expr[i+1][0]):
+                    if i + 1 < len(new_expr) and abs(new_expr[i][0]) == abs(new_expr[i + 1][0]):
                         # We use noop for grouping because otherwise, Sympy will change things
-                        if new_expr[i][0]  !=     new_expr[i+1][0]:
-                            self.val += new_expr[i][0]*noop(new_expr[i][1] - new_expr[i+1][1])
+                        if new_expr[i][0] != new_expr[i + 1][0]:
+                            self.val += new_expr[i][0] * noop(new_expr[i][1] - new_expr[i + 1][1])
                         else:
-                            self.val += new_expr[i][0]*noop(new_expr[i][1] + new_expr[i+1][1])
+                            self.val += new_expr[i][0] * noop(new_expr[i][1] + new_expr[i + 1][1])
                         i += 2
                     else:
-                        self.val += new_expr[i][0]*new_expr[i][1]
+                        self.val += new_expr[i][0] * new_expr[i][1]
                         i += 1
-                self.val = self.val*dxt
+                self.val = self.val * dxt
             else:
-                print("args:",expr.args)
+                print("args:", expr.args)
             if self.val is None:
                 raise Exception(str(expr))
             return True
@@ -689,11 +711,11 @@ class ApplyDivN(Applier):
             self.val = None
             return False
 
-    def r(self, expr:Expr)->Optional[Expr]:
+    def r(self, expr: Expr) -> Optional[Expr]:
         return self.val
 
-    def apply(self, arg:Basic)->Basic:
-        return cast(Basic, arg.replace(self.m, self.r)) # type: ignore[no-untyped-call]
+    def apply(self, arg: Basic) -> Basic:
+        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
 
 
 val = mkSymbol("val")
@@ -718,12 +740,12 @@ class ThornFunction:
         self.been_baked: bool = False
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
-        #TODO: Is the type checker correct here?
+        # TODO: Is the type checker correct here?
         if isinstance(lhs2, Symbol):
             pass
         elif isinstance(lhs2, IndexedBase):
             pass
-        #elif isinstance(lhs2, Indexed) and len(lhs2.args)==1:
+        # elif isinstance(lhs2, Indexed) and len(lhs2.args)==1:
         #    pass
         else:
             raise Exception(f"'add_eqn('{lhs2}',...) is not the correct type. It is '{type(lhs2)}'")
@@ -739,20 +761,24 @@ class ThornFunction:
                 assert item.is_Symbol
                 self.eqn_list.add_param(cast(Symbol, item))
         divs = self.thorn_def.apply_div
+
         class FindBad:
-            def __init__(self,outer:ThornFunction)->None:
+            def __init__(self, outer: ThornFunction) -> None:
                 self.outer = outer.thorn_def
-                self.msg:Optional[str] = None
-            def m(self, expr:Expr)->bool:
+                self.msg: Optional[str] = None
+
+            def m(self, expr: Expr) -> bool:
                 if isinstance(expr, Idx):
                     self.msg = f"Index passed to add_eqn: '{expr}'"
                 elif type(expr) == Indexed:
                     if len(expr.args) != 1:
                         self.msg = f"Tensor passed to add_eqn: '{expr}'"
                 return False
-            def r(self, expr:Expr)->Expr:
+
+            def r(self, expr: Expr) -> Expr:
                 return expr
-        rhs2_:Basic = self.thorn_def.do_subs(rhs2)
+
+        rhs2_: Basic = self.thorn_def.do_subs(rhs2)
         assert isinstance(rhs2_, Expr)
         rhs2_ = divs.apply(rhs2_)
         assert isinstance(rhs2_, Expr)
@@ -764,7 +790,7 @@ class ThornFunction:
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
 
-    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix,Expr]) -> None:
+    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
@@ -777,8 +803,8 @@ class ThornFunction:
             for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
                 count += 1
                 lhsx, inds = tup
-                lhs2_:Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-                assert isinstance(lhs2_,Symbol)
+                lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+                assert isinstance(lhs2_, Symbol)
                 lhs2 = lhs2_
                 if type(rhs) == Matrix:
                     arr_inds = toNumTup(lhs.args[1:], inds)
@@ -786,7 +812,7 @@ class ThornFunction:
                 else:
                     rhs0 = rhs
                 rhs2 = self.thorn_def.do_subs(rhs0, inds, self.thorn_def.subs)
-                #rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
+                # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
                 self._add_eqn2(lhs2, rhs2)
             if count == 0:
                 assert isinstance(rhs, Expr)
@@ -816,7 +842,7 @@ class ThornFunction:
     def diagnose(self) -> None:
         self.eqn_list.diagnose()
 
-    def bake(self, *, do_cse: bool = True)->None:
+    def bake(self, *, do_cse: bool = True) -> None:
         if self.been_baked:
             raise Exception("bake should not be called more than once")
         print(f"*** {self.name} ***")
@@ -844,8 +870,8 @@ class ThornFunction:
 
 class ThornDef:
     def __init__(self, arr: str, name: str) -> None:
-        self.coords : List[Symbol] = list()
-        self.apply_div : Applier = ApplyDiv()
+        self.coords: List[Symbol] = list()
+        self.apply_div: Applier = ApplyDiv()
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
@@ -860,7 +886,7 @@ class ThornDef:
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Math] = dict()
         self.temp: OrderedSet[str] = OrderedSet()
-        self.from_thorn: Dict[str,str] = dict()
+        self.base2thorn: Dict[str, str] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
             mkFunction("stencil"): True,
             mkFunction("divx"): True,
@@ -874,7 +900,7 @@ class ThornDef:
             mkFunction("divzz"): True
         }
 
-    def set_div_stencil(self, n : int)->None:
+    def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
         self.apply_div = ApplyDivN(n)
@@ -952,8 +978,8 @@ class ThornDef:
             assert False
         return self.coords
 
-    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp:bool = False,
-             rhs: Optional[Math] = None, from_thorn:Optional[str] = None) -> IndexedBase:
+    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp: bool = False,
+             rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
         if rhs is not None:
             self.rhs[basename] = rhs
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
@@ -961,7 +987,7 @@ class ThornDef:
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
         if from_thorn is not None:
-            self.from_thorn[basename] = from_thorn
+            self.base2thorn[basename] = from_thorn
         if temp:
             self.temp.add(basename)
 
@@ -974,8 +1000,8 @@ class ThornDef:
 
         return ret
 
-    def find_indexes(self, foo:Basic)->List[Idx]:
-        ret : List[Idx] = list()
+    def find_indexes(self, foo: Basic) -> List[Idx]:
+        ret: List[Idx] = list()
         if type(foo) == div:
             ret = self.find_indexes(foo.args[0])
         for arg in foo.args[1:]:
@@ -983,8 +1009,8 @@ class ThornDef:
             ret.append(arg)
         return ret
 
-    def find_symmetries(self, foo:Basic)->List[Tuple[int,int,int]]:
-        msym_list : List[Tuple[int,int,int]] = list()
+    def find_symmetries(self, foo: Basic) -> List[Tuple[int, int, int]]:
+        msym_list: List[Tuple[int, int, int]] = list()
         if foo.is_Function and hasattr(foo, "name") and foo.name == "div":
             # This is a derivative
             if len(foo.args) == 3:
@@ -992,7 +1018,7 @@ class ThornDef:
                 # This is a 2nd derivative, symmetric in the last 2 args
                 foo_arg1 = chkcast(foo.args[1], int)
                 foo_arg2 = chkcast(foo.args[2], int)
-                msym : Tuple[int,int,int] = (foo_arg1, foo_arg2, 1)
+                msym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
                 msym_list += [msym]
                 msym_list += self.find_symmetries(foo.args[0])
             elif len(foo.args) == 2:
@@ -1004,17 +1030,17 @@ class ThornDef:
             return self.symmetries.sd.get(k, list())
         return msym_list
 
-    def get_matrix(self, ind:Indexed)->Matrix:
+    def get_matrix(self, ind: Indexed) -> Matrix:
         print(ind, ind.args)
-        values:Dict[Idx, Idx] = dict()
-        result = mkZeros(*tuple([dimension]*(len(ind.args)-1)))
-        ind_args:List[Idx] = [chkcast(x, Idx) for x in ind.args[1:]]
+        values: Dict[Idx, Idx] = dict()
+        result = mkZeros(*tuple([dimension] * (len(ind.args) - 1)))
+        ind_args: List[Idx] = [chkcast(x, Idx) for x in ind.args[1:]]
         while incr(ind_args, values):
-            arr_inds = tuple([to_num(chkcast(do_subs(x, values),Idx)) for x in ind_args])
+            arr_inds = tuple([to_num(chkcast(do_subs(x, values), Idx)) for x in ind_args])
             result[arr_inds] = self.do_subs(ind, values)
         return result
 
-    def get_indices(self, expr:Expr)->List[Idx]:
+    def get_indices(self, expr: Expr) -> List[Idx]:
         out: List[Idx] = list()
         if type(expr) == div:
             for arg in expr.args[0].args[1:]:
@@ -1026,15 +1052,14 @@ class ThornDef:
             out.append(arg)
         return out
 
-
-    def get_coords(self)->List[Symbol]:
+    def get_coords(self) -> List[Symbol]:
         return self.coords
 
-    def get_params(self)->Set[str]:
+    def get_params(self) -> Set[str]:
         return OrderedSet(self.params)
 
-    def mk_subst(self, indexed: Indexed, f: Union[mk_subst_type,Matrix,Expr] = mk_subst_default) -> None:
-        indexes : List[Idx]
+    def mk_subst(self, indexed: Indexed, f: Union[mk_subst_type, Matrix, Expr] = mk_subst_default) -> None:
+        indexes: List[Idx]
         if type(indexed) == Indexed:
             iter_var = indexed
             iter_syms = self.find_symmetries(indexed)
@@ -1046,16 +1071,16 @@ class ThornDef:
             iter_syms = self.find_symmetries(indexed)
             indexes = self.find_indexes(indexed)
             assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
-            #for arg in indexed.args[1:]:
+            # for arg in indexed.args[1:]:
             #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
             #    indexes.append(arg)
-            iter_var_base:IndexedBase = self.decl("iter_var", indexes)
+            iter_var_base: IndexedBase = self.decl("iter_var", indexes)
             iter_var = iter_var_base[indexes]
             self.symmetries.sd[iter_var_base] = iter_syms
-        #print("<<","indexed:",indexed)
-        #print("  ","iter_var:",iter_var)
-        #print("  ","iter_syms:",iter_syms)
-        #print("  ","indexes:",indexes)
+        # print("<<","indexed:",indexed)
+        # print("  ","iter_var:",iter_var)
+        # print("  ","iter_syms:",iter_syms)
+        # print("  ","indexes:",indexes)
 
         if isinstance(f, Matrix):
             set_matrix = f
@@ -1064,7 +1089,7 @@ class ThornDef:
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 self.subs[out] = do_simplify(set_matrix[arr_inds])
-                print(colorize(out,"red"),colorize("->","magenta"),colorize(self.subs[out],"cyan"))
+                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
         elif isinstance(f, Expr):
             dm = DivMaker(self.get_params(), self.get_coords())
@@ -1075,9 +1100,9 @@ class ThornDef:
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 self.subs[out] = do_simplify(self.do_subs(f, indrep))
-                print(colorize(out,"red"),colorize("->","magenta"),colorize(self.subs[out],"cyan"))
+                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
-        
+
         for tup in expand_free_indices(iter_var, self.symmetries):
             out, indrep = tup
             assert isinstance(out, Indexed)
@@ -1149,7 +1174,7 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(N[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == dimension*(dimension-1)
+    assert n == dimension * (dimension - 1)
 
     # Non-Symmetric
     Q = gf.decl("Q", [la, lb])
@@ -1158,10 +1183,10 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(Q[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == dimension**2
+    assert n == dimension ** 2
 
     a = gf.decl("a", [], temp=True)
     b = gf.decl("b", [])
     foo = gf.create_function("foo", ScheduleBin.Analysis)
-    foo.add_eqn(a,do_sympify(dimension))
-    foo.add_eqn(b,a+do_sympify(2))
+    foo.add_eqn(a, do_sympify(dimension))
+    foo.add_eqn(b, a + do_sympify(2))

@@ -17,7 +17,6 @@ class CactusGenerator(ABC):
     var_names: OrderedSet[str]
 
     vars_to_ignore: Set[str] = {'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
-    vars_predeclared: Set[str] = {'regrid_error'}
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
@@ -34,7 +33,7 @@ class CactusGenerator(ABC):
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
 
-        for var_name in [v for v in self.var_names if v not in self.vars_predeclared]:
+        for var_name in [v for v in self.var_names if self._var_is_locally_declared(v)]:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
 
             tags: Optional[String] = None
@@ -77,3 +76,11 @@ class CactusGenerator(ABC):
     @abstractmethod
     def generate_function_code(self, which_fn: str) -> CodeRoot:
         ...
+
+    def _var_is_locally_declared(self, var_name: str) -> bool:
+        return self.thorn_def.var2base.get(var_name, var_name) not in self.thorn_def.base2thorn
+
+    def _get_qualified_var_name(self, var_name: str) -> str:
+        var_base = self.thorn_def.var2base.get(var_name, var_name)
+        from_thorn: Optional[str] = self.thorn_def.base2thorn.get(var_base, None)
+        return var_name if from_thorn is None else f'{from_thorn}::{var_name}'

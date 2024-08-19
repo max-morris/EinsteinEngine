@@ -90,7 +90,7 @@ fun.dump()
 fun.show_tensortypes()
 
 fun = gf.create_function("refine", ScheduleBin.EstimateError)
-regrid_error = gf.decl("regrid_error", [], Centering.CCC)
+regrid_error = gf.decl("regrid_error", [], Centering.CCC, from_thorn='CarpetX')
 #fun.add_eqn(regrid_error, 2*v*v)
 fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
 fun.bake(do_cse=False)
