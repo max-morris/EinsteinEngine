@@ -71,12 +71,12 @@ class ThornWizard(ABC, Generic[G, CV]):
 
         print('== configuration.ccl ==')
         configuration_ccl = f"""
-REQUIRES Arith Loop {self.thorn_def.name}_gen
+REQUIRES Arith Loop {self.thorn_def.name}_gen AMReX
 
 PROVIDES {self.thorn_def.name}_gen
 {{
-   SCRIPT bin/generate.py
-   LANG python3
+#   SCRIPT bin/generate.py
+#   LANG python3
 }}
 """.strip()
         # print(configuration_ccl)

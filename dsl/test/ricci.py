@@ -11,18 +11,19 @@ from generators.wizards import CppCarpetXWizard
 
 # Create a set of grid functions
 gf = ThornDef("TestRicci", "Ricci")
+gf.set_div_stencil(3)
 
 # Declare gfs
-g = gf.decl("g", [li, lj], Centering.VVC, from_thorn="ADMBaseX")
+g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
 x,y,z = gf.mk_coords()
-G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
-Ric = gf.decl("Ric", [la, lb], Centering.VVC)
+G = gf.decl("Affine", [ua, lb, lc])
+Ric = gf.decl("Ric", [la, lb])
 
 gf.add_sym(g[li, lj], li, lj)
 gf.add_sym(G[ua, lb, lc], lb, lc)
 gf.add_sym(Ric[la,lb], la, lb)
 
-gf.mk_subst(g[la, lb])
+gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
 gmat = gf.get_matrix(g[la,lb])
 imat = do_inv(gmat)
