@@ -29,6 +29,7 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_setup: str = "#define CARPETX_GF3D5"
     boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
+        #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
         #define noop(OP) (OP)
         // 1st derivatives
         #define divx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) - GF(p.mask, GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
@@ -362,7 +363,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # Prepare the equations. They need to be in the right order, and some LHSs need to be wrapped in access()
         eqn_list = thorn_fn.eqn_list
         eqns = OrderedDict(
-            [(lhs_substitution(str(lhs)), SympyExpr(rhs)) for lhs, rhs in
+            [(lhs, SympyExpr(rhs)) for lhs, rhs in
              sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0]))]
         )
 

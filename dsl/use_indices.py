@@ -20,7 +20,7 @@ from util import ReprEnum, OrderedSet, ScheduleBinEnum
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
-           "set_dimension", "get_dimension", "lookup_pair",
+           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
@@ -469,6 +469,34 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
     else:
         return mkSymbol(_mksymbol_for_tensor(sym))
 
+## mksymbol_for_tensor_xyz
+
+def _mksymbol_for_tensor_xyz(sym:Indexed, *args:Idx)->str:
+    newstr = str(sym.base)
+    for ind in sym.args[1:]:
+        assert isinstance(ind, Idx)
+        newstr += ["x","y","z"][to_num(ind)]
+    return newstr
+
+def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs:int) -> Symbol:
+    """
+    Define a symbol for a tensor using standard Cactus rules.
+    Don't distinguish up/down indexes. Use suffixes based on
+    x, y, and z at the end.
+
+    :param out: The tensor expression with integer indices.
+
+    :return: a new sympy symbol
+    """
+    if sym.is_Function and hasattr(sym, "name") and sym.name == "div":
+        assert isinstance(sym.args[0], Indexed)
+        newstr = _mksymbol_for_tensor_xyz(sym.args[0]) + "_d"
+        for ind in sym.args[1:]:
+            assert isinstance(ind, Idx)
+            newstr += str(to_num(ind))
+        return mkSymbol(newstr)
+    else:
+        return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
 # It's horrible that Python can't let me type this any other way
 mk_subst_type = Union[
@@ -484,7 +512,8 @@ def mk_subst_default_(out: Indexed, *inds: int) -> Expr:
     return mksymbol_for_tensor(out)
 
 
-mk_subst_default = cast(mk_subst_type, mk_subst_default_)
+mk_subst_default        = cast(mk_subst_type, mk_subst_default_)
+mksymbol_for_tensor_xyz = cast(mk_subst_type,__mksymbol_for_tensor_xyz)
 
 param_default_type = Union[float, int, str, bool]
 param_values_type = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
@@ -794,6 +823,15 @@ class ThornFunction:
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
+        # Test to see if we have filled in indexes, i.e. l0, u0, etc.
+        #is_Literal = True
+        #if isinstance(lhs, Indexed):
+        #    for i in lhs.args[1:]:
+        #        assert isinstance(i, Idx)
+        #        if not is_numeric_index(i):
+        #            is_Literal = False
+        #if is_Literal
+
         lhs2: Symbol
         if type(lhs) == Indexed:
             if isinstance(rhs, Expr):
@@ -982,6 +1020,8 @@ class ThornDef:
              rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
         if rhs is not None:
             self.rhs[basename] = rhs
+        if centering is None:
+            centering = Centering.VVV
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))

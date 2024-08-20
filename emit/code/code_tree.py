@@ -3,6 +3,7 @@ from enum import auto
 from typing import Optional, Union, List, Dict, Sequence
 
 import sympy as sy
+from dsl.sympywrap import Math
 
 from emit.ccl.schedule.schedule_tree import IntentRegion
 from emit.tree import Node, Identifier, String, Verbatim, CommonNode
@@ -196,7 +197,7 @@ class StandardizedFunctionCall(Expr):
 @dataclass
 class CarpetXGridLoopLambda(Expr):
     preceding: Sequence[CodeElem]
-    equations: Dict[str, SympyExpr]
+    equations: Dict[Math, SympyExpr]
     succeeding: Sequence[CodeElem]
     temporaries: Sequence[str]
 
