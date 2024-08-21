@@ -106,6 +106,7 @@ class EqnList:
                 self.outputs.remove(temp)
             if temp in self.inputs:
                 self.inputs.remove(temp)
+                
 
         def ftrace(sym: Symbol) -> bool:
             if sym.is_Function:

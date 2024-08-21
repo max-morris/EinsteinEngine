@@ -149,7 +149,7 @@ class CppVisitor(Visitor[CodeNode]):
 
         equations_list = list()
         for lhs, rhs in n.equations.items():
-            if lhs in n.temporaries:
+            if str(lhs) in n.temporaries:
                 equations_list.append(f'const auto {lhs} = {self.visit(rhs)};')
             else:
                 equations_list.append(f'store({lhs}, {self.visit(rhs)});')

@@ -823,15 +823,6 @@ class ThornFunction:
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
-        # Test to see if we have filled in indexes, i.e. l0, u0, etc.
-        #is_Literal = True
-        #if isinstance(lhs, Indexed):
-        #    for i in lhs.args[1:]:
-        #        assert isinstance(i, Idx)
-        #        if not is_numeric_index(i):
-        #            is_Literal = False
-        #if is_Literal
-
         lhs2: Symbol
         if type(lhs) == Indexed:
             if isinstance(rhs, Expr):
