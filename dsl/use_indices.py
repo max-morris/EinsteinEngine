@@ -1,7 +1,7 @@
 """
 Use the Sympy Indexed type for relativity expressions.
 """
-from typing import Union, Set, Dict, List, Any, cast, Callable, Tuple, Optional, Type, TypeVar, Literal
+from typing import Union, Set, Dict, List, Any, cast, Callable, Tuple, Optional, Type, TypeVar, Literal, Collection
 from sympy import IndexedBase, Idx, Eq, Indexed, Basic, Mul, Expr, Eq, Symbol, Integer, Rational, Matrix, Wild, Number, \
     Pow
 from sympy.core.function import UndefinedFunction as UFunc
@@ -761,12 +761,19 @@ class ScheduleBin(ScheduleBinEnum):
 
 
 class ThornFunction:
-    def __init__(self, name: str, schedule_bin: ScheduleBin, thorn_def: "ThornDef") -> None:
+    def __init__(self,
+                 name: str,
+                 schedule_bin: ScheduleBin,
+                 thorn_def: "ThornDef",
+                 schedule_before: Optional[Collection[str]],
+                 schedule_after: Optional[Collection[str]]) -> None:
         self.schedule_bin = schedule_bin
         self.name = name
         self.thorn_def = thorn_def
         self.eqn_list: EqnList = EqnList(thorn_def.is_stencil)
         self.been_baked: bool = False
+        self.schedule_before: Collection[str] = schedule_before or list()
+        self.schedule_after: Collection[str] = schedule_after or list()
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
         # TODO: Is the type checker correct here?
@@ -942,8 +949,13 @@ class ThornDef:
             return "none", list(), list()  # scalar
         return v, self.defn[v][1], self.groups[v]
 
-    def create_function(self, name: str, schedule_bin: ScheduleBin) -> ThornFunction:
-        tf = ThornFunction(name, schedule_bin, self)
+    def create_function(self,
+                        name: str,
+                        schedule_bin: ScheduleBin,
+                        *,
+                        schedule_before: Optional[Collection[str]] = None,
+                        schedule_after: Optional[Collection[str]] = None) -> ThornFunction:
+        tf = ThornFunction(name, schedule_bin, self, schedule_before, schedule_after)
         self.thorn_functions[name] = tf
         return tf
 
