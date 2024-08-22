@@ -112,7 +112,9 @@ class CppCarpetXGenerator(CactusGenerator):
                 description=String(fn_name),
                 lang=Language.C,
                 reads=reads,
-                writes=writes
+                writes=writes,
+                before=[Identifier(s) for s in fn.schedule_before],
+                after=[Identifier(s) for s in fn.schedule_after]
             ))
 
         return ScheduleRoot(
