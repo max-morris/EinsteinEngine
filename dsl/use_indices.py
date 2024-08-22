@@ -869,6 +869,9 @@ class ThornFunction:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
 
+    def madd(self) -> None:
+        self.eqn_list.madd()
+
     def cse(self) -> None:
         self.eqn_list.cse()
 
@@ -878,11 +881,13 @@ class ThornFunction:
     def diagnose(self) -> None:
         self.eqn_list.diagnose()
 
-    def bake(self, *, do_cse: bool = True) -> None:
+    def bake(self, *, do_cse: bool = True, do_madd = True) -> None:
         if self.been_baked:
             raise Exception("bake should not be called more than once")
         print(f"*** {self.name} ***")
 
+        if do_madd:
+            self.madd()
         if do_cse:
             self.cse()
         self.diagnose()
@@ -924,6 +929,7 @@ class ThornDef:
         self.temp: OrderedSet[str] = OrderedSet()
         self.base2thorn: Dict[str, str] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
+            mkFunction("muladd"): False,
             mkFunction("stencil"): True,
             mkFunction("divx"): True,
             mkFunction("divxx"): True,

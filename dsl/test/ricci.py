@@ -57,6 +57,11 @@ if opt2:
 fun.add_eqn(Ric[li, lj],
              div(G[ua, li, lj], la) - div(G[ua, la, li], lj) + 
              G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
+# Optimizations:
+# Does it pull the 2nd G out of the sum of: G[ua, la, lb] * G[ub, li, lj]? Check
+# -1*Foo should be -Foo
+# Comment:
+# Check non-diagonal metric
 
 # Ensure the equations make sense
 fun.bake()

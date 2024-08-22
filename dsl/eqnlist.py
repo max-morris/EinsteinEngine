@@ -237,18 +237,22 @@ class EqnList:
                         find_cycle = k
         print(colorize("Order:", "green"), self.order)
 
-        default_read_spec = None
-        default_write_spec = None
+        default_read_spec = IntentRegion.Interior
+        default_write_spec = IntentRegion.Everywhere
         for var in self.inputs:
             for val in self.read_decls.values():
-                if default_read_spec is not None:
-                    assert default_read_spec == val
-                default_read_spec = val
+                if val == IntentRegion.Everywhere:
+                    default_read_spec = val
+                    break
+        for key in self.read_decls.keys():
+            self.read_decls[key] = default_read_spec
         for var in self.outputs:
             for val in self.write_decls.values():
-                if default_write_spec is not None:
-                    assert default_write_spec == val
-                default_write_spec = val
+                if val == IntentRegion.Interior:
+                    default_write_spec = val
+                    break
+        for key in self.write_decls.keys():
+            self.write_decls[key] = default_write_spec
 
         # Figure out the rest of the READ/WRITEs
         spec: IntentRegion
@@ -379,6 +383,35 @@ class EqnList:
         undo = UndoCSE(self)
         for eqn in self.eqns.items():
             self.eqns[eqn[0]] = do_replace(eqn[1], undo.m, undo.r)
+
+    def madd(self) -> None:
+        """ Insert fused multiply add instructions """
+        muladd = mkFunction("muladd")
+        p0 = mkWild("p0", exclude=[0,1,2])
+        p1 = mkWild("p1", exclude=[0,1,2])
+        p2 = mkWild("p2", exclude=[0])
+
+        class make_madd:
+            def __init__(self):
+                self.value = None
+            def m(self, expr):
+                self.value = None
+                g = expr.match(p0*p1+p2)
+                if g:
+                    q0, q1, q2 = g[p0], g[p1], g[p2]
+                    self.value = muladd(self.repl(q0), self.repl(q1), self.repl(q2))
+                return self.value is not None
+            def r(self, expr):
+                return self.value
+            def repl(self, expr):
+                for iter in range(20):
+                    nexpr = expr.replace(self.m, self.r)
+                    if nexpr == expr:
+                        return nexpr
+                    expr = nexpr
+        mm = make_madd()
+        for k, v in self.eqns.items():
+            self.eqns[k] = mm.repl(v)
 
     def cse(self) -> None:
         """ Invoke Sympy's CSE method, but ensure that the order of the resulting assignments is correct. """

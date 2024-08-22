@@ -89,7 +89,12 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: BinOpExpr) -> str:
         if n.op is Operator.Pow:
-            return f'pown({self.visit(n.lhs)}, {self.visit(n.rhs)})'
+            rhs_str = str(self.visit(n.rhs))
+            lhs_str = str(self.visit(n.lhs))
+            if rhs_str == "2":
+                return f'pow2({lhs_str})'
+            else:
+                return f'pown({lhs_str}, {rhs_str})'
         return f'({self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)})'
 
     @visit.register
