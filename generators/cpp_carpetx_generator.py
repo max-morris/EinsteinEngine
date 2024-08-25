@@ -343,10 +343,10 @@ class CppCarpetXGenerator(CactusGenerator):
                     Identifier('x'),
                     BinOpExpr(
                         IdExpr(Identifier('p.x')),
-                        Operator.Add,
+                        BinOp.Add,
                         BinOpExpr(
                             VerbatimExpr(Verbatim('Arith::iota<vreal>()')),
-                            Operator.Mul,
+                            BinOp.Mul,
                             IdExpr(Identifier('p.dx'))
                         )
                     )
@@ -355,7 +355,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # DXI, DYI, DZI decls
         di_decls = [
-            ConstAssignDecl(Identifier('auto'), Identifier(s), BinOpExpr(FloatLiteralExpr(1.0), Operator.Div, VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))))
+            ConstAssignDecl(Identifier('auto'), Identifier(s), BinOpExpr(FloatLiteralExpr(1.0), BinOp.Div, VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))))
             for n, s in enumerate(['DXI', 'DYI', 'DZI'])
         ]
 

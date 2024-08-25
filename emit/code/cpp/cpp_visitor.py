@@ -87,11 +87,15 @@ class CppVisitor(Visitor[CodeNode]):
         return typing.cast(str, self.visit(exp))
 
     @visit.register
+    def _(self, n: UnOpExpr) -> str:
+        return f'({n.op.representation}({self.visit(n.e)}))'
+
+    @visit.register
     def _(self, n: BinOpExpr) -> str:
         lhs = self.visit(n.lhs)
         rhs = self.visit(n.rhs)
 
-        if n.op is Operator.Pow:
+        if n.op is BinOp.Pow:
             if isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer == 2:
                 return f'pow2({lhs})'
             else:
@@ -101,7 +105,7 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: NArityOpExpr) -> str:
-        assert n.op != Operator.Pow
+        assert n.op != BinOp.Pow
 
         if len(n.args) == 0:
             return ''
