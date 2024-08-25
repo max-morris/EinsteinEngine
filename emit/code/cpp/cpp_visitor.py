@@ -88,14 +88,16 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: BinOpExpr) -> str:
+        lhs = self.visit(n.lhs)
+        rhs = self.visit(n.rhs)
+
         if n.op is Operator.Pow:
-            rhs_str = str(self.visit(n.rhs))
-            lhs_str = str(self.visit(n.lhs))
-            if rhs_str == "2":
-                return f'pow2({lhs_str})'
+            if isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer == 2:
+                return f'pow2({lhs})'
             else:
-                return f'pown({lhs_str}, {rhs_str})'
-        return f'({self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)})'
+                return f'pown({lhs}, {rhs})'
+
+        return f'({lhs} {n.op.representation} {rhs})'
 
     @visit.register
     def _(self, n: NArityOpExpr) -> str:
