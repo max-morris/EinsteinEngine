@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import auto
-from typing import Optional, Union, List, Dict, Sequence
+from typing import Optional, Union, List, Dict, Sequence, Collection
 
 import sympy as sy
 from dsl.sympywrap import Math
@@ -206,10 +206,11 @@ class StandardizedFunctionCall(Expr):
 
 @dataclass
 class CarpetXGridLoopLambda(Expr):
-    preceding: Sequence[CodeElem]
-    equations: Dict[Math, SympyExpr]
-    succeeding: Sequence[CodeElem]
-    temporaries: Sequence[str]
+    preceding: Collection[CodeElem]
+    equations: List[tuple[Math, SympyExpr]]
+    succeeding: Collection[CodeElem]
+    temporaries: Collection[str]
+    reassigned_lhses: Collection[int]
 
 
 @dataclass
