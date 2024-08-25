@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from functools import cached_property
 from typing import TypeVar, Literal, List, Dict, Union, Tuple, Any, Set, Generic, Iterator, Optional, Type, cast, Any
 
@@ -9,6 +10,7 @@ from sympy.core.function import UndefinedFunction as UFunc
 from enum import Enum
 
 from util import OrderedSet
+from util import get_or_compute
 
 from dsl.sympywrap import *
 from emit.ccl.schedule.schedule_tree import IntentRegion
@@ -18,6 +20,39 @@ from emit.ccl.schedule.schedule_tree import IntentRegion
 DXI = mkSymbol("DXI")
 DYI = mkSymbol("DYI")
 DZI = mkSymbol("DZI")
+
+
+@dataclass
+class TemporaryLifetime:
+    symbol: Math
+    prime: int
+    read_at: OrderedSet[int]
+    written_at: int
+    replaces: Optional["TemporaryLifetime"]
+    is_superseded: bool
+
+    def __str__(self) -> str:
+        ticks = "'" * self.prime
+        return f'{self.symbol}{ticks}'
+
+    def __hash__(self) -> int:
+        return (self.symbol, self.prime).__hash__()
+
+    def __eq__(self, __value: object) -> bool:
+        return (isinstance(__value, TemporaryLifetime)
+                and self.symbol.__eq__(__value.symbol)  # type: ignore[no-untyped-call]
+                and self.prime.__eq__(__value.prime))
+
+    @cached_property
+    def final_read(self) -> int:
+        return max(self.read_at)
+
+
+@dataclass(frozen=True)
+class TemporaryReplacement:
+    old: Math
+    new: Math
+    begin_eqn: int
 
 
 class EqnList:
@@ -50,6 +85,7 @@ class EqnList:
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.temporaries: Set[Math] = OrderedSet()
+        self.temporary_replacements: Set[TemporaryReplacement] = set()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -85,6 +121,79 @@ class EqnList:
     def add_eqn(self, lhs: Math, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
         self.eqns[lhs] = rhs
+
+    def recycle_temporaries(self) -> None:
+        temp_reads: Dict[Math, OrderedSet[int]] = dict()
+        temp_writes: Dict[Math, OrderedSet[int]] = dict()
+
+        for temp_var in self.temporaries:
+            for lhs, rhs in self.eqns.items():
+                eqn_i = self.order.index(lhs)
+
+                if str(lhs) == str(temp_var):
+                    get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
+
+                if rhs.find(temp_var):  # type: ignore[no-untyped-call]
+                    get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
+
+        lifetimes: Set[TemporaryLifetime] = set()
+
+        for temp_var in self.temporaries:
+            print(f'Temporary {temp_var}:')
+            assert len(temp_writes[temp_var]) == 1
+
+            reads_str = [str(x) for x in temp_reads[temp_var]]
+            writes_str = [str(x) for x in temp_writes[temp_var]]
+
+            print(f'    Read in EQNs: {", ".join(reads_str)}')
+            print(f'    Written in EQNs: {", ".join(writes_str)}')
+
+            lifetimes.add(TemporaryLifetime(
+                symbol=temp_var,
+                prime=0,
+                read_at=temp_reads[temp_var],
+                written_at=temp_writes[temp_var].pop(),
+                replaces=None,
+                is_superseded=False
+            ))
+
+        for eqn_i in range(len(self.order)):
+            def is_assigned_here(lt: TemporaryLifetime) -> bool:
+                return lt.written_at == eqn_i
+
+            def is_stale(lt: TemporaryLifetime) -> bool:
+                return lt.final_read < eqn_i and not lt.is_superseded
+
+            if not (assigned_here := cast(TemporaryLifetime, next(filter(is_assigned_here, lifetimes), None))):
+                continue
+
+            stale_temporaries: List[TemporaryLifetime] = sorted(filter(is_stale, lifetimes), key=lambda lt: lt.final_read)
+
+            if len(stale_temporaries) == 0:
+                continue
+
+            candidate = stale_temporaries[0]
+
+            lifetimes.add(TemporaryLifetime(
+                symbol=candidate.symbol,
+                prime=candidate.prime + 1,
+                read_at=assigned_here.read_at,
+                written_at=eqn_i,
+                replaces=assigned_here,
+                is_superseded=False
+            ))
+
+            lifetimes.remove(assigned_here)
+            candidate.is_superseded = True
+
+            self.temporary_replacements.add(TemporaryReplacement(
+                old=assigned_here.symbol,
+                new=candidate.symbol,
+                begin_eqn=eqn_i
+            ))
+
+            print(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
+
 
     def diagnose(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
@@ -387,8 +496,8 @@ class EqnList:
     def madd(self) -> None:
         """ Insert fused multiply add instructions """
         muladd = mkFunction("muladd")
-        p0 = mkWild("p0", exclude=[0,1,2])
-        p1 = mkWild("p1", exclude=[0,1,2])
+        p0 = mkWild("p0", exclude=[0, 1, 2, -1, -2])
+        p1 = mkWild("p1", exclude=[0, 1, 2, -1, -2])
         p2 = mkWild("p2", exclude=[0])
 
         class make_madd:

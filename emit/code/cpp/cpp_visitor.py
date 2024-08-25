@@ -159,9 +159,12 @@ class CppVisitor(Visitor[CodeNode]):
         succeeding = '\n'.join(visit_each(self, n.succeeding))
 
         equations_list = list()
-        for lhs, rhs in n.equations.items():
+        for i, (lhs, rhs) in enumerate(n.equations):
             if str(lhs) in n.temporaries:
-                equations_list.append(f'const auto {lhs} = {self.visit(rhs)};')
+                if i in n.reassigned_lhses:
+                    equations_list.append(f'{lhs} = {self.visit(rhs)};')
+                else:
+                    equations_list.append(f'const auto {lhs} = {self.visit(rhs)};')
             else:
                 equations_list.append(f'store({lhs}, {self.visit(rhs)});')
 

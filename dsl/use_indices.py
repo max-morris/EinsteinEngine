@@ -881,7 +881,20 @@ class ThornFunction:
     def diagnose(self) -> None:
         self.eqn_list.diagnose()
 
-    def bake(self, *, do_cse: bool = True, do_madd = True) -> None:
+    def recycle_temporaries(self) -> None:
+        self.eqn_list.recycle_temporaries()
+
+    def bake(self, *,
+             do_cse: bool = True,
+             do_madd: bool = True,
+             do_recycle_temporaries: bool = True) -> None:
+        """
+        Finalize this function in preparation to be passed to a generator.
+        :param do_cse: If true, perform SymPy's common subexpression elimination.
+        :param do_madd: If true, attempt to generate fused multiply-add function calls where appropriate.
+        :param do_recycle_temporaries: If true, attempt to conserve register use by recycling temporary variables.
+        :return:
+        """
         if self.been_baked:
             raise Exception("bake should not be called more than once")
         print(f"*** {self.name} ***")
@@ -890,7 +903,11 @@ class ThornFunction:
             self.madd()
         if do_cse:
             self.cse()
+
         self.diagnose()
+
+        if do_recycle_temporaries:
+            self.recycle_temporaries()
 
         self.been_baked = True
 

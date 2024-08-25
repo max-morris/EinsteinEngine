@@ -1,6 +1,9 @@
 import typing
 from collections import OrderedDict
 
+import sympy as sy
+
+from dsl.eqnlist import TemporaryReplacement
 from dsl.use_indices import ThornDef, ThornFunction, ScheduleBin
 from emit.ccl.interface.interface_tree import *
 from emit.ccl.param.param_tree import *
@@ -11,6 +14,7 @@ from generators.cactus_generator import CactusGenerator
 from generators.generator_exception import GeneratorException
 from typing import Optional, List, Set
 from util import OrderedSet
+from dsl.sympywrap import Math
 
 
 class CppCarpetXGenerator(CactusGenerator):
@@ -359,15 +363,32 @@ class CppCarpetXGenerator(CactusGenerator):
             for n, s in enumerate(['DXI', 'DYI', 'DZI'])
         ]
 
-        def lhs_substitution(s: str) -> str:
-            return f'access({s})' if s in self.var_names else s
-
-        # Prepare the equations. They need to be in the right order, and some LHSs need to be wrapped in access()
         eqn_list = thorn_fn.eqn_list
-        eqns = OrderedDict(
-            [(lhs, SympyExpr(rhs)) for lhs, rhs in
-             sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0]))]
-        )
+        reassigned_lhses: Set[int] = set()
+
+        def do_recycle_temporaries(lhs: Math, rhs: sy.Expr, i: int) -> tuple[Math, sy.Expr]:
+            active_replacements: List[TemporaryReplacement] = (
+                sorted(filter(lambda r: r.begin_eqn <= i, eqn_list.temporary_replacements),
+                       key=lambda r: r.begin_eqn,
+                       reverse=True)
+            )
+
+            current_line_replacement = typing.cast(Optional[TemporaryReplacement],
+                                                   next(filter(lambda r: r.begin_eqn == i, active_replacements), None))
+
+            for replacement in active_replacements:
+                rhs = rhs.replace(replacement.old, replacement.new)  # type: ignore[no-untyped-call]
+
+            if current_line_replacement:
+                assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"
+                lhs = current_line_replacement.new
+                reassigned_lhses.add(i)
+
+            return lhs, rhs
+
+        # Sort the equations, perform temp-var replacements if needed, then convert each RHS to our tree type.
+        eqns = [(lhs, SympyExpr(rhs)) for lhs, rhs in [do_recycle_temporaries(lhs, rhs, i) for i, (lhs, rhs) in
+                                                       enumerate(sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])))]]
 
         # Build the function decl and its body.
         nodes.append(
@@ -382,7 +403,13 @@ class CppCarpetXGenerator(CactusGenerator):
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,
-                     CarpetXGridLoopLambda(xyz_decls, eqns, [], [str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries]),
+                     CarpetXGridLoopLambda(
+                         preceding=xyz_decls,
+                         equations=eqns,
+                         succeeding=[],
+                         temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries],
+                         reassigned_lhses=reassigned_lhses
+                     ),
                  )]
             )
         )
