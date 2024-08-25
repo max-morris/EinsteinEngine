@@ -21,20 +21,29 @@ class SympyExprVisitor:
 
     @multimethod
     def visit(self, expr: sy.Basic) -> Expr:
-        raise NotImplementedError(f'visit({expr.func}) not implemented in SympyVisitor')
+        raise NotImplementedError(f'visit({expr.func}) not implemented in SympyExprVisitor')
 
     @visit.register
     def _(self, expr: sy.Add) -> Expr:
-        return NArityOpExpr(Operator.Add, [self.visit(a) for a in expr.args])
+        return NArityOpExpr(BinOp.Add, [self.visit(a) for a in expr.args])
 
     @visit.register
     def _(self, expr: sy.Mul) -> Expr:
-        return NArityOpExpr(Operator.Mul, [self.visit(a) for a in expr.args])
+        visited_args: List[Expr] = [self.visit(a) for a in expr.args]
+
+        if len(visited_args) == 2:
+            # noinspection PyUnresolvedReferences
+            if isinstance(visited_args[0], IntLiteralExpr) and visited_args[0].integer == -1:
+                return UnOpExpr(UnOp.Neg, visited_args[1])
+            elif isinstance(visited_args[1], IntLiteralExpr) and visited_args[1].integer == -1:
+                return UnOpExpr(UnOp.Neg, visited_args[0])
+
+        return NArityOpExpr(BinOp.Mul, visited_args)
 
     @visit.register
     def _(self, expr: sy.Pow) -> Expr:
         lhs, rhs = expr.args
-        return BinOpExpr(self.visit(lhs), Operator.Pow, self.visit(rhs))
+        return BinOpExpr(self.visit(lhs), BinOp.Pow, self.visit(rhs))
 
     @visit.register
     def _(self, expr: sy.Symbol) -> Expr:
@@ -91,4 +100,4 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.core.numbers.Rational) -> Expr:
         # Cast to floats to avoid floor division in e.g. C++
-        return BinOpExpr(FloatLiteralExpr(float(expr.p)), Operator.Div, FloatLiteralExpr(float(expr.q)))
+        return BinOpExpr(FloatLiteralExpr(float(expr.p)), BinOp.Div, FloatLiteralExpr(float(expr.q)))

@@ -53,7 +53,11 @@ class VerbatimExpr(Expr):
     v: Verbatim
 
 
-class Operator(ReprEnum):
+class UnOp(ReprEnum):
+    Neg = auto(), "-"
+
+
+class BinOp(ReprEnum):
     Add = auto(), "+"
     Mul = auto(), "*"
     Pow = auto(), "^"
@@ -61,15 +65,21 @@ class Operator(ReprEnum):
 
 
 @dataclass
+class UnOpExpr(Expr):
+    op: UnOp
+    e: Expr
+
+
+@dataclass
 class BinOpExpr(Expr):
     lhs: Expr
-    op: Operator
+    op: BinOp
     rhs: Expr
 
 
 @dataclass
 class NArityOpExpr(Expr):
-    op: Operator
+    op: BinOp
     args: List[Expr]
 
 
