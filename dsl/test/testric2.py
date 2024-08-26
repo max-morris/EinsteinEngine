@@ -30,14 +30,14 @@ gf.mk_subst(Ric[li,lj])
 
 x, y, z = gf.mk_coords()
 
-fun = gf.create_function("MetricSet", ScheduleBin.Analysis)
+fun = gf.create_function("MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
 fun.add_eqn(g[li,lj],mkMatrix([
  [a+b*x**2,        0, 0],
  [       0, a+b*x**2, 0],
  [       0,        0, 1]]))
 fun.bake()
 
-fun = gf.create_function("RicZero", ScheduleBin.Analysis)
+fun = gf.create_function("RicZero", ScheduleBin.Analysis, schedule_after=["setGL"])
 fun.add_eqn(RicVal[l0,l0], Ric[l0,l0]-b*(-a + b*x**2)/(a + b*x**2)**2)
 fun.bake()
 
