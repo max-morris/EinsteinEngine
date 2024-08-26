@@ -194,6 +194,11 @@ class EqnList:
 
             print(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
 
+        print("*** Dumping temporary lifetimes ***")
+        for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
+            print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
+
+
 
     def diagnose(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
