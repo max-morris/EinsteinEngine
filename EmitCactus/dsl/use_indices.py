@@ -883,8 +883,8 @@ class ThornFunction:
     def dump(self) -> None:
         self.eqn_list.dump()
 
-    def diagnose(self) -> None:
-        self.eqn_list.diagnose()
+    def eqn_bake(self) -> None:
+        self.eqn_list.bake()
 
     def recycle_temporaries(self) -> None:
         self.eqn_list.recycle_temporaries()
@@ -909,7 +909,7 @@ class ThornFunction:
         if do_cse:
             self.cse()
 
-        self.diagnose()
+        self.bake()
 
         if do_recycle_temporaries:
             self.recycle_temporaries()

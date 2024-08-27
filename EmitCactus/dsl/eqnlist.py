@@ -198,7 +198,7 @@ class EqnList:
 
 
 
-    def diagnose(self) -> None:
+    def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
         needed: Set[Math] = OrderedSet()
         complete: Dict[Math, int] = dict()
@@ -504,23 +504,25 @@ class EqnList:
         p2 = mkWild("p2", exclude=[0])
 
         class make_madd:
-            def __init__(self):
+            def __init__(self)->None:
+                self.value:Optional[Expr] = None
+            def m(self, expr:Expr)->bool:
                 self.value = None
-            def m(self, expr):
-                self.value = None
-                g = expr.match(p0*p1+p2)
+                g = do_match(expr, p0*p1+p2)
                 if g:
                     q0, q1, q2 = g[p0], g[p1], g[p2]
                     self.value = muladd(self.repl(q0), self.repl(q1), self.repl(q2))
                 return self.value is not None
-            def r(self, expr):
+            def r(self, expr:Expr)->Expr:
+                assert self.value is not None
                 return self.value
-            def repl(self, expr):
+            def repl(self, expr:Expr)->Expr:
                 for iter in range(20):
-                    nexpr = expr.replace(self.m, self.r)
+                    nexpr = do_replace(expr, self.m, self.r)
                     if nexpr == expr:
                         return nexpr
                     expr = nexpr
+                return expr
         mm = make_madd()
         for k, v in self.eqns.items():
             self.eqns[k] = mm.repl(v)
@@ -547,6 +549,24 @@ class EqnList:
             self.eqns[k] = m
         self.uncse()
 
+    def insert_reuse_expr(self, m:Math, expr:Expr)->None:
+        """
+        Insert a new eqn into the list. The new eqn will represent the
+        reassignment of an existing variable. All reassignments must end
+        with a prime a the end ('). If something is reassigned twice, it
+        will create a variable with two primes at the end ('').
+        """
+        assert len(self.order) > 0
+        assert m not in self.eqns
+        ms = str(m)
+        assert ms.endswith("'")
+        new_order : List[Math] = list()
+        for item in self.order:
+            new_order += [item]
+            if str(item)+"'" == ms:
+                new_order += [m]
+                self.eqns[m] = expr
+
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
@@ -569,21 +589,21 @@ if __name__ == "__main__":
         el.add_output(c)
         el.add_output(d)
 
-        el.diagnose()
+        el.bake()
         assert el.read_decls[a] == IntentRegion.Everywhere
         assert el.write_decls[d] == IntentRegion.Interior
         assert el.write_decls[c] == IntentRegion.Interior
 
         el.default_read_write_spec = IntentRegion.Everywhere
         # el.add_func(div, True)
-        el.diagnose()
+        el.bake()
         assert el.read_decls[a] == IntentRegion.Everywhere
         assert el.write_decls[d] == IntentRegion.Interior
         assert el.write_decls[c] == IntentRegion.Interior
 
         el.default_read_write_spec = IntentRegion.Everywhere
         # el.add_func(div, False)
-        el.diagnose()
+        el.bake()
         assert el.read_decls[a] == IntentRegion.Everywhere
         #assert el.write_decls[d] == IntentRegion.Everywhere
         #assert el.write_decls[c] == IntentRegion.Everywhere
@@ -597,7 +617,7 @@ if __name__ == "__main__":
         el.add_eqn(q, r)  # cycle
         el.add_eqn(a, r)
         el.add_output(a)
-        el.diagnose()
+        el.bake()
     except AssertionError as ae:
         assert "cycle" in str(ae)
         print("Test one passed")
@@ -613,7 +633,7 @@ if __name__ == "__main__":
         el.add_eqn(e, a ** 2)
         el.add_eqn(g, e)
         el.add_eqn(d, c * b + a ** 3)
-        el.diagnose()
+        el.bake()
     except AssertionError as ae:
         assert "'q' is never written" in str(ae)
         print("Test two passed")
@@ -626,7 +646,7 @@ if __name__ == "__main__":
         el.add_output(d)
         el.add_eqn(a, f + 2)
         el.add_eqn(d, a)
-        el.diagnose()
+        el.bake()
     except AssertionError as ae:
         assert "Symbol 'a' is in inputs, but it is assigned to." in str(ae)
         print("Test three passed")
@@ -639,7 +659,7 @@ if __name__ == "__main__":
         el.add_output(d)
         el.add_output(e)
         el.add_eqn(d, a + f)
-        el.diagnose()
+        el.bake()
     except AssertionError as ae:
         assert "Symbol 'e' is in outputs, but it is never written" in str(ae)
         print("Test four passed")
