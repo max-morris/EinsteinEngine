@@ -375,7 +375,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         def do_recycle_temporaries(lhs: Math, rhs: sy.Expr, i: int) -> Tuple[Math, sy.Expr]:
             active_replacements: List[TemporaryReplacement] = (
-                sorted(filter(lambda r: r.begin_eqn <= i, eqn_list.temporary_replacements),
+                sorted(filter(lambda r: r.begin_eqn <= i <= r.end_eqn, eqn_list.temporary_replacements),
                        key=lambda r: r.begin_eqn,
                        reverse=True)
             )

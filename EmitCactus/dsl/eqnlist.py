@@ -51,6 +51,7 @@ class TemporaryReplacement:
     old: Math
     new: Math
     begin_eqn: int
+    end_eqn: int
 
 
 class EqnList:
@@ -187,7 +188,8 @@ class EqnList:
             self.temporary_replacements.add(TemporaryReplacement(
                 old=assigned_here.symbol,
                 new=candidate.symbol,
-                begin_eqn=eqn_i
+                begin_eqn=eqn_i,
+                end_eqn=assigned_here.final_read
             ))
 
             print(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
