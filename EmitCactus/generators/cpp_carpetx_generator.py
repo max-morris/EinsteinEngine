@@ -1,5 +1,5 @@
 import typing
-from typing import Optional, List, Set
+from typing import Optional, List, Set, Tuple
 
 import sympy as sy
 
@@ -373,7 +373,7 @@ class CppCarpetXGenerator(CactusGenerator):
         eqn_list = thorn_fn.eqn_list
         reassigned_lhses: Set[int] = set()
 
-        def do_recycle_temporaries(lhs: Math, rhs: sy.Expr, i: int) -> tuple[Math, sy.Expr]:
+        def do_recycle_temporaries(lhs: Math, rhs: sy.Expr, i: int) -> Tuple[Math, sy.Expr]:
             active_replacements: List[TemporaryReplacement] = (
                 sorted(filter(lambda r: r.begin_eqn <= i, eqn_list.temporary_replacements),
                        key=lambda r: r.begin_eqn,

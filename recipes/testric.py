@@ -7,6 +7,7 @@ if __name__ == "__main__":
 
     a = gf.add_param("a", default=10.0, desc="Just a constant")
     b = gf.add_param("b", default=0.2, desc="Just a constant")
+    c = gf.add_param("c", default=-0.8, desc="Just a constant")
 
     # Declare gfs
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
@@ -26,8 +27,8 @@ if __name__ == "__main__":
     gqq = a+b*x**2
     gpp = 1
     gmat = mkMatrix([
-    [grr,   0,   0],
-    [  0, gqq,   0],
+    [grr,   c,   0],
+    [  c, gqq,   0],
     [  0,   0, gpp]])
     gf.mk_subst(g[la,lb], gmat)
     imat = do_inv(gmat)
