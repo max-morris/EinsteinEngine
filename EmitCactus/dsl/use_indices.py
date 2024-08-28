@@ -909,7 +909,7 @@ class ThornFunction:
         if do_cse:
             self.cse()
 
-        self.bake()
+        self.eqn_bake()
 
         if do_recycle_temporaries:
             self.recycle_temporaries()
