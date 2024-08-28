@@ -932,7 +932,8 @@ class ThornFunction:
 
 
 class ThornDef:
-    def __init__(self, arr: str, name: str) -> None:
+    def __init__(self, arr: str, name: str, run_simplify:bool=True) -> None:
+        self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
         self.arrangement = arr
@@ -1159,7 +1160,10 @@ class ThornDef:
                 out, indrep = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
-                self.subs[out] = do_simplify(set_matrix[arr_inds])
+                if self.run_simplify:
+                    self.subs[out] = do_simplify(set_matrix[arr_inds])
+                else:
+                    self.subs[out] = set_matrix[arr_inds]
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
         elif isinstance(f, Expr):
@@ -1170,7 +1174,10 @@ class ThornDef:
                 out, indrep = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
-                self.subs[out] = do_simplify(self.do_subs(f, indrep))
+                if self.run_simplify:
+                    self.subs[out] = do_simplify(self.do_subs(f, indrep))
+                else:
+                    self.subs[out] = self.do_subs(f, indrep)
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
 
