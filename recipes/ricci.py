@@ -1,7 +1,7 @@
 if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_inv
+    from EmitCactus.dsl.sympywrap import do_inv, do_det
     from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions
@@ -13,6 +13,7 @@ if __name__ == "__main__":
     x,y,z = gf.mk_coords()
     G = gf.decl("Affine", [ua, lb, lc])
     Ric = gf.decl("Ric", [la, lb])
+    idetg = gf.decl("idetg", [])
 
     gf.add_sym(g[li, lj], li, lj)
     gf.add_sym(G[ua, lb, lc], lb, lc)
@@ -21,7 +22,7 @@ if __name__ == "__main__":
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
     gmat = gf.get_matrix(g[la,lb])
-    imat = do_inv(gmat)
+    imat = do_inv(gmat)*do_det(gmat) #*idetg
     opt1 = False
     if opt1:
         gf.mk_subst(g[ua,ub]) # g[u0,u0] -> gUU00
