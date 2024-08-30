@@ -27,6 +27,8 @@ if __name__ == "__main__":
     gf.add_sym(gt[li, lj], li, lj)
     gt_dt = gf.decl("gt_dt", [li,lj]) # \tilde{g}
     gf.add_sym(gt_dt[li, lj], li, lj)
+    Affinet = gf.decl("Affinet", [ua, lb, lc])
+    gf.add_sym(Affinet[la,lb,lc], lb, lc)
 
     phi = gf.decl("phi", [])
     phi_dt = gf.decl("phi_dt", [])
@@ -37,6 +39,7 @@ if __name__ == "__main__":
     trK = gf.decl("trK", []) # trace of Extrinsic Curvature 
 
     Gt = gf.decl("Gt", [ui]) # \tilde{\Gamma}^i
+    Gt_dt = gf.decl("Gt_dt", [ui]) # \tilde{\Gamma}^i
     ###
 
     gf.mk_subst(gt_dt[li,lj])
@@ -44,13 +47,24 @@ if __name__ == "__main__":
     gf.mk_subst(At[li,lj])
     gf.mk_subst(beta[ui])
     gf.mk_subst(Gt[ui])
-    gmat = gt.get_matrix(gt[li,lj])
+    gmat = gf.get_matrix(gt[li,lj])
     imat = do_inv(gmat)*do_det(gmat) # Use the fact that det(gmat) = 1
+    gf.mk_subst(gt[ui,uj], imat)
+    gf.mk_subst(Gt_dt[ui])
+    gf.mk_subst(At[ui,uj])
+    gf.mk_subst(Affinet[ua,lb,lc])
+    gf.mk_subst(Affinet[la,lb,lc])
 
     fun = gf.create_function("evo", ScheduleBin.Evolve)
     fun.add_eqn(gt_dt[li,lj], -2*alp*At[li,lj] + beta[uk]*div(gt[li,lj],lk) + gt[li,lk]*div(beta[uk],lj) - (2/3)*gt[li,lj]*div(beta[uk],lk))
     fun.add_eqn(phi_dt, -(1/6)*alp*trK + div(phi,lk)*beta[uk] + (1/6)*div(beta[uk],lk))
-    fun.add_eqn(Gt_dt[ui], gt[uj,uk] div(beta[ui],lj,lk))
+    fun.add_eqn(At[ui,uj],At[la,lb]*gt[ua,ui]*gt[ub,uj]) # temporaries
+    fun.add_eqn(Affinet[la, lb, lc], (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2)
+    fun.add_eqn(Affinet[ud, lb, lc], gt[ud,ua]*Affinet[la, lb, lc])
+    fun.add_eqn(Gt_dt[ui], gt[uj,uk]*div(beta[ui],lj,lk) + (1/3)*gt[ui,uj]*div(beta[uk],lj,lk) +
+        beta[uj]*div(Gt[ui],lj) - Gt[uj]*div(beta[ui],lj) + (2/3)*Gt[ui]*div(beta[uj],lj) -
+        2*At[ui,uj]*div(alp,lj) + 2*alp*(
+            Affinet[ui,lj,lk]*At[uj,uk] + 6*At[ui,uj]*div(phi,lj) - (2/3)*gt[ui,uj]*div(trK,lj)))
 
     fun.bake()
 
