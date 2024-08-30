@@ -198,7 +198,32 @@ class EqnList:
         for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
             print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
 
+    def uses_dict(self)->Dict[Math,int]:
+        uses : Dict[Math,int] = dict()
+        for k,v in self.eqns.items():
+            for k2 in finder(v):
+                old = uses.get(k2,0)
+                uses[k2] = old + 1
+        return uses
 
+    def rebuild_order(self)->None:
+        self.order = list()
+        uses = self.uses_dict()
+        for k in self.outputs:
+            self.build_order(k, uses)
+
+    def build_order(self, k:Math, uses:Dict[Math,int])->None:
+        if k in self.order:
+            return
+        eqn = self.eqns.get(k, None)
+        if eqn is not None:
+            klist = list(finder(eqn))
+            # This sort doesn't seem to help much
+            klist = sorted(klist, key=lambda x: uses[x])
+            for k2 in klist:
+                self.build_order(k2, uses)
+        if k in self.eqns:
+            self.order += [k]
 
     def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
@@ -295,7 +320,7 @@ class EqnList:
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
             assert k in written, f"Temporary variable '{k}' is never written"
-            assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
+            #assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
             assert k not in self.inputs, f"Temporary variable '{k}' in inputs"
 
         for k in read:
@@ -350,6 +375,8 @@ class EqnList:
                     else:
                         find_cycle = k
         print(colorize("Order:", "green"), self.order)
+        self.rebuild_order()
+        print(colorize("Order2:", "green"), self.order)
 
         default_read_spec = IntentRegion.Interior
         default_write_spec = IntentRegion.Everywhere

@@ -24,6 +24,9 @@ cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 def do_inv(e:Matrix)->Matrix:
     return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
 
+def do_det(e:Matrix)->Symbol:
+    return cast(Symbol, e.det()) # type: ignore[no-untyped-call]
+
 def do_sympify(e:Union[int,Expr])->Expr:
     return cast(Expr, sympify(e)) # type: ignore[no-untyped-call]
 
