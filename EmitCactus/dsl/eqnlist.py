@@ -1,3 +1,5 @@
+import typing
+from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
 
@@ -7,7 +9,7 @@ from sympy.core.expr import Expr
 from sympy.core.function import UndefinedFunction as UFunc
 from sympy.core.symbol import Symbol
 from typing import cast, Dict, List, Tuple, Optional, Set
-from EmitCactus.util import OrderedSet
+from EmitCactus.util import OrderedSet, incr_and_get
 
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
@@ -85,6 +87,7 @@ class EqnList:
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.temporaries: Set[Math] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = set()
+        self.split_lhs_prime_count: Dict[Math, int] = dict()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -120,6 +123,48 @@ class EqnList:
     def add_eqn(self, lhs: Math, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
         self.eqns[lhs] = rhs
+
+    def _prepend_split_subeqn(self, target_lhs: Math, new_lhs: Math, new_rhs: Expr) -> None:
+        """
+        Insert a new equation into the list. Said equation will represent one subexpression of another equation
+        which it precedes.
+        :param target_lhs: The LHS of the equation of which ``new_rhs`` is a subexpression.
+        :param new_lhs: The LHS of the equation to be inserted.
+        :param new_rhs: The RHS of the equation to be inserted.
+        :return:
+        """
+        assert len(self.order) > 0, "Called prepend_split_subeqn before order was set."
+        assert new_lhs not in self.eqns
+        assert new_lhs not in self.order
+        assert target_lhs in self.eqns
+        assert target_lhs in self.order
+
+        self.eqns[new_lhs] = new_rhs
+        self.order.insert(self.order.index(target_lhs), new_lhs)
+        self.temporaries.add(new_lhs)
+
+    def _split_sympy_expr(self, lhs: Math, expr: Expr) -> Tuple[Expr, Dict[Math, Expr]]:
+        subexpressions: Dict[Math, Expr] = OrderedDict()
+
+        for subexpression in expr.args:
+            subexpression_lhs = f'{lhs}_{incr_and_get(self.split_lhs_prime_count, lhs)}'
+            subexpressions[Symbol(subexpression_lhs)] = typing.cast(Expr, subexpression)  # type: ignore[no-untyped-call]
+
+        new_expr = expr.func(*subexpressions.keys())
+        return new_expr, subexpressions
+
+    def split_eqn(self, target_lhs: Math) -> None:
+        assert target_lhs in self.eqns
+
+        new_rhs, subexpressions = self._split_sympy_expr(target_lhs, self.eqns[target_lhs])
+        self.eqns[target_lhs] = new_rhs
+
+        for sub_lhs, sub_rhs in subexpressions.items():
+            self._prepend_split_subeqn(target_lhs, sub_lhs, sub_rhs)
+
+    def split_output_eqns(self) -> None:
+        for output in self.outputs:
+            self.split_eqn(output)
 
     def recycle_temporaries(self) -> None:
         temp_reads: Dict[Math, OrderedSet[int]] = dict()
@@ -577,24 +622,6 @@ class EqnList:
             m = mod_eqns[i]
             self.eqns[k] = m
         self.uncse()
-
-    def insert_reuse_expr(self, m:Math, expr:Expr)->None:
-        """
-        Insert a new eqn into the list. The new eqn will represent the
-        reassignment of an existing variable. All reassignments must end
-        with a prime a the end ('). If something is reassigned twice, it
-        will create a variable with two primes at the end ('').
-        """
-        assert len(self.order) > 0
-        assert m not in self.eqns
-        ms = str(m)
-        assert ms.endswith("'")
-        new_order : List[Math] = list()
-        for item in self.order:
-            new_order += [item]
-            if str(item)+"'" == ms:
-                new_order += [m]
-                self.eqns[m] = expr
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
