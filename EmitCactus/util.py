@@ -19,6 +19,11 @@ def try_get(d: Any, x: Any) -> Optional[T]:
     return d[x] if x in d else None
 
 
+def incr_and_get(d: dict[K, int], k: K) -> int:
+    v = d[k] = d.get(k, 0) + 1
+    return v
+
+
 def get_or_compute(d: dict[K, V], k: K, f: Callable[[K], V]) -> V:
     if k in d:
         return d[k]

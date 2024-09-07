@@ -889,15 +889,20 @@ class ThornFunction:
     def recycle_temporaries(self) -> None:
         self.eqn_list.recycle_temporaries()
 
+    def split_output_eqns(self) -> None:
+        self.eqn_list.split_output_eqns()
+
     def bake(self, *,
              do_cse: bool = True,
              do_madd: bool = True,
-             do_recycle_temporaries: bool = True) -> None:
+             do_recycle_temporaries: bool = True,
+             do_split_output_eqns: bool = True) -> None:
         """
         Finalize this function in preparation to be passed to a generator.
         :param do_cse: If true, perform SymPy's common subexpression elimination.
         :param do_madd: If true, attempt to generate fused multiply-add function calls where appropriate.
         :param do_recycle_temporaries: If true, attempt to conserve register use by recycling temporary variables.
+        :param do_split_output_eqns: If true, split apart equations whose LHSes are output variables.
         :return:
         """
         if self.been_baked:
@@ -910,6 +915,9 @@ class ThornFunction:
             self.cse()
 
         self.eqn_bake()
+
+        if do_split_output_eqns:
+            self.split_output_eqns()
 
         if do_recycle_temporaries:
             self.recycle_temporaries()
