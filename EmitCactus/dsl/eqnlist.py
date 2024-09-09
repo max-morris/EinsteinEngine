@@ -251,7 +251,7 @@ class EqnList:
                 uses[k2] = old + 1
         return uses
 
-    def apply_order(self, k, provides, requires):
+    def apply_order(self, k:Math, provides:Dict[Math,Set[Math]], requires:Dict[Math,Set[Math]])->List[Math]:
         result = list()
         if k not in self.params and k not in self.inputs:
             self.order.append(k)
@@ -263,9 +263,9 @@ class EqnList:
                 result.append(v)
         return result
             
-    def order_builder(self):
-        provides = dict() # vals require key
-        requires = dict() # key requires vals
+    def order_builder(self, complete:Dict[Math, int], cno:int)->None:
+        provides : Dict[Math,Set[Math]] = dict() # vals require key
+        requires : Dict[Math,Set[Math]] = dict() # key requires vals
         # Thus for
         #   u_t = v
         #   v_t = div(u,la,lb) g[ua,ub]
@@ -281,9 +281,8 @@ class EqnList:
                 requires[k].add(v)
         self.order = list()
         result = list()
-        cno = 1
-        for k,v in requires.items():
-            if len(v) == 0:
+        for k,v2 in requires.items():
+            if len(v2) == 0:
                 result += self.apply_order(k, provides, requires)
                 complete[k] = cno
         for k in self.inputs:
@@ -299,8 +298,8 @@ class EqnList:
                 new_result += self.apply_order(r, provides, requires)
                 complete[r] = cno
             result = new_result
-        for k,v in requires.items():
-            for vv in v:
+        for k,v2 in requires.items():
+            for vv in v2:
                 if vv not in self.params:
                     raise Exception(f"Unsatisfied {k} <- {v} : {self.params}")
 
@@ -406,7 +405,7 @@ class EqnList:
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
-        self.order_builder(complete)
+        self.order_builder(complete, 1)
         print(colorize("Order:", "green"), self.order)
 
         default_read_spec = IntentRegion.Interior
@@ -476,7 +475,7 @@ class EqnList:
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
             val1: int = complete[k]
             for k2 in finder(v):
-                val2: int = complete.get(cast(Symbol, k2), None)
+                val2: Optional[int] = complete.get(cast(Symbol, k2), None)
                 assert val2 is not None, f"k2={k2}"
                 assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
         for k in needed:
