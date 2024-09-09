@@ -22,7 +22,7 @@ class SympyExprVisitor:
 
     @multimethod
     def visit(self, expr: sy.Basic) -> Expr:
-        raise NotImplementedError(f'visit({expr.func}) not implemented in SympyExprVisitor')
+        raise NotImplementedError(f'visit({expr.func}) not implemented in SympyExprVisitor expr={expr}')
 
     @visit.register
     def _(self, expr: sy.Add) -> Expr:

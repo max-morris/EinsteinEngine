@@ -94,4 +94,5 @@ if __name__ == "__main__":
     fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
     fun.bake(do_cse=False)
 
+    fun.dump()
     CppCarpetXWizard(gf).generate_thorn()
