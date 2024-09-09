@@ -251,24 +251,59 @@ class EqnList:
                 uses[k2] = old + 1
         return uses
 
-    def rebuild_order(self)->None:
+    def apply_order(self, k, provides, requires):
+        result = list()
+        if k not in self.params and k not in self.inputs:
+            self.order.append(k)
+        for v in provides.get(k,set()):
+            req = requires[v]
+            assert k in req
+            req.remove(k)
+            if len(req) == 0:
+                result.append(v)
+        return result
+            
+    def order_builder(self):
+        provides = dict() # vals require key
+        requires = dict() # key requires vals
+        # Thus for
+        #   u_t = v
+        #   v_t = div(u,la,lb) g[ua,ub]
+        # provides = {v:{u_t}, u:{v_t}}
+        # requires = {u_t:{v}, v_t:{u}}
+        for k in self.eqns:
+            if k not in requires:
+                requires[k] = set()
+            for v in finder(self.eqns[k]):
+                if v not in provides:
+                    provides[v] = set()
+                provides[v].add(k)
+                requires[k].add(v)
         self.order = list()
-        uses = self.uses_dict()
-        for k in self.outputs:
-            self.build_order(k, uses)
+        result = list()
+        cno = 1
+        for k,v in requires.items():
+            if len(v) == 0:
+                result += self.apply_order(k, provides, requires)
+                complete[k] = cno
+        for k in self.inputs:
+            result += self.apply_order(k, provides, requires)
+            complete[k] = cno
+        for k in self.params:
+            result += self.apply_order(k, provides, requires)
+            complete[k] = cno
+        while len(result) > 0:
+            cno += 1
+            new_result = list()
+            for r in result:
+                new_result += self.apply_order(r, provides, requires)
+                complete[r] = cno
+            result = new_result
+        for k,v in requires.items():
+            for vv in v:
+                if vv not in self.params:
+                    raise Exception(f"Unsatisfied {k} <- {v} : {self.params}")
 
-    def build_order(self, k:Math, uses:Dict[Math,int])->None:
-        if k in self.order:
-            return
-        eqn = self.eqns.get(k, None)
-        if eqn is not None:
-            klist = list(finder(eqn))
-            # This sort doesn't seem to help much
-            klist = sorted(klist, key=lambda x: uses[x])
-            for k2 in klist:
-                self.build_order(k2, uses)
-        if k in self.eqns:
-            self.order += [k]
 
     def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
@@ -371,57 +406,8 @@ class EqnList:
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
-        for k in self.outputs:
-            # The outputs are all needed
-            # for a successful computation
-            needed.add(k)
-        for k in self.inputs:
-            complete[k] = 0
-
-        again = True
-        generation = 0
-        find_cycle: Optional[Math] = None
-        while True:
-            if not again and len(needed) > len(complete) and find_cycle is not None:
-                again = True
-                # The symbol in find_cycle is not complete
-                # but we assert that it is to help us find
-                # symbols that are part of a cycle.
-                complete[find_cycle] = generation
-            find_cycle = None
-            if not again:
-                break
-            generation += 1
-            again = False
-            for k in list(needed):
-                if (k in self.inputs or k in self.params) and k not in complete:
-                    complete[k] = generation
-                    again = True
-                elif k not in complete:
-                    assert k in self.eqns, f"Symbol '{k}' is needed but is not written"
-                    v = self.eqns[k]
-                    can_add = True
-                    for k2 in finder(v):
-                        if k2 not in complete:
-                            # A variable is only complete
-                            # if all its free symbols are
-                            # complete
-                            can_add = False
-                        if k2 not in needed:
-                            # Since k2 is needed to assign
-                            # a value to k, k2 is also needed
-                            needed.add(k2)
-                            # more work to do
-                            again = True
-                    if can_add:
-                        complete[k] = generation
-                        self.order.append(k)
-                        again = True
-                    else:
-                        find_cycle = k
+        self.order_builder(complete)
         print(colorize("Order:", "green"), self.order)
-        self.rebuild_order()
-        print(colorize("Order2:", "green"), self.order)
 
         default_read_spec = IntentRegion.Interior
         default_write_spec = IntentRegion.Everywhere
@@ -490,7 +476,8 @@ class EqnList:
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
             val1: int = complete[k]
             for k2 in finder(v):
-                val2: int = complete[cast(Symbol, k2)]
+                val2: int = complete.get(cast(Symbol, k2), None)
+                assert val2 is not None, f"k2={k2}"
                 assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
         for k in needed:
             if k not in complete:

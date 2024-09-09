@@ -845,7 +845,7 @@ class ThornFunction:
                 count += 1
                 lhsx, inds = tup
                 lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-                assert isinstance(lhs2_, Symbol)
+                assert isinstance(lhs2_, Symbol), f"'{lhs2_}' is not a Symbol. Did you forget to call mk_subst()?"
                 lhs2 = lhs2_
                 if type(rhs) == Matrix:
                     arr_inds = toNumTup(lhs.args[1:], inds)
@@ -894,7 +894,7 @@ class ThornFunction:
 
     def bake(self, *,
              do_cse: bool = True,
-             do_madd: bool = True,
+             do_madd: bool = False,
              do_recycle_temporaries: bool = True,
              do_split_output_eqns: bool = True) -> None:
         """
@@ -1056,6 +1056,17 @@ class ThornDef:
             assert False
         return self.coords
 
+    def check_globals(self):
+        frame = currentframe()
+        f_back = None if frame is None else frame.f_back
+        globs = None if f_back is None else f_back.f_globals
+        if globs is None:
+            return
+        for name in self.gfs:
+            if name in globs:
+                assert globs[name] == self.gfs.get(name,None), \
+                    f"Globals not assigned as expected for name: {name}: (globals={globs[name]}) != (internal={self.gfs.get(name,None)})"
+
     def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp: bool = False,
              rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
         if rhs is not None:
@@ -1076,7 +1087,9 @@ class ThornDef:
         f_back = None if frame is None else frame.f_back
         globs = None if f_back is None else f_back.f_globals
         if globs is not None:
-            globs[basename] = ret
+            assert basename not in globs, f"Redefinition of global symbol {basename}"
+            if basename != "iter_var":
+                globs[basename] = ret
 
         return ret
 
