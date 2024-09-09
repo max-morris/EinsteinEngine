@@ -12,6 +12,7 @@ from typing import cast, Dict, List, Tuple, Optional, Set
 from EmitCactus.util import OrderedSet, incr_and_get
 
 from EmitCactus.dsl.sympywrap import *
+from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.util import get_or_compute
 

@@ -1056,7 +1056,7 @@ class ThornDef:
             assert False
         return self.coords
 
-    def check_globals(self):
+    def check_globals(self)->None:
         frame = currentframe()
         f_back = None if frame is None else frame.f_back
         globs = None if f_back is None else f_back.f_globals
