@@ -195,6 +195,7 @@ class FunctionCall(Expr):
 class StandardizedFunctionCallType(ReprEnum):
     Sin = auto(), 'sin'
     Cos = auto(), 'cos'
+    Exp = auto(), 'exp'
     # todo: There are definitely more of these
 
 

@@ -125,13 +125,15 @@ def finder(expr: Expr) -> Set[Math]:
 
     def m(msym: Math) -> bool:
         ty = type(msym)
-        mstr = str(msym)
         if ty == Symbol:
+            mstr = repr(msym)
             if mstr not in result:
                 result[mstr] = msym
         elif ty == IndexedBase:
+            mstr = repr(msym)
             result[mstr] = msym
         elif ty == Idx:
+            mstr = repr(msym)
             result[mstr] = msym
         return False
 

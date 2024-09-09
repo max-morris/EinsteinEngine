@@ -22,7 +22,8 @@ class CppVisitor(Visitor[CodeNode]):
 
     standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
         StandardizedFunctionCallType.Sin: 'sin',
-        StandardizedFunctionCallType.Cos: 'cos'
+        StandardizedFunctionCallType.Cos: 'cos',
+        StandardizedFunctionCallType.Exp: 'exp'
     }
 
     def __init__(self, generator: CactusGenerator) -> None:
