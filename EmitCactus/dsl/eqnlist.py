@@ -156,7 +156,19 @@ class EqnList:
     def split_eqn(self, target_lhs: Math) -> None:
         assert target_lhs in self.eqns
 
-        new_rhs, subexpressions = self._split_sympy_expr(target_lhs, self.eqns[target_lhs])
+        expr = self.eqns[target_lhs]
+
+        # Can't split unary expression
+        if len(expr.args) < 2:
+            return
+
+        # Can't split IndexedBase (it appears to have two args, but the second is an empty tuple)
+        if isinstance(expr, IndexedBase):
+            assert len(expr.args) == 2
+            assert expr.args[1] == ()
+            return
+
+        new_rhs, subexpressions = self._split_sympy_expr(target_lhs, expr)
         self.eqns[target_lhs] = new_rhs
 
         for sub_lhs, sub_rhs in subexpressions.items():
