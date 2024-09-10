@@ -45,5 +45,8 @@ if __name__ == '__main__':
 
     # Ensure the equations make sense
     fun.bake(do_recycle_temporaries=True)
+    print("sublists:")
+    for li in fun.eqn_list.sublists:
+        print(">>",li)
 
     CppCarpetXWizard(gf).generate_thorn()
