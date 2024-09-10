@@ -80,6 +80,7 @@ class EqnList:
         self.outputs: Set[Math] = OrderedSet()
         self.temps: Set[Math] = OrderedSet()
         self.order: List[Math] = list()
+        self.sublists: List[List[Math]] = list()
         self.verbose = True
         self.read_decls: Dict[Math, IntentRegion] = dict()
         self.write_decls: Dict[Math, IntentRegion] = dict()
@@ -293,6 +294,7 @@ class EqnList:
                 provides[v].add(k)
                 requires[k].add(v)
         self.order = list()
+        self.sublists = list()
         result = list()
         for k,v2 in requires.items():
             if len(v2) == 0:
@@ -304,12 +306,15 @@ class EqnList:
         for k in self.params:
             result += self.apply_order(k, provides, requires)
             complete[k] = cno
+        self.sublists.append(result)
         while len(result) > 0:
             cno += 1
             new_result = list()
             for r in result:
                 new_result += self.apply_order(r, provides, requires)
                 complete[r] = cno
+            if len(new_result) > 0:
+                self.sublists.append(new_result)
             result = new_result
         for k,v2 in requires.items():
             for vv in v2:
