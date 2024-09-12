@@ -22,34 +22,19 @@ if __name__ == "__main__":
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
     gmat = gf.get_matrix(g[la,lb])
-    imat = do_inv(gmat)*do_det(gmat) #*idetg
-    opt1 = False
-    if opt1:
-        gf.mk_subst(g[ua,ub]) # g[u0,u0] -> gUU00
-    else:
-        gf.mk_subst(g[ua, ub], imat)
+    imat = do_inv(gmat)*do_det(gmat)*idetg
+    gf.mk_subst(g[ua, ub], imat)
     gf.mk_subst(div(g[la, lb], lc)) # div(g[l0,l1],l2) -> gDD01_dD2
     gf.mk_subst(div(g[ua, ub], lc))
-    opt2 = False
-    if opt2:
-        gf.mk_subst(G[la, lb, lc])
-        gf.mk_subst(G[ua, lb, lc])
-    else:
-        gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
-        gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
+
+    # Define the affine connections
+    gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
+    gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
 
     gf.mk_subst(Ric[la, lb])
-    #gf.mk_subst(div(G[ud, la, lb], lc))
 
     fun = gf.create_function("setGL", ScheduleBin.Analysis)
 
-    if opt1:
-        fun.add_eqn(g[ua, ub], imat)
-    if opt2:
-        fun.add_eqn(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
-        fun.add_eqn(G[ua, lb, lc], g[ud,ua]*G[la, lb, lc])
-
-    #gf.mk_subst(Ric[li, lj],
     fun.add_eqn(Ric[li, lj],
                  div(G[ua, li, lj], la) - div(G[ua, la, li], lj) +
                  G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
