@@ -8,6 +8,7 @@ if __name__ == "__main__":
 
     a = gf.add_param("a", default=10.0, desc="Just a constant")
     b = gf.add_param("b", default=0.2, desc="Just a constant")
+    c = gf.add_param("b", default=0.1, desc="Just a constant")
 
     # Declare gfs
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
@@ -26,13 +27,13 @@ if __name__ == "__main__":
 
     fun = gf.create_function("MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
     fun.add_eqn(g[li,lj],mkMatrix([
-     [a+b*x**2,        0, 0],
-     [       0, a+b*x**2, 0],
+     [a+b*x**2,        c, 0],
+     [       c, a+b*x**2, 0],
      [       0,        0, 1]]))
     fun.bake()
 
     fun = gf.create_function("RicZero", ScheduleBin.Analysis, schedule_after=["setGL"])
-    fun.add_eqn(RicVal[l0,l0], Ric[l0,l0]-b*(-a + b*x**2)/(a + b*x**2)**2)
+    fun.add_eqn(RicVal[l0,l0], Ric[l0,l0]-b*(2*b*x**2*(-c**2 + 2*(a + b*x**2)**2) - (a + 3*b*x**2)*(a**2 + 2*a*b*x**2 + b**2*x**4 - c**2))/(a**2 + 2*a*b*x**2 + b**2*x**4 - c**2)**2)
     fun.bake()
 
 
