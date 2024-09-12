@@ -1,4 +1,3 @@
-%%writefile ~/Cactus/wave2dx.par
 # This is the parameter file which will tell Cactus
 # which thorns to execute and with what values
 ActiveThorns = "WaveEqn CarpetX IOUtil ODESolvers"
