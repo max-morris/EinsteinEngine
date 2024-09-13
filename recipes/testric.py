@@ -1,6 +1,6 @@
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, do_inv
+    from EmitCactus.dsl.sympywrap import mkMatrix, do_inv, do_sqrt
 
     # Create a set of grid functions
     gf = ThornDef("TestRic", "TestRic")
@@ -23,13 +23,14 @@ if __name__ == "__main__":
     x, y, z= gf.mk_coords()
 
     # Figure out what the answer ought to be
-    grr = a+b*x**2
-    gqq = a+b*x**2
+    grr = do_sqrt(1+c**2)*(a+b*x**2)
+    gqq = do_sqrt(1+c**2)/(a+b*x**2)
     gpp = 1
     gmat = mkMatrix([
     [grr,   c,   0],
     [  c, gqq,   0],
     [  0,   0, gpp]])
+    assert gmat.det() == 1
     gf.mk_subst(g[la,lb], gmat)
     imat = do_inv(gmat)
     gf.mk_subst(g[ua, ub], imat)
