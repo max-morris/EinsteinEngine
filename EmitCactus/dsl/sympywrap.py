@@ -1,6 +1,6 @@
 from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Expr, Mul, Indexed, \
-    Function, Matrix, zeros, Wild, diff, simplify
+    Function, Matrix, zeros, Wild, diff, simplify, sqrt
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
@@ -23,6 +23,9 @@ cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 
 def do_inv(e:Matrix)->Matrix:
     return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
+
+def do_sqrt(e:Expr)->Expr:
+    return cast(Expr, sqrt(e)) # type: ignore[no-untyped-call]
 
 def do_det(e:Matrix)->Symbol:
     return cast(Symbol, e.det()) # type: ignore[no-untyped-call]

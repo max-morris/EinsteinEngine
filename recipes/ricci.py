@@ -22,7 +22,7 @@ if __name__ == "__main__":
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
     gmat = gf.get_matrix(g[la,lb])
-    imat = do_inv(gmat)*do_det(gmat)*idetg
+    imat = do_simplify(do_inv(gmat)*do_det(gmat)) #*idetg
     gf.mk_subst(g[ua, ub], imat)
     gf.mk_subst(div(g[la, lb], lc)) # div(g[l0,l1],l2) -> gDD01_dD2
     gf.mk_subst(div(g[ua, ub], lc))
@@ -45,6 +45,6 @@ if __name__ == "__main__":
     # Check non-diagonal metric
 
     # Ensure the equations make sense
-    fun.bake()
+    fun.bake(do_recycle_temporaries=False)
 
     CppCarpetXWizard(gf).generate_thorn()

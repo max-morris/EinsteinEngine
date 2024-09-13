@@ -9,7 +9,28 @@ CarpetX::boundary_z = "dirichlet"
 CarpetX::boundary_upper_x = "dirichlet"
 CarpetX::boundary_upper_y = "dirichlet"
 CarpetX::boundary_upper_z = "dirichlet"
-$nn = 256*2
+CarpetX::verbose = true
+
+$bnd = 2.0
+CarpetX::xmin = -$bnd
+CarpetX::xmax =  $bnd
+#
+CarpetX::ymin = -$bnd
+CarpetX::ymax =  $bnd
+#
+CarpetX::zmin = -$bnd
+CarpetX::zmax =  $bnd
+
+$nn = 32
 CarpetX::ncells_x = $nn
 CarpetX::ncells_y = $nn
 CarpetX::ncells_z = $nn
+CarpetX::max_tile_size_x = $nn
+CarpetX::max_tile_size_y = $nn
+CarpetX::max_tile_size_z = $nn
+CarpetX::max_grid_size_x = $nn
+CarpetX::max_grid_size_y = $nn
+CarpetX::max_grid_size_z = $nn
+TestRicVal::c = .0
+TestRicVal::b = .1
+TestRicVal::a = 10
