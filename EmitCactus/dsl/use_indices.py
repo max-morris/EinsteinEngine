@@ -8,7 +8,7 @@ from typing import *
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul
+from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
 from sympy.core.function import UndefinedFunction as UFunc
 
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
@@ -161,6 +161,16 @@ class DivMaker(Applier):
         if g:
             q0, q1, q2 = g[p0], g[pn0], g[p1]
             return cast(Expr, q1 * Pow(q0, q1 - 1) * div(q0, q2))
+
+        # Div of sqrt
+        g = do_match(expr, div(sqrt(p0), p1))
+        if g:
+            q0, q1 = g[p0], g[p1]
+            return cast(Expr, (1/2) * div(q0, q1) / sqrt(q0))
+        g = do_match(expr, div(sqrt(p0), p1, p2))
+        if g:
+            q0, q1,q2 = g[p0], g[p1], g[p2]
+            return cast(Expr, (1/2) * div(div(q0, q1) / sqrt(q0),q2))
 
         # Div of an indexed quantity
         if do_match(expr, div(pind, p2)):
@@ -425,7 +435,7 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
             sym_result = sym.apply(result)
             if result != sym_result:
                 continue
-        output += [(do_subs(xpr, index_values, sym), index_values.copy())]
+        output += [(do_subs(xpr, index_values, sym), index_values.copy(), index_list)]
     return output
 
 
@@ -843,7 +853,7 @@ class ThornFunction:
             count = 0
             for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
                 count += 1
-                lhsx, inds = tup
+                lhsx, inds, _ = tup
                 lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
                 assert isinstance(lhs2_, Symbol), f"'{lhs2_}' is not a Symbol. Did you forget to call mk_subst()?"
                 lhs2 = lhs2_
@@ -870,6 +880,23 @@ class ThornFunction:
             eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
             rhs2 = self.thorn_def.do_subs(eci, self.thorn_def.subs)
             self._add_eqn2(lhs2, rhs2)
+        elif isinstance(rhs, MatrixBase):
+            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+            print(">> lhs2:", lhs2)
+            for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
+                rhs2 = rhs
+                for idx in item[2]:
+                    #print(rhs2,idx,"->",end=" ")
+                    if isinstance(rhs2, MatrixBase):
+                        index = to_num(do_subs(idx, item[1]))
+                        rhs2 = rhs2[index,:][:]
+                    elif isinstance(rhs2, list):
+                        rhs2 = rhs2[to_num(do_subs(idx, item[1]))]
+                    else:
+                        rhs2 = do_subs(rhs2, item[1])
+                    #print(rhs2)
+                rhs2 = self.thorn_def.do_subs(rhs2, self.thorn_def.subs)
+                print("assign:",self.thorn_def.do_subs(item[0], self.thorn_def.subs), "->", rhs2)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
@@ -1107,10 +1134,10 @@ class ThornDef:
         if foo.is_Function and hasattr(foo, "name") and foo.name == "div":
             # This is a derivative
             if len(foo.args) == 3:
-                assert False, f"{foo}"
                 # This is a 2nd derivative, symmetric in the last 2 args
-                foo_arg1 = chkcast(foo.args[1], int)
-                foo_arg2 = chkcast(foo.args[2], int)
+                print(f">> foo.args={foo.args}")
+                foo_arg1 = len(foo.args[0].args)-1#chkcast(foo.args[1], int)
+                foo_arg2 = foo_arg1 + 1 #chkcast(foo.args[2], int)
                 msym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
                 msym_list += [msym]
                 msym_list += self.find_symmetries(foo.args[0])
@@ -1161,9 +1188,9 @@ class ThornDef:
             # Here we declare an iteration variable
             # with the same symmetries as the expression
             # we want to iterate over.
+            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
             iter_syms = self.find_symmetries(indexed)
             indexes = self.find_indexes(indexed)
-            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
             # for arg in indexed.args[1:]:
             #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
             #    indexes.append(arg)
@@ -1175,14 +1202,19 @@ class ThornDef:
         # print("  ","iter_syms:",iter_syms)
         # print("  ","indexes:",indexes)
 
-        if isinstance(f, Matrix):
+        if isinstance(f, MatrixBase):
             set_matrix = f
             for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep = tup
+                out, indrep, alist = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 if self.run_simplify:
-                    self.subs[out] = do_simplify(set_matrix[arr_inds])
+                    narray = len(arr_inds)
+                    res = do_simplify(set_matrix[arr_inds[0:2]])
+                    if narray >= 3:
+                        res = self.do_subs(res, indrep)
+                    self.subs[out] = res
+                    print("params>",self.params)
                 else:
                     self.subs[out] = set_matrix[arr_inds]
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
@@ -1192,7 +1224,7 @@ class ThornDef:
             if get_free_indices(iter_var) != get_free_indices(f):
                 raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
             for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep = tup
+                out, indrep, _ = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 if self.run_simplify:
@@ -1202,8 +1234,9 @@ class ThornDef:
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
 
+        print(">>",iter_var)
         for tup in expand_free_indices(iter_var, self.symmetries):
-            out, indrep = tup
+            out, indrep, _ = tup
             assert isinstance(out, Indexed)
             inds = out.indices
             subj: Expr
