@@ -2,3 +2,5 @@
 **/__pycache__/
 recipes/Test*
 html/
+*.egg-info/
+build/
