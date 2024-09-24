@@ -7,11 +7,21 @@ if __name__ == "__main__":
     from EmitCactus.generators.wizards import CppCarpetXWizard
     from sympy import exp
 
+    ###
+    # Index symmetrizer
+    ###
+    def sym(expr, ind1, ind2):
+        return (expr + expr.subs({ind1:u1, ind2:u2}).subs({u1:ind2, u2:ind1}))/2
+
+    ###
     # Create a set of grid functions
+    ###
     gf = ThornDef("PY_BSSN", "py_bssn")
     gf.set_div_stencil(5) # 4th order
 
-    # From ADMBaseX
+    ###
+    # ADMBaseX vars
+    ###
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
     gf.add_sym(g[li, lj], li, lj)
 
@@ -20,12 +30,13 @@ if __name__ == "__main__":
 
     alp = gf.decl("alp", [], from_thorn="ADMBaseX")
     beta = gf.decl("beta", [ua], from_thorn="ADMBaseX")
-    ###
 
     x,y,z = gf.mk_coords()
 
+    ###
     # BSSN Vars
-    gt = gf.decl("gt", [li,lj]) # \tilde{g}
+    ###
+    gt = gf.decl("gt", [li,lj]) # \tilde{\gamma_{ij}}
     gf.add_sym(gt[li, lj], li, lj)
     gt_dt = gf.decl("gt_dt", [li,lj])
     gf.add_sym(gt_dt[li, lj], li, lj)
@@ -47,25 +58,34 @@ if __name__ == "__main__":
     Affinet = gf.decl("Affinet", [ua, lb, lc]) # \tilde{\Gamma}^a_{bc}
     gf.add_sym(Affinet[ua,lb,lc], lb, lc)
 
+    Gamma = gf.decl("Gamma", [ua, lb, lc]) # \Gamma^a_{bc}
+    gf.add_sym(Gamma[ua,lb,lc], lb, lc)
+
     ric = gf.decl("ric", [li,lj]) # R_{ij} = \tilde{R}_{ij} + R^\phi_{ij}
     gf.add_sym(ric[li,lj], li, lj)
 
-    ddA = gf.decl("ddA", [li,lj]) # D_i D_j alp
+    ddA = gf.decl("ddA", [li,lj]) # D_i D_j \alpha
     gf.add_sym(ddA[li,lj], li, lj)
 
-    ddphi = gf.decl("ddphi", [li,lj]) # D_i D_j phi
-    gf.add_sym(ddphi[li,lj], li, lj)
-    ###
+    ddtphi = gf.decl("ddtphi", [li,lj]) # \tilde{D}_i \tilde{D}_j \phi
+    gf.add_sym(ddtphi[li,lj], li, lj)
 
-    def sym(expr, ind1, ind2):
-        return (expr + expr.subs({ind1:u1, ind2:u2}).subs({u1:ind2, u2:ind1}))/2
+    T = gf.decl("T", [li,lj]) # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
+    gf.add_sym(T[li,lj], li, lj)
     
+    ###
     # Substitution rules for the BSSN variables
+    ###
     gf.mk_subst(gt_dt[li,lj])
     gf.mk_subst(gt[li,lj])
-    gmat = gf.get_matrix(gt[li,lj])
-    imat = do_inv(gmat)*do_det(gmat) # Use the fact that det(gmat) = 1
-    gf.mk_subst(gt[ui,uj], imat)
+    gt_mat = gf.get_matrix(gt[li,lj])
+    gt_imat = do_inv(gt_mat) * do_det(gt_mat) # Use the fact that det(gmat) = 1
+    gf.mk_subst(gt[ui,uj], gt_imat)
+
+    gf.mk_subst(g[li,lj])
+    g_mat = gf.get_matrix(g[li,lj])
+    g_imat = do_inv(g_mat)
+    gf.mk_subst(gt[ui,uj], g_imat)
     
     gf.mk_subst(At[li,lj])
     gf.mk_subst(At_dt[li,lj])
@@ -78,17 +98,63 @@ if __name__ == "__main__":
     gf.mk_subst(Affinet[ua,lb,lc])
     gf.mk_subst(Affinet[la,lb,lc])
 
+    gf.mk_subst(Gamma[ua,lb,lc])
+
     gf.mk_subst(ric[li,lj])
     
     gf.mk_subst(ddA[li,lj])
-    gf.mk_subst(ddphi[li,lj])
+    gf.mk_subst(ddtphi[li,lj])
+
+    gf.mk_subst(T[li,lj])
     
     gf.mk_subst(beta[ui])
-    ###
 
+    ###
     # BSSN Evolution equations
+    ###
     fun = gf.create_function("evo", ScheduleBin.Evolve)
     
+    # Auxiliary Equations
+
+    fun.add_eqn(T[li,lj], -ddA[li,lj] + alp * ric[li,lj])
+    
+    # See: https://en.wikipedia.org/wiki/Covariant_derivative
+    # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
+    fun.add_eqn(ddA[li,lj], div(alp, li,lj) - Gamma[uk,li,lj] * div(alp,lk))
+    fun.add_eqn(ddtphi[li,lj], div(phi, li,lj) - Affinet[uk,li,lj] * div(phi,lk))
+
+    fun.add_eqn(
+        Affinet[la, lb, lc],
+        (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
+    )
+    
+    fun.add_eqn(Affinet[ud, lb, lc], gt[ud,ua] * Affinet[la, lb, lc])
+
+    fun.add_eqn(
+        Gamma[ua, lb, lc],
+        (1/2) * g[ua,ud] * (
+            div(g[ld,lb], lc) + div(g[ld,lc], lb) - div(g[lb,lc], ld)
+        )
+    )
+
+    fun.add_eqn(At[ui,lj], At[la,lj] * gt[ua,ui])
+    fun.add_eqn(At[ui,uj], At[ui,lb] * gt[ub,uj])
+
+    fun.add_eqn(
+        ric[li,lj],
+        -2 * ddtphi[li,lj] \
+        -2 * gt[li,lj] * ddtphi[la,lb] * gt[ua,ub] \
+        +4 * div(phi, li) * div(phi, lj) \
+        -4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub] \
+        - (1/2) * gt[ua,ub] * div(gt[li,lj], la,lb) \
+        + sym(gt[lk,li] * div(Gt[uk], lj), li,lj) \
+        + sym(Gt[uk] * Affinet[li,lj,lk], li,lj) \
+        + sym(gt[ua,ub] * 2 * Affinet[uk,la,li] * Affinet[lj,lk,lb], li,lj) \
+        + sym(gt[ua,ub] * Affinet[uk,li,lb] * Affinet[lk,la,lj], li,lj)
+    )
+
+    # Evolution equations
+
     fun.add_eqn(
         gt_dt[li,lj],
         -2 * alp * At[li,lj] \
@@ -105,13 +171,16 @@ if __name__ == "__main__":
         + (1/6) * div(beta[uk], lk)
     )
     
-    fun.add_eqn(At[ui,lj], At[la,lj] * gt[ua,ui])
-    fun.add_eqn(At[ui,uj], At[ui,lb] * gt[ub,uj])
-    
-    # TODO: Get the trace free part in the first term
+    # See https://arxiv.org/pdf/2109.11743.
+    # Let T_{ij} \equiv -D_i D_j \alpha + \alpha R_{ij}
+    # The trace free part of T, T^{(0)}_{ij} is then
+    # T^{(0)}_{ij} = T_{ij} - 1/3 \gamma_{ij} \gamma^{ab} T_{ab}
     fun.add_eqn(
         At_dt[li,lj],
-        exp(-4 * phi) * (ddA[li,lj] + alp * ric[li,lj]) \
+        exp(-4 * phi) * (
+            T[li,lj] \
+            -(1/3) * g[li, lj] * g[ua,ub] * T[la,lb]
+        ) \
         + alp * (trK * At[li,lj] - 2 * At[li,lk] * At[uk,lj]) \
         + beta[uk] * div(At[li,lj], lk) \
         + At[li,lk] * div(beta[uk], lj) \
@@ -127,13 +196,6 @@ if __name__ == "__main__":
     )
     
     fun.add_eqn(
-        Affinet[la, lb, lc],
-        (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
-    )
-    
-    fun.add_eqn(Affinet[ud, lb, lc], gt[ud,ua] * Affinet[la, lb, lc])
-
-    fun.add_eqn(
         Gt_dt[ui],
         gt[uj,uk] * div(beta[ui], lj,lk) \
         + (1/3) * gt[ui,uj] * div(beta[uk],lj,lk) \
@@ -148,24 +210,9 @@ if __name__ == "__main__":
         )
     )
 
-    # TODO: Missing terms
-    fun.add_eqn(
-        ric[li,lj],
-        -2 * ddphi[li,lj] \
-        -2 * gt[li,lj] * ddphi[la,lb] * gt[ua,ub] \
-        - (1/2) * gt[ua,ub] * div(gt[li,lj], la,lb) \
-        + sym(gt[lk,li] * div(Gt[uk],lk,lj), li,lj) \
-        + sym(Gt[uk] * Affinet[li,lj,lk], li,lj) \
-        + sym(gt[ua,ub] * 2 * Affinet[uk,la,li] * Affinet[lj,lk,lb], li,lj) \
-        + sym(gt[ua,ub] * Affinet[uk,li,lb] * Affinet[lk,la,lj], li,lj)
-    )
-    
-    # See: https://en.wikipedia.org/wiki/Covariant_derivative
-    # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
-    fun.add_eqn(ddA[li,lj], div(alp, li,lj) - Affinet[uk,li,lj] * div(alp,lk))
-    fun.add_eqn(ddphi[li,lj], div(phi, li,lj) - Affinet[uk,li,lj] * div(phi,lk))
     ###
-
+    # Thorn creation
+    ###
     gf.check_globals()
 
     fun.bake()
