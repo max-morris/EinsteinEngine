@@ -4,3 +4,4 @@ recipes/Test*
 html/
 *.egg-info/
 build/
+venv/*
