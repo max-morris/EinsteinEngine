@@ -4,3 +4,7 @@ sympy==1.12.1
 multimethod>=1.10
 numpy==2.1.0
 pdoc==14.6.0
+
+# This allows the EmitCactus to be "pip install -r requirements" installed
+# together with the other dependencies. Ugly, but works
+./
