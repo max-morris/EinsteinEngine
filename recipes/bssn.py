@@ -1,5 +1,3 @@
-# see https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
-# see also https://arxiv.org/abs/gr-qc/9810065
 if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
@@ -76,16 +74,16 @@ if __name__ == "__main__":
     ###
     # Substitution rules for the BSSN variables
     ###
-    gf.mk_subst(gt_dt[li,lj])
-    gf.mk_subst(gt[li,lj])
-    gt_mat = gf.get_matrix(gt[li,lj])
-    gt_imat = do_inv(gt_mat) * do_det(gt_mat) # Use the fact that det(gmat) = 1
-    gf.mk_subst(gt[ui,uj], gt_imat)
-
     gf.mk_subst(g[li,lj])
     g_mat = gf.get_matrix(g[li,lj])
     g_imat = do_inv(g_mat)
     gf.mk_subst(gt[ui,uj], g_imat)
+
+    gf.mk_subst(gt_dt[li,lj])
+    gf.mk_subst(gt[li,lj])
+    gt_mat = gf.get_matrix(gt[li,lj])
+    gt_imat = do_inv(gt_mat) * do_det(gt_mat) # Use the fact that det(gt) = 1
+    gf.mk_subst(gt[ui,uj], gt_imat)
     
     gf.mk_subst(At[li,lj])
     gf.mk_subst(At_dt[li,lj])
@@ -111,6 +109,9 @@ if __name__ == "__main__":
 
     ###
     # BSSN Evolution equations
+    # Following [1], we will replace \tilde{\Gamma}^i with
+    # \tilde{\gamma}^{ij} \tilde{\Gamma}^i_{jk} whenever the
+    # \tilde{\Gamma}^i are needed without derivatives.
     ###
     fun = gf.create_function("evo", ScheduleBin.Evolve)
     
@@ -118,17 +119,17 @@ if __name__ == "__main__":
 
     fun.add_eqn(T[li,lj], -ddA[li,lj] + alp * ric[li,lj])
     
-    # See: https://en.wikipedia.org/wiki/Covariant_derivative
+    # See: [3]
     # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
-    fun.add_eqn(ddA[li,lj], div(alp, li,lj) - Gamma[uk,li,lj] * div(alp,lk))
-    fun.add_eqn(ddtphi[li,lj], div(phi, li,lj) - Affinet[uk,li,lj] * div(phi,lk))
+    fun.add_eqn(ddA[li,lj], div(alp, lj,li) - Gamma[uk,li,lj] * div(alp,lk))
+    fun.add_eqn(ddtphi[li,lj], div(phi, lj,li) - Affinet[uk,li,lj] * div(phi,lk))
 
     fun.add_eqn(
         Affinet[la, lb, lc],
         (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
     )
     
-    fun.add_eqn(Affinet[ud, lb, lc], gt[ud,ua] * Affinet[la, lb, lc])
+    fun.add_eqn(Affinet[ua, lb, lc], gt[ua,ud] * Affinet[ld, lb, lc])
 
     fun.add_eqn(
         Gamma[ua, lb, lc],
@@ -142,15 +143,15 @@ if __name__ == "__main__":
 
     fun.add_eqn(
         ric[li,lj],
+        - (1/2) * gt[ua,ub] * div(gt[li,lj], la,lb) \
+        + sym(gt[lk,li] * div(Gt[uk], lj), li,lj) \
+        + sym(gt[ua,ub] * Affinet[uk,la,lb] * Affinet[li,lj,lk], li,lj) \
+        + sym(gt[ua,ub] * 2 * Affinet[uk,la,li] * Affinet[lj,lk,lb], li,lj) \
+        + gt[ua,ub] * Affinet[uk,li,lb] * Affinet[lk,la,lj] \
         -2 * ddtphi[li,lj] \
         -2 * gt[li,lj] * ddtphi[la,lb] * gt[ua,ub] \
         +4 * div(phi, li) * div(phi, lj) \
-        -4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub] \
-        - (1/2) * gt[ua,ub] * div(gt[li,lj], la,lb) \
-        + sym(gt[lk,li] * div(Gt[uk], lj), li,lj) \
-        + sym(Gt[uk] * Affinet[li,lj,lk], li,lj) \
-        + sym(gt[ua,ub] * 2 * Affinet[uk,la,li] * Affinet[lj,lk,lb], li,lj) \
-        + sym(gt[ua,ub] * Affinet[uk,li,lb] * Affinet[lk,la,lj], li,lj)
+        -4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub]
     )
 
     # Evolution equations
@@ -171,7 +172,7 @@ if __name__ == "__main__":
         + (1/6) * div(beta[uk], lk)
     )
     
-    # See https://arxiv.org/pdf/2109.11743.
+    # See [4]
     # Let T_{ij} \equiv -D_i D_j \alpha + \alpha R_{ij}
     # The trace free part of T, T^{(0)}_{ij} is then
     # T^{(0)}_{ij} = T_{ij} - 1/3 \gamma_{ij} \gamma^{ab} T_{ab}
@@ -200,8 +201,8 @@ if __name__ == "__main__":
         gt[uj,uk] * div(beta[ui], lj,lk) \
         + (1/3) * gt[ui,uj] * div(beta[uk],lj,lk) \
         + beta[uj] * div(Gt[ui], lj) \
-        - Gt[uj] * div(beta[ui], lj) \
-        + (2/3) * Gt[ui] * div(beta[uj], lj) \
+        - gt[ua,ub] * Affinet[uj,la,lb] * div(beta[ui], lj) \
+        + (2/3) * gt[ua,ub] * Affinet[ui,la,lb] * div(beta[uj], lj) \
         - 2 * At[ui,uj] * div(alp, lj) \
         + 2 * alp * (
             Affinet[ui,lj,lk] * At[uj,uk] \
@@ -219,3 +220,8 @@ if __name__ == "__main__":
 
     CppCarpetXWizard(gf).generate_thorn()
 
+# References
+# [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
+# [2] https://arxiv.org/abs/gr-qc/9810065
+# https://en.wikipedia.org/wiki/Covariant_derivative
+# [4] https://arxiv.org/pdf/2109.11743.
