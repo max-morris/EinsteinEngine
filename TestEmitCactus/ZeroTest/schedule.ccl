@@ -1,0 +1,10 @@
+# Schedule definitions for thorn ZeroTest
+
+SCHEDULE GROUP CheckZeroGroup {
+} "The Check Zero Group"
+
+SCHEDULE CheckZero IN CheckZeroGroup
+{
+LANG: C
+Reads: ZeroTest::ZeroVal(Everywhere)
+} "RicZero"
