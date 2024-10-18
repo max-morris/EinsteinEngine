@@ -5,6 +5,7 @@ import sys
 from enum import auto
 from inspect import currentframe
 from typing import *
+from math import sqrt
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -191,6 +192,7 @@ class DivMaker(Applier):
             q1 = g[is_ln]
             q2 = g[is_ln2]
             assert isinstance(q1, Idx)
+            assert isinstance(q2, Idx)
             return do_diff(do_diff(q0, self.coords[to_num(q1)]), self.coords[to_num(q2)])
 
         return None
@@ -432,9 +434,9 @@ assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0
     l2, uk] * M[u2, lj]
 
 
-def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]]:
-    index_list = sorted(list(get_free_indices(xpr)), key=str)
-    output: List[Tuple[Expr, Dict[Idx, Idx]]] = list()
+def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]]:
+    index_list : List[Idx] = sorted(list(get_free_indices(xpr)), key=str)
+    output : List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]] = list()
     xpr = expand_contracted_indices(xpr, sym)
     index_values: Dict[Idx, Idx] = dict()
     while incr(index_list, index_values):
@@ -444,7 +446,8 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
             sym_result = sym.apply(result)
             if result != sym_result:
                 continue
-        output += [(do_subs(xpr, index_values, sym), index_values.copy(), index_list)]
+        out_xpr = do_subs(xpr, index_values, sym)
+        output += [(out_xpr, index_values.copy(), index_list)]
     return output
 
 
@@ -895,18 +898,21 @@ class ThornFunction:
         elif isinstance(rhs, MatrixBase):
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
             for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
-                rhs2 = rhs
+                rhsm = rhs
                 for idx in item[2]:
-                    #print(rhs2,idx,"->",end=" ")
-                    if isinstance(rhs2, MatrixBase):
-                        index = to_num(do_subs(idx, item[1]))
-                        rhs2 = rhs2[index,:][:]
-                    elif isinstance(rhs2, list):
-                        rhs2 = rhs2[to_num(do_subs(idx, item[1]))]
+                    #print(rhsm,idx,"->",end=" ")
+                    if isinstance(rhsm, MatrixBase):
+                        idx2 = do_subs(idx, item[1])
+                        assert isinstance(idx2, Idx)
+                        index = to_num(idx)
+                        rhsm = rhsm[index,:][:]
+                    elif isinstance(rhsm, list):
+                        rhsm = rhsm[to_num(do_subs(idx, item[1]))]
                     else:
-                        rhs2 = do_subs(rhs2, item[1])
-                    #print(rhs2)
-                rhs2 = self.thorn_def.do_subs(rhs2, self.thorn_def.subs)
+                        rhsm = do_subs(rhs2, item[1])
+                    #print(rhsm)
+                assert isinstance(rhsm, Expr)
+                rhs2 = self.thorn_def.do_subs(rhsm, self.thorn_def.subs)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
@@ -1270,7 +1276,7 @@ class ThornDef:
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
         result: List[Eq] = list()
         for tup in expand_free_indices(eqn.lhs, self.symmetries):
-            lhs, inds = tup
+            lhs, inds, _ = tup
             result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, inds, self.subs))]
         return result
 
