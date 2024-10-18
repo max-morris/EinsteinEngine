@@ -30,7 +30,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         self.generator = generator
         self.code_visitor = code_visitor
 
-    def generate_thorn(self) -> None:
+    def generate_thorn(self, schedule_txt="") -> None:
         base_dir = os.path.join(self.thorn_def.arrangement, self.thorn_def.name)
         os.makedirs(base_dir, exist_ok=True)
         os.makedirs(os.path.join(base_dir, "src"), exist_ok=True)
@@ -68,6 +68,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         schedule_ccl_fname = os.path.join(base_dir, "schedule.ccl")
         with ConditionalFileUpdater(schedule_ccl_fname) as fd:
             fd.write(schedule_ccl)
+            fd.write(schedule_txt)
 
         print('== configuration.ccl ==')
         configuration_ccl = f"""
