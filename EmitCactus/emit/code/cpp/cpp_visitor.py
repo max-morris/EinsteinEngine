@@ -102,8 +102,10 @@ class CppVisitor(Visitor[CodeNode]):
         if n.op is BinOp.Pow:
             if isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer == 2:
                 return f'pow2({lhs})'
-            else:
+            elif isinstance(n.rhs, IntLiteralExpr):
                 return f'pown({lhs}, {rhs})'
+            else:
+                return f'pow({lhs}, {rhs})'
 
         return f'({lhs} {n.op.representation} {rhs})'
 

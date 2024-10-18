@@ -184,6 +184,15 @@ class DivMaker(Applier):
             assert isinstance(q1, Idx)
             return do_diff(q0, self.coords[to_num(q1)])
 
+        # Div with a numeric index as 2nd arg
+        g = do_match(expr, div(self.isxyz, is_ln, is_ln2))
+        if g:
+            q0 = g[self.isxyz]
+            q1 = g[is_ln]
+            q2 = g[is_ln2]
+            assert isinstance(q1, Idx)
+            return do_diff(do_diff(q0, self.coords[to_num(q1)]), self.coords[to_num(q2)])
+
         return None
 
     def m(self, expr: Expr) -> bool:
@@ -588,6 +597,9 @@ class Param:
         else:
             assert False
 
+    def __repr__(self)->str:
+        return f"Param({self.name})"
+
 
 # First derivatives
 for i in range(dimension):
@@ -882,7 +894,6 @@ class ThornFunction:
             self._add_eqn2(lhs2, rhs2)
         elif isinstance(rhs, MatrixBase):
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            print(">> lhs2:", lhs2)
             for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
                 rhs2 = rhs
                 for idx in item[2]:
@@ -896,7 +907,6 @@ class ThornFunction:
                         rhs2 = do_subs(rhs2, item[1])
                     #print(rhs2)
                 rhs2 = self.thorn_def.do_subs(rhs2, self.thorn_def.subs)
-                print("assign:",self.thorn_def.do_subs(item[0], self.thorn_def.subs), "->", rhs2)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
@@ -1135,7 +1145,6 @@ class ThornDef:
             # This is a derivative
             if len(foo.args) == 3:
                 # This is a 2nd derivative, symmetric in the last 2 args
-                print(f">> foo.args={foo.args}")
                 foo_arg1 = len(foo.args[0].args)-1#chkcast(foo.args[1], int)
                 foo_arg2 = foo_arg1 + 1 #chkcast(foo.args[2], int)
                 msym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
@@ -1214,7 +1223,6 @@ class ThornDef:
                     if narray >= 3:
                         res = self.do_subs(res, indrep)
                     self.subs[out] = res
-                    print("params>",self.params)
                 else:
                     self.subs[out] = set_matrix[arr_inds]
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
@@ -1234,7 +1242,6 @@ class ThornDef:
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
 
-        print(">>",iter_var)
         for tup in expand_free_indices(iter_var, self.symmetries):
             out, indrep, _ = tup
             assert isinstance(out, Indexed)

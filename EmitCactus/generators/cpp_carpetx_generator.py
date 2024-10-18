@@ -137,7 +137,7 @@ class CppCarpetXGenerator(CactusGenerator):
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
 
         # We always want to inherit from CarpetX even if no vars explicitly need it
-        inherits_from.add(Identifier('CarpetX'))
+        inherits_from.add(Identifier('Driver'))
 
         return InterfaceRoot(
             HeaderSection(

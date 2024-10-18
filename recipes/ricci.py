@@ -48,9 +48,7 @@ if __name__ == "__main__":
     gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
 
     gf.mk_subst(Ric[la, lb])
-    print("BEFORE")
     gf.mk_subst(div(g[la, lb], lc), vmat.applyfunc(lambda x : div(x, lc)))
-    print("AFTER")
 
     fun = gf.create_function("setGL", ScheduleBin.Analysis)
 
