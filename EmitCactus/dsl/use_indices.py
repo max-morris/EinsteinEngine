@@ -852,6 +852,7 @@ class ThornFunction:
         fb = FindBad(self)
         do_replace(rhs2, fb.m, fb.r)
         if fb.msg is not None:
+            print(self.thorn_def.subs)
             raise Exception(fb.msg)
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
@@ -1088,10 +1089,13 @@ class ThornDef:
 
         return ret
 
-    def mk_coords(self) -> List[Symbol]:
+    def mk_coords(self,with_time=False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
         if dimension == 3:
-            self.coords = [self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
+            if with_time:
+                self.coords = [self.declscalar("t"), self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
+            else:
+                self.coords = [self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
         elif dimension == 4:
             # TODO: No idea whether this works
             self.coords = [self.declscalar("t"), self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
@@ -1231,6 +1235,7 @@ class ThornDef:
                     self.subs[out] = res
                 else:
                     self.subs[out] = set_matrix[arr_inds]
+                print("out:",out)
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
         elif isinstance(f, Expr):

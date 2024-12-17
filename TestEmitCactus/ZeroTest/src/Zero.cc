@@ -22,8 +22,13 @@ void CheckZero(CCTK_ARGUMENTS)
     double rms = 0;
     double maxv = 0;
     int n = 0;
+    int nancount = 0;
     grid.loop_int<VVV_centered[0], VVV_centered[1], VVV_centered[2]>(grid.nghostzones, [&] CCTK_DEVICE(const PointDesc& p) CCTK_ATTRIBUTE_ALWAYS_INLINE {    
         CCTK_REAL zero = fabs(access(ZeroVal));
+        if(std::isnan(zero)) {
+            nancount ++;
+            return;
+        }
         if(verbose && zero > max_tol) {
             printf("Zero[%d,%d,%d] = %g\n", p.I[0], p.I[1], p.I[2], zero);
         }
@@ -34,7 +39,8 @@ void CheckZero(CCTK_ARGUMENTS)
         n ++;
     });
     rms = sqrt(rms/n);
-    printf("---> rms=%g, max=%g\n", rms, maxv);
+    printf("---> nancount=%d, rms=%g, max=%g\n", nancount, rms, maxv);
+    if(nancount > 0) printf("::ERROR:: nancount is not zero\n");
     if(rms > rms_tol) printf("::ERROR:: rms value=%g exceeds tolerance: %g\n", rms, rms_tol);
     if(maxv > max_tol) printf("::ERROR:: max value=%g exceeds tolerance: %g\n", maxv, max_tol);
 }

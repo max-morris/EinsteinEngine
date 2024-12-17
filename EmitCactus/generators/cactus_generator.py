@@ -15,7 +15,7 @@ class CactusGenerator(ABC):
     variable_groups: Dict[str, VariableGroup]
     var_names: OrderedSet[str]
 
-    vars_to_ignore: Set[str] = {'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
+    vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
     def __init__(self, thorn_def: ThornDef):
         self.thorn_def = thorn_def
