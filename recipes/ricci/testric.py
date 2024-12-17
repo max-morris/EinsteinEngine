@@ -1,3 +1,7 @@
+from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction, AtOrIn
+from EmitCactus.emit.tree import Identifier, String
+from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv
@@ -16,18 +20,18 @@ if __name__ == "__main__":
     x,y,z = gf.mk_coords()
 
     Ric = gf.decl("Ric", [la, lb])
-    RicVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
+    ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
     G = gf.decl("Affine", [ua, lb, lc])
 
     gf.add_sym(g[li, lj], li, lj)
     gf.add_sym(Ric[li, lj], li, lj)
-    gf.add_sym(RicVal[li, lj], li, lj) # this is an error
+    gf.add_sym(ZeroVal[li, lj], li, lj) # this is an error
 
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
     gmat = gf.get_matrix(g[la,lb])
     imat = do_simplify(do_inv(gmat)*do_det(gmat)) #*idetg
     gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(RicVal[li,lj])
+    gf.mk_subst(ZeroVal[li,lj])
     gf.mk_subst(Ric[li,lj])
 
     # Metric
@@ -69,7 +73,13 @@ if __name__ == "__main__":
     fun.add_eqn(ZeroVal, Ric[l0,l0]-b*(a*c**2 + a - 3*b*c**2*x**2 - 3*b*x**2)/(a**2 + 2*a*b*x**2 + b**2*x**4))
     fun.bake()
 
+    check_zero = ScheduleBlock(
+        group_or_function=GroupOrFunction.Group,
+        name=Identifier('CheckZeroGroup'),
+        at_or_in=AtOrIn.At,
+        schedule_bin=Identifier('analysis'),
+        description=String('Do the check'),
+        after=[Identifier('RicZero')]
+    )
 
-    CppCarpetXWizard(gf).generate_thorn(schedule_txt="""
-schedule GROUP CheckZeroGroup AT analysis AFTER RicZero {} "Do the check"
-""")
+    CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()

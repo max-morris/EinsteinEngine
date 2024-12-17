@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
+from EmitCactus.emit.tree import Identifier, String
+from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+
 if __name__ == "__main__":
 
     """
@@ -48,7 +52,7 @@ if __name__ == "__main__":
     v = gf.decl("v", [], Centering.VVV, rhs=v_t)
     u_t = gf.decl("u_t", [], Centering.VVV)
     u = gf.decl("u", [], Centering.VVV, rhs=u_t)
-    RicVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
+    ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
     # Declare the metric
     g = gf.decl("g", [li, lj])
@@ -105,6 +109,15 @@ if __name__ == "__main__":
     fun.bake()
 
     fun.dump()
-    CppCarpetXWizard(gf).generate_thorn(schedule_txt="""
-schedule GROUP CheckZeroGroup AT analysis AFTER WaveZero {} "Do the check"
-""")
+
+    check_zero = ScheduleBlock(
+        group_or_function=GroupOrFunction.Group,
+        name=Identifier('CheckZeroGroup'),
+        at_or_in=AtOrIn.At,
+        schedule_bin=Identifier('analysis'),
+        description=String('Do the check'),
+        after=[Identifier('RicZero')]
+    )
+
+    CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()
+
