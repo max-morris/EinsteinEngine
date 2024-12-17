@@ -319,7 +319,7 @@ class EqnList:
         for k,v2 in requires.items():
             for vv in v2:
                 if vv not in self.params:
-                    raise Exception(f"Unsatisfied {k} <- {v} : {self.params}")
+                    raise Exception(f"Unsatisfied {k} <- {vv} : {self.params}")
 
 
     def bake(self) -> None:

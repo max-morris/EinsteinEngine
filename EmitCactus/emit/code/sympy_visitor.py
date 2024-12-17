@@ -78,6 +78,8 @@ class SympyExprVisitor:
             fn_type = StandardizedFunctionCallType.Cos
         elif isinstance(expr, sy.exp):
             fn_type = StandardizedFunctionCallType.Exp
+        elif isinstance(expr, sy.log):
+            fn_type = StandardizedFunctionCallType.Log
         else:
             raise NotImplementedError(f"visit({type(expr)}) not implemented in SympyExprVisitor")
 

@@ -106,10 +106,10 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
             s += f'\nOPTIONS: {", ".join(visit_each(self, n.options))}'
 
         if n.reads is not None:
-            s += f'\nReads: {", ".join(visit_each(self, n.reads))}'
+            s += f'\nReads: {", ".join(visit_each(self, sorted(n.reads, key=lambda x:repr(x))))}'
 
         if n.writes is not None:
-            s += f'\nWrites: {", ".join(visit_each(self, n.writes))}'
+            s += f'\nWrites: {", ".join(visit_each(self, sorted(n.writes, key=lambda x:repr(x))))}'
 
         s += '\n} ' + self.visit(n.description)
 
