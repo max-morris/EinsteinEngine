@@ -4,14 +4,16 @@ ActiveThorns = "WaveEqn CarpetX IOUtil ODESolvers ZeroTest"
 
 #ZeroTest::verbose = true
 
-Zero::max_tol = 0.011
+ZeroTest::max_tol = 0.011
+ZeroTest::rms_tol = 0.011
 ODESolvers::method = "RK4"
 Cactus::presync_mode = "presync-only"
 
+CarpetX::dtfac = 0.5
 Cactus::terminate = "iteration"
 $blocksize=10
 $nblocks=20
-Cactus::cctk_itlast = 100 #$nblocks*$blocksize
+Cactus::cctk_itlast = 20 #$nblocks*$blocksize
 
 CarpetX::periodic_x = false
 CarpetX::periodic_y = false
@@ -28,9 +30,11 @@ CarpetX::verbose = yes
 
 CarpetX::poison_undefined_values = no
 
-$ncells_x = 80
-$ncells_y = 80
-$ncells_z = 80
+
+$res = 2
+$ncells_x = 80*$res
+$ncells_y = 80*$res
+$ncells_z = 80*$res
 $xmax = 40.0
 $ymax = 40.0
 $zmax = 40.0
