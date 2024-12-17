@@ -42,7 +42,8 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
         s = f'implements: {self.visit(n.implements)}'
 
         if len(n.inherits) != 0:
-            s += f'\ninherits: {",".join(visit_each(self, n.inherits))}'
+            sorted_inherits = sorted(n.inherits, key=lambda x: repr(x))
+            s += f'\ninherits: {",".join(visit_each(self, sorted_inherits))}'
 
         if len(n.friends) != 0:
             s += f'\nfriend: {",".join(visit_each(self, n.friends))}'

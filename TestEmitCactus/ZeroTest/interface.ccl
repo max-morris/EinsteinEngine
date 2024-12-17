@@ -1,0 +1,9 @@
+# Interface definition for thorn ZeroTest
+implements: ZeroTest
+inherits:
+
+public:
+REAL ZeroVal TYPE=GF TAGS='checkpoint="no"' CENTERING={ VVV }
+{
+   ZeroVal
+}
