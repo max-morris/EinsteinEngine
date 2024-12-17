@@ -365,7 +365,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 ConstAssignDecl(
                     Identifier('vreal'),
                     Identifier('t'),
-                    Identifier('cctk_time'))
+                    IdExpr(Identifier('cctk_time')))
             ] + xyz_decls
 
         # DXI, DYI, DZI decls

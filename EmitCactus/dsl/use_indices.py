@@ -1089,7 +1089,7 @@ class ThornDef:
 
         return ret
 
-    def mk_coords(self,with_time=False) -> List[Symbol]:
+    def mk_coords(self,with_time:bool=False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
         if dimension == 3:
             if with_time:
