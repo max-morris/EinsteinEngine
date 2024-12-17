@@ -7,7 +7,8 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlo
 from EmitCactus.emit.code.code_tree import CodeRoot
 from EmitCactus.emit.tree import Identifier, String
 from EmitCactus.util import get_or_compute, OrderedSet
-from typing import Dict, Set, Optional, TypedDict, Unpack
+from typing import Dict, Set, Optional, TypedDict
+from typing_extensions import Unpack
 
 
 class CactusGeneratorOptions(TypedDict, total=False):
