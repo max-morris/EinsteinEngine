@@ -1,0 +1,17 @@
+# Parameter definitions for thorn ZeroTest
+
+restricted:
+
+BOOLEAN verbose "Verbose output" STEERABLE=RECOVER
+{
+} false
+
+REAL rms_tol "Tolerance for the RMS value of ZeroVal" STEERABLE=RECOVER
+{
+ (0:* :: "any positive number"
+} 1.0e-9
+
+REAL max_tol "Tolerance for the max value of ZeroVal" STEERABLE=RECOVER
+{
+ (0:* :: "any positive number"
+} 1.0e-9
