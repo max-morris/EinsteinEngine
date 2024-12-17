@@ -3,7 +3,6 @@ Use the Sympy Indexed type for relativity expressions.
 """
 import sys
 from enum import auto
-from inspect import currentframe
 from typing import *
 from math import sqrt
 
@@ -1066,26 +1065,12 @@ class ThornDef:
         # self.eqnlist.add_func(fun, is_stencil)
         self.is_stencil[fun] = is_stencil_fun
 
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            globs[funname] = fun
-
         return fun
 
     def declscalar(self, basename: str) -> Symbol:
         ret = mkSymbol(basename)
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list())
-
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            globs[basename] = ret
 
         return ret
 
@@ -1103,17 +1088,6 @@ class ThornDef:
             assert False
         return self.coords
 
-    def check_globals(self)->None:
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is None:
-            return
-        for name in self.gfs:
-            if name in globs:
-                assert globs[name] == self.gfs.get(name,None), \
-                    f"Globals not assigned as expected for name: {name}: (globals={globs[name]}) != (internal={self.gfs.get(name,None)})"
-
     def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp: bool = False,
              rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
         if rhs is not None:
@@ -1128,15 +1102,6 @@ class ThornDef:
             self.base2thorn[basename] = from_thorn
         if temp:
             self.temp.add(basename)
-
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            assert basename not in globs, f"Redefinition of global symbol {basename}"
-            if basename != "iter_var":
-                globs[basename] = ret
 
         return ret
 

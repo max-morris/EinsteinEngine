@@ -215,8 +215,6 @@ if __name__ == "__main__":
             - (2/3) * gt[ui,uj] * div(trK, lj)
         )
     )
-    
-    gf.check_globals()
 
     ###
     # Load from and store to ADMBaseX
