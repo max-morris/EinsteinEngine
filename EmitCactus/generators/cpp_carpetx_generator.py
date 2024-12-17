@@ -1,5 +1,6 @@
 import typing
-from typing import Optional, List, Set, Tuple, Unpack
+from typing import Optional, List, Set, Tuple
+from typing_extensions import Unpack
 
 import sympy as sy
 
