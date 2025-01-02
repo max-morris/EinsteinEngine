@@ -43,4 +43,5 @@ void CheckZero(CCTK_ARGUMENTS)
     if(nancount > 0) printf("::ERROR:: nancount is not zero\n");
     if(rms > rms_tol) printf("::ERROR:: rms value=%g exceeds tolerance: %g\n", rms, rms_tol);
     if(maxv > max_tol) printf("::ERROR:: max value=%g exceeds tolerance: %g\n", maxv, max_tol);
+    printf("::ZERO TEST RAN::\n");
 }
