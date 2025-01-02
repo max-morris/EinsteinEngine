@@ -88,7 +88,7 @@ class EqnList:
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.temporaries: Set[Math] = OrderedSet()
-        self.temporary_replacements: Set[TemporaryReplacement] = set()
+        self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
         self.split_lhs_prime_count: Dict[Math, int] = dict()
 
         # The modeling system treats these special
@@ -181,8 +181,8 @@ class EqnList:
             self.split_eqn(output)
 
     def recycle_temporaries(self) -> None:
-        temp_reads: Dict[Math, OrderedSet[int]] = dict()
-        temp_writes: Dict[Math, OrderedSet[int]] = dict()
+        temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
+        temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
         for temp_var in self.temporaries:
             for lhs, rhs in self.eqns.items():
@@ -194,7 +194,7 @@ class EqnList:
                 if rhs.find(temp_var):  # type: ignore[no-untyped-call]
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
-        lifetimes: Set[TemporaryLifetime] = set()
+        lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
         for temp_var in self.temporaries:
             print(f'Temporary {temp_var}:')
