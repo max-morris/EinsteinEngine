@@ -1,9 +1,10 @@
 if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_inv, do_det
+    from EmitCactus.dsl.sympywrap import do_inv, do_det, do_replace, mkSymbol
     from EmitCactus.generators.wizards import CppCarpetXWizard
-    from sympy import exp
+    from sympy import exp, log
+    import sys
 
     ###
     # Index symmetrizer
@@ -22,12 +23,15 @@ if __name__ == "__main__":
     ###
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
     gf.add_sym(g[li, lj], li, lj)
+    gf.mk_subst(g[li,lj], mksymbol_for_tensor_xyz)
 
     k = gf.decl("k", [li, lj], from_thorn="ADMBaseX")
     gf.add_sym(k[li, lj], li, lj)
+    gf.mk_subst(k[li,lj], mksymbol_for_tensor_xyz)
 
     alp = gf.decl("alp", [], from_thorn="ADMBaseX")
     beta = gf.decl("beta", [ua], from_thorn="ADMBaseX")
+    gf.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
     x,y,z = gf.mk_coords()
 
@@ -53,8 +57,8 @@ if __name__ == "__main__":
     Gt = gf.decl("Gt", [ui]) # \tilde{\Gamma}^i
     Gt_dt = gf.decl("Gt_dt", [ui])
     
-    Affinet = gf.decl("Affinet", [ua, lb, lc]) # \tilde{\Gamma}^a_{bc}
-    gf.add_sym(Affinet[ua,lb,lc], lb, lc)
+    Gammat = gf.decl("Gammat", [ua, lb, lc]) # \tilde{\Gamma}^a_{bc}
+    gf.add_sym(Gammat[ua,lb,lc], lb, lc)
 
     Gamma = gf.decl("Gamma", [ua, lb, lc]) # \Gamma^a_{bc}
     gf.add_sym(Gamma[ua,lb,lc], lb, lc)
@@ -74,15 +78,15 @@ if __name__ == "__main__":
     ###
     # Substitution rules for the BSSN variables
     ###
-    gf.mk_subst(g[li,lj])
     g_mat = gf.get_matrix(g[li,lj])
-    g_imat = do_inv(g_mat)
-    gf.mk_subst(gt[ui,uj], g_imat)
+    detg = do_det(g_mat)
 
     gf.mk_subst(gt_dt[li,lj])
     gf.mk_subst(gt[li,lj])
     gt_mat = gf.get_matrix(gt[li,lj])
-    gt_imat = do_inv(gt_mat) * do_det(gt_mat) # Use the fact that det(gt) = 1
+    gf.mk_subst(g[ui,uj], g_mat)
+    detgt = do_det(gt_mat)
+    gt_imat = do_inv(gt_mat) * detgt # Use the fact that det(gt) = 1
     gf.mk_subst(gt[ui,uj], gt_imat)
     
     gf.mk_subst(At[li,lj])
@@ -93,8 +97,8 @@ if __name__ == "__main__":
     gf.mk_subst(Gt[ui])
     gf.mk_subst(Gt_dt[ui])
     
-    gf.mk_subst(Affinet[ua,lb,lc])
-    gf.mk_subst(Affinet[la,lb,lc])
+    gf.mk_subst(Gammat[ua,lb,lc])
+    gf.mk_subst(Gammat[la,lb,lc])
 
     gf.mk_subst(Gamma[ua,lb,lc])
 
@@ -122,14 +126,14 @@ if __name__ == "__main__":
     # See: [3]
     # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
     fun.add_eqn(ddA[li,lj], div(alp, lj,li) - Gamma[uk,li,lj] * div(alp,lk))
-    fun.add_eqn(ddtphi[li,lj], div(phi, lj,li) - Affinet[uk,li,lj] * div(phi,lk))
+    fun.add_eqn(ddtphi[li,lj], div(phi, lj,li) - Gammat[uk,li,lj] * div(phi,lk))
 
     fun.add_eqn(
-        Affinet[la, lb, lc],
+        Gammat[la, lb, lc],
         (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
     )
     
-    fun.add_eqn(Affinet[ua, lb, lc], gt[ua,ud] * Affinet[ld, lb, lc])
+    fun.add_eqn(Gammat[ua, lb, lc], gt[ua,ud] * Gammat[ld, lb, lc])
 
     fun.add_eqn(
         Gamma[ua, lb, lc],
@@ -145,9 +149,9 @@ if __name__ == "__main__":
         ric[li,lj],
         - (1/2) * gt[ua,ub] * div(gt[li,lj], la,lb) \
         + sym(gt[lk,li] * div(Gt[uk], lj), li,lj) \
-        + sym(gt[ua,ub] * Affinet[uk,la,lb] * Affinet[li,lj,lk], li,lj) \
-        + sym(gt[ua,ub] * 2 * Affinet[uk,la,li] * Affinet[lj,lk,lb], li,lj) \
-        + gt[ua,ub] * Affinet[uk,li,lb] * Affinet[lk,la,lj] \
+        + sym(gt[ua,ub] * Gammat[uk,la,lb] * Gammat[li,lj,lk], li,lj) \
+        + sym(gt[ua,ub] * 2 * Gammat[uk,la,li] * Gammat[lj,lk,lb], li,lj) \
+        + gt[ua,ub] * Gammat[uk,li,lb] * Gammat[lk,la,lj] \
         -2 * ddtphi[li,lj] \
         -2 * gt[li,lj] * ddtphi[la,lb] * gt[ua,ub] \
         +4 * div(phi, li) * div(phi, lj) \
@@ -201,20 +205,36 @@ if __name__ == "__main__":
         gt[uj,uk] * div(beta[ui], lj,lk) \
         + (1/3) * gt[ui,uj] * div(beta[uk],lj,lk) \
         + beta[uj] * div(Gt[ui], lj) \
-        - gt[ua,ub] * Affinet[uj,la,lb] * div(beta[ui], lj) \
-        + (2/3) * gt[ua,ub] * Affinet[ui,la,lb] * div(beta[uj], lj) \
+        - gt[ua,ub] * Gammat[uj,la,lb] * div(beta[ui], lj) \
+        + (2/3) * gt[ua,ub] * Gammat[ui,la,lb] * div(beta[uj], lj) \
         - 2 * At[ui,uj] * div(alp, lj) \
         + 2 * alp * (
-            Affinet[ui,lj,lk] * At[uj,uk] \
+            Gammat[ui,lj,lk] * At[uj,uk] \
             + 6 * At[ui,uj] * div(phi, lj) \
             - (2/3) * gt[ui,uj] * div(trK, lj)
         )
     )
 
     ###
+    # Load from and store to ADMBaseX
+    ###
+    phi_tmp = mkSymbol("phi_tmp")
+    funload = gf.create_function("load", ScheduleBin.Evolve)
+    funload.add_eqn(gt[li,lj], exp(-4*phi_tmp)*g[li,lj])
+    funload.add_eqn(trK, g[ui,uj]*k[li,lj])
+    funload.add_eqn(phi_tmp, (1/12)*log(detg))
+    funload.add_eqn(phi, phi_tmp)
+    funload.add_eqn(At[li,lj], exp(-4*phi_tmp)*(k[li,lj]-(1/3)*g[li,lj]*trK))
+    funload.bake()
+
+    funstore = gf.create_function("store", ScheduleBin.Evolve)
+    funstore.add_eqn(g[li,lj], exp(4*phi)*gt[li,lj])
+    funstore.add_eqn(k[li,lj], exp(4*phi)*(At[li,lj]+(1/3)*trK*gt[li,lj]))
+    funstore.bake()
+
+    ###
     # Thorn creation
     ###
-    gf.check_globals()
 
     fun.bake()
 

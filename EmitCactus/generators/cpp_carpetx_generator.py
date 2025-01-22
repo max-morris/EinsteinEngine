@@ -1,5 +1,6 @@
 import typing
 from typing import Optional, List, Set, Tuple
+from typing_extensions import Unpack
 
 import sympy as sy
 
@@ -19,7 +20,7 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
     ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim
-from EmitCactus.generators.cactus_generator import CactusGenerator
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
 
@@ -53,8 +54,8 @@ class CppCarpetXGenerator(CactusGenerator):
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
     """.strip().replace('    ', '')
 
-    def __init__(self, thorn_def: ThornDef) -> None:
-        super().__init__(thorn_def)
+    def __init__(self, thorn_def: ThornDef, **options: Unpack[CactusGeneratorOptions]) -> None:
+        super().__init__(thorn_def, **options)
 
         unbaked_fns = {name for name, fn in thorn_def.thorn_functions.items() if not fn.been_baked}
         if len(unbaked_fns) > 0:
@@ -128,6 +129,10 @@ class CppCarpetXGenerator(CactusGenerator):
                 after=[Identifier(s) for s in fn.schedule_after]
             ))
 
+        if 'extra_schedule_blocks' in self.options:
+            for block in self.options['extra_schedule_blocks']:
+                schedule_blocks.append(block)
+
         return ScheduleRoot(
             storage_section=StorageSection(storage_lines),
             schedule_section=ScheduleSection(schedule_blocks)
@@ -137,7 +142,7 @@ class CppCarpetXGenerator(CactusGenerator):
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
 
         # We always want to inherit from CarpetX even if no vars explicitly need it
-        inherits_from.add(Identifier('CarpetX'))
+        inherits_from.add(Identifier('Driver'))
 
         return InterfaceRoot(
             HeaderSection(
@@ -361,6 +366,11 @@ class CppCarpetXGenerator(CactusGenerator):
                             IdExpr(Identifier('p.dx'))
                         )
                     )
+                ),
+                ConstAssignDecl(
+                    Identifier('vreal'),
+                    Identifier('t'),
+                    IdExpr(Identifier('cctk_time'))
                 )
             ] + xyz_decls
 

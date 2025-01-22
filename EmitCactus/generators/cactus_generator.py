@@ -3,24 +3,30 @@ from abc import ABC, abstractmethod
 from EmitCactus.dsl.use_indices import ThornDef
 from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot
-from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot
+from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlock
 from EmitCactus.emit.code.code_tree import CodeRoot
 from EmitCactus.emit.tree import Identifier, String
 from EmitCactus.util import get_or_compute, OrderedSet
-from typing import Dict, Set, Optional
+from typing import Dict, Set, Optional, TypedDict
+from typing_extensions import Unpack
 
+
+class CactusGeneratorOptions(TypedDict, total=False):
+    extra_schedule_blocks: list[ScheduleBlock]
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
     variable_groups: Dict[str, VariableGroup]
     var_names: OrderedSet[str]
+    options: CactusGeneratorOptions
 
-    vars_to_ignore: Set[str] = {'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
+    vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
-    def __init__(self, thorn_def: ThornDef):
+    def __init__(self, thorn_def: ThornDef, **options: Unpack[CactusGeneratorOptions]):
         self.thorn_def = thorn_def
         self.variable_groups = dict()
         self.var_names = OrderedSet()
+        self.options = options if options is not None else dict()
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqn_list.inputs:

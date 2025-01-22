@@ -3,12 +3,12 @@ Use the Sympy Indexed type for relativity expressions.
 """
 import sys
 from enum import auto
-from inspect import currentframe
 from typing import *
+from math import sqrt
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul
+from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
 from sympy.core.function import UndefinedFunction as UFunc
 
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
@@ -162,6 +162,16 @@ class DivMaker(Applier):
             q0, q1, q2 = g[p0], g[pn0], g[p1]
             return cast(Expr, q1 * Pow(q0, q1 - 1) * div(q0, q2))
 
+        # Div of sqrt
+        g = do_match(expr, div(sqrt(p0), p1))
+        if g:
+            q0, q1 = g[p0], g[p1]
+            return cast(Expr, (1/2) * div(q0, q1) / sqrt(q0))
+        g = do_match(expr, div(sqrt(p0), p1, p2))
+        if g:
+            q0, q1,q2 = g[p0], g[p1], g[p2]
+            return cast(Expr, (1/2) * div(div(q0, q1) / sqrt(q0),q2))
+
         # Div of an indexed quantity
         if do_match(expr, div(pind, p2)):
             return None
@@ -173,6 +183,16 @@ class DivMaker(Applier):
             q1 = g[is_ln]
             assert isinstance(q1, Idx)
             return do_diff(q0, self.coords[to_num(q1)])
+
+        # Div with a numeric index as 2nd arg
+        g = do_match(expr, div(self.isxyz, is_ln, is_ln2))
+        if g:
+            q0 = g[self.isxyz]
+            q1 = g[is_ln]
+            q2 = g[is_ln2]
+            assert isinstance(q1, Idx)
+            assert isinstance(q2, Idx)
+            return do_diff(do_diff(q0, self.coords[to_num(q1)]), self.coords[to_num(q2)])
 
         return None
 
@@ -413,9 +433,9 @@ assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0
     l2, uk] * M[u2, lj]
 
 
-def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]]:
-    index_list = sorted(list(get_free_indices(xpr)), key=str)
-    output: List[Tuple[Expr, Dict[Idx, Idx]]] = list()
+def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]]:
+    index_list : List[Idx] = sorted(list(get_free_indices(xpr)), key=str)
+    output : List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]] = list()
     xpr = expand_contracted_indices(xpr, sym)
     index_values: Dict[Idx, Idx] = dict()
     while incr(index_list, index_values):
@@ -425,7 +445,8 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx]]
             sym_result = sym.apply(result)
             if result != sym_result:
                 continue
-        output += [(do_subs(xpr, index_values, sym), index_values.copy())]
+        out_xpr = do_subs(xpr, index_values, sym)
+        output += [(out_xpr, index_values.copy(), index_list)]
     return output
 
 
@@ -577,6 +598,9 @@ class Param:
                 return int
         else:
             assert False
+
+    def __repr__(self)->str:
+        return f"Param({self.name})"
 
 
 # First derivatives
@@ -827,6 +851,7 @@ class ThornFunction:
         fb = FindBad(self)
         do_replace(rhs2, fb.m, fb.r)
         if fb.msg is not None:
+            print(self.thorn_def.subs)
             raise Exception(fb.msg)
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
@@ -843,7 +868,7 @@ class ThornFunction:
             count = 0
             for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
                 count += 1
-                lhsx, inds = tup
+                lhsx, inds, _ = tup
                 lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
                 assert isinstance(lhs2_, Symbol), f"'{lhs2_}' is not a Symbol. Did you forget to call mk_subst()?"
                 lhs2 = lhs2_
@@ -870,6 +895,24 @@ class ThornFunction:
             eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
             rhs2 = self.thorn_def.do_subs(eci, self.thorn_def.subs)
             self._add_eqn2(lhs2, rhs2)
+        elif isinstance(rhs, MatrixBase):
+            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+            for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
+                rhsm = rhs
+                for idx in item[2]:
+                    #print(rhsm,idx,"->",end=" ")
+                    if isinstance(rhsm, MatrixBase):
+                        idx2 = do_subs(idx, item[1])
+                        assert isinstance(idx2, Idx)
+                        index = to_num(idx)
+                        rhsm = rhsm[index,:][:]
+                    elif isinstance(rhsm, list):
+                        rhsm = rhsm[to_num(do_subs(idx, item[1]))]
+                    else:
+                        rhsm = do_subs(rhs2, item[1])
+                    #print(rhsm)
+                assert isinstance(rhsm, Expr)
+                rhs2 = self.thorn_def.do_subs(rhsm, self.thorn_def.subs)
         else:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
@@ -1022,13 +1065,6 @@ class ThornDef:
         # self.eqnlist.add_func(fun, is_stencil)
         self.is_stencil[fun] = is_stencil_fun
 
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            globs[funname] = fun
-
         return fun
 
     def declscalar(self, basename: str) -> Symbol:
@@ -1036,36 +1072,21 @@ class ThornDef:
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list())
 
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            globs[basename] = ret
-
         return ret
 
-    def mk_coords(self) -> List[Symbol]:
+    def mk_coords(self,with_time:bool=False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
         if dimension == 3:
-            self.coords = [self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
+            if with_time:
+                self.coords = [self.declscalar("t"), self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
+            else:
+                self.coords = [self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
         elif dimension == 4:
             # TODO: No idea whether this works
             self.coords = [self.declscalar("t"), self.declscalar("x"), self.declscalar("y"), self.declscalar("z")]
         else:
             assert False
         return self.coords
-
-    def check_globals(self)->None:
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is None:
-            return
-        for name in self.gfs:
-            if name in globs:
-                assert globs[name] == self.gfs.get(name,None), \
-                    f"Globals not assigned as expected for name: {name}: (globals={globs[name]}) != (internal={self.gfs.get(name,None)})"
 
     def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp: bool = False,
              rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
@@ -1081,15 +1102,6 @@ class ThornDef:
             self.base2thorn[basename] = from_thorn
         if temp:
             self.temp.add(basename)
-
-        # If possible, insert the symbol into the current environment
-        frame = currentframe()
-        f_back = None if frame is None else frame.f_back
-        globs = None if f_back is None else f_back.f_globals
-        if globs is not None:
-            assert basename not in globs, f"Redefinition of global symbol {basename}"
-            if basename != "iter_var":
-                globs[basename] = ret
 
         return ret
 
@@ -1107,10 +1119,9 @@ class ThornDef:
         if foo.is_Function and hasattr(foo, "name") and foo.name == "div":
             # This is a derivative
             if len(foo.args) == 3:
-                assert False, f"{foo}"
                 # This is a 2nd derivative, symmetric in the last 2 args
-                foo_arg1 = chkcast(foo.args[1], int)
-                foo_arg2 = chkcast(foo.args[2], int)
+                foo_arg1 = len(foo.args[0].args)-1#chkcast(foo.args[1], int)
+                foo_arg2 = foo_arg1 + 1 #chkcast(foo.args[2], int)
                 msym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
                 msym_list += [msym]
                 msym_list += self.find_symmetries(foo.args[0])
@@ -1161,9 +1172,9 @@ class ThornDef:
             # Here we declare an iteration variable
             # with the same symmetries as the expression
             # we want to iterate over.
+            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
             iter_syms = self.find_symmetries(indexed)
             indexes = self.find_indexes(indexed)
-            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
             # for arg in indexed.args[1:]:
             #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
             #    indexes.append(arg)
@@ -1175,16 +1186,21 @@ class ThornDef:
         # print("  ","iter_syms:",iter_syms)
         # print("  ","indexes:",indexes)
 
-        if isinstance(f, Matrix):
+        if isinstance(f, MatrixBase):
             set_matrix = f
             for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep = tup
+                out, indrep, alist = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 if self.run_simplify:
-                    self.subs[out] = do_simplify(set_matrix[arr_inds])
+                    narray = len(arr_inds)
+                    res = do_simplify(set_matrix[arr_inds[0:2]])
+                    if narray >= 3:
+                        res = self.do_subs(res, indrep)
+                    self.subs[out] = res
                 else:
                     self.subs[out] = set_matrix[arr_inds]
+                print("out:",out)
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
         elif isinstance(f, Expr):
@@ -1192,7 +1208,7 @@ class ThornDef:
             if get_free_indices(iter_var) != get_free_indices(f):
                 raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
             for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep = tup
+                out, indrep, _ = tup
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 if self.run_simplify:
@@ -1203,7 +1219,7 @@ class ThornDef:
             return None
 
         for tup in expand_free_indices(iter_var, self.symmetries):
-            out, indrep = tup
+            out, indrep, _ = tup
             assert isinstance(out, Indexed)
             inds = out.indices
             subj: Expr
@@ -1230,7 +1246,7 @@ class ThornDef:
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
         result: List[Eq] = list()
         for tup in expand_free_indices(eqn.lhs, self.symmetries):
-            lhs, inds = tup
+            lhs, inds, _ = tup
             result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, inds, self.subs))]
         return result
 

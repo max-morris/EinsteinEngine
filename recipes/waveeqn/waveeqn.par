@@ -1,14 +1,19 @@
 # This is the parameter file which will tell Cactus
 # which thorns to execute and with what values
-ActiveThorns = "WaveEqn CarpetX IOUtil ODESolvers"
+ActiveThorns = "WaveEqn CarpetX IOUtil ODESolvers ZeroTest"
 
-ODESolvers::method = "RK3"
+#ZeroTest::verbose = true
+
+ZeroTest::max_tol = 0.011
+ZeroTest::rms_tol = 0.011
+ODESolvers::method = "RK4"
 Cactus::presync_mode = "presync-only"
 
+CarpetX::dtfac = 0.5
 Cactus::terminate = "iteration"
 $blocksize=10
 $nblocks=20
-Cactus::cctk_itlast = 200 #$nblocks*$blocksize
+Cactus::cctk_itlast = 20 #$nblocks*$blocksize
 
 CarpetX::periodic_x = false
 CarpetX::periodic_y = false
@@ -25,38 +30,43 @@ CarpetX::verbose = yes
 
 CarpetX::poison_undefined_values = no
 
-$ncells_x = 80
-$ncells_y = 80
+
+$res = 2
+$ncells_x = 80*$res
+$ncells_y = 80*$res
+$ncells_z = 80*$res
 $xmax = 40.0
 $ymax = 40.0
+$zmax = 40.0
 $dx = $xmax/($ncells_x + 2.0)
 $dy = $ymax/($ncells_y + 2.0)
+$dz = $zmax/($ncells_z + 2.0)
 
 CarpetX::ncells_x = $ncells_x
 CarpetX::ncells_y = $ncells_y
-CarpetX::ncells_z = 1
+CarpetX::ncells_z = $ncells_z
 
 CarpetX::xmin = $dx
 CarpetX::ymin = $dy
-CarpetX::zmin = -1.0
+CarpetX::zmin = $dz
 
 CarpetX::xmax = $xmax-$dx
 CarpetX::ymax = $ymax-$dy
-CarpetX::zmax = 1.0
+CarpetX::zmax = $xmax-$dz
 
 CarpetX::blocking_factor_x = 8
 CarpetX::blocking_factor_y = 8
-CarpetX::blocking_factor_z = 1
+CarpetX::blocking_factor_z = 8
 
-CarpetX::ghost_size_x = 1
-CarpetX::ghost_size_y = 1
-CarpetX::ghost_size_z = 0
+CarpetX::ghost_size_x = 2
+CarpetX::ghost_size_y = 2
+CarpetX::ghost_size_z = 2
 
 IO::out_dir = $parfile
 IO::out_every = 2 #$blocksize
 IO::out_mode = "np"
 IO::out_proc_every = 1
-CarpetX::out_openpmd_vars = "all"
+# CarpetX::out_openpmd_vars = "all"
 CarpetX::boundary_x = "dirichlet"
 CarpetX::boundary_y = "dirichlet"
 CarpetX::boundary_z = "dirichlet"
@@ -68,7 +78,7 @@ $nlevels = 2
 CarpetX::max_num_levels = $nlevels
 CarpetX::regrid_every = 1
 CarpetX::regrid_error_threshold = 0.1
-CarpetX::out_tsv_vars = " WaveEqn::u "
+CarpetX::out_tsv_vars = " WaveEqn::u ZeroTest::ZeroVal "
 
 # You can experiment with these values
 #WaveEqn::kx = $pi/10.0
