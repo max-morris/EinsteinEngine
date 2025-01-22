@@ -1,4 +1,4 @@
-ActiveThorns = "Ricci CarpetX ADMBaseX TestRicVal"
+ActiveThorns = "Ricci CarpetX ADMBaseX ZeroTest"
 #Cactus::presync_mode = "mixed-error"
 Cactus::presync_mode = "presync-only"
 Cactus::cctk_itlast = 1
@@ -21,7 +21,7 @@ CarpetX::ymax =  $bnd
 CarpetX::zmin = -$bnd
 CarpetX::zmax =  $bnd
 
-$nn = 32
+$nn = 32*2
 CarpetX::ncells_x = $nn
 CarpetX::ncells_y = $nn
 CarpetX::ncells_z = $nn
@@ -31,6 +31,9 @@ CarpetX::max_tile_size_z = $nn
 CarpetX::max_grid_size_x = $nn
 CarpetX::max_grid_size_y = $nn
 CarpetX::max_grid_size_z = $nn
-TestRicVal::c = .0
-TestRicVal::b = .1
-TestRicVal::a = 10
+Ricci::c = .01
+Ricci::b = .1
+Ricci::a = 10
+CarpetX::ghost_size_x = 2
+CarpetX::ghost_size_y = 2
+CarpetX::ghost_size_z = 2
