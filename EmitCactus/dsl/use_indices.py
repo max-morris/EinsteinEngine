@@ -7,7 +7,10 @@ from typing import *
 from math import sqrt
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+try:
+    from nrpy.helpers.colorize_text import colorize
+except:
+    from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
 from sympy.core.function import UndefinedFunction as UFunc
 
