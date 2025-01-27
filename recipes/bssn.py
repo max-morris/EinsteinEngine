@@ -25,9 +25,6 @@ if __name__ == "__main__":
     gf.add_sym(g[li, lj], li, lj)
     gf.mk_subst(g[li,lj], mksymbol_for_tensor_xyz)
 
-    g_mat = gf.get_matrix(g[li,lj])
-    detg = do_det(g_mat)
-
     k = gf.decl("k", [li, lj], from_thorn="ADMBaseX")
     gf.add_sym(k[li, lj], li, lj)
     gf.mk_subst(k[li,lj], mksymbol_for_tensor_xyz)
@@ -66,13 +63,13 @@ if __name__ == "__main__":
     # Evolved Gauge Vars
     ###
     
-    alpha = gf.decl("alpha", [])
+    alpha = gf.decl("alpha", []) # Lapse
     alpha_dt = gf.decl("alpha_dt", [])
     
-    shift = gf.decl("shift", [ua])
+    shift = gf.decl("shift", [ui]) # Shift vector
     shift_dt = gf.decl("shift_dt", [ui])
     
-    B = gf.decl("B", [ui])
+    B = gf.decl("B", [ui]) # Aux. vector B^i
     B_dt = gf.decl("B_dt", [ui])
 
     ###
@@ -101,8 +98,18 @@ if __name__ == "__main__":
     # Substitution rules
     ###
 
+    g_mat = gf.get_matrix(g[li,lj])
+    g_imat = do_inv(g_mat) 
+    detg = do_det(g_mat)
+    gf.mk_subst(g[ui,uj], g_imat)
+
     gf.mk_subst(gt_dt[li,lj])
     gf.mk_subst(gt[li,lj])
+
+    gt_mat = gf.get_matrix(gt[li,lj])
+    detgt = do_det(gt_mat)
+    gt_imat = do_inv(gt_mat) * detgt # Use the fact that det(gt) = 1
+    gf.mk_subst(gt[ui,uj], gt_imat)
     
     gf.mk_subst(At[li,lj])
     gf.mk_subst(At_dt[li,lj])
@@ -251,7 +258,7 @@ if __name__ == "__main__":
     eta = 1 # TODO: Make eta a parameter
     fun.add_eqn(
         B_dt[ua],
-        shift[uj] * div(B[ui], lj) + Gt_dt[ua] \
+        shift[uj] * div(B[ua], lj) + Gt_dt[ua] \
         - shift[ui] * div(Gt[ua], li) - eta * B[ua]
     )
 
@@ -266,13 +273,13 @@ if __name__ == "__main__":
     trK_tmp = mkSymbol("trK_tmp")
     
     funload.add_eqn(phi_tmp, (1/12) * log(detg))
-    funload.add_eqn(trK_tmp, g[li,lj] * k[ui,uj])
+    funload.add_eqn(trK_tmp, g[ui,uj] * k[li,lj])
 
     funload.add_eqn(gt[li,lj], exp(-4 * phi_tmp) * g[li,lj])
     funload.add_eqn(phi, phi_tmp)
     funload.add_eqn(At[li,lj], exp(-4 * phi_tmp) * (k[li,lj] - (1/3) * g[li,lj] * trK_tmp))
     funload.add_eqn(trK, trK_tmp)
-    funload.add_eqn(Gt[ui], -div(exp(-4 * phi_tmp) * g[li,lj], lj)) #TODO: Can gt[li,lj] be used here?
+    funload.add_eqn(Gt[ui], -div(exp(-4 * phi_tmp) * g[ui,uj], lj)) #TODO: Can gt[li,lj] be used here?
 
     funload.add_eqn(alpha, alp)
     funload.add_eqn(shift[ua], beta[ua])
