@@ -257,7 +257,7 @@ if __name__ == "__main__":
 
     # 1 + log lapse
     fun.add_eqn(evo_lapse_rhs,
-                evo_shift[ui] * div(evo_lapse, li) - 2 * evo_shift * trK
+                evo_shift[ui] * div(evo_lapse, li) - 2 * evo_lapse * trK
                 )
 
     # Hyperbolic Gamma Driver shift
