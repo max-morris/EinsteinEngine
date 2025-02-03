@@ -57,7 +57,7 @@ if __name__ == "__main__":
     evo_shift_rhs = gf.decl("evo_shift_rhs", [ui])
 
     g_driver_B = gf.decl("g_driver_B", [ui])
-    g_driver_B_rhs = gf.decl("B_g_driver_B_rhsdt", [ui])
+    g_driver_B_rhs = gf.decl("g_driver_B_rhs", [ui])
 
     ###
     # Evolved BSSN Vars
