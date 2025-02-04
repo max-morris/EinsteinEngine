@@ -50,36 +50,42 @@ if __name__ == "__main__":
     ###
     # Evolved Gauge Vars
     ###
-    evo_lapse = gf.decl("evo_lapse", [])
     evo_lapse_rhs = gf.decl("evo_lapse_rhs", [])
+    evo_lapse = gf.decl("evo_lapse", [], rhs=evo_lapse_rhs)
 
-    evo_shift = gf.decl("evo_shift", [ui])
     evo_shift_rhs = gf.decl("evo_shift_rhs", [ui])
+    evo_shift = gf.decl("evo_shift", [ui], rhs=evo_shift_rhs)
 
-    g_driver_B = gf.decl("g_driver_B", [ui])
     g_driver_B_rhs = gf.decl("g_driver_B_rhs", [ui])
+    g_driver_B = gf.decl("g_driver_B", [ui], rhs=g_driver_B_rhs)
 
     ###
     # Evolved BSSN Vars
     ###
-    phi = gf.decl("phi", [])  # \phi
-    phi_rhs = gf.decl("phi_rhs", [])
 
-    gt = gf.decl("gt", [li, lj])  # \tilde{\gamma_{ij}}
-    gf.add_sym(gt[li, lj], li, lj)
+    # \phi
+    phi_rhs = gf.decl("phi_rhs", [])
+    phi = gf.decl("phi", [], rhs=phi_rhs)
+
+    # \tilde{\gamma_{ij}}
     gt_rhs = gf.decl("gt_rhs", [li, lj])
     gf.add_sym(gt_rhs[li, lj], li, lj)
+    gt = gf.decl("gt", [li, lj], rhs=gt_rhs)
+    gf.add_sym(gt[li, lj], li, lj)
 
-    At = gf.decl("At", [li, lj])  # \tilde{A}_{ij}
-    gf.add_sym(At[li, lj], li, lj)
+    # \tilde{A}_{ij}
     At_rhs = gf.decl("At_rhs", [li, lj])
     gf.add_sym(At_rhs[li, lj], li, lj)
+    At = gf.decl("At", [li, lj], rhs=At_rhs)
+    gf.add_sym(At[li, lj], li, lj)
 
-    trK = gf.decl("trK", [])  # trace of Extrinsic Curvature
+    # trace of Extrinsic Curvature
     trK_rhs = gf.decl("trK_rhs", [])
+    trK = gf.decl("trK", [], rhs=trK_rhs)
 
-    Gt = gf.decl("Gt", [ui])  # \tilde{\Gamma}^i
-    Gt_rhs = gf.decl("Gt_rhs", [ui])
+    # \tilde{\Gamma}^i
+    Conformal_rhs = gf.decl("Conformal_rhs", [ui])
+    Conformal = gf.decl("Conformal", [ui], rhs=Conformal_rhs)
 
     ###
     # Aux. Vars
@@ -101,8 +107,9 @@ if __name__ == "__main__":
 
     T = gf.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
     gf.add_sym(T[li, lj], li, lj)
-    
-    Gt_rhs_tmp = gf.decl("Gt_rhs_tmp", [ui]) # Prevents the elimination of Gt_rhs
+
+    # Prevents the elimination of Conformal_rhs
+    Gt_rhs_tmp = gf.decl("Gt_rhs_tmp", [ui])
 
     ###
     # Substitution rules
@@ -125,8 +132,8 @@ if __name__ == "__main__":
     gf.mk_subst(At[ui, uj])
     gf.mk_subst(At[ui, lj])
 
-    gf.mk_subst(Gt[ui])
-    gf.mk_subst(Gt_rhs[ui])
+    gf.mk_subst(Conformal[ui])
+    gf.mk_subst(Conformal_rhs[ui])
 
     gf.mk_subst(evo_shift[ui])
     gf.mk_subst(evo_shift_rhs[ui])
@@ -145,7 +152,7 @@ if __name__ == "__main__":
     gf.mk_subst(ddtphi[li, lj])
 
     gf.mk_subst(T[li, lj])
-    
+
     gf.mk_subst(Gt_rhs_tmp[ui])
 
     ###
@@ -192,7 +199,7 @@ if __name__ == "__main__":
     fun.add_eqn(
         ric[li, lj],
         - (1/2) * gt[ua, ub] * div(gt[li, lj], la, lb)
-        + sym(gt[lk, li] * div(Gt[uk], lj), li, lj)
+        + sym(gt[lk, li] * div(Conformal[uk], lj), li, lj)
         + sym(gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk], li, lj)
         + sym(gt[ua, ub] * 2 * Gammat[uk, la, li] * Gammat[lj, lk, lb], li, lj)
         + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
@@ -243,12 +250,12 @@ if __name__ == "__main__":
         + evo_lapse * (At[ui, uj] * At[li, lj] + (1/3) * trK**2)
         + evo_shift[uk] * div(trK, lk)
     )
-    
+
     fun.add_eqn(
         Gt_rhs_tmp[ui],
         gt[uj, uk] * div(evo_shift[ui], lj, lk)
         + (1/3) * gt[ui, uj] * div(evo_shift[uk], lj, lk)
-        + evo_shift[uj] * div(Gt[ui], lj)
+        + evo_shift[uj] * div(Conformal[ui], lj)
         - gt[ua, ub] * Gammat[uj, la, lb] * div(evo_shift[ui], lj)
         + (2/3) * gt[ua, ub] * Gammat[ui, la, lb] * div(evo_shift[uj], lj)
         - 2 * At[ui, uj] * div(evo_lapse, lj)
@@ -258,7 +265,7 @@ if __name__ == "__main__":
             - (2/3) * gt[ui, uj] * div(trK, lj)
         )
     )
-    fun.add_eqn(Gt_rhs[ui], Gt_rhs_tmp[ui])
+    fun.add_eqn(Conformal_rhs[ui], Gt_rhs_tmp[ui])
 
     # 1 + log lapse
     fun.add_eqn(evo_lapse_rhs,
@@ -275,7 +282,8 @@ if __name__ == "__main__":
     fun.add_eqn(
         g_driver_B_rhs[ua],
         evo_shift[uj] * div(g_driver_B[ua], lj) + Gt_rhs_tmp[ua]
-        - evo_shift[ui] * div(Gt[ua], li) - g_driver_eta * g_driver_B[ua]
+        - evo_shift[ui] * div(Conformal[ua], li) -
+        g_driver_eta * g_driver_B[ua]
     )
 
     fun.bake()
@@ -297,7 +305,7 @@ if __name__ == "__main__":
     funload.add_eqn(At[li, lj], exp(-4 * phi_tmp) *
                     (k[li, lj] - (1/3) * g[li, lj] * trK_tmp))
     funload.add_eqn(trK, trK_tmp)
-    funload.add_eqn(Gt[ui], -div(exp(-4 * phi_tmp) * g[ui, uj], lj))
+    funload.add_eqn(Conformal[ui], -div(exp(-4 * phi_tmp) * g[ui, uj], lj))
 
     funload.add_eqn(evo_lapse, alp)
     funload.add_eqn(evo_shift[ua], beta[ua])
