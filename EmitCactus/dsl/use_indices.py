@@ -5,6 +5,7 @@ import sys
 from enum import auto
 from typing import *
 from math import sqrt
+import re
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 try:
@@ -24,6 +25,106 @@ __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "Schedule
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
+
+###
+def mk_mk_subst(s : str)->str:
+    nextsub = 'a'
+    pos = 0
+    new_s = ""
+    for g in re.finditer(r'\b([ul])([0-9])\b', s):
+        new_s += s[pos:g.start()]
+        pos = g.end()
+        updn = g.group(1)
+        index = g.group(2)
+        new_s += updn
+        new_s += nextsub
+        nextsub = chr(ord(nextsub)+1)
+    new_s += s[pos:]
+    return new_s
+        
+###
+from multimethod import multimethod
+import sympy as sy
+
+class SymIndexError(Exception):
+    def __init__(self, message:str)->None:
+        self.message = message
+        super().__init__(self.message)
+
+class SympyExprErrorVisitor:
+    def __init__(self, gf:"ThornDef")->None:
+        self.gf = gf
+
+    @multimethod
+    def visit(self, expr: sy.Basic) -> None:
+        raise Exception(str(expr)+" "+str(type(expr)))
+
+    @visit.register
+    def _(self, expr: sy.Add) -> None:
+        for a in expr.args:
+            self.visit(a)
+
+    @visit.register
+    def _(self, expr: sy.Mul) -> None:
+        for a in expr.args:
+            self.visit(a)
+
+    @visit.register
+    def _(self, expr: sy.Integer) -> None:
+        pass
+
+    @visit.register
+    def _(self, expr: sy.Rational) -> None:
+        pass
+
+    @visit.register
+    def _(self, expr: sy.Float) -> None:
+        pass
+
+    @visit.register
+    def _(self, expr: sy.Idx) -> None:
+        pass
+
+    @visit.register
+    def _(self, expr: sy.Indexed) -> None:
+        pass
+
+    @visit.register
+    def _(self, expr: sy.Function) -> None:
+        for a in expr.args:
+            self.visit(a)
+
+    @visit.register
+    def _(self, expr: sy.Pow) -> None:
+        for a in expr.args:
+            self.visit(a)
+
+    @visit.register
+    def _(self, expr: sy.IndexedBase) -> None:
+        basename = str(expr)
+        if basename not in self.gf.defn:
+            raise SymIndexError("Undefined symbol '{basename}' in expression: ")
+        bn, indexes = self.gf.defn[basename]
+        n = len(indexes)
+        if n != 0:
+            if n == 1:
+                msg = "1 index"
+            else:
+                msg = f"{n} indexes"
+            raise SymIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
+
+def check_indices(thorn_def:"ThornDef", rhs:Expr)->None:
+    err = SympyExprErrorVisitor(thorn_def)
+    try:
+        err.visit(rhs)
+        die = False
+        msg = ''
+    except SymIndexError as sie:
+        die = True
+        msg = sie.message
+    if die:
+        raise SymIndexError(msg+str(rhs))
+###
 
 ####
 # Generic derivatives
@@ -840,7 +941,8 @@ class ThornFunction:
                     self.msg = f"Index passed to add_eqn: '{expr}'"
                 elif type(expr) == Indexed:
                     if len(expr.args) != 1:
-                        self.msg = f"Tensor passed to add_eqn: '{expr}'"
+                        mms = mk_mk_subst(str(expr))
+                        self.msg = f"'{expr}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?"
                 return False
 
             def r(self, expr: Expr) -> Expr:
@@ -860,6 +962,9 @@ class ThornFunction:
         self.eqn_list.add_eqn(lhs2, rhs2)
 
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
+        if isinstance(rhs, Expr):
+            check_indices(self.thorn_def, rhs)
+
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
@@ -873,7 +978,9 @@ class ThornFunction:
                 count += 1
                 lhsx, inds, _ = tup
                 lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-                assert isinstance(lhs2_, Symbol), f"'{lhs2_}' is not a Symbol. Did you forget to call mk_subst()?"
+                if not isinstance(lhs2_, Symbol):
+                    mms = mk_mk_subst(repr(lhs2_))
+                    raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
                 lhs2 = lhs2_
                 if type(rhs) == Matrix:
                     arr_inds = toNumTup(lhs.args[1:], inds)
@@ -1184,10 +1291,6 @@ class ThornDef:
             iter_var_base: IndexedBase = self.decl("iter_var", indexes)
             iter_var = iter_var_base[indexes]
             self.symmetries.sd[iter_var_base] = iter_syms
-        # print("<<","indexed:",indexed)
-        # print("  ","iter_var:",iter_var)
-        # print("  ","iter_syms:",iter_syms)
-        # print("  ","indexes:",indexes)
 
         if isinstance(f, MatrixBase):
             set_matrix = f
