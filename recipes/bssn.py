@@ -101,6 +101,8 @@ if __name__ == "__main__":
 
     T = gf.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
     gf.add_sym(T[li, lj], li, lj)
+    
+    Gt_rhs_tmp = gf.decl("Gt_rhs_tmp", [ui]) # Prevents the elimination of Gt_rhs
 
     ###
     # Substitution rules
@@ -143,6 +145,8 @@ if __name__ == "__main__":
     gf.mk_subst(ddtphi[li, lj])
 
     gf.mk_subst(T[li, lj])
+    
+    gf.mk_subst(Gt_rhs_tmp[ui])
 
     ###
     # BSSN Evolution equations
@@ -239,9 +243,9 @@ if __name__ == "__main__":
         + evo_lapse * (At[ui, uj] * At[li, lj] + (1/3) * trK**2)
         + evo_shift[uk] * div(trK, lk)
     )
-
+    
     fun.add_eqn(
-        Gt_rhs[ui],
+        Gt_rhs_tmp[ui],
         gt[uj, uk] * div(evo_shift[ui], lj, lk)
         + (1/3) * gt[ui, uj] * div(evo_shift[uk], lj, lk)
         + evo_shift[uj] * div(Gt[ui], lj)
@@ -254,6 +258,7 @@ if __name__ == "__main__":
             - (2/3) * gt[ui, uj] * div(trK, lj)
         )
     )
+    fun.add_eqn(Gt_rhs[ui], Gt_rhs_tmp[ui])
 
     # 1 + log lapse
     fun.add_eqn(evo_lapse_rhs,
@@ -269,7 +274,7 @@ if __name__ == "__main__":
 
     fun.add_eqn(
         g_driver_B_rhs[ua],
-        evo_shift[uj] * div(g_driver_B[ua], lj) + Gt_rhs[ua]
+        evo_shift[uj] * div(g_driver_B[ua], lj) + Gt_rhs_tmp[ua]
         - evo_shift[ui] * div(Gt[ua], li) - g_driver_eta * g_driver_B[ua]
     )
 
