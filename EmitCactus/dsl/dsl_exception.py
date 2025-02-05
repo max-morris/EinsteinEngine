@@ -1,0 +1,2 @@
+class DslException(Exception):
+    pass

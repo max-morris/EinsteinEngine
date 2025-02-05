@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
 
 from EmitCactus.dsl.use_indices import ThornDef
-from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot
+from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
+    TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlock
 from EmitCactus.emit.code.code_tree import CodeRoot
-from EmitCactus.emit.tree import Identifier, String
+from EmitCactus.emit.tree import Identifier, String, Bool
 from EmitCactus.util import get_or_compute, OrderedSet
 from typing import Dict, Set, Optional, TypedDict
 from typing_extensions import Unpack
@@ -13,6 +14,7 @@ from typing_extensions import Unpack
 
 class CactusGeneratorOptions(TypedDict, total=False):
     extra_schedule_blocks: list[ScheduleBlock]
+
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
@@ -40,13 +42,15 @@ class CactusGenerator(ABC):
 
         for var_name in [v for v in self.var_names if self._var_is_locally_declared(v)]:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
+            tags: list[TagPropertyNode] = list()
 
-            tags: Optional[String] = None
             if (var_rhs := self.thorn_def.rhs.get(group_name)) is not None:
-                tags = String(f'rhs="{self.thorn_def.name}::{var_rhs}"', single_quotes=True)
+                tags.append(RhsTag(String(f"{self.thorn_def.name}::{var_rhs}")))
             else:
-                # TODO: long-term we don't want this, CarpetX currently needs it
-                tags = String(f'checkpoint="no"', single_quotes=True)
+                tags.append(CheckpointTag(Bool(False)))  # CarpetX currently requires this
+
+            if (var_parity := self.thorn_def.base2parity.get(group_name)) is not None:
+                tags.append(ParityTag(var_parity))
 
             get_or_compute(self.variable_groups, group_name, lambda k: VariableGroup(
                 access=Access.Public,
@@ -55,7 +59,7 @@ class CactusGenerator(ABC):
                 variable_names=list(),
                 group_type=GroupType.GF,
                 centering=self.thorn_def.centering.get(group_name, None),  # type: ignore[arg-type]
-                tags=tags
+                tags=GroupTags(tags)
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod

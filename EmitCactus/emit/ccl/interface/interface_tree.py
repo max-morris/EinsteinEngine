@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from dataclasses import dataclass
 from enum import auto
 from typing import TypedDict, Optional
 
 from typing_extensions import Unpack
 
-from EmitCactus.emit.code.code_tree import Centering
-from EmitCactus.emit.tree import Node, Identifier, Verbatim, Integer, String, Language
+from EmitCactus.emit.tree import Node, Identifier, Verbatim, Integer, String, Language, Centering, CommonNode, Bool
 from EmitCactus.util import try_get, ReprEnum
 
 
@@ -140,6 +140,71 @@ class DistribType(ReprEnum):
     Constant = auto(), 'CONSTANT'
 
 
+class Parity(ReprEnum):
+    Positive = auto(), '+1'
+    Negative = auto(), '-1'
+
+
+@dataclass
+class SingleIndexParity(InterfaceNode):
+    x_parity: Parity
+    y_parity: Parity
+    z_parity: Parity
+
+
+@dataclass
+class TensorParity(InterfaceNode):
+    parities: list[SingleIndexParity]
+
+
+class TagPropertyNode(InterfaceNode):
+    @abstractmethod
+    def get_key(self) -> Identifier:
+        ...
+
+    @abstractmethod
+    def get_value(self) -> CommonNode | InterfaceNode:
+        ...
+
+
+@dataclass
+class CheckpointTag(TagPropertyNode):
+    do_checkpoint: Bool
+
+    def get_key(self) -> Identifier:
+        return Identifier('checkpoint')
+
+    def get_value(self) -> Bool:
+        return self.do_checkpoint
+
+
+@dataclass
+class RhsTag(TagPropertyNode):
+    rhs_name: String
+
+    def get_key(self) -> Identifier:
+        return Identifier('rhs')
+
+    def get_value(self) -> String:
+        return self.rhs_name
+
+
+@dataclass
+class ParityTag(TagPropertyNode):
+    parity: TensorParity
+
+    def get_key(self) -> Identifier:
+        return Identifier('parities')
+
+    def get_value(self) -> TensorParity:
+        return self.parity
+
+
+@dataclass
+class GroupTags(InterfaceNode):
+    tags: list[TagPropertyNode]
+
+
 class VariableGroupOptionalArgs(TypedDict, total=False):
     vector_size: Integer
     group_type: GroupType
@@ -149,7 +214,7 @@ class VariableGroupOptionalArgs(TypedDict, total=False):
     time_levels: Integer
     array_ghost_size: Integer
     stagger_spec: String
-    tags: String
+    tags: GroupTags
     group_description: String
     centering: Centering
 
@@ -167,7 +232,7 @@ class VariableGroup(InterfaceNode):
     time_levels: Optional[Integer]
     array_ghost_size: Optional[Integer]
     stagger_spec: Optional[String]
-    tags: Optional[String]
+    tags: Optional[GroupTags]
     group_description: Optional[String]
     centering: Optional[Centering]
 

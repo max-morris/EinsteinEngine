@@ -6,19 +6,8 @@ import sympy as sy
 from EmitCactus.dsl.sympywrap import Math
 
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
-from EmitCactus.emit.tree import Node, Identifier, Verbatim, CommonNode
-from EmitCactus.util import ReprEnum, CenteringEnum
-
-
-class Centering(CenteringEnum):
-    VVV = auto(), 'VVV', (0, 0, 0)
-    CVV = auto(), 'CVV', (1, 0, 0)
-    VCV = auto(), 'VCV', (0, 1, 0)
-    VVC = auto(), 'VVC', (0, 0, 1)
-    CCV = auto(), 'CCV', (1, 1, 0)
-    VCC = auto(), 'VCC', (0, 1, 1)
-    CVC = auto(), 'CVC', (1, 0, 1)
-    CCC = auto(), 'CCC', (1, 1, 1)
+from EmitCactus.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering
+from EmitCactus.util import ReprEnum
 
 
 class CodeNode(Node):
