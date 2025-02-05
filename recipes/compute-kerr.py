@@ -2,7 +2,7 @@ if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import mkMatrix, do_inv, do_sympify
     from sympy import Expr, cos, sin
-    from EmitCactus.emit.code.code_tree import Centering
+    from EmitCactus.emit.tree import Centering
 
     set_dimension(4)
 
@@ -10,9 +10,9 @@ if __name__ == "__main__":
     gf = ThornDef("TestKerr", "Kerr")
 
     # Declare gfs
-    g = gf.decl("g", [li, lj], Centering.VVC)
-    G = gf.decl("Affine", [ua, lb, lc], Centering.VVC)
-    Ric = gf.decl("Ric", [la, lb], Centering.VVC)
+    g = gf.decl("g", [li, lj], centering=Centering.VVC)
+    G = gf.decl("Affine", [ua, lb, lc], centering=Centering.VVC)
+    Ric = gf.decl("Ric", [la, lb], centering=Centering.VVC)
 
     gf.add_sym(g[li, lj], li, lj)
     gf.add_sym(Ric[li, lj], li, lj)

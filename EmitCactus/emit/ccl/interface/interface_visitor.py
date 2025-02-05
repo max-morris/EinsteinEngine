@@ -6,8 +6,9 @@ from typing import Any
 
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceNode, InterfaceRoot, HeaderSection, IncludeSection, \
     UsesInclude, IncludeIn, FunctionSection, FunctionAlias, FunctionAliasArg, FunctionAliasFpArg, RequiresFunction, \
-    UsesFunction, ProvidesFunction, VariableSection, VariableGroup
-from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String
+    UsesFunction, ProvidesFunction, VariableSection, VariableGroup, GroupTags, TagPropertyNode, ParityTag, TensorParity, \
+    SingleIndexParity
+from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String, Bool
 from EmitCactus.emit.visitor import Visitor, visit_each
 
 
@@ -32,6 +33,10 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
     @visit.register
     def _(self, n: String) -> str:
         return f'"{n.text}"' if not n.single_quotes else f"'{n.text}'"
+
+    @visit.register
+    def _(self, n: Bool) -> str:
+        return 'yes' if n.b else 'no'
 
     @visit.register
     def _(self, n: InterfaceRoot) -> str:
@@ -96,7 +101,6 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
 
     @visit.register
     def _(self, n: VariableGroup) -> str:
-
         s = f'{n.access.representation}:\n{n.data_type.representation} {self.visit(n.group_name)}'
 
         if n.vector_size is not None:
@@ -139,3 +143,22 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
             s += f' {self.visit(n.group_description)}'
 
         return s
+
+    @visit.register
+    def _(self, n: GroupTags) -> str:
+        tags = ' '.join(visit_each(self, n.tags))
+        return f"'{tags}'"
+
+    @visit.register
+    def _(self, n: TagPropertyNode) -> str:
+        return f'{self.visit(n.get_key())}={self.visit(n.get_value())}'
+
+    @visit.register
+    def _(self, n: TensorParity) -> str:
+        parities = '  '.join(visit_each(self, n.parities))
+        return f'{{{parities}}}'
+
+    @visit.register
+    def _(self, n: SingleIndexParity) -> str:
+        reps = [p.representation for p in [n.x_parity, n.y_parity, n.z_parity]]
+        return ' '.join(reps)

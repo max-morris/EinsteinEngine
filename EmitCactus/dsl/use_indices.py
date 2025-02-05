@@ -11,10 +11,12 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
 from sympy.core.function import UndefinedFunction as UFunc
 
+from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
-from EmitCactus.emit.code.code_tree import Centering
+from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
+from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
@@ -166,11 +168,11 @@ class DivMaker(Applier):
         g = do_match(expr, div(sqrt(p0), p1))
         if g:
             q0, q1 = g[p0], g[p1]
-            return cast(Expr, (1/2) * div(q0, q1) / sqrt(q0))
+            return cast(Expr, (1 / 2) * div(q0, q1) / sqrt(q0))
         g = do_match(expr, div(sqrt(p0), p1, p2))
         if g:
-            q0, q1,q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, (1/2) * div(div(q0, q1) / sqrt(q0),q2))
+            q0, q1, q2 = g[p0], g[p1], g[p2]
+            return cast(Expr, (1 / 2) * div(div(q0, q1) / sqrt(q0), q2))
 
         # Div of an indexed quantity
         if do_match(expr, div(pind, p2)):
@@ -434,8 +436,8 @@ assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0
 
 
 def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]]:
-    index_list : List[Idx] = sorted(list(get_free_indices(xpr)), key=str)
-    output : List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]] = list()
+    index_list: List[Idx] = sorted(list(get_free_indices(xpr)), key=str)
+    output: List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]] = list()
     xpr = expand_contracted_indices(xpr, sym)
     index_values: Dict[Idx, Idx] = dict()
     while incr(index_list, index_values):
@@ -495,16 +497,18 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
     else:
         return mkSymbol(_mksymbol_for_tensor(sym))
 
+
 ## mksymbol_for_tensor_xyz
 
-def _mksymbol_for_tensor_xyz(sym:Indexed, *args:Idx)->str:
+def _mksymbol_for_tensor_xyz(sym: Indexed, *args: Idx) -> str:
     newstr = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
-        newstr += ["x","y","z"][to_num(ind)]
+        newstr += ["x", "y", "z"][to_num(ind)]
     return newstr
 
-def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs:int) -> Symbol:
+
+def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
     """
     Define a symbol for a tensor using standard Cactus rules.
     Don't distinguish up/down indexes. Use suffixes based on
@@ -524,6 +528,7 @@ def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs:int) -> Symbol:
     else:
         return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
+
 # It's horrible that Python can't let me type this any other way
 mk_subst_type = Union[
     Callable[[Expr, Idx], Expr],
@@ -538,8 +543,8 @@ def mk_subst_default_(out: Indexed, *inds: int) -> Expr:
     return mksymbol_for_tensor(out)
 
 
-mk_subst_default        = cast(mk_subst_type, mk_subst_default_)
-mksymbol_for_tensor_xyz = cast(mk_subst_type,__mksymbol_for_tensor_xyz)
+mk_subst_default = cast(mk_subst_type, mk_subst_default_)
+mksymbol_for_tensor_xyz = cast(mk_subst_type, __mksymbol_for_tensor_xyz)
 
 param_default_type = Union[float, int, str, bool]
 param_values_type = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
@@ -599,7 +604,7 @@ class Param:
         else:
             assert False
 
-    def __repr__(self)->str:
+    def __repr__(self) -> str:
         return f"Param({self.name})"
 
 
@@ -900,17 +905,17 @@ class ThornFunction:
             for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
                 rhsm = rhs
                 for idx in item[2]:
-                    #print(rhsm,idx,"->",end=" ")
+                    # print(rhsm,idx,"->",end=" ")
                     if isinstance(rhsm, MatrixBase):
                         idx2 = do_subs(idx, item[1])
                         assert isinstance(idx2, Idx)
                         index = to_num(idx)
-                        rhsm = rhsm[index,:][:]
+                        rhsm = rhsm[index, :][:]
                     elif isinstance(rhsm, list):
                         rhsm = rhsm[to_num(do_subs(idx, item[1]))]
                     else:
                         rhsm = do_subs(rhs2, item[1])
-                    #print(rhsm)
+                    # print(rhsm)
                 assert isinstance(rhsm, Expr)
                 rhs2 = self.thorn_def.do_subs(rhsm, self.thorn_def.subs)
         else:
@@ -983,7 +988,7 @@ class ThornFunction:
 
 
 class ThornDef:
-    def __init__(self, arr: str, name: str, run_simplify:bool=True) -> None:
+    def __init__(self, arr: str, name: str, run_simplify: bool = True) -> None:
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
@@ -1002,6 +1007,7 @@ class ThornDef:
         self.rhs: Dict[str, Math] = dict()
         self.temp: OrderedSet[str] = OrderedSet()
         self.base2thorn: Dict[str, str] = dict()
+        self.base2parity: Dict[str, TensorParity] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
             mkFunction("muladd"): False,
             mkFunction("stencil"): True,
@@ -1074,7 +1080,7 @@ class ThornDef:
 
         return ret
 
-    def mk_coords(self,with_time:bool=False) -> List[Symbol]:
+    def mk_coords(self, with_time: bool = False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
         if dimension == 3:
             if with_time:
@@ -1088,20 +1094,33 @@ class ThornDef:
             assert False
         return self.coords
 
-    def decl(self, basename: str, indices: List[Idx], centering: Optional[Centering] = None, temp: bool = False,
-             rhs: Optional[Math] = None, from_thorn: Optional[str] = None) -> IndexedBase:
-        if rhs is not None:
+    class DeclOptionalArgs(TypedDict, total=False):
+        centering: Centering
+        declare_as_temp: bool
+        rhs: Math
+        from_thorn: str
+        parity: TensorParity
+
+    def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
+        if (rhs := kwargs.get('rhs', None)) is not None:
             self.rhs[basename] = rhs
-        if centering is None:
+
+        if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
+
         ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
-        if from_thorn is not None:
+
+        if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
-        if temp:
+
+        if kwargs.get('declare_as_temp', False):
             self.temp.add(basename)
+
+        if (parity := kwargs.get('parity', None)) is not None:
+            self.base2parity[basename] = parity
 
         return ret
 
@@ -1120,8 +1139,8 @@ class ThornDef:
             # This is a derivative
             if len(foo.args) == 3:
                 # This is a 2nd derivative, symmetric in the last 2 args
-                foo_arg1 = len(foo.args[0].args)-1#chkcast(foo.args[1], int)
-                foo_arg2 = foo_arg1 + 1 #chkcast(foo.args[2], int)
+                foo_arg1 = len(foo.args[0].args) - 1  # chkcast(foo.args[1], int)
+                foo_arg2 = foo_arg1 + 1  # chkcast(foo.args[2], int)
                 msym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
                 msym_list += [msym]
                 msym_list += self.find_symmetries(foo.args[0])
@@ -1200,7 +1219,7 @@ class ThornDef:
                     self.subs[out] = res
                 else:
                     self.subs[out] = set_matrix[arr_inds]
-                print("out:",out)
+                print("out:", out)
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
         elif isinstance(f, Expr):
@@ -1266,6 +1285,29 @@ class ThornDef:
             arg = new_arg
         raise Exception(str(arg))
 
+def _parity_of(p: int | Parity) -> Parity:
+    if isinstance(p, Parity):
+        return p
+    elif p == -1:
+        return Parity.Negative
+    elif p == 1:
+        return Parity.Positive
+    else:
+        raise DslException(f"Parity must be -1 or +1")
+
+def parities(*args: Parity | int) -> TensorParity:
+    if len(args) == 0:
+        raise DslException("Parities must not be empty")
+
+    if len(args) % 3 != 0:
+        raise DslException('Parities must come in groups of 3')
+
+    parities: list[SingleIndexParity] = list()
+    for i in range(0, len(args), 3):
+        pars = [_parity_of(p) for p in args[i:i+3]]
+        parities.append(SingleIndexParity(*pars))
+
+    return TensorParity(parities)
 
 if __name__ == "__main__":
     gf = ThornDef("ARR", "TST")
@@ -1300,7 +1342,7 @@ if __name__ == "__main__":
         n += 1
     assert n == dimension ** 2
 
-    a = gf.decl("a", [], temp=True)
+    a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
     foo = gf.create_function("foo", ScheduleBin.Analysis)
     foo.add_eqn(a, do_sympify(dimension))
