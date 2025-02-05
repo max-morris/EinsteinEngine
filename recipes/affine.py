@@ -7,7 +7,7 @@ if __name__ == '__main__':
     from EmitCactus.emit.code.cpp.cpp_visitor import CppVisitor
     from typing import cast, Any
     from sympy import Expr, Idx, cos, sin
-    from EmitCactus.emit.code.code_tree import Centering
+    from EmitCactus.emit.tree import Centering
     from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions

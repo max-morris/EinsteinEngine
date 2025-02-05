@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
-from EmitCactus.emit.tree import Identifier, String
+from EmitCactus.emit.tree import Identifier, String, Centering
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
 
 if __name__ == "__main__":
@@ -12,7 +12,6 @@ if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import *
     from sympy import Expr, Idx, sin, cos
-    from EmitCactus.emit.code.code_tree import Centering
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 
@@ -48,10 +47,10 @@ if __name__ == "__main__":
     gf.set_div_stencil(5)
 
     # Declare gfs
-    v_t = gf.decl("v_t", [], Centering.VVV)
-    v = gf.decl("v", [], Centering.VVV, rhs=v_t)
-    u_t = gf.decl("u_t", [], Centering.VVV)
-    u = gf.decl("u", [], Centering.VVV, rhs=u_t)
+    v_t = gf.decl("v_t", [], centering=Centering.VVV)
+    v = gf.decl("v", [], centering=Centering.VVV, rhs=v_t)
+    u_t = gf.decl("u_t", [], centering=Centering.VVV)
+    u = gf.decl("u", [], centering=Centering.VVV, rhs=u_t)
     ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
     # Declare the metric
@@ -99,7 +98,7 @@ if __name__ == "__main__":
     fun.show_tensortypes()
 
     fun = gf.create_function("refine", ScheduleBin.EstimateError)
-    regrid_error = gf.decl("regrid_error", [], Centering.CCC, from_thorn='CarpetXRegrid')
+    regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetXRegrid')
     #fun.add_eqn(regrid_error, 2*v*v)
     fun.add_eqn(regrid_error, do_sympify(0)) #9/((x-20)**2 + (y-20)**2))
     fun.bake()
