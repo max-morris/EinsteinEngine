@@ -6,7 +6,7 @@ if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import do_sympify
     from sympy import Expr, Idx, sin
-    from EmitCactus.emit.code.code_tree import Centering
+    from EmitCactus.emit.tree import Centering
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 
@@ -36,10 +36,10 @@ if __name__ == "__main__":
     gf.set_div_stencil(3)
 
     # Declare gfs
-    v_t = gf.decl("v_t", [], Centering.VVC)
-    v = gf.decl("v", [], Centering.VVC, rhs=v_t)
-    u_t = gf.decl("u_t", [], Centering.VVC)
-    u = gf.decl("u", [], Centering.VVC, rhs=u_t)
+    v_t = gf.decl("v_t", [], centering=Centering.VVC)
+    v = gf.decl("v", [], centering=Centering.VVC, rhs=v_t)
+    u_t = gf.decl("u_t", [], centering=Centering.VVC)
+    u = gf.decl("u", [], centering=Centering.VVC, rhs=u_t)
 
     # Declare the metric
     g = gf.decl("g", [li, lj])
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     fun.show_tensortypes()
 
     fun = gf.create_function("refine", ScheduleBin.EstimateError)
-    regrid_error = gf.decl("regrid_error", [], Centering.CCC, from_thorn='CarpetX')
+    regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetX')
     #fun.add_eqn(regrid_error, 2*v*v)
     fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
     fun.bake(do_cse=False)
