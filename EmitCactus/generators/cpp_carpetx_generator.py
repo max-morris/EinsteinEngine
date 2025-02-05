@@ -15,11 +15,11 @@ from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, 
     RealParamOpenUpperBound
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, Intent, \
     GroupOrFunction, AtOrIn, StorageSection, ScheduleSection, IntentRegion
-from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, Centering, \
+from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, SympyExpr, \
     ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda
-from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim
+from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
 from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
