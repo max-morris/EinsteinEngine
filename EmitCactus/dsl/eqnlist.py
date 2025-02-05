@@ -3,10 +3,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
 
-try:
-    from nrpy.helpers.colorize_text import colorize
-except:
-    from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import symbols
 from sympy.core.expr import Expr
 from sympy.core.function import UndefinedFunction as UFunc
