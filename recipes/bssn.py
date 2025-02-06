@@ -170,10 +170,11 @@ if __name__ == "__main__":
     def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
         """
         Index symmetrizer
+        FIXME: The return type of this function gets, for some reason, converted to Any instead of Expr.
         """
         return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
 
-    def compute_ricci(function: ThornFunction):
+    def compute_ricci(function: ThornFunction) -> None:
         """
         Adds equations to a function that compute the Ricci tensor.
         """
