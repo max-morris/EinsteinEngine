@@ -25,6 +25,8 @@ __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "Schedule
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
+lookup_pair:Dict[Idx,Idx] = dict()
+
 ###
 def mk_mk_subst(s : str)->str:
     nextsub = 'a'
@@ -50,67 +52,119 @@ class SymIndexError(Exception):
         self.message = message
         super().__init__(self.message)
 
+class IndexTracker:
+    def __init__(self)->None:
+        self.free:OrderedSet[Idx] = OrderedSet()
+        self.contracted:OrderedSet[Idx] = OrderedSet()
+    def add(self, idx:Idx)->bool:
+        global lookup_pair
+        if (idx in self.free) or (idx in self.contracted):
+            return False
+        assert idx in lookup_pair, f"{idx} not in {lookup_pair}"
+        pdx = lookup_pair[idx]
+        if pdx in self.free:
+            self.free.remove(pdx)
+            self.contracted.add(pdx)
+        self.free.add(idx)
+        return True
+
 class SympyExprErrorVisitor:
     def __init__(self, gf:"ThornDef")->None:
         self.gf = gf
 
     @multimethod
-    def visit(self, expr: sy.Basic) -> None:
+    def visit(self, expr: sy.Basic) -> IndexTracker:
         raise Exception(str(expr)+" "+str(type(expr)))
 
     @visit.register
-    def _(self, expr: sy.Add) -> None:
+    def _(self, expr: sy.Add) -> IndexTracker:
+        it:Optional[IndexTracker] = None
         for a in expr.args:
-            self.visit(a)
+            a_it = self.visit(a)
+            if it is None:
+                it = a_it
+            if it.free != a_it.free:
+                raise SymIndexError(f"Invalid indices in:")
+        if it is None:
+            return IndexTracker()
+        else:
+            return it
 
     @visit.register
-    def _(self, expr: sy.Mul) -> None:
+    def _(self, expr: sy.Mul) -> IndexTracker:
+        it = IndexTracker()
         for a in expr.args:
-            self.visit(a)
+            a_it = self.visit(a)
+            for idx in a_it.free:
+                if not it.add(idx):
+                    raise SymIndexError(f"Invalid indices in:")
+        return it
 
     @visit.register
-    def _(self, expr: sy.Integer) -> None:
-        pass
+    def _(self, expr: sy.Symbol) -> IndexTracker:
+        return IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Rational) -> None:
-        pass
+    def _(self, expr: sy.Integer) -> IndexTracker:
+        return IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Float) -> None:
-        pass
+    def _(self, expr: sy.Rational) -> IndexTracker:
+        return IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Idx) -> None:
-        pass
+    def _(self, expr: sy.Float) -> IndexTracker:
+        return IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Indexed) -> None:
-        pass
+    def _(self, expr: sy.Idx) -> IndexTracker:
+        return IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Function) -> None:
+    def _(self, expr: sy.Indexed) -> IndexTracker:
+        basename = str(expr.args[0])
+        bn, indices = self.gf.defn[basename]
+        if len(indices)+1 != len(expr.args):
+            raise SymIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
+        it = IndexTracker()
+        for a in expr.args[1:]:
+            a_it = self.visit(a)
+            assert isinstance(a, Idx)
+            if not it.add(a):
+                raise SymIndexError(f"Invalid indices in:")
+        return it
+
+    @visit.register
+    def _(self, expr: sy.Function) -> IndexTracker:
+        it = IndexTracker()
         for a in expr.args:
-            self.visit(a)
+            a_it = self.visit(a)
+            assert isinstance(a, Idx)
+            if not it.add(a):
+                raise SymIndexError(f"Invalid indices in:")
+        return it
 
     @visit.register
     def _(self, expr: sy.Pow) -> None:
         for a in expr.args:
-            self.visit(a)
+            free, contracted = self.visit(a)
+            assert len(free) == 0
+            assert len(contracted) == 0
 
     @visit.register
-    def _(self, expr: sy.IndexedBase) -> None:
+    def _(self, expr: sy.IndexedBase) -> IndexTracker:
         basename = str(expr)
         if basename not in self.gf.defn:
             raise SymIndexError("Undefined symbol '{basename}' in expression: ")
-        bn, indexes = self.gf.defn[basename]
-        n = len(indexes)
+        bn, indices = self.gf.defn[basename]
+        n = len(indices)
         if n != 0:
             if n == 1:
                 msg = "1 index"
             else:
-                msg = f"{n} indexes"
+                msg = f"{n} indices"
             raise SymIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
+        return IndexTracker()
 
 def check_indices(thorn_def:"ThornDef", rhs:Expr)->None:
     err = SympyExprErrorVisitor(thorn_def)
@@ -136,7 +190,6 @@ Symbolic derivative function.
 if div.__module__ is None:
     div.__module__ = "use_indices"
 
-lookup_pair = dict()
 
 
 def mkPair(s: str) -> Tuple[Idx, Idx]:
@@ -153,7 +206,7 @@ def to_num(ind: Idx) -> int:
     return int(s[1])
 
 
-# Some basic indexes to use
+# Some basic indices to use
 ui, li = mkPair('i')
 uj, lj = mkPair('j')
 uk, lk = mkPair('k')
@@ -612,7 +665,7 @@ def _mksymbol_for_tensor_xyz(sym: Indexed, *args: Idx) -> str:
 def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
     """
     Define a symbol for a tensor using standard Cactus rules.
-    Don't distinguish up/down indexes. Use suffixes based on
+    Don't distinguish up/down indices. Use suffixes based on
     x, y, and z at the end.
 
     :param out: The tensor expression with integer indices.
@@ -1231,10 +1284,10 @@ class ThornDef:
 
         return ret
 
-    def find_indexes(self, foo: Basic) -> List[Idx]:
+    def find_indices(self, foo: Basic) -> List[Idx]:
         ret: List[Idx] = list()
         if type(foo) == div:
-            ret = self.find_indexes(foo.args[0])
+            ret = self.find_indices(foo.args[0])
         for arg in foo.args[1:]:
             assert isinstance(arg, Idx)
             ret.append(arg)
@@ -1289,23 +1342,23 @@ class ThornDef:
         return OrderedSet(self.params)
 
     def mk_subst(self, indexed: Indexed, f: Union[mk_subst_type, Matrix, Expr] = mk_subst_default) -> None:
-        indexes: List[Idx]
+        indices: List[Idx]
         if type(indexed) == Indexed:
             iter_var = indexed
             iter_syms = self.find_symmetries(indexed)
-            indexes = self.find_indexes(indexed)
+            indices = self.find_indices(indexed)
         else:
             # Here we declare an iteration variable
             # with the same symmetries as the expression
             # we want to iterate over.
             assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
             iter_syms = self.find_symmetries(indexed)
-            indexes = self.find_indexes(indexed)
+            indices = self.find_indices(indexed)
             # for arg in indexed.args[1:]:
             #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
-            #    indexes.append(arg)
-            iter_var_base: IndexedBase = self.decl("iter_var", indexes)
-            iter_var = iter_var_base[indexes]
+            #    indices.append(arg)
+            iter_var_base: IndexedBase = self.decl("iter_var", indices)
+            iter_var = iter_var_base[indices]
             self.symmetries.sd[iter_var_base] = iter_syms
 
         if isinstance(f, MatrixBase):
