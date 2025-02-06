@@ -56,6 +56,13 @@ class IndexTracker:
     def __init__(self)->None:
         self.free:OrderedSet[Idx] = OrderedSet()
         self.contracted:OrderedSet[Idx] = OrderedSet()
+    def all(self)->OrderedSet[Idx]:
+        ret = OrderedSet()
+        for a in self.free:
+            ret.add(a)
+        for a in self.contracted:
+            ret.add(a)
+        return ret
     def add(self, idx:Idx)->bool:
         global lookup_pair
         if (idx in self.free) or (idx in self.contracted):
@@ -65,8 +72,12 @@ class IndexTracker:
         if pdx in self.free:
             self.free.remove(pdx)
             self.contracted.add(pdx)
-        self.free.add(idx)
+            self.contracted.add(idx)
+        else:
+            self.free.add(idx)
         return True
+    def __repr__(self):
+        return "("+repr(self.free)+", "+repr(self.contracted)+")"
 
 class SympyExprErrorVisitor:
     def __init__(self, gf:"ThornDef")->None:
@@ -84,7 +95,7 @@ class SympyExprErrorVisitor:
             if it is None:
                 it = a_it
             if it.free != a_it.free:
-                raise SymIndexError(f"Invalid indices in:")
+                raise SymIndexError(f"Invalid indices in add '{it.free}' != '{a_it.free}':")
         if it is None:
             return IndexTracker()
         else:
@@ -95,9 +106,9 @@ class SympyExprErrorVisitor:
         it = IndexTracker()
         for a in expr.args:
             a_it = self.visit(a)
-            for idx in a_it.free:
+            for idx in a_it.all():
                 if not it.add(idx):
-                    raise SymIndexError(f"Invalid indices in:")
+                    raise SymIndexError(f"Invalid indices in mul:")
         return it
 
     @visit.register
@@ -131,17 +142,20 @@ class SympyExprErrorVisitor:
             a_it = self.visit(a)
             assert isinstance(a, Idx)
             if not it.add(a):
-                raise SymIndexError(f"Invalid indices in:")
+                raise SymIndexError(f"Invalid indices in indexed:")
         return it
 
     @visit.register
     def _(self, expr: sy.Function) -> IndexTracker:
         it = IndexTracker()
         for a in expr.args:
-            a_it = self.visit(a)
             if isinstance(a, Idx):
                 if not it.add(a):
-                    raise SymIndexError(f"Invalid indices in:")
+                    raise SymIndexError(f"Invalid indices in function:")
+            else:
+                a_it = self.visit(a)
+                for idx in a_it.all():
+                    it.add(idx)
         return it
 
     @visit.register
