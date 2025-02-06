@@ -1,12 +1,14 @@
 if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
+    from EmitCactus.dsl.use_indices import parities
     from EmitCactus.dsl.sympywrap import do_inv, do_det, mkSymbol
     from EmitCactus.generators.wizards import CppCarpetXWizard
     from sympy import exp, log
 
     ###
     # Index symmetrizer
+    # TODO: Add type annotations
     ###
     def sym(expr, ind1, ind2):
         return (expr + expr.subs({ind1: u1, ind2: u2}).subs({u1: ind2, u2: ind1}))/2
@@ -25,6 +27,15 @@ if __name__ == "__main__":
         default=1.0,
         desc="The eta parameter of the Hyperbolic Gamma Driver shift"
     )
+
+    ###
+    # Tensor parities
+    ###
+    # fmt: off
+    parity_scalar = parities(+1,+1,+1)
+    parity_vector = parities(1,+1,+1,  +1,-1,+1,  +1,+1,-1)
+    parity_sym2ten = parities(+1,+1,+1,  -1,-1,+1,  -1,+1,-1,  +1,+1,+1,  +1,-1,-1,  +1,+1,+1)
+    # fmt: on
 
     ###
     # ADMBaseX vars
@@ -50,42 +61,46 @@ if __name__ == "__main__":
     ###
     # Evolved Gauge Vars
     ###
-    evo_lapse_rhs = gf.decl("evo_lapse_rhs", [])
-    evo_lapse = gf.decl("evo_lapse", [], rhs=evo_lapse_rhs)
+    evo_lapse_rhs = gf.decl("evo_lapse_rhs", [], parity=parity_scalar)
+    evo_lapse = gf.decl("evo_lapse", [], rhs=evo_lapse_rhs,
+                        parity=parity_scalar)
 
-    evo_shift_rhs = gf.decl("evo_shift_rhs", [ui])
-    evo_shift = gf.decl("evo_shift", [ui], rhs=evo_shift_rhs)
+    evo_shift_rhs = gf.decl("evo_shift_rhs", [ui], parity=parity_vector)
+    evo_shift = gf.decl("evo_shift", [ui],
+                        rhs=evo_shift_rhs, parity=parity_vector)
 
-    g_driver_B_rhs = gf.decl("g_driver_B_rhs", [ui])
-    g_driver_B = gf.decl("g_driver_B", [ui], rhs=g_driver_B_rhs)
+    g_driver_B_rhs = gf.decl("g_driver_B_rhs", [ui], parity=parity_vector)
+    g_driver_B = gf.decl(
+        "g_driver_B", [ui], rhs=g_driver_B_rhs, parity=parity_vector)
 
     ###
     # Evolved BSSN Vars
     ###
 
     # \phi
-    phi_rhs = gf.decl("phi_rhs", [])
-    phi = gf.decl("phi", [], rhs=phi_rhs)
+    phi_rhs = gf.decl("phi_rhs", [], parity=parity_scalar)
+    phi = gf.decl("phi", [], rhs=phi_rhs, parity=parity_scalar)
 
     # \tilde{\gamma_{ij}}
-    gt_rhs = gf.decl("gt_rhs", [li, lj])
+    gt_rhs = gf.decl("gt_rhs", [li, lj], parity=parity_sym2ten)
     gf.add_sym(gt_rhs[li, lj], li, lj)
-    gt = gf.decl("gt", [li, lj], rhs=gt_rhs)
+    gt = gf.decl("gt", [li, lj], rhs=gt_rhs, parity=parity_sym2ten)
     gf.add_sym(gt[li, lj], li, lj)
 
     # \tilde{A}_{ij}
-    At_rhs = gf.decl("At_rhs", [li, lj])
+    At_rhs = gf.decl("At_rhs", [li, lj], parity=parity_sym2ten)
     gf.add_sym(At_rhs[li, lj], li, lj)
-    At = gf.decl("At", [li, lj], rhs=At_rhs)
+    At = gf.decl("At", [li, lj], rhs=At_rhs, parity=parity_sym2ten)
     gf.add_sym(At[li, lj], li, lj)
 
     # trace of Extrinsic Curvature
-    trK_rhs = gf.decl("trK_rhs", [])
-    trK = gf.decl("trK", [], rhs=trK_rhs)
+    trK_rhs = gf.decl("trK_rhs", [], parity=parity_scalar)
+    trK = gf.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
 
     # \tilde{\Gamma}^i
-    Conformal_rhs = gf.decl("Conformal_rhs", [ui])
-    Conformal = gf.decl("Conformal", [ui], rhs=Conformal_rhs)
+    ConfConnect_rhs = gf.decl("ConfConnect_rhs", [ui], parity=parity_vector)
+    ConfConnect = gf.decl("ConfConnect", [ui],
+                          rhs=ConfConnect_rhs, parity=parity_vector)
 
     ###
     # Aux. Vars
@@ -108,8 +123,8 @@ if __name__ == "__main__":
     T = gf.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
     gf.add_sym(T[li, lj], li, lj)
 
-    # Prevents the elimination of Conformal_rhs
-    Gt_rhs_tmp = gf.decl("Gt_rhs_tmp", [ui])
+    # Prevents the elimination of ConfConnect_rhs
+    ConfConnect_rhs_tmp = gf.decl("ConfConnect_rhs_tmp", [ui])
 
     ###
     # Substitution rules
@@ -132,8 +147,8 @@ if __name__ == "__main__":
     gf.mk_subst(At[ui, uj])
     gf.mk_subst(At[ui, lj])
 
-    gf.mk_subst(Conformal[ui])
-    gf.mk_subst(Conformal_rhs[ui])
+    gf.mk_subst(ConfConnect[ui])
+    gf.mk_subst(ConfConnect_rhs[ui])
 
     gf.mk_subst(evo_shift[ui])
     gf.mk_subst(evo_shift_rhs[ui])
@@ -153,7 +168,7 @@ if __name__ == "__main__":
 
     gf.mk_subst(T[li, lj])
 
-    gf.mk_subst(Gt_rhs_tmp[ui])
+    gf.mk_subst(ConfConnect_rhs_tmp[ui])
 
     ###
     # BSSN Evolution equations
@@ -199,7 +214,7 @@ if __name__ == "__main__":
     fun.add_eqn(
         ric[li, lj],
         - (1/2) * gt[ua, ub] * div(gt[li, lj], la, lb)
-        + sym(gt[lk, li] * div(Conformal[uk], lj), li, lj)
+        + sym(gt[lk, li] * div(ConfConnect[uk], lj), li, lj)
         + sym(gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk], li, lj)
         + sym(gt[ua, ub] * 2 * Gammat[uk, la, li] * Gammat[lj, lk, lb], li, lj)
         + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
@@ -252,10 +267,10 @@ if __name__ == "__main__":
     )
 
     fun.add_eqn(
-        Gt_rhs_tmp[ui],
+        ConfConnect_rhs_tmp[ui],
         gt[uj, uk] * div(evo_shift[ui], lj, lk)
         + (1/3) * gt[ui, uj] * div(evo_shift[uk], lj, lk)
-        + evo_shift[uj] * div(Conformal[ui], lj)
+        + evo_shift[uj] * div(ConfConnect[ui], lj)
         - gt[ua, ub] * Gammat[uj, la, lb] * div(evo_shift[ui], lj)
         + (2/3) * gt[ua, ub] * Gammat[ui, la, lb] * div(evo_shift[uj], lj)
         - 2 * At[ui, uj] * div(evo_lapse, lj)
@@ -265,7 +280,7 @@ if __name__ == "__main__":
             - (2/3) * gt[ui, uj] * div(trK, lj)
         )
     )
-    fun.add_eqn(Conformal_rhs[ui], Gt_rhs_tmp[ui])
+    fun.add_eqn(ConfConnect_rhs[ui], ConfConnect_rhs_tmp[ui])
 
     # 1 + log lapse
     fun.add_eqn(evo_lapse_rhs,
@@ -281,8 +296,8 @@ if __name__ == "__main__":
 
     fun.add_eqn(
         g_driver_B_rhs[ua],
-        evo_shift[uj] * div(g_driver_B[ua], lj) + Gt_rhs_tmp[ua]
-        - evo_shift[ui] * div(Conformal[ua], li) -
+        evo_shift[uj] * div(g_driver_B[ua], lj) + ConfConnect_rhs_tmp[ua]
+        - evo_shift[ui] * div(ConfConnect[ua], li) -
         g_driver_eta * g_driver_B[ua]
     )
 
@@ -305,7 +320,7 @@ if __name__ == "__main__":
     funload.add_eqn(At[li, lj], exp(-4 * phi_tmp) *
                     (k[li, lj] - (1/3) * g[li, lj] * trK_tmp))
     funload.add_eqn(trK, trK_tmp)
-    funload.add_eqn(Conformal[ui], -div(exp(-4 * phi_tmp) * g[ui, uj], lj))
+    funload.add_eqn(ConfConnect[ui], -div(exp(-4 * phi_tmp) * g[ui, uj], lj))
 
     funload.add_eqn(evo_lapse, alp)
     funload.add_eqn(evo_shift[ua], beta[ua])
@@ -335,7 +350,6 @@ if __name__ == "__main__":
     ###
     # Thorn creation
     ###
-
     CppCarpetXWizard(gf).generate_thorn()
 
 # References
