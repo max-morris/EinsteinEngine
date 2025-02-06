@@ -2,16 +2,15 @@ if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.use_indices import parities
-    from EmitCactus.dsl.sympywrap import do_inv, do_det, mkSymbol
+    from EmitCactus.dsl.sympywrap import do_inv, do_det, mkSymbol, do_subs
     from EmitCactus.generators.wizards import CppCarpetXWizard
-    from sympy import exp, log
+    from sympy import exp, log, Idx, Expr
 
     ###
     # Index symmetrizer
-    # TODO: Add type annotations
     ###
-    def sym(expr, ind1, ind2):
-        return (expr + expr.subs({ind1: u1, ind2: u2}).subs({u1: ind2, u2: ind1}))/2
+    def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
+        return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
 
     ###
     # Create a set of grid functions
