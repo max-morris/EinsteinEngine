@@ -1,5 +1,4 @@
 if __name__ == "__main__":
-
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.use_indices import parities
     from EmitCactus.dsl.sympywrap import do_inv, do_det, mkSymbol, do_subs
@@ -7,13 +6,7 @@ if __name__ == "__main__":
     from sympy import exp, log, Idx, Expr
 
     ###
-    # Index symmetrizer
-    ###
-    def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
-        return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
-
-    ###
-    # Create a set of grid functions
+    # Thorn definitions
     ###
     gf = ThornDef("PyBSSN", "BSSN")
     gf.set_div_stencil(5)  # 4th order. TODO: Use upwind stencils for the shift
@@ -37,7 +30,7 @@ if __name__ == "__main__":
     # fmt: on
 
     ###
-    # ADMBaseX vars
+    # ADMBaseX vars.
     ###
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
     gf.add_sym(g[li, lj], li, lj)
@@ -55,10 +48,8 @@ if __name__ == "__main__":
     dtbeta = gf.decl("dtbeta", [ua], from_thorn="ADMBaseX")
     gf.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    # x,y,z = gf.mk_coords() # TODO: is this needed?
-
     ###
-    # Evolved Gauge Vars
+    # Evolved Gauge Vars.
     ###
     evo_lapse_rhs = gf.decl("evo_lapse_rhs", [], parity=parity_scalar)
     evo_lapse = gf.decl("evo_lapse", [], rhs=evo_lapse_rhs,
@@ -73,9 +64,8 @@ if __name__ == "__main__":
         "g_driver_B", [ui], rhs=g_driver_B_rhs, parity=parity_vector)
 
     ###
-    # Evolved BSSN Vars
+    # Evolved BSSN Vars.
     ###
-
     # \phi
     phi_rhs = gf.decl("phi_rhs", [], parity=parity_scalar)
     phi = gf.decl("phi", [], rhs=phi_rhs, parity=parity_scalar)
@@ -102,7 +92,12 @@ if __name__ == "__main__":
                           rhs=ConfConnect_rhs, parity=parity_vector)
 
     ###
-    # Aux. Vars
+    # Constraint Vars.
+    ###
+    HamCons = gf.decl("HamCons", [], parity=parity_scalar)
+
+    ###
+    # Aux. Vars.
     ###
     Gammat = gf.decl("Gammat", [ua, lb, lc])  # \tilde{\Gamma}^a_{bc}
     gf.add_sym(Gammat[ua, lb, lc], lb, lc)
@@ -170,6 +165,52 @@ if __name__ == "__main__":
     gf.mk_subst(ConfConnect_rhs_tmp[ui])
 
     ###
+    # Aux. functions
+    ###
+    def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
+        """
+        Index symmetrizer
+        """
+        return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
+
+    def compute_ricci(function: ThornFunction):
+        """
+        Adds equations to a function that compute the Ricci tensor.
+        """
+        function.add_eqn(
+            Gamma[ua, lb, lc],
+            (1/2) * g[ua, ud] * (
+                div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
+            )
+        )
+
+        function.add_eqn(
+            Gammat[la, lb, lc],
+            (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
+        )
+
+        function.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
+
+        # See: [3]
+        # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
+        function.add_eqn(ddtphi[li, lj], div(phi, lj, li) -
+                         Gammat[uk, li, lj] * div(phi, lk))
+
+        function.add_eqn(
+            ric[li, lj],
+            - (1/2) * gt[ua, ub] * div(gt[li, lj], la, lb)
+            + sym(gt[lk, li] * div(ConfConnect[uk], lj), li, lj)
+            + sym(gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk], li, lj)
+            + sym(gt[ua, ub] * 2 * Gammat[uk, la, li]
+                  * Gammat[lj, lk, lb], li, lj)
+            + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
+            - 2 * ddtphi[li, lj]
+            - 2 * gt[li, lj] * ddtphi[la, lb] * gt[ua, ub]
+            + 4 * div(phi, li) * div(phi, lj)
+            - 4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub]
+        )
+
+    ###
     # BSSN Evolution equations
     # Following [1], we will replace \tilde{\Gamma}^i with
     # \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk} whenever the
@@ -182,46 +223,19 @@ if __name__ == "__main__":
     ###
     fun = gf.create_function("bssn_rhs", ScheduleBin.Evolve)
 
-    # Auxiliary Equations
+    # Aux. Equations
 
-    fun.add_eqn(T[li, lj], -ddA[li, lj] + evo_lapse * ric[li, lj])
+    fun.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
+    fun.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
+
+    compute_ricci(fun)
 
     # See: [3]
     # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
     fun.add_eqn(ddA[li, lj], div(evo_lapse, lj, li) -
                 Gamma[uk, li, lj] * div(evo_lapse, lk))
-    fun.add_eqn(ddtphi[li, lj], div(phi, lj, li) -
-                Gammat[uk, li, lj] * div(phi, lk))
 
-    fun.add_eqn(
-        Gammat[la, lb, lc],
-        (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
-    )
-
-    fun.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-
-    fun.add_eqn(
-        Gamma[ua, lb, lc],
-        (1/2) * g[ua, ud] * (
-            div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
-        )
-    )
-
-    fun.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
-    fun.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
-
-    fun.add_eqn(
-        ric[li, lj],
-        - (1/2) * gt[ua, ub] * div(gt[li, lj], la, lb)
-        + sym(gt[lk, li] * div(ConfConnect[uk], lj), li, lj)
-        + sym(gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk], li, lj)
-        + sym(gt[ua, ub] * 2 * Gammat[uk, la, li] * Gammat[lj, lk, lb], li, lj)
-        + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
-        - 2 * ddtphi[li, lj]
-        - 2 * gt[li, lj] * ddtphi[la, lb] * gt[ua, ub]
-        + 4 * div(phi, li) * div(phi, lj)
-        - 4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub]
-    )
+    fun.add_eqn(T[li, lj], -ddA[li, lj] + evo_lapse * ric[li, lj])
 
     # Evolution equations
 
@@ -305,8 +319,8 @@ if __name__ == "__main__":
     ###
     # Convert ADM to BSSN variables
     ###
-    # TODO: Schedule in the propper place
-    funload = gf.create_function("adm2bssn", ScheduleBin.Evolve)
+    funload = gf.create_function(
+        "adm2bssn", ScheduleBin.Init, schedule_after="ADMBaseX_PostInitial")
 
     phi_tmp = mkSymbol("phi_tmp")
     trK_tmp = mkSymbol("trK_tmp")
@@ -324,7 +338,6 @@ if __name__ == "__main__":
     funload.add_eqn(evo_lapse, alp)
     funload.add_eqn(evo_shift[ua], beta[ua])
 
-    # TODO: Is this OK?
     funload.add_eqn(
         g_driver_B[ua],
         4.0 * (dtbeta[ua] - beta[ui] * div(beta[ua], li)) / (3.0 * alp)
@@ -335,8 +348,9 @@ if __name__ == "__main__":
     ###
     # Convert BSSN to ADM variables
     ###
-    # TODO: Schedule in the propper place
-    funstore = gf.create_function("bssn2adm", ScheduleBin.Evolve)
+    funstore = gf.create_function(
+        "bssn2adm", ScheduleBin.Analysis, schedule_before="ADMBaseX_SetADMVars")
+
     funstore.add_eqn(g[li, lj], exp(4 * phi) * gt[li, lj])
     funstore.add_eqn(k[li, lj], exp(4 * phi) *
                      At[li, lj] + (1/3) * gt[li, lj] * trK)
@@ -345,6 +359,22 @@ if __name__ == "__main__":
     funstore.add_eqn(beta[ua], evo_shift[ua])
 
     funstore.bake()
+
+    ###
+    # Compute constraints
+    ###
+    funcons = gf.create_function(
+        "bssncons", ScheduleBin.Analysis, schedule_after="ADMBaseX_SetADMVars")
+
+    compute_ricci(funcons)
+
+    funcons.add_eqn(HamCons,
+                    g[ui, ua] * g[uj, ub] * ric[la, lb] * ric[li, lj]
+                    + (2/3) * trK * trK
+                    - gt[ui, ua] * gt[uj, ub] * At[li, lj]
+                    )
+
+    funcons.bake()
 
     ###
     # Thorn creation
