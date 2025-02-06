@@ -139,9 +139,9 @@ class SympyExprErrorVisitor:
         it = IndexTracker()
         for a in expr.args:
             a_it = self.visit(a)
-            assert isinstance(a, Idx)
-            if not it.add(a):
-                raise SymIndexError(f"Invalid indices in:")
+            if isinstance(a, Idx):
+                if not it.add(a):
+                    raise SymIndexError(f"Invalid indices in:")
         return it
 
     @visit.register
