@@ -62,6 +62,7 @@ class IndexTracker:
             ret.add(a)
         for a in self.contracted:
             ret.add(a)
+            ret.add(lookup_pair[a])
         return ret
     def add(self, idx:Idx)->bool:
         global lookup_pair
@@ -71,8 +72,12 @@ class IndexTracker:
         pdx = lookup_pair[idx]
         if pdx in self.free:
             self.free.remove(pdx)
-            self.contracted.add(pdx)
-            self.contracted.add(idx)
+            if str(idx)[0] == 'u':
+                assert pdx not in self.contracted
+                self.contracted.add(pdx)
+            else:
+                assert idx not in self.contracted
+                self.contracted.add(idx)
         else:
             self.free.add(idx)
         return True
@@ -80,8 +85,8 @@ class IndexTracker:
         return "("+repr(self.free)+", "+repr(self.contracted)+")"
 
 class SympyExprErrorVisitor:
-    def __init__(self, gf:"ThornDef")->None:
-        self.gf = gf
+    def __init__(self, defn:Dict[str, Tuple[str, List[Idx]]])->None:
+        self.defn = defn
 
     @multimethod
     def visit(self, expr: sy.Basic) -> IndexTracker:
@@ -90,12 +95,14 @@ class SympyExprErrorVisitor:
     @visit.register
     def _(self, expr: sy.Add) -> IndexTracker:
         it:Optional[IndexTracker] = None
+        arg = None
         for a in expr.args:
             a_it = self.visit(a)
             if it is None:
                 it = a_it
             if it.free != a_it.free:
-                raise SymIndexError(f"Invalid indices in add '{it.free}' != '{a_it.free}':")
+                raise SymIndexError(f"Invalid indices in add '{a}:{it.free}' != '{arg}:{a_it.free}':")
+            arg = a
         if it is None:
             return IndexTracker()
         else:
@@ -134,9 +141,12 @@ class SympyExprErrorVisitor:
     @visit.register
     def _(self, expr: sy.Indexed) -> IndexTracker:
         basename = str(expr.args[0])
-        bn, indices = self.gf.defn[basename]
-        if len(indices)+1 != len(expr.args):
-            raise SymIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
+        if basename in self.defn:
+            bn, indices = self.defn[basename]
+            if len(indices)+1 != len(expr.args):
+                raise SymIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
+        else:
+            assert len(self.defn) == 0
         it = IndexTracker()
         for a in expr.args[1:]:
             a_it = self.visit(a)
@@ -159,19 +169,24 @@ class SympyExprErrorVisitor:
         return it
 
     @visit.register
-    def _(self, expr: sy.Pow) -> None:
+    def _(self, expr: sy.Pow) -> IndexTracker:
         for a in expr.args:
-            free, contracted = self.visit(a)
-            assert len(free) == 0
-            assert len(contracted) == 0
+            it = self.visit(a)
+            assert len(it.free) == 0
+            assert len(it.contracted) == 0
+        return IndexTracker()
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> IndexTracker:
         basename = str(expr)
-        if basename not in self.gf.defn:
-            raise SymIndexError("Undefined symbol '{basename}' in expression: ")
-        bn, indices = self.gf.defn[basename]
-        n = len(indices)
+        if basename not in self.defn:
+            if len(self.defn) == 0:
+                n = 0
+            else:
+                raise SymIndexError(f"Undefined symbol in '{self.defn}':")
+        else:
+            bn, indices = self.defn[basename]
+            n = len(indices)
         if n != 0:
             if n == 1:
                 msg = "1 index"
@@ -180,17 +195,23 @@ class SympyExprErrorVisitor:
             raise SymIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
         return IndexTracker()
 
-def check_indices(thorn_def:"ThornDef", rhs:Expr)->None:
-    err = SympyExprErrorVisitor(thorn_def)
+def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
+    if defn is None:
+        defn = dict()
+    err = SympyExprErrorVisitor(defn)
+    ret : IndexTracker
     try:
-        err.visit(rhs)
+        ret = err.visit(rhs)
         die = False
         msg = ''
-    except SymIndexError as sie:
-        die = True
-        msg = sie.message
-    if die:
-        raise SymIndexError(msg+str(rhs))
+    finally:
+        pass
+    #except SymIndexError as sie:
+    #    die = True
+    #    msg = sie.message
+    #if die:
+    #    raise SymIndexError(msg+str(rhs))
+    return ret
 ###
 
 ####
@@ -1032,7 +1053,7 @@ class ThornFunction:
 
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
         if isinstance(rhs, Expr):
-            check_indices(self.thorn_def, rhs)
+            check_indices(rhs, self.thorn_def.defn)
 
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
