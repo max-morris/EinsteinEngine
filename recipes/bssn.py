@@ -372,7 +372,7 @@ if __name__ == "__main__":
     funcons.add_eqn(HamCons,
                     g[ui, ua] * g[uj, ub] * ric[la, lb] * ric[li, lj]
                     + (2/3) * trK * trK
-                    - gt[ui, ua] * gt[uj, ub] * At[li, lj]
+                    - gt[ui, ua] * gt[uj, ub] * At[la, lb] * At[li, lj]
                     )
 
     funcons.bake()
