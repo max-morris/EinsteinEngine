@@ -57,7 +57,7 @@ class IndexTracker:
         self.free:OrderedSet[Idx] = OrderedSet()
         self.contracted:OrderedSet[Idx] = OrderedSet()
     def all(self)->OrderedSet[Idx]:
-        ret = OrderedSet()
+        ret:OrderedSet[Idx] = OrderedSet()
         for a in self.free:
             ret.add(a)
         for a in self.contracted:
@@ -76,7 +76,7 @@ class IndexTracker:
         else:
             self.free.add(idx)
         return True
-    def __repr__(self):
+    def __repr__(self)->str:
         return "("+repr(self.free)+", "+repr(self.contracted)+")"
 
 class SympyExprErrorVisitor:
