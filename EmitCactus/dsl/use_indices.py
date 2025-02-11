@@ -4,7 +4,7 @@ Use the Sympy Indexed type for relativity expressions.
 import sys
 from enum import auto
 from typing import *
-from math import sqrt
+from sympy import sqrt, exp
 import re
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
@@ -196,6 +196,10 @@ class SympyExprErrorVisitor:
         return IndexTracker()
 
 def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
+    """
+    This function not only checks the validity of indexed expressions, it returns
+    all free and contracted indices.
+    """
     if defn is None:
         defn = dict()
     err = SympyExprErrorVisitor(defn)
@@ -212,6 +216,8 @@ def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None
     #if die:
     #    raise SymIndexError(msg+str(rhs))
     return ret
+###
+# Need Expand Visitor
 ###
 
 ####
@@ -362,6 +368,16 @@ class DivMaker(Applier):
         if g:
             q0, q1, q2 = g[p0], g[p1], g[p2]
             return cast(Expr, (1 / 2) * div(div(q0, q1) / sqrt(q0), q2))
+
+        # Div of Exp
+        g = do_match(expr, div(exp(p0), p1))
+        if g:
+            q0, q1 = g[p0], g[p1]
+            return cast(Expr, exp(q0)*div(q0, q1))
+        g = do_match(expr, div(exp(p0), p1, p2))
+        if g:
+            q0, q1, q2 = g[p0], g[p1], g[p2]
+            return cast(Expr, div(exp(q0)*div(q0, q1)))
 
         # Div of an indexed quantity
         if do_match(expr, div(pind, p2)):
@@ -1051,6 +1067,12 @@ class ThornFunction:
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
 
+    def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
+        it = check_indices(expr, self.thorn_def.defn)
+        return it.free
+
+    #def expand_free_indices(self, expr : Expr)->Expr
+
     def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
         if isinstance(rhs, Expr):
             check_indices(rhs, self.thorn_def.defn)
@@ -1061,7 +1083,7 @@ class ThornFunction:
         lhs2: Symbol
         if type(lhs) == Indexed:
             if isinstance(rhs, Expr):
-                if get_free_indices(lhs) != get_free_indices(rhs):
+                if self.get_free_indices(lhs) != self.get_free_indices(rhs):
                     raise Exception(f"Free indices of '{lhs}' and '{rhs}' do not match.")
             count = 0
             for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
@@ -1415,7 +1437,7 @@ class ThornDef:
             return None
         elif isinstance(f, Expr):
             dm = DivMaker(self.get_params(), self.get_coords())
-            if get_free_indices(iter_var) != get_free_indices(f):
+            if self.get_free_indices(iter_var) != self.get_free_indices(f):
                 raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
             for tup in expand_free_indices(iter_var, self.symmetries):
                 out, indrep, _ = tup
