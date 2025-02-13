@@ -2,6 +2,7 @@ import typing
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
+from codetiming import notick as tick
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import symbols
@@ -184,6 +185,7 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
+        tick()
         for temp_var in self.temporaries:
             for lhs, rhs in self.eqns.items():
                 eqn_i = self.order.index(lhs)
@@ -193,6 +195,7 @@ class EqnList:
 
                 if rhs.find(temp_var):  # type: ignore[no-untyped-call]
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
+                tick()
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
