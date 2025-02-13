@@ -179,13 +179,6 @@ if __name__ == "__main__":
         Adds equations to a function that compute the Ricci tensor.
         """
         function.add_eqn(
-            Gamma[ua, lb, lc],
-            (1/2) * g[ua, ud] * (
-                div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
-            )
-        )
-
-        function.add_eqn(
             Gammat[la, lb, lc],
             (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
         )
@@ -228,6 +221,13 @@ if __name__ == "__main__":
 
     fun.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
     fun.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
+
+    function.add_eqn(
+        Gamma[ua, lb, lc],
+        (1/2) * g[ua, ud] * (
+            div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
+        )
+    )
 
     compute_ricci(fun)
 
@@ -321,13 +321,10 @@ if __name__ == "__main__":
     # Convert ADM to BSSN variables
     ###
     funload = gf.create_function(
-        "adm2bssn", ScheduleBin.Init, schedule_after="ADMBaseX_PostInitial")
+        "adm2bssn", ScheduleBin.Init, schedule_after=["ADMBaseX_PostInitial"])
 
-    phi_tmp = mkSymbol("phi_tmp")
-    trK_tmp = mkSymbol("trK_tmp")
-
-    funload.add_eqn(phi_tmp, (1/12) * log(detg))
-    funload.add_eqn(trK_tmp, g[ui, uj] * k[li, lj])
+    phi_tmp = (1/12) * log(detg)
+    trK_tmp = g[ui, uj] * k[li, lj]
 
     funload.add_eqn(gt[li, lj], exp(-4 * phi_tmp) * g[li, lj])
     funload.add_eqn(phi, phi_tmp)
@@ -350,7 +347,7 @@ if __name__ == "__main__":
     # Convert BSSN to ADM variables
     ###
     funstore = gf.create_function(
-        "bssn2adm", ScheduleBin.Analysis, schedule_before="ADMBaseX_SetADMVars")
+        "bssn2adm", ScheduleBin.Analysis, schedule_before=["ADMBaseX_SetADMVars"])
 
     funstore.add_eqn(g[li, lj], exp(4 * phi) * gt[li, lj])
     funstore.add_eqn(k[li, lj], exp(4 * phi) *
@@ -366,6 +363,13 @@ if __name__ == "__main__":
     ###
     funcons = gf.create_function(
         "bssncons", ScheduleBin.Analysis, schedule_after="ADMBaseX_SetADMVars")
+
+    function.add_eqn(
+        Gamma[ua, lb, lc],
+        (1/2) * g[ua, ud] * (
+            div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
+        )
+    )
 
     compute_ricci(funcons)
 
