@@ -70,6 +70,9 @@ class IndexTracker:
         global lookup_pair
         if (idx in self.free) or (idx in self.contracted):
             return False
+        letter_or_num = ord(str(idx)[1])
+        if letter_or_num >= ord('0') and letter_or_num <= ord('9'):
+            return True
         assert idx in lookup_pair, f"{idx} not in {lookup_pair}"
         pdx = lookup_pair[idx]
         if pdx in self.free:
@@ -422,7 +425,12 @@ class DivMaker(Applier):
         g = do_match(expr, div(pp1 * pp2, p2))
         if g:
             q0, q1, q2 = g[pp1], g[pp2], g[p2]
-            return cast(Expr, div(q0, q2) * q1 + q0 * div(q1, q2))
+            if q0 == -1:
+                return cast(Expr, -div(q1, q2))
+            elif q1 == -1:
+                return cast(Expr, -div(q0, q2))
+            else:
+                return cast(Expr, div(q0, q2) * q1 + q0 * div(q1, q2))
 
         # Div of power
         g = do_match(expr, div(Pow(p0, pn0), p1))
@@ -493,57 +501,107 @@ y = mkSymbol("y")
 z = mkSymbol("z")
 one = do_sympify(1)
 zero = do_sympify(0)
+noidx = mkIdx("noidx")
 class DivMakerVisitor:
     def __init__(self)->None:
-        self.do_div = None
+        pass
 
     @multimethod
-    def visit(self, expr: sy.Basic) -> IndexTracker:
+    def visit(self, expr: sy.Basic, idx: sy.Idx) -> IndexTracker:
         raise Exception(str(expr)+" "+str(type(expr)))
 
     @visit.register
-    def _(self, expr: sy.Add) -> IndexTracker:
-        if self.do_div is None:
-            return expr
+    def _(self, expr: sy.Add, idx: sy.Idx) -> IndexTracker:
         r = zero
-        for a in expr.args:
-            r += self.visit(a)
-        return r
+        if True: #self.do_div is not None:
+            for a in expr.args:
+                r += self.visit(a, idx)
+            return r
+
+#        evaluate = False
+#        n = len(expr.args)
+#        for i in range(n):
+#            a = expr.args[i]
+#            a2 = self.visit(a)
+#            if a is not a2:
+#                evaluate = True
+#                break
+#        if not evaluate:
+#            return expr
+#        j = 0
+#        while j < i:
+#            r += expr.args[j]
+#            j += 1
+#        r += a2
+#        j += 1
+#        while j < n:
+#            r += self.visit(expr.args[j])
+#            j += 1
+#        return r
 
     @visit.register
-    def _(self, expr: sy.Mul) -> IndexTracker:
-        if self.do_div is None:
-            return expr
-        s = do_sympify(0)
-        for i in range(len(expr.args)):
-            term = do_sympify(1)
-            for j in range(len(expr.args)):
-                if i==j:
-                    term *= self.visit(a)
-                else:
-                    term *= a
-            s += term
-        return s
+    def _(self, expr: sy.Mul, idx: sy.Idx) -> IndexTracker:
+        if idx is not noidx:
+            s = zero
+            for i in range(len(expr.args)):
+                term = one
+                for j in range(len(expr.args)):
+                    a = expr.args[j]
+                    if i==j:
+                        term *= self.visit(a, idx)
+                    else:
+                        term *= self.visit(a, noidx)
+                s += term
+            return s
+        else:
+            s = one
+            for a in expr.args:
+                s *= self.visit(a, noidx)
+            return s
+
+#        evaluate = False
+#        n = len(expr.args)
+#        for i in range(n):
+#            a = expr.args[i]
+#            a2 = self.visit(a)
+#            if a is not a2:
+#                evaluate = True
+#                break
+
+#        if not evaluate:
+#            return expr
+
+#        r = one
+#        j = 0
+#        while j < i:
+#            r *= expr.args[j]
+#            j += 1
+#        r *= a2
+#        j += 1
+#        while j < n:
+#            r *= self.visit(expr.args[j])
+#            j += 1
+#        return r
 
     @visit.register
-    def _(self, expr: sy.Symbol) -> IndexTracker:
-        if self.do_div is None:
+    def _(self, expr: sy.Symbol, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
 
         # This is written in a bad way
-        if self.do_div == l0:
+        if idx == l0:
             if expr == x:
                 return one
             elif expr in [y, z]:
                 return zero
 
-        elif self.do_div == l1:
+        elif idx == l1:
             if expr == y:
                 return one
             elif expr in [x, z]:
                 return zero
 
-        elif self.do_div == l2:
+        elif idx == l2:
             if expr == z:
                 return one
             elif expr in [x, y]:
@@ -552,91 +610,175 @@ class DivMakerVisitor:
         else:
             raise Exception(f"Bad index passed to derivative: {expr}")
 
-        return expr
+        return div(expr, idx)
 
     @visit.register
-    def _(self, expr: sy.Integer) -> IndexTracker:
-        if self.do_div is None:
+    def _(self, expr: sy.Integer, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Rational) -> IndexTracker:
-        if self.do_div is None:
+    def _(self, expr: sy.Rational, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Float) -> IndexTracker:
-        if self.do_div is None:
+    def _(self, expr: sy.Float, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Idx, idx: sy.Idx) -> IndexTracker:
         raise Exception("Derivative of Index")
 
     @visit.register
-    def _(self, expr: sy.Indexed) -> IndexTracker:
-        return expr
+    def _(self, expr: sy.Indexed, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
+            return expr
+        return div(expr, idx)
 
     @visit.register
-    def _(self, expr: sy.Function) -> IndexTracker:
-        r = expr.args[0]
-        if type(r) == sy.Indexed:
+    def _(self, expr: sy.IndexedBase, idx: sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
+        return div(expr, idx)
+
+    @visit.register
+    def _(self, expr: sy.Function, idx: sy.Idx) -> IndexTracker:
+        r = expr.args[0]
         name = expr.func.__name__
         if name == "div":
 
             # Handle div of div
             sub = expr.args[0]
+            sub = self.visit(sub, noidx)
+            if len(expr.args) > 2:
+                for idx1 in expr.args[1:]:
+                    sub = self.visit(sub, idx1)
+                return sub
             if isinstance(sub, sy.Function) and sub.func.__name__ == "div":
-                return self.visit(div(sub.args[0], *sub.args[1:], *expr.args[1:]))
+                args = sorted(sub.args[1:] + expr.args[1:],key=lambda x : str(x))
+                return div(sub.args[0], *args)
 
-            old = self.do_div
-            for idx in expr.args[1:]:
-                if idx in [l0,l1,l2,l3]:
-                    self.do_div = idx
-                    r = self.visit(r)
-            return r
-        elif self.do_div is None:
+            for idx1 in expr.args[1:]:
+                sub = self.visit(sub, idx1)
+
+            if idx is not noidx:
+                sub = self.visit(div(sub, idx), noidx)
+
+            return sub
+        elif idx is noidx:
             return expr
         else:
             if name == "sin":
-                f = cos(r)*self.visit(r)
+                f = cos(r)*self.visit(r, idx)
             elif name == "cos":
-                f = -sin(r)*self.visit(r)
+                f = -sin(r)*self.visit(r, idx)
             elif name == "exp":
-                f = exp(r)*self.visit(r)
+                f = exp(r)*self.visit(r, idx)
             else:
                 raise Exception("unknown func")
             return f
 
     @visit.register
-    def _(self, expr: sy.Pow) -> IndexTracker:
-        if self.do_div is None:
+    def _(self, expr: sy.Pow, idx:sy.Idx) -> IndexTracker:
+        if idx is noidx:
             return expr
         else:
             r = expr.args[0]
             n = expr.args[1]
-            return n*r**(n-1)
-
-    @visit.register
-    def _(self, expr: sy.IndexedBase) -> IndexTracker:
-        return expr
+            return n*r**(n-1)*self.visit(r, idx)
 
 dmv = DivMakerVisitor()
+
 def assert_eq(a,b):
     assert a is not None
-    assert a == b, f"{a} != {b}"
-assert_eq(dmv.visit(div(x,l0)),one)
-assert_eq(dmv.visit(div(y,l0)),zero)
-assert_eq(dmv.visit(div(x**3,l0)),3*x**2)
-assert_eq(dmv.visit(div(sin(x),l0)),cos(x))
+    r =  do_simplify(a - b)
+    assert r == 0, f"{a} minus {b} !=0, instead {r}"
 
-foo = IndexedBase("foo")
-assert_eq(dmv.visit(div(foo[la],l0)),div(foo[la],l0))
-assert_eq(dmv.visit(div(div(foo[la],lb),lc)), div(foo[la],lb,lc))
+def do_div(expr):
+    r = dmv.visit(expr, noidx)
+    return r
+
+
+if __name__ == "__main__":
+    foo = IndexedBase("foo")
+    gxx = mkSymbol("gxx")
+    gxy = mkSymbol("gxy")
+    gyy = mkSymbol("gyy")
+    gzz = mkSymbol("gzz")
+    gyz = mkSymbol("gyz")
+    gxz = mkSymbol("gxz")
+
+    expr1 = div(gxx**2, l0, l0)
+    #expr2 = 2*div(gxx*div(gxx, l0),l0)
+    expr2 = 2*div(gxx, l0)**2 + 2*gxx*div(gxx, l0, l0)
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = - gyy*div(-gxz, l0) - gyy*div(gxz, l0)
+    expr2 = zero
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = -2*gxy*div(gxy, l2) + div(gxy**2, l2)
+    expr2 = zero
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = div(-gxy**2, l2)
+    expr2 = -2*gxy*div(gxy, l2)
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = div(gxx*gyy - gxy**2, l2)
+    expr2 = gxx*div(gyy,l2)+div(gxx,l2)*gyy-2*gxy*div(gxy,l2)
+    assert_eq( do_div(expr1), expr2 )
+
+    assert_eq(do_div(div(x,l0)),one)
+    assert_eq(do_div(div(y,l0)),zero)
+    assert_eq(do_div(div(x**3,l0)),3*x**2)
+    assert_eq(do_div(div(sin(x),l0)),cos(x))
+    assert_eq(do_div(div(x**2+x**3,l0)),2*x + 3*x**2)
+    assert_eq(do_div(div(x**2+x**3,l1)),zero)
+    assert_eq(do_div(div(1/(2+x**2),l0)),-2*x/(2+x**2)**2)
+    assert_eq(do_div(div(x**3/(2+x**2),l0)),-2*x**4/(2+x**2)**2 + 3*x**2/(2+x**2))
+    assert_eq(do_div(div(x**2*sin(x),l0)),x*(x*cos(x)+2*sin(x)))
+    assert_eq(do_div(div(sin(x**3),l0)),cos(x**3)*3*x**2)
+    assert_eq(do_div(div(foo[la],l0)),div(foo[la],l0))
+    assert_eq(do_div(div(div(foo[la],lb),lc)), div(foo[la],lb,lc))
+    assert_eq(do_div(div(div(foo[la],lc),lb)), div(foo[la],lb,lc))
+    assert_eq(do_div(div(div(foo[la],l0),l1)), div(foo[la],l0,l1))
+    assert_eq(do_div(div(div(foo[la],l1),l0)), div(foo[la],l0,l1))
+    assert_eq(do_div(x*div(x,l0)), x)
+    assert_eq(do_div(x+div(x,l0)), x+1)
+    assert_eq(do_div(x+x*div(x,l0)), 2*x)
+    assert_eq(do_div(x*(x+x*div(x,l0))), 2*x**2)
+    assert_eq(do_div(x*(x/2+3*x*div(x,l0))), (7/2)*x**2)
+    assert_eq(do_div(div(foo,l0)), div(foo,l0))
+    assert_eq( do_div(div(gxx, l1)/2 + div(gxy, l0)), div(gxx, l1)/2 + div(gxy, l0) )
+    assert_eq( do_div(div(exp(x),l0)), exp(x))
+    assert_eq( do_div(div(exp(x)/2,l0)), exp(x)/2)
+    expr = (gxy*gyz - gxz*gyy)*(-div(gxx, l2)/2 + div(gxz, l0))
+    assert_eq(do_div(expr), expr)
+    expr1 = (gxy*gyz - gxz*gyy + gzz)*(-div(gxx, l2)/2 + div(gxz+gzz, l0))
+    expr2 = (gxy*gyz - gxz*gyy + gzz)*(-div(gxx, l2)/2 + div(gxz, l0) +div(gzz, l0))
+    assert_eq(do_div(expr1), expr2)
+    expr = (gxx*gyz - gxy*gxz)*(div(gxx, l1) - 2*div(gxy, l0))/2 + (gxy*gyz - gxz*gyy)*div(gxx, l0)/2
+    assert_eq( do_div(expr), expr )
+    expr1 = div(gxx*gyy, l0)
+    expr2 = div(gxx, l0)*gyy + div(gyy, l0)*gxx
+    assert_eq( do_div(expr1), expr2 )
+    expr1 = x**6/3 + sin(x)/x
+    expr2 = 2*x**5 + cos(x)/x - sin(x)/x**2
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    expr1 = (x+sin(x))*(1/x+cos(x))
+    expr2 = (1+cos(x))*(1/x+cos(x))-(1/x**2+sin(x))*(x+sin(x))
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    expr1 = 1/(x+sin(x))
+    expr2 = -(1+cos(x))/(x+sin(x))**2
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    assert_eq( do_div(div(sqrt(x), l0)), 1/sqrt(x)/2 )
+    exit(1)
 ### dmv
 
 TA = TypeVar("TA")
@@ -1470,6 +1612,10 @@ class ThornDef:
             mkFunction("divzz"): True
         }
 
+    def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
+        it = check_indices(expr, self.defn)
+        return it.free
+
     def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
@@ -1602,13 +1748,13 @@ class ThornDef:
         return msym_list
 
     def get_matrix(self, ind: Indexed) -> Matrix:
-        print(ind, ind.args)
         values: Dict[Idx, Idx] = dict()
         result = mkZeros(*tuple([dimension] * (len(ind.args) - 1)))
         ind_args: List[Idx] = [chkcast(x, Idx) for x in ind.args[1:]]
         while incr(ind_args, values):
             arr_inds = tuple([to_num(chkcast(do_subs(x, values), Idx)) for x in ind_args])
-            result[arr_inds] = self.do_subs(ind, values)
+            r = self.do_subs(ind, values)
+            result[arr_inds] = r
         return result
 
     def get_indices(self, expr: Expr) -> List[Idx]:
@@ -1720,39 +1866,65 @@ class ThornDef:
         isub = IndexSubsVisitor(self.subs)
         dm = DivMaker(self.get_params(), self.get_coords())
         dmv = DivMakerVisitor()
-        for i in range(20):
-            tick()
-            new_arg = arg
-            new_arg = expand_contracted_indices(new_arg, self.symmetries)
-            tick()
-            new_arg = cast(Expr, self.symmetries.apply(new_arg))
+        new_way = True
+        arg1 = arg
+        arg2 = arg
+        ##
+        if new_way:
+            for i in range(20):
+                tick()
+                new_arg = arg1
+                new_arg = expand_contracted_indices(new_arg, self.symmetries)
+                tick()
+                new_arg = cast(Expr, self.symmetries.apply(new_arg))
 
-            tick()
-            new_arg1 = cast(Expr, dm.apply(new_arg))
-            new_arg2 = cast(Expr, dmv.visit(new_arg))
-            assert new_arg2 == new_arg2, f"{new_arg1} != {new_arg2}"
-            new_arg = new_arg1
-            tick()
+                tick()
 
-            pre_arg = new_arg
-            if type(subs) == tuple and len(subs) > 0 and type(subs[0]) == dict:
-                isub.idxsubs = subs[0]
-            else:
-                isub.idxsubs = dict()
-            new_arg1 = do_subs(new_arg, self.subs, *subs)
-            new_arg2 = isub.visit(new_arg)
-            if new_arg1 != new_arg2:
-                print(colorize(pre_arg,"cyan"))
-                print(colorize(new_arg1,"yellow"))
-                print(colorize(new_arg2,"red"))
-                print(subs)
-                raise Exception()
-            new_arg = new_arg2
-            tick()
-            if new_arg == arg:
-                return new_arg
-            arg = new_arg
-        raise Exception(str(arg))
+                if type(subs) == tuple and len(subs) > 0 and type(subs[0]) == dict:
+                    isub.idxsubs = subs[0]
+                else:
+                    isub.idxsubs = dict()
+                new_arg = isub.visit(new_arg)
+                #new_arg = do_subs(new_arg, self.subs, *subs)
+                tick()
+                new_argx = cast(Expr, do_div(new_arg))
+#                new_argy = cast(Expr, dm.apply(new_arg))
+#                new_argy = cast(Expr, dm.apply(new_argy))
+#                new_argy = cast(Expr, dm.apply(new_argy))
+#                diff_check = do_simplify(new_argx - new_argy)
+#                if diff_check != 0:
+#                    print("="*50)
+#                    print("diff:",diff_check)
+#                    print("new_arg:",new_arg)
+#                    print("new_argx:",new_argx)
+#                    print("new_argy:",new_argy)
+#                    print("="*50)
+                new_arg = new_argx
+                tick()
+                if new_arg == arg1:
+                    arg1 = new_arg
+                    break
+                arg1 = new_arg
+            return arg1
+        else:
+            for i in range(20):
+                 tick()
+                 new_arg = arg2
+                 new_arg = expand_contracted_indices(new_arg, self.symmetries)
+                 tick()
+                 new_arg = cast(Expr, self.symmetries.apply(new_arg))
+
+                 tick()
+                 new_arg = cast(Expr, dm.apply(new_arg))
+                 tick()
+
+                 new_arg = do_subs(new_arg, self.subs, *subs)
+                 tick()
+                 if new_arg == arg2:
+                     arg2 = new_arg
+                     break
+                 arg2 = new_arg
+            return arg2
 
 def _parity_of(p: int | Parity) -> Parity:
     if isinstance(p, Parity):

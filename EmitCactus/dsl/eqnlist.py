@@ -17,6 +17,8 @@ from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.util import get_or_compute
 
+from here import here
+
 # These symbols represent the inverse of the
 # spatial discretization.
 DXI = mkSymbol("DXI")
@@ -186,16 +188,25 @@ class EqnList:
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
         tick()
+        here(len(self.temporaries), len(self.eqns))
+        hcnt = 1
         for temp_var in self.temporaries:
             for lhs, rhs in self.eqns.items():
                 eqn_i = self.order.index(lhs)
 
                 if str(lhs) == str(temp_var):
+                    tick()
                     get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
+                    tick()
 
                 if rhs.find(temp_var):  # type: ignore[no-untyped-call]
+                    tick()
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
+                    tick()
                 tick()
+            here(hcnt,len(self.temporaries), len(self.eqns))
+            hcnt += 1
+        here()
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 

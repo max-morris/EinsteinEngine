@@ -222,7 +222,7 @@ if __name__ == "__main__":
     fun.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
     fun.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
 
-    function.add_eqn(
+    fun.add_eqn(
         Gamma[ua, lb, lc],
         (1/2) * g[ua, ud] * (
             div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
