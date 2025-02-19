@@ -36,7 +36,7 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
 
     @visit.register
     def _(self, n: Bool) -> str:
-        return 'yes' if n.b else 'no'
+        return '"yes"' if n.b else '"no"'
 
     @visit.register
     def _(self, n: InterfaceRoot) -> str:
