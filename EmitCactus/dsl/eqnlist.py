@@ -2,7 +2,6 @@ import typing
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
-from codetiming import notick as tick
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import symbols
@@ -187,26 +186,23 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
-        tick()
-        here(len(self.temporaries), len(self.eqns))
-        hcnt = 1
+        n = 0
+        nt = len(self.temporaries)
+        barsize = 30
         for temp_var in self.temporaries:
+            n += 1
             for lhs, rhs in self.eqns.items():
                 eqn_i = self.order.index(lhs)
 
                 if str(lhs) == str(temp_var):
-                    tick()
                     get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
-                    tick()
 
                 if rhs.find(temp_var):  # type: ignore[no-untyped-call]
-                    tick()
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
-                    tick()
-                tick()
-            here(hcnt,len(self.temporaries), len(self.eqns))
-            hcnt += 1
-        here()
+            nstar = int(barsize*n/nt)
+            bar = ("*"*nstar) + (" "*(barsize-nstar))
+            print("progress: %s %d/%d (%.2f)%%    " % (bar, n, nt, 100*n/nt), end='\r')
+        print()
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
