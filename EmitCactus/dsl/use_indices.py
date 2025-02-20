@@ -1193,6 +1193,9 @@ class ScheduleBin(ScheduleBinEnum):
     Init = auto(), 'Init', True
     Analysis = auto(), 'Analysis', True
     EstimateError = auto(), 'EstimateError', False
+    ODESolvers_Initial = auto(), 'ODESolvers_Initial', False
+    ODESolvers_PostStep = auto(), 'ODESolvers_PostStep', False
+    ODESolvers_RHS = auto(), 'ODESolvers_RHS', False
 
 
 class ThornFunction:
