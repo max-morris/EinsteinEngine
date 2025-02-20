@@ -215,7 +215,7 @@ if __name__ == "__main__":
     # using an “upwind” stencil which is shifted by one point in
     # the direction of the shift, and of the same order
     ###
-    fun = gf.create_function("bssn_rhs", ScheduleBin.Evolve)
+    fun = gf.create_function("bssn_rhs", ScheduleBin.ODESolvers_RHS)
 
     # Aux. Equations
 
@@ -321,7 +321,10 @@ if __name__ == "__main__":
     # Convert ADM to BSSN variables
     ###
     funload = gf.create_function(
-        "adm2bssn", ScheduleBin.Init, schedule_after=["ADMBaseX_PostInitial"])
+        "adm2bssn",
+        ScheduleBin.ODESolvers_Initial,
+        schedule_after=["ADMBaseX_PostInitial"]
+    )
 
     phi_tmp = (1/12) * log(detg)
     trK_tmp = g[ui, uj] * k[li, lj]
@@ -347,7 +350,10 @@ if __name__ == "__main__":
     # Convert BSSN to ADM variables
     ###
     funstore = gf.create_function(
-        "bssn2adm", ScheduleBin.Analysis, schedule_before=["ADMBaseX_SetADMVars"])
+        "bssn2adm",
+        ScheduleBin.ODESolvers_PostStep,
+        schedule_before=["ADMBaseX_SetADMVars"]
+    )
 
     funstore.add_eqn(g[li, lj], exp(4 * phi) * gt[li, lj])
     funstore.add_eqn(k[li, lj], exp(4 * phi) *
@@ -362,7 +368,9 @@ if __name__ == "__main__":
     # Compute constraints
     ###
     funcons = gf.create_function(
-        "bssncons", ScheduleBin.Analysis, schedule_after="ADMBaseX_SetADMVars")
+        "bssn_cons",
+        ScheduleBin.Analysis
+    )
 
     function.add_eqn(
         Gamma[ua, lb, lc],
