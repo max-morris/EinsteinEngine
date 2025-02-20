@@ -4,9 +4,8 @@ Use the Sympy Indexed type for relativity expressions.
 import sys
 from enum import auto
 from typing import *
-from sympy import sqrt, exp
+from sympy import exp
 import re
-from here import here
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -201,71 +200,73 @@ class SympyExprErrorVisitor:
 
 ### ind subs
 class IndexSubsVisitor:
-    def __init__(self, defn:Dict[str, Tuple[str, List[Idx]]])->None:
+    def __init__(self, defn:Dict[Indexed, Expr])->None:
         self.defn = defn
-        self.idxsubs = dict()
-        for k in defn:
-            assert type(k) == Indexed
+        self.idxsubs: Dict[Idx, Idx]  = dict()
 
     @multimethod
-    def visit(self, expr: sy.Basic) -> IndexTracker:
+    def visit(self, expr: sy.Basic) -> None:
         raise Exception(str(expr)+" "+str(type(expr)))
 
     @visit.register
-    def _(self, expr: sy.Add) -> IndexTracker:
+    def _(self, expr: sy.Add) -> Expr:
         r = do_sympify(0)
         for a in expr.args:
             r += self.visit(a)
         return r
 
     @visit.register
-    def _(self, expr: sy.Mul) -> IndexTracker:
+    def _(self, expr: sy.Mul) -> Expr:
         r = do_sympify(1)
         for a in expr.args:
             r *= self.visit(a)
         return r
 
     @visit.register
-    def _(self, expr: sy.Symbol) -> IndexTracker:
+    def _(self, expr: sy.Symbol) -> Expr:
         return expr
 
     @visit.register
-    def _(self, expr: sy.Integer) -> IndexTracker:
+    def _(self, expr: sy.Integer) -> Expr:
         return expr
 
     @visit.register
-    def _(self, expr: sy.Rational) -> IndexTracker:
+    def _(self, expr: sy.Rational) -> Expr:
         return expr
 
     @visit.register
-    def _(self, expr: sy.Float) -> IndexTracker:
+    def _(self, expr: sy.Float) -> Expr:
         return expr
 
     @visit.register
-    def _(self, expr: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Idx) -> Expr:
         return do_subs(expr, self.idxsubs)
 
     @visit.register
-    def _(self, expr: sy.Indexed) -> IndexTracker:
-        r = expr
+    def _(self, expr: sy.Indexed) -> Expr:
+        r: Indexed = expr
         if len(self.idxsubs) > 0:
-            indexes = [self.idxsubs.get(a,a) for a in expr.args[1:]]
-            r = Indexed(expr.base, *indexes)
-        r = self.defn.get(r,r)
+            indexes : List[Idx] = list()
+            for a in expr.args[1:]:
+                assert isinstance(a, Idx)
+                indexes.append(self.idxsubs.get(a,a))
+            r = mkIndexed(expr.base, *indexes)
+        return self.defn.get(r,r)
+
+    @visit.register
+    def _(self, expr: sy.Function) -> Expr:
+        f = mkFunction(expr.func.__name__)
+        args = tuple([self.visit(a) for a in expr.args])
+        r = f(*args)
+        assert isinstance(r, Expr)
         return r
 
     @visit.register
-    def _(self, expr: sy.Function) -> IndexTracker:
-        f = mkFunction(expr.func.__name__)
-        args = tuple([self.visit(a) for a in expr.args])
-        return f(*args)
-
-    @visit.register
-    def _(self, expr: sy.Pow) -> IndexTracker:
+    def _(self, expr: sy.Pow) -> Expr:
         return expr
 
     @visit.register
-    def _(self, expr: sy.IndexedBase) -> IndexTracker:
+    def _(self, expr: sy.IndexedBase) -> Expr:
         return expr
 
 def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
@@ -350,9 +351,14 @@ one = do_sympify(1)
 zero = do_sympify(0)
 noidx = mkIdx("noidx")
 
+def mkdiv(expr:Expr, *args:Idx)->Expr:
+    r = div(expr, *args)
+    assert isinstance(r, Expr)
+    return r
+
 class DivMakerVisitor:
-    def __init__(self, coords=None)->None:
-        self.params = dict()
+    def __init__(self, coords: Optional[List[Symbol]]=None)->None:
+        self.params:Set[Symbol] = set()
         if coords is None:
             coords = [x,y,z]
         self.coords = coords
@@ -361,18 +367,18 @@ class DivMakerVisitor:
             self.idxmap[coords[i]] = down_indices[i]
 
     @multimethod
-    def visit(self, expr: sy.Basic, idx: sy.Idx) -> IndexTracker:
+    def visit(self, expr: sy.Basic, idx: sy.Idx) -> Expr:
         raise Exception(str(expr)+" "+str(type(expr)))
 
     @visit.register
-    def _(self, expr: sy.Add, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Add, idx: sy.Idx) -> Expr:
         r = zero
         for a in expr.args:
             r += self.visit(a, idx)
         return r
 
     @visit.register
-    def _(self, expr: sy.Mul, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Mul, idx: sy.Idx) -> Expr:
         if idx is not noidx:
             s = zero
             for i in range(len(expr.args)):
@@ -392,7 +398,7 @@ class DivMakerVisitor:
             return s
 
     @visit.register
-    def _(self, expr: sy.Symbol, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Symbol, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
         ####
@@ -418,14 +424,13 @@ class DivMakerVisitor:
         else:
             raise Exception(f"Bad index passed to derivative: {expr}")
 
-        return div(expr, idx)
+        return mkdiv(expr, idx)
         ####
 
         if expr in self.params:
             return zero
 
         elif expr in self.coords:
-            here()
             if expr == self.idxmap[idx]:
                 return one
             else:
@@ -434,47 +439,48 @@ class DivMakerVisitor:
         return div(expr, idx)
 
     @visit.register
-    def _(self, expr: sy.Integer, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Integer, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Rational, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Rational, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Float, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Float, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
         return zero
 
     @visit.register
-    def _(self, expr: sy.Idx, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Idx, idx: sy.Idx) -> Expr:
         raise Exception("Derivative of Index")
 
     @visit.register
-    def _(self, expr: sy.Indexed, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Indexed, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
-        return div(expr, idx)
+        return mkdiv(expr, idx)
 
     @visit.register
-    def _(self, expr: sy.IndexedBase, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.IndexedBase, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
-        return div(expr, idx)
+        return mkdiv(expr, idx)
 
     @visit.register
-    def _(self, expr: sy.Function, idx: sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Function, idx: sy.Idx) -> Expr:
         r = expr.args[0]
         name = expr.func.__name__
         if name == "div":
 
             # Handle div of div
-            sub = expr.args[0]
+            assert isinstance(expr.args[0], Expr)
+            sub: Expr = expr.args[0]
             sub = self.visit(sub, noidx)
             if len(expr.args) > 2:
                 for idx1 in expr.args[1:]:
@@ -482,7 +488,7 @@ class DivMakerVisitor:
                 return sub
             if isinstance(sub, sy.Function) and sub.func.__name__ == "div":
                 args = sorted(sub.args[1:] + expr.args[1:],key=lambda x : str(x))
-                return div(sub.args[0], *args)
+                return mkdiv(sub.args[0], *args)
 
             for idx1 in expr.args[1:]:
                 sub = self.visit(sub, idx1)
@@ -502,30 +508,34 @@ class DivMakerVisitor:
                 f = exp(r)*self.visit(r, idx)
             else:
                 raise Exception("unknown func")
+            assert isinstance(f, Expr)
             return f
 
     @visit.register
-    def _(self, expr: sy.Pow, idx:sy.Idx) -> IndexTracker:
+    def _(self, expr: sy.Pow, idx:sy.Idx) -> Expr:
         if idx is noidx:
             return expr
         else:
             r = expr.args[0]
             n = expr.args[1]
-            return n*r**(n-1)*self.visit(r, idx)
+            ret = n*r**(n-1)*self.visit(r, idx)
+            assert isinstance(ret, Expr)
+            return ret
 
 dmv = DivMakerVisitor()
 
-def assert_eq(a,b):
+def assert_eq(a: Expr ,b: Expr)->None:
     assert a is not None
     r =  do_simplify(a - b)
     assert r == 0, f"{a} minus {b} !=0, instead {r}"
 
-def do_div(expr):
+def do_div(expr: Basic)->Expr:
     r = dmv.visit(expr, noidx)
+    assert isinstance(r, Expr)
     return r
 
 if __name__ == "__main__":
-    foo = IndexedBase("foo")
+    foo = mkIndexedBase("foo",(1,))
     gxx = mkSymbol("gxx")
     gxy = mkSymbol("gxy")
     gyy = mkSymbol("gyy")
@@ -597,7 +607,7 @@ if __name__ == "__main__":
     expr1 = 1/(x+sin(x))
     expr2 = -(1+cos(x))/(x+sin(x))**2
     assert_eq( do_div(div(expr1, l0)), expr2 )
-    assert_eq( do_div(div(sqrt(x), l0)), 1/sqrt(x)/2 )
+    assert_eq( do_div(div(do_sqrt(x), l0)), 1/do_sqrt(x)/2 )
     exit(1)
 ### dmv
 
@@ -1285,7 +1295,7 @@ class ThornFunction:
                     rhs0 = rhs[arr_inds]
                 else:
                     rhs0 = rhs
-                rhs2 = self.thorn_def.do_subs(rhs0, inds, self.thorn_def.subs)
+                rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
                 # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
                 self._add_eqn2(lhs2, rhs2)
             if count == 0:
@@ -1399,7 +1409,7 @@ class ThornDef:
         self.name = name
         self.symmetries = Sym()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
-        self.subs: Dict[Expr, Expr] = dict()
+        self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
         self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
@@ -1566,7 +1576,7 @@ class ThornDef:
         ind_args: List[Idx] = [chkcast(x, Idx) for x in ind.args[1:]]
         while incr(ind_args, values):
             arr_inds = tuple([to_num(chkcast(do_subs(x, values), Idx)) for x in ind_args])
-            r = self.do_subs(ind, values)
+            r = self.do_subs(ind, idxsubs=values)
             result[arr_inds] = r
         return result
 
@@ -1618,7 +1628,7 @@ class ThornDef:
                     narray = len(arr_inds)
                     res = do_simplify(set_matrix[arr_inds[0:2]])
                     if narray >= 3:
-                        res = self.do_subs(res, indrep)
+                        res = self.do_subs(res, idxsubs=indrep)
                     self.subs[out] = res
                 else:
                     self.subs[out] = set_matrix[arr_inds]
@@ -1633,9 +1643,9 @@ class ThornDef:
                 assert isinstance(out, Indexed)
                 arr_inds = tuple([to_num(x) for x in out.indices])
                 if self.run_simplify:
-                    self.subs[out] = do_simplify(self.do_subs(f, indrep))
+                    self.subs[out] = do_simplify(self.do_subs(f, idxsubs=indrep))
                 else:
-                    self.subs[out] = self.do_subs(f, indrep)
+                    self.subs[out] = self.do_subs(f, idxsubs=indrep)
                 print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
             return None
 
@@ -1668,10 +1678,14 @@ class ThornDef:
         result: List[Eq] = list()
         for tup in expand_free_indices(eqn.lhs, self.symmetries):
             lhs, inds, _ = tup
-            result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, inds, self.subs))]
+            result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, self.subs, inds))]
         return result
 
-    def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
+    def do_subs(self, arg: Expr, subs: Optional[Dict[Indexed, Expr]]=None, idxsubs: Optional[Dict[Idx,Idx]]=None) -> Expr:
+        if subs is None:
+            subs = dict()
+        if idxsubs is None:
+            idxsubs = dict()
         isub = IndexSubsVisitor(self.subs)
         arg1 = arg
         for i in range(20):
@@ -1680,12 +1694,9 @@ class ThornDef:
             new_arg = cast(Expr, self.symmetries.apply(new_arg))
 
 
-            if type(subs) == tuple and len(subs) > 0 and type(subs[0]) == dict:
-                isub.idxsubs = subs[0]
-            else:
-                isub.idxsubs = dict()
+            isub.idxsubs = idxsubs
             new_arg = isub.visit(new_arg)
-            new_arg = cast(Expr, do_div(new_arg))
+            new_arg = do_div(new_arg)
             if new_arg == arg1:
                 return new_arg
             arg1 = new_arg
@@ -1750,6 +1761,6 @@ if __name__ == "__main__":
 
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
-    foo = gf.create_function("foo", ScheduleBin.Analysis)
-    foo.add_eqn(a, do_sympify(dimension))
-    foo.add_eqn(b, a + do_sympify(2))
+    foofunc = gf.create_function("foo", ScheduleBin.Analysis)
+    foofunc.add_eqn(a, do_sympify(dimension))
+    foofunc.add_eqn(b, a + do_sympify(2))
