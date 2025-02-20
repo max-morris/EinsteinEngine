@@ -14,9 +14,7 @@ from EmitCactus.util import OrderedSet, incr_and_get
 from EmitCactus.dsl.sympywrap import *
 from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
-from EmitCactus.util import get_or_compute
-
-from here import here
+from EmitCactus.util import get_or_compute, progress_bar
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -186,23 +184,30 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
-        n = 0
-        nt = len(self.temporaries)
-        barsize = 30
-        for temp_var in self.temporaries:
-            n += 1
-            for lhs, rhs in self.eqns.items():
-                eqn_i = self.order.index(lhs)
+        #n = 0
+        #nt = len(self.temporaries)
+        #barsize = 30
+        #t0 = time()
+        with progress_bar(len(self.temporaries), "recycle") as bar:
+            for temp_var in self.temporaries:
+                #n += 1
+                for lhs, rhs in self.eqns.items():
+                    eqn_i = self.order.index(lhs)
 
-                if str(lhs) == str(temp_var):
-                    get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
+                    if str(lhs) == str(temp_var):
+                        get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
-                if rhs.find(temp_var):  # type: ignore[no-untyped-call]
-                    get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
-            nstar = int(barsize*n/nt)
-            bar = ("*"*nstar) + (" "*(barsize-nstar))
-            print("progress: %s %d/%d (%.2f)%%    " % (bar, n, nt, 100*n/nt), end='\r')
-        print()
+                    if rhs.find(temp_var):  # type: ignore[no-untyped-call]
+                        get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
+                bar()
+            #tn = time()
+            #frac = n/nt
+            #tt = (tn-t0)/frac
+            #tr = tt-(tn-t0)
+            #nstar = int(barsize*n/nt)
+            #bar = ("*"*nstar) + (" "*(barsize-nstar))
+            #print("progress: %s %d/%d (%.2f%%) remaining time: %.2fs, total time: %.2fs   " % (bar, n, nt, 100*n/nt, tr, tt), end='\r')
+        #print()
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
