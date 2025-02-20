@@ -29,6 +29,7 @@ if __name__ == "__main__":
 
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
     gmat = gf.get_matrix(g[la,lb])
+    print(gmat)
     imat = do_simplify(do_inv(gmat)*do_det(gmat)) #*idetg
     gf.mk_subst(g[ua, ub], imat)
     gf.mk_subst(ZeroVal[li,lj])
