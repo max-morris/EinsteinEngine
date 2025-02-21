@@ -327,7 +327,7 @@ if __name__ == "__main__":
     )
 
     phi_tmp = (1/12) * log(detg)
-    trK_tmp = g[ui, uj] * k[li, lj]
+    trK_tmp = g[ua, ub] * k[la, lb]
 
     funload.add_eqn(gt[li, lj], exp(-4 * phi_tmp) * g[li, lj])
     funload.add_eqn(phi, phi_tmp)
@@ -372,7 +372,7 @@ if __name__ == "__main__":
         ScheduleBin.Analysis
     )
 
-    function.add_eqn(
+    funcons.add_eqn(
         Gamma[ua, lb, lc],
         (1/2) * g[ua, ud] * (
             div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
