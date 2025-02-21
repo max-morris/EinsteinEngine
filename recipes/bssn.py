@@ -1,7 +1,7 @@
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.use_indices import parities
-    from EmitCactus.dsl.sympywrap import do_inv, do_det, mkSymbol, do_subs
+    from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs
     from EmitCactus.generators.wizards import CppCarpetXWizard
     from sympy import exp, log, Idx, Expr
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
         g_driver_eta * g_driver_B[ua]
     )
 
-    fun.bake()
+    # fun.bake()
 
     ###
     # Convert ADM to BSSN variables
@@ -344,7 +344,7 @@ if __name__ == "__main__":
         4.0 * (dtbeta[ua] - beta[ui] * div(beta[ua], li)) / (3.0 * alp)
     )
 
-    funload.bake()
+    # funload.bake()
 
     ###
     # Convert BSSN to ADM variables
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     funstore.add_eqn(alp, evo_lapse)
     funstore.add_eqn(beta[ua], evo_shift[ua])
 
-    funstore.bake()
+    # funstore.bake()
 
     ###
     # Compute constraints
