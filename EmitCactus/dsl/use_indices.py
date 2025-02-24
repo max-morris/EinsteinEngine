@@ -240,7 +240,11 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Idx) -> Expr:
-        return do_subs(expr, self.idxsubs)
+        res = self.idxsubs.get(expr, None)
+        if res is None:
+            return expr
+        else:
+            return res
 
     @visit.register
     def _(self, expr: sy.Indexed) -> Expr:
@@ -251,7 +255,11 @@ class IndexSubsVisitor:
                 assert isinstance(a, Idx)
                 indexes.append(self.idxsubs.get(a,a))
             r = mkIndexed(expr.base, *indexes)
-        return self.defn.get(r,r)
+        res = self.defn.get(r, None)
+        if res is None:
+            return r
+        else:
+            return res
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
@@ -263,11 +271,20 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Pow) -> Expr:
-        return expr
+        return sy.Pow(self.visit(expr.args[0]), self.visit(expr.args[1]))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
         return expr
+
+def do_isub(expr, subs=None, idxsubs=None):
+    if subs is None:
+        subs = dict()
+    if idxsubs is None:
+        idxsubs = dict()
+    isub = IndexSubsVisitor(subs)
+    isub.idxsubs = idxsubs
+    return isub.visit(expr)
 
 def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
     """
@@ -1253,7 +1270,7 @@ class ThornFunction:
             def r(self, expr: Expr) -> Expr:
                 return expr
 
-        rhs2_: Basic = self.thorn_def.do_subs(rhs2)
+        rhs2_: Basic = do_isub(rhs2)
         assert isinstance(rhs2_, Expr)
         rhs2_ = divs.apply(rhs2_)
         assert isinstance(rhs2_, Expr)
@@ -1314,7 +1331,7 @@ class ThornFunction:
             assert isinstance(rhs, Expr)
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
             eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
-            rhs2 = self.thorn_def.do_subs(eci, self.thorn_def.subs)
+            rhs2 = do_isub(eci)
             self._add_eqn2(lhs2, rhs2)
         elif isinstance(rhs, MatrixBase):
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
