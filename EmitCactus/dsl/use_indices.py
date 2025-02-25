@@ -263,7 +263,7 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
-        f = mkFunction(expr.func.__name__)
+        f = expr.func
         args = tuple([self.visit(a) for a in expr.args])
         r = f(*args)
         assert isinstance(r, Expr)
@@ -1305,7 +1305,7 @@ class ThornFunction:
             for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
                 count += 1
                 lhsx, inds, _ = tup
-                lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+                lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
                 if not isinstance(lhs2_, Symbol):
                     mms = mk_mk_subst(repr(lhs2_))
                     raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
