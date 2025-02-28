@@ -184,14 +184,14 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
-        for temp_var in self.temporaries:
-            for lhs, rhs in self.eqns.items():
-                eqn_i = self.order.index(lhs)
+        for lhs, rhs in self.eqns.items():
+            eqn_i = self.order.index(lhs)
 
-                if str(lhs) == str(temp_var):
-                    get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
+            if lhs in self.temporaries:
+                get_or_compute(temp_writes, lhs, lambda _: OrderedSet()).add(eqn_i)
 
-                if rhs.find(temp_var):  # type: ignore[no-untyped-call]
+            if len(temps_read := free_symbols(rhs).intersection(self.temporaries)) > 0:
+                for temp_var in temps_read:
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
