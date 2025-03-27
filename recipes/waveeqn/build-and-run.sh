@@ -63,21 +63,42 @@ rm -fr ~/simulations/waveeqn
 set +e
 
 OUTFILE=$(./simfactory/bin/sim get-output-dir waveeqn)/waveeqn.out
+ERRFILE=$(./simfactory/bin/sim get-output-dir waveeqn)/waveeqn.err
+############
 echo "OUTPUT FILE IS: ${OUTFILE}"
+echo "ERROR FILE IS: ${ERRFILE}"
+############
 if [ ! -r "$OUTFILE" ]
 then
     echo "TEST FAILED no output"
     exit 8
 fi
-if ! grep "::ZERO TEST RAN::" $OUTFILE > /dev/null
+############
+if grep 'MPI_ABORT was invoked on rank' "${ERRFILE}"
 then
-    echo "ZERO TEST DID NOT RUN"
+    echo "TEST RUN DIED UNEXPECTEDLY"
+    exit 11
+fi
+############
+if grep 'ERROR from host' "${ERRFILE}"
+then
+    echo "TEST RUN DIED UNEXPECTEDLY"
+    exit 11
+fi
+############
+N=$(grep '::ZERO TEST RAN' ${OUTFILE}|wc -l)
+echo "ZERO TESTS THAT RAN: ${N}"
+if [ "$N" != 21 ]
+then
+    echo "ZERO TEST FAILURE"
     exit 10
 fi
+############
 if grep ::ERROR:: $OUTFILE
 then
     echo "TEST FAILED tolerances not satisfied"
     exit 9
 else
     echo "TEST PASSED"
+    exit 0
 fi

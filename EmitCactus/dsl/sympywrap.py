@@ -145,3 +145,6 @@ def finder(expr: Expr) -> Set[Math]:
 
     do_replace(expr, m, r)
     return OrderedSet(result.values())
+
+def free_symbols(expr: Expr) -> Set[Math]:
+    return cast(Set[Math], expr.free_symbols)
