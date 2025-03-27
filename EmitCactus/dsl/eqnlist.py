@@ -184,30 +184,16 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
-        #n = 0
-        #nt = len(self.temporaries)
-        #barsize = 30
-        #t0 = time()
-        with progress_bar(len(self.temporaries), "recycle") as bar:
-            for temp_var in self.temporaries:
-                #n += 1
-                for lhs, rhs in self.eqns.items():
-                    eqn_i = self.order.index(lhs)
+        # Speedup from Max
+        for lhs, rhs in self.eqns.items():
+            eqn_i = self.order.index(lhs)
 
-                    if str(lhs) == str(temp_var):
-                        get_or_compute(temp_writes, temp_var, lambda _: OrderedSet()).add(eqn_i)
+            if lhs in self.temporaries:
+                get_or_compute(temp_writes, lhs, lambda _: OrderedSet()).add(eqn_i)
 
-                    if rhs.find(temp_var):  # type: ignore[no-untyped-call]
-                        get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
-                bar()
-            #tn = time()
-            #frac = n/nt
-            #tt = (tn-t0)/frac
-            #tr = tt-(tn-t0)
-            #nstar = int(barsize*n/nt)
-            #bar = ("*"*nstar) + (" "*(barsize-nstar))
-            #print("progress: %s %d/%d (%.2f%%) remaining time: %.2fs, total time: %.2fs   " % (bar, n, nt, 100*n/nt, tr, tt), end='\r')
-        #print()
+            if len(temps_read := free_symbols(rhs).intersection(self.temporaries)) > 0:
+                for temp_var in temps_read:
+                    get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
