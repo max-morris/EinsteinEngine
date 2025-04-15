@@ -95,6 +95,7 @@ if __name__ == "__main__":
     # Constraint Vars.
     ###
     HamCons = gf.decl("HamCons", [], parity=parity_scalar)
+    MomCons = gf.decl("MomCons", [ui], parity=parity_vector)
 
     ###
     # Aux. Vars.
@@ -110,9 +111,6 @@ if __name__ == "__main__":
 
     ddA = gf.decl("ddA", [li, lj])  # D_i D_j \alpha
     gf.add_sym(ddA[li, lj], li, lj)
-
-    ddtphi = gf.decl("ddtphi", [li, lj])  # \tilde{D}_i \tilde{D}_j \phi
-    gf.add_sym(ddtphi[li, lj], li, lj)
 
     T = gf.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
     gf.add_sym(T[li, lj], li, lj)
@@ -158,11 +156,12 @@ if __name__ == "__main__":
     gf.mk_subst(ric[li, lj])
 
     gf.mk_subst(ddA[li, lj])
-    gf.mk_subst(ddtphi[li, lj])
 
     gf.mk_subst(T[li, lj])
 
     gf.mk_subst(ConfConnect_rhs_tmp[ui])
+
+    gf.mk_subst(MomCons[ui])
 
     ###
     # Aux. functions
@@ -178,30 +177,34 @@ if __name__ == "__main__":
         """
         Adds equations to a function that compute the Ricci tensor.
         """
+
+        # B-S Eq. (1.18)
         function.add_eqn(
-            Gammat[la, lb, lc],
-            (div(gt[la, lb], lc) + div(gt[la, lc], lb) - div(gt[lb, lc], la))/2
+            Gammat[ld, lb, lc],
+            1 / 2 * (
+                div(gt[ld, lb], lc) + div(gt[ld, lc], lb) - div(gt[lb, lc], ld)
+            )
         )
 
         function.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
 
-        # See: [3]
-        # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
-        function.add_eqn(ddtphi[li, lj], div(phi, lj, li) -
-                         Gammat[uk, li, lj] * div(phi, lk))
-
         function.add_eqn(
             ric[li, lj],
-            - (1/2) * gt[ua, ub] * div(gt[li, lj], la, lb)
+
+            # \tilde{R}_{ij}
+            - (1/2) * gt[ua, ub] * div(gt[li, lj], lb, la)
             + sym(gt[lk, li] * div(ConfConnect[uk], lj), li, lj)
             + sym(gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk], li, lj)
-            + sym(gt[ua, ub] * 2 * Gammat[uk, la, li]
-                  * Gammat[lj, lk, lb], li, lj)
-            + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
-            - 2 * ddtphi[li, lj]
-            - 2 * gt[li, lj] * ddtphi[la, lb] * gt[ua, ub]
+            + gt[ua, ub] * (
+                sym(2 * Gammat[uk, la, li] * Gammat[lj, lk, lb], li, lj)
+                + Gammat[uk, li, lb] * Gammat[lk, la, lj]
+            )
+
+            # R^{\phi}_{ij}
+            - 2 * (div(phi, lj, li) - Gammat[uk, li, lj] * div(phi, lk))
+            - 2 * gt[li, lj] * div(gt[ua, ub] * div(phi, lb), la)
             + 4 * div(phi, li) * div(phi, lj)
-            - 4 * gt[li, lj] * div(phi, la) * div(phi, lb) * gt[ua, ub]
+            - 4 * gt[li, lj] * gt[ua, ub] * div(phi, la) * div(phi, lb)
         )
 
     ###
@@ -215,32 +218,36 @@ if __name__ == "__main__":
     # using an “upwind” stencil which is shifted by one point in
     # the direction of the shift, and of the same order
     ###
-    fun = gf.create_function("bssn_rhs", ScheduleBin.ODESolvers_RHS)
+    fun_bssn_rhs = gf.create_function("bssn_rhs", ScheduleBin.ODESolvers_RHS)
 
     # Aux. Equations
+    fun_bssn_rhs.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
+    fun_bssn_rhs.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
 
-    fun.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
-    fun.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
-
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         Gamma[ua, lb, lc],
         (1/2) * g[ua, ud] * (
             div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
         )
     )
 
-    compute_ricci(fun)
+    compute_ricci(fun_bssn_rhs)
 
     # See: [3]
     # \lambda_{a;c} = \partial_c \lambda_a - \Gamma^{b}_{ca} \lambda_b
-    fun.add_eqn(ddA[li, lj], div(evo_lapse, lj, li) -
-                Gamma[uk, li, lj] * div(evo_lapse, lk))
+    fun_bssn_rhs.add_eqn(
+        ddA[li, lj],
+        div(evo_lapse, li, lj) - Gamma[uk, li, lj] * div(evo_lapse, lk)
+    )
 
-    fun.add_eqn(T[li, lj], -ddA[li, lj] + evo_lapse * ric[li, lj])
+    fun_bssn_rhs.add_eqn(
+        T[li, lj],
+        -ddA[li, lj] + evo_lapse * ric[li, lj]
+    )
 
     # Evolution equations
 
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         gt_rhs[li, lj],
         -2 * evo_lapse * At[li, lj]
         + evo_shift[uk] * div(gt[li, lj], lk)
@@ -249,7 +256,7 @@ if __name__ == "__main__":
         - (2/3) * gt[li, lj] * div(evo_shift[uk], lk)
     )
 
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         phi_rhs,
         -(1/6) * evo_lapse * trK
         + div(phi, lk) * evo_shift[uk]
@@ -260,7 +267,7 @@ if __name__ == "__main__":
     # Let T_{ij} \equiv -D_i D_j \alpha + \alpha R_{ij}
     # The trace free part of T, T^{(0)}_{ij} is then
     # T^{(0)}_{ij} = T_{ij} - 1/3 \gamma_{ij} \gamma^{ab} T_{ab}
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         At_rhs[li, lj],
         exp(-4 * phi) * (
             T[li, lj]
@@ -273,17 +280,17 @@ if __name__ == "__main__":
         - (2/3) * At[li, lj] * div(evo_shift[uk], lk)
     )
 
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         trK_rhs,
-        ddA[li, lj] * gt[ui, uj]
+        ddA[li, lj] * g[ui, uj]
         + evo_lapse * (At[ui, uj] * At[li, lj] + (1/3) * trK**2)
         + evo_shift[uk] * div(trK, lk)
     )
 
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         ConfConnect_rhs_tmp[ui],
-        gt[uj, uk] * div(evo_shift[ui], lj, lk)
-        + (1/3) * gt[ui, uj] * div(evo_shift[uk], lj, lk)
+        gt[uj, uk] * div(evo_shift[ui], lk, lj)
+        + (1/3) * gt[ui, uj] * div(evo_shift[uk], lk, lj)
         + evo_shift[uj] * div(ConfConnect[ui], lj)
         - gt[ua, ub] * Gammat[uj, la, lb] * div(evo_shift[ui], lj)
         + (2/3) * gt[ua, ub] * Gammat[ui, la, lb] * div(evo_shift[uj], lj)
@@ -294,33 +301,35 @@ if __name__ == "__main__":
             - (2/3) * gt[ui, uj] * div(trK, lj)
         )
     )
-    fun.add_eqn(ConfConnect_rhs[ui], ConfConnect_rhs_tmp[ui])
+    fun_bssn_rhs.add_eqn(ConfConnect_rhs[ui], ConfConnect_rhs_tmp[ui])
 
     # 1 + log lapse
-    fun.add_eqn(evo_lapse_rhs,
-                evo_shift[ui] * div(evo_lapse, li) - 2 * evo_lapse * trK
-                )
+    fun_bssn_rhs.add_eqn(
+        evo_lapse_rhs,
+        evo_shift[ui] * div(evo_lapse, li) - 2 * evo_lapse * trK
+    )
 
     # Hyperbolic Gamma Driver shift
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         evo_shift_rhs[ua],
-        evo_shift[ui] * div(evo_shift[ua], li) + 3/4 *
-        evo_lapse * g_driver_B[ua]
+        evo_shift[ui] * div(evo_shift[ua], li)
+        + 3/4 * evo_lapse * g_driver_B[ua]
     )
 
-    fun.add_eqn(
+    fun_bssn_rhs.add_eqn(
         g_driver_B_rhs[ua],
-        evo_shift[uj] * div(g_driver_B[ua], lj) + ConfConnect_rhs_tmp[ua]
-        - evo_shift[ui] * div(ConfConnect[ua], li) -
-        g_driver_eta * g_driver_B[ua]
+        evo_shift[uj] * div(g_driver_B[ua], lj)
+        + ConfConnect_rhs_tmp[ua]
+        - evo_shift[ui] * div(ConfConnect[ua], li)
+        - g_driver_eta * g_driver_B[ua]
     )
 
-    fun.bake()
+    fun_bssn_rhs.bake()
 
     ###
     # Convert ADM to BSSN variables
     ###
-    funload = gf.create_function(
+    fun_adm2bssn = gf.create_function(
         "adm2bssn",
         ScheduleBin.ODESolvers_Initial,
         schedule_after=["ADMBaseX_PostInitial"]
@@ -329,65 +338,85 @@ if __name__ == "__main__":
     phi_tmp = (1/12) * log(detg)
     trK_tmp = g[ua, ub] * k[la, lb]
 
-    funload.add_eqn(gt[li, lj], exp(-4 * phi_tmp) * g[li, lj])
-    funload.add_eqn(phi, phi_tmp)
-    funload.add_eqn(At[li, lj], exp(-4 * phi_tmp) *
-                    (k[li, lj] - (1/3) * g[li, lj] * trK_tmp))
-    funload.add_eqn(trK, trK_tmp)
-    funload.add_eqn(ConfConnect[ui], -div(exp(-4 * phi_tmp) * g[ui, uj], lj))
+    fun_adm2bssn.add_eqn(
+        gt[li, lj],
+        exp(-4 * phi_tmp) * g[li, lj]
+    )
 
-    funload.add_eqn(evo_lapse, alp)
-    funload.add_eqn(evo_shift[ua], beta[ua])
+    fun_adm2bssn.add_eqn(phi, phi_tmp)
 
-    funload.add_eqn(
+    fun_adm2bssn.add_eqn(
+        At[li, lj],
+        exp(-4 * phi_tmp) * (k[li, lj] - (1/3) * g[li, lj] * trK_tmp)
+    )
+
+    fun_adm2bssn.add_eqn(trK, trK_tmp)
+
+    fun_adm2bssn.add_eqn(
+        ConfConnect[ui],
+        -div(exp(-4 * phi_tmp) * g[ui, uj], lj)
+    )
+
+    fun_adm2bssn.add_eqn(evo_lapse, alp)
+    fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
+
+    fun_adm2bssn.add_eqn(
         g_driver_B[ua],
         4.0 * (dtbeta[ua] - beta[ui] * div(beta[ua], li)) / (3.0 * alp)
     )
 
-    funload.bake()
+    fun_adm2bssn.bake()
 
     ###
     # Convert BSSN to ADM variables
     ###
-    funstore = gf.create_function(
+    fun_bssn2adm = gf.create_function(
         "bssn2adm",
         ScheduleBin.ODESolvers_PostStep,
         schedule_before=["ADMBaseX_SetADMVars"]
     )
 
-    funstore.add_eqn(g[li, lj], exp(4 * phi) * gt[li, lj])
-    funstore.add_eqn(k[li, lj], exp(4 * phi) *
-                     At[li, lj] + (1/3) * gt[li, lj] * trK)
+    fun_bssn2adm.add_eqn(g[li, lj], exp(4 * phi) * gt[li, lj])
 
-    funstore.add_eqn(alp, evo_lapse)
-    funstore.add_eqn(beta[ua], evo_shift[ua])
+    fun_bssn2adm.add_eqn(
+        k[li, lj],
+        exp(4 * phi) * At[li, lj] + (1/3) * g[li, lj] * trK
+    )
 
-    funstore.bake()
+    fun_bssn2adm.add_eqn(alp, evo_lapse)
+    fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
+
+    fun_bssn2adm.bake()
 
     ###
     # Compute constraints
     ###
-    funcons = gf.create_function(
+    fun_bssn_cons = gf.create_function(
         "bssn_cons",
         ScheduleBin.Analysis
     )
 
-    funcons.add_eqn(
-        Gamma[ua, lb, lc],
-        (1/2) * g[ua, ud] * (
-            div(g[ld, lb], lc) + div(g[ld, lc], lb) - div(g[lb, lc], ld)
-        )
+    compute_ricci(fun_bssn_cons)
+
+    fun_bssn_cons.add_eqn(
+        HamCons,
+        g[ui, uj] * ric[li, lj]
+        + (2/3) * trK**2
+        - gt[ui, ua] * gt[uj, ub] * At[la, lb] * At[li, lj]
     )
 
-    compute_ricci(funcons)
+    fun_bssn_cons.add_eqn(
+        MomCons[ui],
+        gt[ui, ua] * gt[uj, ub] * (
+            div(At[la, lb], lj)
+            - Gammat[uk, lj, la] * At[lk, lb]
+            - Gammat[uk, lj, lb] * At[la, lk]
+        )
+        + 6 * gt[ui, ua] * gt[uj, ub] * At[la, lb] * div(phi, lj)
+        - (2/3) * gt[ui, uj] * div(trK, lj)
+    )
 
-    funcons.add_eqn(HamCons,
-                    g[ui, ua] * g[uj, ub] * ric[la, lb] * ric[li, lj]
-                    + (2/3) * trK * trK
-                    - gt[ui, ua] * gt[uj, ub] * At[la, lb] * At[li, lj]
-                    )
-
-    funcons.bake()
+    fun_bssn_cons.bake()
 
     ###
     # Thorn creation
