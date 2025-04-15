@@ -21,7 +21,7 @@ from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
-           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz",
+           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
@@ -323,9 +323,20 @@ if div.__module__ is None:
     div.__module__ = "use_indices"
 
 
-
-def mkPair(s: str) -> Tuple[Idx, Idx]:
-    assert len(s)
+pair_tmp_name = "A"
+def mkPair(s: Optional[str]=None) -> Tuple[Idx, Idx]:
+    """
+    Returns a tuple containing an upper/lower index pair.
+    """
+    global pair_tmp_name
+    if s is None:
+        s = pair_tmp_name
+        tmpnum = ord(pair_tmp_name[-1])
+        if tmpnum == ord("Z"):
+            pair_tmp_name += "A"
+        else:
+            pair_tmp_name = pair_tmp_name[0:-1] + chr(tmpnum+1)
+        tmpnum += 1
     u, l = mkIdxs(f"u{s} l{s}")
     lookup_pair[l] = u
     lookup_pair[u] = l
@@ -679,7 +690,7 @@ def is_letter_index(sym: Basic) -> bool:
     if type(sym) != Idx:
         return False
     s = str(sym)
-    if len(s) != 2:
+    if sym not in lookup_pair:
         return False
     if s[0] not in ["u", "l"]:
         return False
@@ -707,8 +718,8 @@ def get_indices(xpr: Expr) -> OrderedSet[Idx]:
 def byname(x: Idx) -> str:
     """ Return a string suitable for sorting a list of upper/lower indices. """
     s = str(x)
-    assert len(s) == 2
-    return s[1] + s[0]
+    assert x in lookup_pair 
+    return s[1:] + s[0]
 
 
 num0 = ord('0')
@@ -717,7 +728,7 @@ num9 = ord('9')
 
 def is_numeric_index(x: Idx) -> bool:
     s = str(x)
-    assert len(s) == 2, f"x={x}"
+    assert x in lookup_pair
     n = ord(s[1])
     return num0 <= n and n <= num9
 
@@ -742,9 +753,9 @@ def get_pair(x: Idx) -> Tuple[Idx, Idx]:
 def is_pair(a: Idx, b: Idx) -> bool:
     sa = str(a)
     sb = str(b)
-    assert len(sa) == 2
-    assert len(sb) == 2
-    if sa[1] == sb[1] and ((sa[0] == 'u' and sb[0] == 'l') or (sa[0] == 'l' and sb[0] == 'u')):
+    assert a in lookup_pair
+    assert b in lookup_pair
+    if sa[1:] == sb[1:] and ((sa[0] == 'u' and sb[0] == 'l') or (sa[0] == 'l' and sb[0] == 'u')):
         return True
     else:
         return False
