@@ -380,7 +380,7 @@ if __name__ == "__main__":
 
     fun_bssn2adm.add_eqn(
         k[li, lj],
-        exp(4 * phi) * At[li, lj] + (1/3) * g[li, lj] * trK
+        exp(4 * phi) * At[li, lj] + (1/3) * exp(4 * phi) * gt[li, lj] * trK
     )
 
     fun_bssn2adm.add_eqn(alp, evo_lapse)
