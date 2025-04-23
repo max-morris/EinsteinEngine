@@ -184,7 +184,6 @@ class EqnList:
         temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
 
-        # Speedup from Max
         for lhs, rhs in self.eqns.items():
             eqn_i = self.order.index(lhs)
 
