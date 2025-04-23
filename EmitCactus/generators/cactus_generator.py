@@ -10,10 +10,18 @@ from EmitCactus.emit.tree import Identifier, String, Bool
 from EmitCactus.util import get_or_compute, OrderedSet
 from typing import Dict, Set, Optional, TypedDict
 from typing_extensions import Unpack
+from enum import auto, Enum
+
+
+class InteriorSyncMode(Enum):
+    Never = auto()
+    IgnoreRhs = auto()
+    Always = auto()
 
 
 class CactusGeneratorOptions(TypedDict, total=False):
     extra_schedule_blocks: list[ScheduleBlock]
+    interior_sync_mode: InteriorSyncMode
 
 
 class CactusGenerator(ABC):
@@ -29,6 +37,9 @@ class CactusGenerator(ABC):
         self.variable_groups = dict()
         self.var_names = OrderedSet()
         self.options = options if options is not None else dict()
+
+        if 'interior_sync_mode' not in self.options:
+            self.options['interior_sync_mode'] = InteriorSyncMode.Always
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqn_list.inputs:
