@@ -20,7 +20,7 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
     ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
-from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
 
@@ -118,7 +118,10 @@ class CppCarpetXGenerator(CactusGenerator):
                         region=spec
                     ))
 
-                    if spec is IntentRegion.Interior and var not in self.thorn_def.rhs.values():
+                    if spec is IntentRegion.Interior and (
+                            self.options['interior_sync_mode'] is InteriorSyncMode.Always
+                            or self.options['interior_sync_mode'] is InteriorSyncMode.IgnoreRhs and var not in self.thorn_def.rhs.values()
+                    ):
                         syncs.append(qualified_var_id)
 
             schedule_blocks.append(ScheduleBlock(
