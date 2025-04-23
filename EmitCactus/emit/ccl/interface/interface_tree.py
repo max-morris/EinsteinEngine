@@ -174,8 +174,8 @@ class CheckpointTag(TagPropertyNode):
     def get_key(self) -> Identifier:
         return Identifier('checkpoint')
 
-    def get_value(self) -> Bool:
-        return self.do_checkpoint
+    def get_value(self) -> String:
+        return String('yes' if self.do_checkpoint.b else 'no')
 
 
 @dataclass
