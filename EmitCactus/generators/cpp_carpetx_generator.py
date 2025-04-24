@@ -20,7 +20,7 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
     ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
-from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
 
@@ -107,6 +107,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
+            syncs: list[Identifier] = list()
 
             for var, spec in fn.eqn_list.read_decls.items():
                 if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
@@ -120,11 +121,18 @@ class CppCarpetXGenerator(CactusGenerator):
             for var, spec in fn.eqn_list.write_decls.items():
                 if var in fn.eqn_list.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
+                    qualified_var_id = Identifier(qualified_var_name)
 
                     writes.append(Intent(
-                        name=Identifier(qualified_var_name),
+                        name=qualified_var_id,
                         region=spec
                     ))
+
+                    if spec is IntentRegion.Interior and (
+                            self.options['interior_sync_mode'] is InteriorSyncMode.Always
+                            or self.options['interior_sync_mode'] is InteriorSyncMode.IgnoreRhs and var not in self.thorn_def.rhs.values()
+                    ):
+                        syncs.append(qualified_var_id)
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
@@ -135,6 +143,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 lang=Language.C,
                 reads=reads,
                 writes=writes,
+                sync=syncs,
                 before=[Identifier(s) for s in fn.schedule_before],
                 after=[Identifier(s) for s in fn.schedule_after]
             ))
