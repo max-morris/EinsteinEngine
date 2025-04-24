@@ -96,20 +96,20 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
         if n.storage is not None:
             s += f'\n{self.visit(n.storage)}'
 
-        if n.trigger is not None:
+        if n.trigger is not None and len(n.trigger) > 0:
             s += f'\nTRIGGER: {", ".join(visit_each(self, n.trigger))}'
 
-        if n.sync is not None:
+        if n.sync is not None and len(n.sync) > 0:
             s += f'\nSYNC: {", ".join(visit_each(self, n.sync))}'
 
-        if n.options is not None:
+        if n.options is not None and len(n.options) > 0:
             s += f'\nOPTIONS: {", ".join(visit_each(self, n.options))}'
 
-        if n.reads is not None:
-            s += f'\nReads: {", ".join(visit_each(self, sorted(n.reads, key=lambda x:repr(x))))}'
+        if n.reads is not None and len(n.reads) > 0:
+            s += f'\nReads: {", ".join(visit_each(self, sorted(n.reads, key=repr)))}'
 
-        if n.writes is not None:
-            s += f'\nWrites: {", ".join(visit_each(self, sorted(n.writes, key=lambda x:repr(x))))}'
+        if n.writes is not None and len(n.writes) > 0:
+            s += f'\nWrites: {", ".join(visit_each(self, sorted(n.writes, key=repr)))}'
 
         s += '\n} ' + self.visit(n.description)
 
