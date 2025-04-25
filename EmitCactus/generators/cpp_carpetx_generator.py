@@ -107,7 +107,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
-            syncs: list[Identifier] = list()
+            syncs: set[Identifier] = OrderedSet()
 
             for var, spec in fn.eqn_list.read_decls.items():
                 if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
@@ -132,7 +132,9 @@ class CppCarpetXGenerator(CactusGenerator):
                             self.options['interior_sync_mode'] is InteriorSyncMode.Always
                             or self.options['interior_sync_mode'] is InteriorSyncMode.IgnoreRhs and var not in self.thorn_def.rhs.values()
                     ):
-                        syncs.append(qualified_var_id)
+                        # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
+                        # assert var_name in self.thorn_def.var2base
+                        syncs.add(Identifier(self.thorn_def.var2base.get(var_name, var_name)))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
@@ -143,7 +145,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 lang=Language.C,
                 reads=reads,
                 writes=writes,
-                sync=syncs,
+                sync=list(syncs),
                 before=[Identifier(s) for s in fn.schedule_before],
                 after=[Identifier(s) for s in fn.schedule_after]
             ))
