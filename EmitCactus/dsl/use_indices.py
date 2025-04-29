@@ -17,7 +17,7 @@ from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.tree import Centering
-from EmitCactus.util import OrderedSet, ScheduleBinEnum
+from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz",
@@ -983,7 +983,7 @@ class ThornFunction:
             print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], Set[str]]:
         return self.thorn_def.get_tensortype(item)
 
 
@@ -999,7 +999,7 @@ class ThornDef:
         self.subs: Dict[Expr, Expr] = dict()
         self.params: Dict[str, Param] = dict()
         self.var2base: Dict[str, str] = dict()
-        self.groups: Dict[str, List[str]] = dict()
+        self.groups: Dict[str, Set[str]] = dict()
         self.props: Dict[str, List[Integer]] = dict()
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
@@ -1027,12 +1027,12 @@ class ThornDef:
         assert n > 1, "n must be > 1"
         self.apply_div = ApplyDivN(n)
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], Set[str]]:
         k = str(item)
         assert k in self.gfs.keys(), f"Not a defined symbol {item}"
         v = self.var2base.get(k, None)
         if v is None:
-            return "none", list(), list()  # scalar
+            return "none", list(), set()  # scalar
         return v, self.defn[v][1], self.groups[v]
 
     def create_function(self,
@@ -1255,10 +1255,7 @@ class ThornDef:
                 self.gfs[str(subval)] = subval
                 self.centering[str(subval)] = self.centering[str(out.base)]
                 self.var2base[str(subval)] = str(out.base)
-                if str(out.base) not in self.groups:
-                    self.groups[str(out.base)] = list()
-                members = self.groups[str(out.base)]
-                members.append(str(subval))
+                get_or_compute(self.groups, str(out.base), lambda _: set()).add(str(subval))
             print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval_, "cyan"))
             self.subs[subj] = subval_
 

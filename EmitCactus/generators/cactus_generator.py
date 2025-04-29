@@ -102,5 +102,8 @@ class CactusGenerator(ABC):
 
     def _get_qualified_var_name(self, var_name: str) -> str:
         var_base = self.thorn_def.var2base.get(var_name, var_name)
-        from_thorn: Optional[str] = self.thorn_def.base2thorn.get(var_base, None)
-        return var_name if from_thorn is None else f'{from_thorn}::{var_name}'
+        return self._get_qualified_group_name(var_base)
+
+    def _get_qualified_group_name(self, group_name: str) -> str:
+        from_thorn: Optional[str] = self.thorn_def.base2thorn.get(group_name, None)
+        return group_name if from_thorn is None else f'{from_thorn}::{group_name}'

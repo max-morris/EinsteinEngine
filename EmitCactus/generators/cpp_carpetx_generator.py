@@ -99,24 +99,48 @@ class CppCarpetXGenerator(CactusGenerator):
             writes: list[Intent] = list()
             syncs: set[Identifier] = OrderedSet()
 
+            reads_complete_groups: dict[str, IntentRegion] = dict()
+            reads_incomplete_groups: set[str] = set()
+
+            writes_complete_groups: dict[str, IntentRegion] = dict()
+            writes_incomplete_groups: set[str] = set()
+
+            var_names_read = [str(v) for v in fn.eqn_list.read_decls.keys()]
+            var_names_written = [str(v) for v in fn.eqn_list.write_decls.keys()]
+
             for var, spec in fn.eqn_list.read_decls.items():
                 if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
+
+                    if var_name in self.thorn_def.var2base:
+                        group_name = self.thorn_def.var2base[var_name]
+                        vars_in_group = self.thorn_def.groups[group_name]
+
+                        if group_name in reads_complete_groups:
+                            reads_complete_groups[group_name] = reads_complete_groups[group_name].consolidate(spec)
+                            continue
+                        elif group_name not in reads_incomplete_groups:
+                            if len(vars_in_group.intersection(var_names_read)) == len(vars_in_group):
+                                reads_complete_groups[group_name] = spec
+                                continue
+                            else:
+                                reads_incomplete_groups.add(group_name)
 
                     reads.append(Intent(
                         name=Identifier(qualified_var_name),
                         region=spec
                     ))
 
+            for group, spec in reads_complete_groups.items():
+                reads.append(Intent(
+                    name=Identifier(self._get_qualified_group_name(group)),
+                    region=spec
+                ))
+
             for var, spec in fn.eqn_list.write_decls.items():
                 if var in fn.eqn_list.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
                     qualified_var_id = Identifier(qualified_var_name)
-
-                    writes.append(Intent(
-                        name=qualified_var_id,
-                        region=spec
-                    ))
 
                     if spec is IntentRegion.Interior and (
                             self.options['interior_sync_mode'] is InteriorSyncMode.Always
@@ -125,6 +149,31 @@ class CppCarpetXGenerator(CactusGenerator):
                         # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
                         # assert var_name in self.thorn_def.var2base
                         syncs.add(Identifier(self.thorn_def.var2base.get(var_name, var_name)))
+
+                    if var_name in self.thorn_def.var2base:
+                        group_name = self.thorn_def.var2base[var_name]
+                        vars_in_group = self.thorn_def.groups[group_name]
+
+                        if group_name in writes_complete_groups:
+                            writes_complete_groups[group_name] = writes_complete_groups[group_name].consolidate(spec)
+                            continue
+                        elif group_name not in writes_incomplete_groups:
+                            if len(vars_in_group.intersection(var_names_written)) == len(vars_in_group):
+                                writes_complete_groups[group_name] = spec
+                                continue
+                            else:
+                                writes_incomplete_groups.add(group_name)
+
+                    writes.append(Intent(
+                        name=qualified_var_id,
+                        region=spec
+                    ))
+
+            for group, spec in writes_complete_groups.items():
+                writes.append(Intent(
+                    name=Identifier(self._get_qualified_group_name(group)),
+                    region=spec
+                ))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
