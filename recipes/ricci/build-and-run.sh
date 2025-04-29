@@ -1,4 +1,3 @@
-set -x
 # Build and Run
 if [ "${THORNLIST}" = "" ]
 then

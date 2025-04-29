@@ -37,11 +37,12 @@ if __name__ == "__main__":
     gpp = (r ** 2 + a ** 2 + (2 * m * r ** 2 * a ** 2 / sigma) * sin(th) ** 2) * sin(th) ** 2
     gtp = -4 * m * r * a * sin(th) ** 2 / sigma
 
+    Z = do_sympify(0)
     gmat = mkMatrix([
-        [gtt, 0, 0, gtp],
-        [0, grr, 0, 0],
-        [0, 0, gqq, 0],
-        [gtp, 0, 0, gpp]])
+        [gtt, Z, Z, gtp],
+        [Z, grr, Z, Z],
+        [Z, Z, gqq, Z],
+        [gtp, Z, Z, gpp]])
 
     gf.mk_subst(g[la, lb], gmat)
     imat = do_inv(gmat)

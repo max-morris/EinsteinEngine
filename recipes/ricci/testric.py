@@ -4,7 +4,7 @@ from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv
+    from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv, do_sympify
     from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions
@@ -38,11 +38,12 @@ if __name__ == "__main__":
     # Metric
     grr = do_sqrt(1+c**2)*(a+b*x**2)
     gqq = do_sqrt(1+c**2)/(a+b*x**2)
-    gpp = 1
+    gpp = do_sympify(1)
+    Z = do_sympify(0)
     gmat = mkMatrix([
-    [grr,   c,   0],
-    [  c, gqq,   0],
-    [  0,   0, gpp]])
+    [grr,   c,   Z],
+    [  c, gqq,   Z],
+    [  Z,   Z, gpp]])
     assert do_det(gmat) == 1
 
     # Define the affine connections
