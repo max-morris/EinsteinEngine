@@ -1297,7 +1297,8 @@ class ThornFunction:
 
     #def expand_free_indices(self, expr : Expr)->Expr
 
-    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
+    @multimethod
+    def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
         if isinstance(rhs, Expr):
             check_indices(rhs, self.thorn_def.defn)
 
@@ -1318,11 +1319,7 @@ class ThornFunction:
                     mms = mk_mk_subst(repr(lhs2_))
                     raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
                 lhs2 = lhs2_
-                if type(rhs) == Matrix:
-                    arr_inds = toNumTup(lhs.args[1:], inds)
-                    rhs0 = rhs[arr_inds]
-                else:
-                    rhs0 = rhs
+                rhs0 = rhs
                 rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
                 # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
                 self._add_eqn2(lhs2, rhs2)
@@ -1363,6 +1360,48 @@ class ThornFunction:
             print("other:", lhs, rhs, type(lhs), type(rhs))
             raise Exception()
 
+    @add_eqn.register
+    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        assert isinstance(rhs, Expr)
+        lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+        eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
+        rhs2 = do_isub(eci)
+        self._add_eqn2(lhs2, rhs2)
+        
+    @add_eqn.register
+    def _(self, lhs: Indexed, rhs: Matrix) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        lhs2: Symbol
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, _ = tup
+            lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            if not isinstance(lhs2_, Symbol):
+                mms = mk_mk_subst(repr(lhs2_))
+                raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
+            lhs2 = lhs2_
+            arr_inds = toNumTup(lhs.args[1:], inds)
+            rhs0 = rhs[arr_inds]
+            rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
+            # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
+            self._add_eqn2(lhs2, rhs2)
+        if count == 0:
+            assert isinstance(rhs, Expr)
+            # TODO: Understand what's going on with arg 0
+            for ind in lhs.args[1:]:
+                assert isinstance(ind, Idx)
+                assert is_numeric_index(ind)
+            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+            rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
+            self._add_eqn2(lhs2, rhs2)
     def madd(self) -> None:
         self.eqn_list.madd()
 

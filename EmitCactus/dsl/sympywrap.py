@@ -50,7 +50,7 @@ def mkSymbol(name: str) -> Symbol:
 def mkWild(name: str, exclude:List[Any]=list(), properties:List[Any]=list()) -> Wild:
     return Wild(name, exclude=exclude, properties=properties)  # type: ignore[no-untyped-call]
 
-symar = Union[Symbol,Expr,int,List['symar']]
+symar = List[List[Expr]]
 def mkMatrix(array: symar) -> Matrix:
     return Matrix(array)  # type: ignore[no-untyped-call]
 
@@ -97,6 +97,20 @@ def do_subs(sym: Expr, *tables: do_subs_table_type) -> Expr:
         else:
             result = cast(Expr, result.subs(table))  # type: ignore[no-untyped-call]
     return result
+
+def mat_trans(mat:Matrix, tr:Callable[[Expr],Expr])->Matrix:
+    table : List[List[Expr]] = list()
+    for i in range(mat.rows):
+        row : List[Expr] = list()
+        for j in range(mat.cols):
+            row += [tr(mat[i,j])]
+        table += [row]
+    return mkMatrix(table)
+
+def do_matrix_subs(mat: Matrix, *tables: do_subs_table_type) -> Matrix:
+    def do_sub(x:Expr)->Expr:
+        return do_subs(x, *tables)
+    return mat_trans(mat, do_sub)
 
 
 call_match = Union[
