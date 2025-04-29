@@ -3,18 +3,21 @@ if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import parities
     from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs
     from EmitCactus.generators.wizards import CppCarpetXWizard
+    from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+    from EmitCactus.generators.cactus_generator import InteriorSyncMode
     from sympy import exp, log, Idx, Expr
 
     ###
     # Thorn definitions
     ###
-    gf = ThornDef("PyBSSN", "BSSN")
-    gf.set_div_stencil(5)  # 4th order. TODO: Use upwind stencils for the shift
+    pybssn = ThornDef("PyBSSN", "BSSN")
+    # 4th order. TODO: Use upwind stencils for the shift
+    pybssn.set_div_stencil(5)
 
     ###
     # Thorn parameters
     ###
-    g_driver_eta = gf.add_param(
+    g_driver_eta = pybssn.add_param(
         "g_driver_eta",
         default=1.0,
         desc="The eta parameter of the Hyperbolic Gamma Driver shift"
@@ -32,136 +35,137 @@ if __name__ == "__main__":
     ###
     # ADMBaseX vars.
     ###
-    g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
-    gf.add_sym(g[li, lj], li, lj)
-    gf.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
+    g = pybssn.decl("g", [li, lj], from_thorn="ADMBaseX")
+    pybssn.add_sym(g[li, lj], li, lj)
+    pybssn.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = gf.decl("k", [li, lj], from_thorn="ADMBaseX")
-    gf.add_sym(k[li, lj], li, lj)
-    gf.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
+    k = pybssn.decl("k", [li, lj], from_thorn="ADMBaseX")
+    pybssn.add_sym(k[li, lj], li, lj)
+    pybssn.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
-    alp = gf.decl("alp", [], from_thorn="ADMBaseX")
+    alp = pybssn.decl("alp", [], from_thorn="ADMBaseX")
 
-    beta = gf.decl("beta", [ua], from_thorn="ADMBaseX")
-    gf.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
+    beta = pybssn.decl("beta", [ua], from_thorn="ADMBaseX")
+    pybssn.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
-    dtbeta = gf.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    gf.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
+    dtbeta = pybssn.decl("dtbeta", [ua], from_thorn="ADMBaseX")
+    pybssn.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
     ###
     # Evolved Gauge Vars.
     ###
-    evo_lapse_rhs = gf.decl("evo_lapse_rhs", [], parity=parity_scalar)
-    evo_lapse = gf.decl("evo_lapse", [], rhs=evo_lapse_rhs,
-                        parity=parity_scalar)
+    evo_lapse_rhs = pybssn.decl("evo_lapse_rhs", [], parity=parity_scalar)
+    evo_lapse = pybssn.decl("evo_lapse", [], rhs=evo_lapse_rhs,
+                            parity=parity_scalar)
 
-    evo_shift_rhs = gf.decl("evo_shift_rhs", [ui], parity=parity_vector)
-    evo_shift = gf.decl("evo_shift", [ui],
-                        rhs=evo_shift_rhs, parity=parity_vector)
+    evo_shift_rhs = pybssn.decl("evo_shift_rhs", [ui], parity=parity_vector)
+    evo_shift = pybssn.decl("evo_shift", [ui],
+                            rhs=evo_shift_rhs, parity=parity_vector)
 
-    g_driver_B_rhs = gf.decl("g_driver_B_rhs", [ui], parity=parity_vector)
-    g_driver_B = gf.decl(
+    g_driver_B_rhs = pybssn.decl("g_driver_B_rhs", [ui], parity=parity_vector)
+    g_driver_B = pybssn.decl(
         "g_driver_B", [ui], rhs=g_driver_B_rhs, parity=parity_vector)
 
     ###
     # Evolved BSSN Vars.
     ###
     # \phi
-    phi_rhs = gf.decl("phi_rhs", [], parity=parity_scalar)
-    phi = gf.decl("phi", [], rhs=phi_rhs, parity=parity_scalar)
+    phi_rhs = pybssn.decl("phi_rhs", [], parity=parity_scalar)
+    phi = pybssn.decl("phi", [], rhs=phi_rhs, parity=parity_scalar)
 
     # \tilde{\gamma_{ij}}
-    gt_rhs = gf.decl("gt_rhs", [li, lj], parity=parity_sym2ten)
-    gf.add_sym(gt_rhs[li, lj], li, lj)
-    gt = gf.decl("gt", [li, lj], rhs=gt_rhs, parity=parity_sym2ten)
-    gf.add_sym(gt[li, lj], li, lj)
+    gt_rhs = pybssn.decl("gt_rhs", [li, lj], parity=parity_sym2ten)
+    pybssn.add_sym(gt_rhs[li, lj], li, lj)
+    gt = pybssn.decl("gt", [li, lj], rhs=gt_rhs, parity=parity_sym2ten)
+    pybssn.add_sym(gt[li, lj], li, lj)
 
     # \tilde{A}_{ij}
-    At_rhs = gf.decl("At_rhs", [li, lj], parity=parity_sym2ten)
-    gf.add_sym(At_rhs[li, lj], li, lj)
-    At = gf.decl("At", [li, lj], rhs=At_rhs, parity=parity_sym2ten)
-    gf.add_sym(At[li, lj], li, lj)
+    At_rhs = pybssn.decl("At_rhs", [li, lj], parity=parity_sym2ten)
+    pybssn.add_sym(At_rhs[li, lj], li, lj)
+    At = pybssn.decl("At", [li, lj], rhs=At_rhs, parity=parity_sym2ten)
+    pybssn.add_sym(At[li, lj], li, lj)
 
     # trace of Extrinsic Curvature
-    trK_rhs = gf.decl("trK_rhs", [], parity=parity_scalar)
-    trK = gf.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
+    trK_rhs = pybssn.decl("trK_rhs", [], parity=parity_scalar)
+    trK = pybssn.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
 
     # \tilde{\Gamma}^i
-    ConfConnect_rhs = gf.decl("ConfConnect_rhs", [ui], parity=parity_vector)
-    ConfConnect = gf.decl("ConfConnect", [ui],
-                          rhs=ConfConnect_rhs, parity=parity_vector)
+    ConfConnect_rhs = pybssn.decl(
+        "ConfConnect_rhs", [ui], parity=parity_vector)
+    ConfConnect = pybssn.decl("ConfConnect", [ui],
+                              rhs=ConfConnect_rhs, parity=parity_vector)
 
     ###
     # Constraint Vars.
     ###
-    HamCons = gf.decl("HamCons", [], parity=parity_scalar)
-    MomCons = gf.decl("MomCons", [ui], parity=parity_vector)
+    HamCons = pybssn.decl("HamCons", [], parity=parity_scalar)
+    MomCons = pybssn.decl("MomCons", [ui], parity=parity_vector)
 
     ###
     # Aux. Vars.
     ###
-    Gammat = gf.decl("Gammat", [ua, lb, lc])  # \tilde{\Gamma}^a_{bc}
-    gf.add_sym(Gammat[ua, lb, lc], lb, lc)
+    Gammat = pybssn.decl("Gammat", [ua, lb, lc])  # \tilde{\Gamma}^a_{bc}
+    pybssn.add_sym(Gammat[ua, lb, lc], lb, lc)
 
-    Gamma = gf.decl("Gamma", [ua, lb, lc])  # \Gamma^a_{bc}
-    gf.add_sym(Gamma[ua, lb, lc], lb, lc)
+    Gamma = pybssn.decl("Gamma", [ua, lb, lc])  # \Gamma^a_{bc}
+    pybssn.add_sym(Gamma[ua, lb, lc], lb, lc)
 
-    ric = gf.decl("ric", [li, lj])  # R_{ij} = \tilde{R}_{ij} + R^\phi_{ij}
-    gf.add_sym(ric[li, lj], li, lj)
+    ric = pybssn.decl("ric", [li, lj])  # R_{ij} = \tilde{R}_{ij} + R^\phi_{ij}
+    pybssn.add_sym(ric[li, lj], li, lj)
 
-    ddA = gf.decl("ddA", [li, lj])  # D_i D_j \alpha
-    gf.add_sym(ddA[li, lj], li, lj)
+    ddA = pybssn.decl("ddA", [li, lj])  # D_i D_j \alpha
+    pybssn.add_sym(ddA[li, lj], li, lj)
 
-    T = gf.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
-    gf.add_sym(T[li, lj], li, lj)
+    T = pybssn.decl("T", [li, lj])  # T_{ij} = -D_i D_j \alpha + \alpha R_{ij}
+    pybssn.add_sym(T[li, lj], li, lj)
 
     # Prevents the elimination of ConfConnect_rhs
-    ConfConnect_rhs_tmp = gf.decl("ConfConnect_rhs_tmp", [ui])
+    ConfConnect_rhs_tmp = pybssn.decl("ConfConnect_rhs_tmp", [ui])
 
     ###
     # Substitution rules
     ###
-    g_mat = gf.get_matrix(g[li, lj])
+    g_mat = pybssn.get_matrix(g[li, lj])
     g_imat = do_inv(g_mat)
     detg = do_det(g_mat)
-    gf.mk_subst(g[ui, uj], g_imat)
+    pybssn.mk_subst(g[ui, uj], g_imat)
 
-    gf.mk_subst(gt_rhs[li, lj])
-    gf.mk_subst(gt[li, lj])
+    pybssn.mk_subst(gt_rhs[li, lj])
+    pybssn.mk_subst(gt[li, lj])
 
-    gt_mat = gf.get_matrix(gt[li, lj])
+    gt_mat = pybssn.get_matrix(gt[li, lj])
     detgt = do_det(gt_mat)
     gt_imat = do_inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
-    gf.mk_subst(gt[ui, uj], gt_imat)
+    pybssn.mk_subst(gt[ui, uj], gt_imat)
 
-    gf.mk_subst(At[li, lj])
-    gf.mk_subst(At_rhs[li, lj])
-    gf.mk_subst(At[ui, uj])
-    gf.mk_subst(At[ui, lj])
+    pybssn.mk_subst(At[li, lj])
+    pybssn.mk_subst(At_rhs[li, lj])
+    pybssn.mk_subst(At[ui, uj])
+    pybssn.mk_subst(At[ui, lj])
 
-    gf.mk_subst(ConfConnect[ui])
-    gf.mk_subst(ConfConnect_rhs[ui])
+    pybssn.mk_subst(ConfConnect[ui])
+    pybssn.mk_subst(ConfConnect_rhs[ui])
 
-    gf.mk_subst(evo_shift[ui])
-    gf.mk_subst(evo_shift_rhs[ui])
+    pybssn.mk_subst(evo_shift[ui])
+    pybssn.mk_subst(evo_shift_rhs[ui])
 
-    gf.mk_subst(g_driver_B[ui])
-    gf.mk_subst(g_driver_B_rhs[ui])
+    pybssn.mk_subst(g_driver_B[ui])
+    pybssn.mk_subst(g_driver_B_rhs[ui])
 
-    gf.mk_subst(Gammat[ua, lb, lc])
-    gf.mk_subst(Gammat[la, lb, lc])
+    pybssn.mk_subst(Gammat[ua, lb, lc])
+    pybssn.mk_subst(Gammat[la, lb, lc])
 
-    gf.mk_subst(Gamma[ua, lb, lc])
+    pybssn.mk_subst(Gamma[ua, lb, lc])
 
-    gf.mk_subst(ric[li, lj])
+    pybssn.mk_subst(ric[li, lj])
 
-    gf.mk_subst(ddA[li, lj])
+    pybssn.mk_subst(ddA[li, lj])
 
-    gf.mk_subst(T[li, lj])
+    pybssn.mk_subst(T[li, lj])
 
-    gf.mk_subst(ConfConnect_rhs_tmp[ui])
+    pybssn.mk_subst(ConfConnect_rhs_tmp[ui])
 
-    gf.mk_subst(MomCons[ui])
+    pybssn.mk_subst(MomCons[ui])
 
     ###
     # Aux. functions
@@ -218,7 +222,8 @@ if __name__ == "__main__":
     # using an “upwind” stencil which is shifted by one point in
     # the direction of the shift, and of the same order
     ###
-    fun_bssn_rhs = gf.create_function("bssn_rhs", ScheduleBin.ODESolvers_RHS)
+    fun_bssn_rhs = pybssn.create_function(
+        "bssn_rhs", ScheduleBin.ODESolvers_RHS)
 
     # Aux. Equations
     fun_bssn_rhs.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
@@ -329,7 +334,7 @@ if __name__ == "__main__":
     ###
     # Convert ADM to BSSN variables
     ###
-    fun_adm2bssn = gf.create_function(
+    fun_adm2bssn = pybssn.create_function(
         "adm2bssn",
         ScheduleBin.ODESolvers_Initial,
         schedule_after=["ADMBaseX_PostInitial"]
@@ -370,7 +375,7 @@ if __name__ == "__main__":
     ###
     # Convert BSSN to ADM variables
     ###
-    fun_bssn2adm = gf.create_function(
+    fun_bssn2adm = pybssn.create_function(
         "bssn2adm",
         ScheduleBin.ODESolvers_PostStep,
         schedule_before=["ADMBaseX_SetADMVars"]
@@ -391,7 +396,7 @@ if __name__ == "__main__":
     ###
     # Compute constraints
     ###
-    fun_bssn_cons = gf.create_function(
+    fun_bssn_cons = pybssn.create_function(
         "bssn_cons",
         ScheduleBin.Analysis
     )
@@ -421,7 +426,13 @@ if __name__ == "__main__":
     ###
     # Thorn creation
     ###
-    CppCarpetXWizard(gf).generate_thorn()
+    CppCarpetXWizard(
+        pybssn,
+        CppCarpetXGenerator(
+            pybssn,
+            interior_sync_mode=InteriorSyncMode.IgnoreRhs
+        )
+    ).generate_thorn()
 
 # References
 # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
