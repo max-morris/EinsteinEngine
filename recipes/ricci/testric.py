@@ -43,7 +43,7 @@ if __name__ == "__main__":
     [grr,   c,   0],
     [  c, gqq,   0],
     [  0,   0, gpp]])
-    assert gmat.det() == 1
+    assert do_det(gmat) == 1
 
     # Define the affine connections
     gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)

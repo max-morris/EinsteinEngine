@@ -2,6 +2,7 @@
 from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from EmitCactus.emit.tree import Identifier, String, Centering
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+from EmitCactus.dsl.sympywrap import do_sqrt
 
 if __name__ == "__main__":
 
@@ -64,7 +65,7 @@ if __name__ == "__main__":
     kz = gf.add_param("kz", default=pi / 20, desc="The wave number in the z-direction")
     amp = gf.add_param("amp", default=10, desc="The amplitude")
     # c = w/k
-    w = spd*sqrt(kx**2 + ky**2 + kz**2)
+    w = spd*do_sqrt(kx**2 + ky**2 + kz**2)
 
     # Fill in values
     gf.mk_subst(g[li, lj], flat_metric)

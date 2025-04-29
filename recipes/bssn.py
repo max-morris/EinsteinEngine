@@ -170,11 +170,18 @@ if __name__ == "__main__":
     ###
     # Aux. functions
     ###
+
     def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
         """
         Index symmetrizer
         """
-        return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
+        uA, lA = mkPair()
+        # swap ind1 and ind2
+        x1 : Expr = do_subs(expr, {ind1: uA, ind2: lA})
+        x2 : Expr = do_subs(x1,   {uA: ind2, lA: ind1})
+        # add expr to itself with swapped indices 
+        x3 : Expr = (expr  + x2)/2
+        return x3
 
     def compute_ricci(function: ThornFunction) -> None:
         """
