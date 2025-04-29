@@ -173,7 +173,6 @@ if __name__ == "__main__":
     def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
         """
         Index symmetrizer
-        FIXME: The return type of this function gets, for some reason, converted to Any instead of Expr.
         """
         return (expr + do_subs(do_subs(expr, {ind1: u1, ind2: u2}), {u1: ind2, u2: ind1})) / 2
 
@@ -287,7 +286,7 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(
         trK_rhs,
-        ddA[li, lj] * g[ui, uj]
+        -ddA[li, lj] * g[ui, uj]
         + evo_lapse * (At[ui, uj] * At[li, lj] + (1/3) * trK**2)
         + evo_shift[uk] * div(trK, lk)
     )

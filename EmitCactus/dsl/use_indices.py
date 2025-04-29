@@ -205,11 +205,7 @@ class IndexSubsVisitor:
         self.idxsubs: Dict[Idx, Idx]  = dict()
 
     @multimethod
-    def visit(self, expr: sy.Basic) -> None:
-        raise Exception(str(expr)+" "+str(type(expr)))
-
-    @visit.register
-    def _(self, expr: sy.Add) -> Expr:
+    def visit(self, expr: sy.Add) -> Expr:
         r = do_sympify(0)
         for a in expr.args:
             r += self.visit(a)
@@ -271,20 +267,21 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Pow) -> Expr:
-        return sy.Pow(self.visit(expr.args[0]), self.visit(expr.args[1]))
+        return cast(Expr, sy.Pow(self.visit(expr.args[0]), self.visit(expr.args[1])))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
         return expr
 
-def do_isub(expr, subs=None, idxsubs=None):
+def do_isub(expr:Expr, subs:Optional[Dict[Indexed,Expr]]=None, idxsubs:Optional[Dict[Idx,Idx]]=None)->Expr:
     if subs is None:
         subs = dict()
     if idxsubs is None:
         idxsubs = dict()
     isub = IndexSubsVisitor(subs)
     isub.idxsubs = idxsubs
-    return isub.visit(expr)
+    # FIXME Why is this cast needed?
+    return cast(Expr, isub.visit(expr))
 
 def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
     """
