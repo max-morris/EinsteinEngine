@@ -3,6 +3,7 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, Schedule
 from EmitCactus.emit.tree import Identifier, String, Centering
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EmitCactus.dsl.sympywrap import do_sqrt
+from sympy import Indexed, Symbol
 
 if __name__ == "__main__":
 
@@ -31,9 +32,10 @@ if __name__ == "__main__":
     cfu.verbose = True
 
 
-    def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
-        i = to_num(ni)
-        j = to_num(nj)
+    def flat_metric(out: Indexed, *n:int) -> Expr:
+        assert len(n) == 2
+        i = n[0]
+        j = n[1]
         if i == j:
             return do_sympify(1)
         else:
