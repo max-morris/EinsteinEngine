@@ -1239,15 +1239,6 @@ class ThornFunction:
         self.schedule_after: Collection[str] = schedule_after or list()
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
-        # TODO: Is the type checker correct here?
-        if isinstance(lhs2, Symbol):
-            pass
-        elif isinstance(lhs2, IndexedBase):
-            pass
-        # elif isinstance(lhs2, Indexed) and len(lhs2.args)==1:
-        #    pass
-        else:
-            raise Exception(f"'add_eqn('{lhs2}',...) is not the correct type. It is '{type(lhs2)}'")
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
         if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
             self.eqn_list.add_output(lhs2)
@@ -1433,6 +1424,7 @@ class ThornDef:
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
+        self.group_name : Dict[str, str]=dict()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
         self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
@@ -1542,6 +1534,7 @@ class ThornDef:
         rhs: Math
         from_thorn: str
         parity: TensorParity
+        group_name: str
 
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:
@@ -1554,6 +1547,7 @@ class ThornDef:
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
+        self.group_name[basename] = kwargs.get('group_name', basename)
 
         if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
