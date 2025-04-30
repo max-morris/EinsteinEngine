@@ -4,6 +4,7 @@ Use the Sympy Indexed type for relativity expressions.
 import sys
 from enum import auto
 from typing import *
+from mypy_extensions import Arg, VarArg, KwArg
 from sympy import exp
 import re
 
@@ -878,7 +879,7 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx],
     return output
 
 
-def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> str:
+def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> Expr:
     newstr = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
@@ -891,10 +892,10 @@ def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> str:
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
         newstr += str(to_num(ind))
-    return newstr
+    return mkSymbol(newstr)
 
 
-def mksymbol_for_tensor(sym: Indexed) -> Symbol:
+def mksymbol_for_tensor(sym: Indexed) -> Expr:
     """
     Define a symbol for a tensor using standard NRPy+ rules.
     For an upper index put a U, for a lower index put a D.
@@ -921,7 +922,7 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
             newstr += str(to_num(ind))
         return mkSymbol(newstr)
     else:
-        return mkSymbol(_mksymbol_for_tensor(sym))
+        return _mksymbol_for_tensor(sym)
 
 
 ## mksymbol_for_tensor_xyz
@@ -934,7 +935,7 @@ def _mksymbol_for_tensor_xyz(sym: Indexed, *args: Idx) -> str:
     return newstr
 
 
-def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
+def mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
     """
     Define a symbol for a tensor using standard Cactus rules.
     Don't distinguish up/down indices. Use suffixes based on
@@ -955,22 +956,11 @@ def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
         return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
 
-# It's horrible that Python can't let me type this any other way
-mk_subst_type = Union[
-    Callable[[Expr, Idx], Expr],
-    Callable[[Expr, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx, Idx, Idx], Expr]]
+mk_subst_type = Callable[[Indexed, VarArg(int)], Expr]
 
 
-def mk_subst_default_(out: Indexed, *inds: int) -> Expr:
+def mk_subst_default(out: Indexed, *inds: int) -> Expr:
     return mksymbol_for_tensor(out)
-
-
-mk_subst_default = cast(mk_subst_type, mk_subst_default_)
-mksymbol_for_tensor_xyz = cast(mk_subst_type, __mksymbol_for_tensor_xyz)
 
 param_default_type = Union[float, int, str, bool]
 param_values_type = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
@@ -1682,7 +1672,8 @@ class ThornDef:
                 pass
             else:
                 assert subval_.is_Symbol, f"{type(subval_)}, {subval_.__class__}, {subval_.is_Function}"
-                subval = cast(Symbol, subval_)
+                subval = subval_
+                assert isinstance(subval, Symbol)
                 self.gfs[str(subval)] = subval
                 self.centering[str(subval)] = self.centering[str(out.base)]
                 self.var2base[str(subval)] = str(out.base)
