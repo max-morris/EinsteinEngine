@@ -1299,66 +1299,35 @@ class ThornFunction:
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
-        if isinstance(rhs, Expr):
-            check_indices(rhs, self.thorn_def.defn)
+        check_indices(rhs, self.thorn_def.defn)
 
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
         lhs2: Symbol
-        if type(lhs) == Indexed:
-            if isinstance(rhs, Expr):
-                if self.get_free_indices(lhs) != self.get_free_indices(rhs):
-                    raise Exception(f"Free indices of '{lhs}' and '{rhs}' do not match.")
-            count = 0
-            for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
-                count += 1
-                lhsx, inds, _ = tup
-                lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-                if not isinstance(lhs2_, Symbol):
-                    mms = mk_mk_subst(repr(lhs2_))
-                    raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
-                lhs2 = lhs2_
-                rhs0 = rhs
-                rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
-                # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
-                self._add_eqn2(lhs2, rhs2)
-            if count == 0:
-                assert isinstance(rhs, Expr)
-                # TODO: Understand what's going on with arg 0
-                for ind in lhs.args[1:]:
-                    assert isinstance(ind, Idx)
-                    assert is_numeric_index(ind)
-                lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-                rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
-                self._add_eqn2(lhs2, rhs2)
-        elif type(lhs) in [IndexedBase, Symbol]:
-            assert isinstance(rhs, Expr)
-            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
-            rhs2 = do_isub(eci)
+        if self.get_free_indices(lhs) != self.get_free_indices(rhs):
+            raise Exception(f"Free indices of '{lhs}' and '{rhs}' do not match.")
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, _ = tup
+            lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            if not isinstance(lhs2_, Symbol):
+                mms = mk_mk_subst(repr(lhs2_))
+                raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
+            lhs2 = lhs2_
+            rhs0 = rhs
+            rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
+            # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
             self._add_eqn2(lhs2, rhs2)
-        elif isinstance(rhs, MatrixBase):
+        if count == 0:
+            # TODO: Understand what's going on with arg 0
+            for ind in lhs.args[1:]:
+                assert isinstance(ind, Idx)
+                assert is_numeric_index(ind)
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
-                rhsm = rhs
-                for idx in item[2]:
-                    # print(rhsm,idx,"->",end=" ")
-                    if isinstance(rhsm, MatrixBase):
-                        idx2 = do_subs(idx, item[1])
-                        assert isinstance(idx2, Idx)
-                        index = to_num(idx)
-                        rhsm = rhsm[index, :][:]
-                    elif isinstance(rhsm, list):
-                        rhsm = rhsm[to_num(do_subs(idx, item[1]))]
-                    else:
-                        rhsm = do_subs(rhs2, item[1])
-                    # print(rhsm)
-                assert isinstance(rhsm, Expr)
-                rhs2 = self.thorn_def.do_subs(rhsm, self.thorn_def.subs)
-        else:
-            print("other:", lhs, rhs, type(lhs), type(rhs))
-            raise Exception()
+            rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
+            self._add_eqn2(lhs2, rhs2)
 
     @add_eqn.register
     def _(self, lhs: IndexedBase, rhs: Expr) -> None:
@@ -1366,7 +1335,6 @@ class ThornFunction:
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
-        assert isinstance(rhs, Expr)
         lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
         eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
         rhs2 = do_isub(eci)
@@ -1378,30 +1346,20 @@ class ThornFunction:
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
-        lhs2: Symbol
         count = 0
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhsx, inds, _ = tup
-            lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-            if not isinstance(lhs2_, Symbol):
-                mms = mk_mk_subst(repr(lhs2_))
-                raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
+            lhs2_ = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
             lhs2 = lhs2_
             arr_inds = toNumTup(lhs.args[1:], inds)
             rhs0 = rhs[arr_inds]
             rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
             # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
+            assert isinstance(lhs2, Symbol)
             self._add_eqn2(lhs2, rhs2)
-        if count == 0:
-            assert isinstance(rhs, Expr)
-            # TODO: Understand what's going on with arg 0
-            for ind in lhs.args[1:]:
-                assert isinstance(ind, Idx)
-                assert is_numeric_index(ind)
-            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
-            self._add_eqn2(lhs2, rhs2)
+        assert count > 0
+
     def madd(self) -> None:
         self.eqn_list.madd()
 
