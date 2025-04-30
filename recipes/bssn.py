@@ -17,10 +17,40 @@ if __name__ == "__main__":
     ###
     # Thorn parameters
     ###
-    g_driver_eta = pybssn.add_param(
-        "g_driver_eta",
+    zeta_alpha = pybssn.add_param(
+        "zeta_alpha",
         default=1.0,
-        desc="The eta parameter of the Hyperbolic Gamma Driver shift"
+        desc="partial_t alpha = zeta_alpha * beta^ipartial_i alpha ..."
+    )
+
+    kappa_alpha = pybssn.add_param(
+        "kappa_alpha",
+        default=2.0,
+        desc="partial_t alpha = ... - kappa_alpha alpha trK"
+    )
+
+    zeta_beta = pybssn.add_param(
+        "zeta_beta",
+        default=1.0,
+        desc="partial_t beta^i = zeta_beta * beta^j partial_j beta^i ..."
+    )
+
+    beta_Gamma = pybssn.add_param(
+        "beta_Gamma",
+        default=0.75,
+        desc="partial_t beta^i = ... beta_Gamma * alph^beta_Alp * Gammat^i ..."
+    )
+
+    beta_Alp = pybssn.add_param(
+        "beta_Alp",
+        default=0.0,
+        desc="partial_t beta^i = ... beta_Gamma * alph^beta_Alp * Gammat^i ..."
+    )
+
+    eta_beta = pybssn.add_param(
+        "eta_beta",
+        default=1.0,
+        desc="partial_t beta^i = ... - eta_beta * beta^i"
     )
 
     ###
@@ -61,10 +91,6 @@ if __name__ == "__main__":
     evo_shift_rhs = pybssn.decl("evo_shift_rhs", [ui], parity=parity_vector)
     evo_shift = pybssn.decl("evo_shift", [ui],
                             rhs=evo_shift_rhs, parity=parity_vector)
-
-    g_driver_B_rhs = pybssn.decl("g_driver_B_rhs", [ui], parity=parity_vector)
-    g_driver_B = pybssn.decl(
-        "g_driver_B", [ui], rhs=g_driver_B_rhs, parity=parity_vector)
 
     ###
     # Evolved BSSN Vars.
@@ -149,9 +175,6 @@ if __name__ == "__main__":
     pybssn.mk_subst(evo_shift[ui])
     pybssn.mk_subst(evo_shift_rhs[ui])
 
-    pybssn.mk_subst(g_driver_B[ui])
-    pybssn.mk_subst(g_driver_B_rhs[ui])
-
     pybssn.mk_subst(Gammat[ua, lb, lc])
     pybssn.mk_subst(Gammat[la, lb, lc])
 
@@ -177,10 +200,10 @@ if __name__ == "__main__":
         """
         uA, lA = mkPair()
         # swap ind1 and ind2
-        x1 : Expr = do_subs(expr, {ind1: uA, ind2: lA})
-        x2 : Expr = do_subs(x1,   {uA: ind2, lA: ind1})
-        # add expr to itself with swapped indices 
-        x3 : Expr = (expr  + x2)/2
+        x1: Expr = do_subs(expr, {ind1: uA, ind2: lA})
+        x2: Expr = do_subs(x1,   {uA: ind2, lA: ind1})
+        # add expr to itself with swapped indices
+        x3: Expr = (expr + x2)/2
         return x3
 
     def compute_ricci(function: ThornFunction) -> None:
@@ -317,22 +340,16 @@ if __name__ == "__main__":
     # 1 + log lapse
     fun_bssn_rhs.add_eqn(
         evo_lapse_rhs,
-        evo_shift[ui] * div(evo_lapse, li) - 2 * evo_lapse * trK
+        zeta_alpha * evo_shift[ui] * div(evo_lapse, li)
+        - kappa_alpha * evo_lapse * trK
     )
 
     # Hyperbolic Gamma Driver shift
     fun_bssn_rhs.add_eqn(
         evo_shift_rhs[ua],
-        evo_shift[ui] * div(evo_shift[ua], li)
-        + 3/4 * evo_lapse * g_driver_B[ua]
-    )
-
-    fun_bssn_rhs.add_eqn(
-        g_driver_B_rhs[ua],
-        evo_shift[uj] * div(g_driver_B[ua], lj)
-        + ConfConnect_rhs_tmp[ua]
-        - evo_shift[ui] * div(ConfConnect[ua], li)
-        - g_driver_eta * g_driver_B[ua]
+        zeta_beta * evo_shift[uj] * div(evo_shift[ua], lj)
+        + beta_Gamma * evo_lapse**beta_Alp * ConfConnect[ua]
+        - eta_beta * evo_shift[ua]
     )
 
     fun_bssn_rhs.bake()
@@ -370,11 +387,6 @@ if __name__ == "__main__":
 
     fun_adm2bssn.add_eqn(evo_lapse, alp)
     fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
-
-    fun_adm2bssn.add_eqn(
-        g_driver_B[ua],
-        4.0 * (dtbeta[ua] - beta[ui] * div(beta[ua], li)) / (3.0 * alp)
-    )
 
     fun_adm2bssn.bake()
 
@@ -443,6 +455,7 @@ if __name__ == "__main__":
 # References
 # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
 # [2] https://arxiv.org/abs/gr-qc/9810065
-# https://en.wikipedia.org/wiki/Covariant_derivative
+# [3] https://en.wikipedia.org/wiki/Covariant_derivative
 # [4] https://arxiv.org/pdf/2109.11743.
 # [5] https://arxiv.org/pdf/0910.3803
+# [6] https://arxiv.org/abs/gr-qc/0605030.
