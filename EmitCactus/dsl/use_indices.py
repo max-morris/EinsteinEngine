@@ -5,12 +5,12 @@ import sys
 from enum import auto
 from typing import *
 from mypy_extensions import Arg, VarArg, KwArg
-from sympy import exp
 import re
+from multimethod import multimethod
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
+from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix
 from sympy.core.function import UndefinedFunction as UFunc
 
 from EmitCactus.dsl.dsl_exception import DslException
@@ -45,7 +45,6 @@ def mk_mk_subst(s : str)->str:
     return new_s
         
 ###
-from multimethod import multimethod
 import sympy as sy
 
 class SymIndexError(Exception):
@@ -1607,56 +1606,30 @@ class ThornDef:
     def get_params(self) -> Set[str]:
         return OrderedSet(self.params)
 
-    def mk_subst(self, indexed: Indexed, f: Union[mk_subst_type, Matrix, Expr] = mk_subst_default) -> None:
-        indices: List[Idx]
-        if type(indexed) == Indexed:
-            iter_var = indexed
-            iter_syms = self.find_symmetries(indexed)
-            indices = self.find_indices(indexed)
-        else:
-            # Here we declare an iteration variable
-            # with the same symmetries as the expression
-            # we want to iterate over.
-            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
-            iter_syms = self.find_symmetries(indexed)
-            indices = self.find_indices(indexed)
-            # for arg in indexed.args[1:]:
-            #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
-            #    indices.append(arg)
-            iter_var_base: IndexedBase = self.decl("iter_var", indices)
-            iter_var = iter_var_base[indices]
-            self.symmetries.sd[iter_var_base] = iter_syms
+    @multimethod
+    def mk_subst(self, indexed: Indexed, f: Callable[[Indexed, int, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0], n[1])
+        self.mk_subst(indexed, f2)
 
-        if isinstance(f, MatrixBase):
-            set_matrix = f
-            for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep, alist = tup
-                assert isinstance(out, Indexed)
-                arr_inds = tuple([to_num(x) for x in out.indices])
-                if self.run_simplify:
-                    narray = len(arr_inds)
-                    res = do_simplify(set_matrix[arr_inds[0:2]])
-                    if narray >= 3:
-                        res = self.do_subs(res, idxsubs=indrep)
-                    self.subs[out] = res
-                else:
-                    self.subs[out] = set_matrix[arr_inds]
-                print("out:", out)
-                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
-            return None
-        elif isinstance(f, Expr):
-            if self.get_free_indices(iter_var) != self.get_free_indices(f):
-                raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
-            for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep, _ = tup
-                assert isinstance(out, Indexed)
-                arr_inds = tuple([to_num(x) for x in out.indices])
-                if self.run_simplify:
-                    self.subs[out] = do_simplify(self.do_subs(f, idxsubs=indrep))
-                else:
-                    self.subs[out] = self.do_subs(f, idxsubs=indrep)
-                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
-            return None
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Callable[[Indexed, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0])
+        self.mk_subst(indexed, f2)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Callable[[Indexed, int, int, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0], n[1], n[2])
+        self.mk_subst(indexed, f2)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: mk_subst_type = mk_subst_default) -> None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
 
         for tup in expand_free_indices(iter_var, self.symmetries):
             out, indrep, _ = tup
@@ -1671,18 +1644,70 @@ class ThornDef:
             elif subval_.is_Function:
                 pass
             else:
-                assert subval_.is_Symbol, f"{type(subval_)}, {subval_.__class__}, {subval_.is_Function}"
-                subval = subval_
-                assert isinstance(subval, Symbol)
-                self.gfs[str(subval)] = subval
-                self.centering[str(subval)] = self.centering[str(out.base)]
-                self.var2base[str(subval)] = str(out.base)
-                if str(out.base) not in self.groups:
-                    self.groups[str(out.base)] = list()
-                members = self.groups[str(out.base)]
-                members.append(str(subval))
-            print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval_, "cyan"))
+                subval = str(subval_)
+                outstr = str(out.base)
+                assert isinstance(subval_, Symbol)
+                self.gfs[subval] = subval_
+                self.centering[subval] = self.centering[outstr]
+                self.var2base[subval] = outstr
+                if outstr not in self.groups:
+                    self.groups[outstr] = list()
+                members = self.groups[outstr]
+                members.append(subval)
+            print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval, "cyan"))
             self.subs[subj] = subval_
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Expr) -> None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
+
+        print("HERE:", indexed, type(f), f)
+        if self.get_free_indices(iter_var) != self.get_free_indices(f):
+            raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
+        for tup in expand_free_indices(iter_var, self.symmetries):
+            out, indrep, _ = tup
+            assert isinstance(out, Indexed)
+            arr_inds = tuple([to_num(x) for x in out.indices])
+            if self.run_simplify:
+                self.subs[out] = do_simplify(self.do_subs(f, idxsubs=indrep))
+            else:
+                self.subs[out] = self.do_subs(f, idxsubs=indrep)
+            print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
+        return None
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: ImmutableDenseMatrix) -> None:
+        self.mk_subst_matrix(indexed, f)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: MatrixBase) -> None:
+        self.mk_subst_matrix(indexed, f)
+
+    def mk_subst_matrix(self, indexed: Indexed, f: MatrixBase)->None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
+
+        set_matrix = f
+        for tup in expand_free_indices(iter_var, self.symmetries):
+            out, indrep, alist = tup
+            assert isinstance(out, Indexed)
+            arr_inds = tuple([to_num(x) for x in out.indices])
+            if self.run_simplify:
+                narray = len(arr_inds)
+                res = do_simplify(set_matrix[arr_inds[0:2]])
+                if narray >= 3:
+                    res = self.do_subs(res, idxsubs=indrep)
+                self.subs[out] = res
+            else:
+                self.subs[out] = set_matrix[arr_inds]
+            print("out:", out)
+            print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
+        return None
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
         result: List[Eq] = list()

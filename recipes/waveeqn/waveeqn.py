@@ -2,7 +2,7 @@
 from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from EmitCactus.emit.tree import Identifier, String, Centering
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
-from EmitCactus.dsl.sympywrap import do_sqrt
+from EmitCactus.dsl.sympywrap import do_sqrt, mkMatrix
 from sympy import Indexed, Symbol
 
 if __name__ == "__main__":
@@ -13,7 +13,7 @@ if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import *
-    from sympy import Expr, Idx, sin, cos
+    from sympy import Expr, Idx, sin, cos, Matrix
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 
@@ -32,15 +32,10 @@ if __name__ == "__main__":
     cfu.verbose = True
 
 
-    def flat_metric(out: Indexed, *n:int) -> Expr:
-        assert len(n) == 2
-        i = n[0]
-        j = n[1]
-        if i == j:
-            return do_sympify(1)
-        else:
-            return do_sympify(0)
-
+    flat_metric = mkMatrix([
+        [1,0,0],
+        [0,1,0],
+        [0,0,1]])
 
     # Create a set of grid functions
     gf = ThornDef("TestEmitCactus", "WaveEqn")
