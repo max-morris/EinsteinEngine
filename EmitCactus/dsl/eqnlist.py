@@ -493,7 +493,8 @@ class EqnList:
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
             val1: int = complete[k]
             for k2 in finder(v):
-                val2: Optional[int] = complete.get(cast(Symbol, k2), None)
+                assert isinstance(k2, Symbol)
+                val2: Optional[int] = complete.get(k2, None)
                 assert val2 is not None, f"k2={k2}"
                 assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
         for k in needed:
