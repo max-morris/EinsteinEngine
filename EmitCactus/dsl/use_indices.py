@@ -1663,7 +1663,6 @@ class ThornDef:
         iter_syms = self.find_symmetries(indexed)
         indices = self.find_indices(indexed)
 
-        print("HERE:", indexed, type(f), f)
         if self.get_free_indices(iter_var) != self.get_free_indices(f):
             raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
         for tup in expand_free_indices(iter_var, self.symmetries):
