@@ -1,6 +1,7 @@
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction, AtOrIn
 from EmitCactus.emit.tree import Identifier, String
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+from sympy import MatrixBase
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
