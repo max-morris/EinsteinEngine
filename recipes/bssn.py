@@ -252,7 +252,7 @@ if __name__ == "__main__":
     # the direction of the shift, and of the same order
     ###
     fun_bssn_rhs = pybssn.create_function(
-        "bssn_rhs", ScheduleBin.ODESolvers_RHS)
+        "bssn_rhs", ScheduleBin.Evolve)
 
     # Aux. Equations
     fun_bssn_rhs.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
@@ -359,7 +359,7 @@ if __name__ == "__main__":
     ###
     fun_adm2bssn = pybssn.create_function(
         "adm2bssn",
-        ScheduleBin.ODESolvers_Initial,
+        ScheduleBin.DriverInit,
         schedule_after=["ADMBaseX_PostInitial"]
     )
 
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     ###
     fun_bssn2adm = pybssn.create_function(
         "bssn2adm",
-        ScheduleBin.ODESolvers_PostStep,
+        ScheduleBin.PostStep,
         schedule_before=["ADMBaseX_SetADMVars"]
     )
 
