@@ -92,18 +92,13 @@ class CppCarpetXGenerator(CactusGenerator):
             elif fn.schedule_bin is ScheduleBin.EstimateError:
                 schedule_bin = Identifier('ODESolvers_EstimateError')
             elif fn.schedule_bin is ScheduleBin.Evolve:
-                # TODO: ScheduleBin.Evolve should probably emit the built in
-                # "evolve" bin. "ODESolvers_RHS" is tied to CarpetX thus it is not
-                # driver independent. Currently it still emits "ODESolvers_RHS"
-                # for compatibility reasons.
                 schedule_bin = Identifier('ODESolvers_RHS')
-            elif fn.schedule_bin is ScheduleBin.ODESolvers_Initial:
+            elif fn.schedule_bin is ScheduleBin.DriverInit:
                 schedule_bin = Identifier('ODESolvers_Initial')
-            elif fn.schedule_bin is ScheduleBin.ODESolvers_PostStep:
+            elif fn.schedule_bin is ScheduleBin.PostStep:
                 schedule_bin = Identifier('ODESolvers_PostStep')
             else:
-                assert fn.schedule_bin is ScheduleBin.ODESolvers_RHS
-                schedule_bin = Identifier('ODESolvers_RHS')
+                raise NotImplementedError(f'Bad ScheduleBin enum member {fn.schedule_bin}')
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
