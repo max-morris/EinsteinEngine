@@ -89,7 +89,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if isinstance(fn.schedule_target, ScheduleBlock):
                 schedule_bin = fn.schedule_target.name
-                at_or_in = fn.schedule_target.at_or_in
+                at_or_in = AtOrIn.In
             else:
                 assert isinstance(fn.schedule_target, ScheduleBin)
                 at_or_in = AtOrIn.At if fn.schedule_target.is_builtin else AtOrIn.In
