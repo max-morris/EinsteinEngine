@@ -54,7 +54,7 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
         base, tup = expr.args
-        assert len(tup.args) == 0, f"This has args! {str(expr)} {tup.args} {len(tup.args)}"
+        assert len(tup.args) == 0, f"Missing arguments on symbol: {str(expr)} {tup.args} {len(tup.args)}"
         return typing.cast(Expr, self.visit(base))
 
     @visit.register

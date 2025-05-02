@@ -4,11 +4,13 @@ Use the Sympy Indexed type for relativity expressions.
 import sys
 from enum import auto
 from typing import *
-from math import sqrt
+from mypy_extensions import Arg, VarArg, KwArg
+import re
+from multimethod import multimethod
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase
+from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix
 from sympy.core.function import UndefinedFunction as UFunc
 
 from EmitCactus.dsl.dsl_exception import DslException
@@ -20,9 +22,291 @@ from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
-           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz",
+           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
+
+lookup_pair:Dict[Idx,Idx] = dict()
+
+###
+def mk_mk_subst(s : str)->str:
+    nextsub = 'a'
+    pos = 0
+    new_s = ""
+    for g in re.finditer(r'\b([ul])([0-9])\b', s):
+        new_s += s[pos:g.start()]
+        pos = g.end()
+        updn = g.group(1)
+        index = g.group(2)
+        new_s += updn
+        new_s += nextsub
+        nextsub = chr(ord(nextsub)+1)
+    new_s += s[pos:]
+    return new_s
+        
+###
+import sympy as sy
+
+class SymIndexError(Exception):
+    def __init__(self, message:str)->None:
+        self.message = message
+        super().__init__(self.message)
+
+class IndexTracker:
+    def __init__(self)->None:
+        self.free:OrderedSet[Idx] = OrderedSet()
+        self.contracted:OrderedSet[Idx] = OrderedSet()
+    def all(self)->OrderedSet[Idx]:
+        ret:OrderedSet[Idx] = OrderedSet()
+        for a in self.free:
+            ret.add(a)
+        for a in self.contracted:
+            ret.add(a)
+            ret.add(lookup_pair[a])
+        return ret
+    def add(self, idx:Idx)->bool:
+        global lookup_pair
+        if (idx in self.free) or (idx in self.contracted):
+            return False
+        letter_or_num = ord(str(idx)[1])
+        if letter_or_num >= ord('0') and letter_or_num <= ord('9'):
+            return True
+        assert idx in lookup_pair, f"{idx} not in {lookup_pair}"
+        pdx = lookup_pair[idx]
+        if pdx in self.free:
+            self.free.remove(pdx)
+            if str(idx)[0] == 'u':
+                assert pdx not in self.contracted
+                self.contracted.add(pdx)
+            else:
+                assert idx not in self.contracted
+                self.contracted.add(idx)
+        else:
+            self.free.add(idx)
+        return True
+    def __repr__(self)->str:
+        return "("+repr(self.free)+", "+repr(self.contracted)+")"
+
+class SympyExprErrorVisitor:
+    def __init__(self, defn:Dict[str, Tuple[str, List[Idx]]])->None:
+        self.defn = defn
+
+    @multimethod
+    def visit(self, expr: sy.Basic) -> IndexTracker:
+        raise Exception(str(expr)+" "+str(type(expr)))
+
+    @visit.register
+    def _(self, expr: sy.Add) -> IndexTracker:
+        it:Optional[IndexTracker] = None
+        arg = None
+        for a in expr.args:
+            a_it = self.visit(a)
+            if it is None:
+                it = a_it
+            if it.free != a_it.free:
+                raise SymIndexError(f"Invalid indices in add '{a}:{it.free}' != '{arg}:{a_it.free}':")
+            arg = a
+        if it is None:
+            return IndexTracker()
+        else:
+            return it
+
+    @visit.register
+    def _(self, expr: sy.Mul) -> IndexTracker:
+        it = IndexTracker()
+        for a in expr.args:
+            a_it = self.visit(a)
+            for idx in a_it.all():
+                if not it.add(idx):
+                    raise SymIndexError(f"Invalid indices in mul:")
+        return it
+
+    @visit.register
+    def _(self, expr: sy.Symbol) -> IndexTracker:
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.Integer) -> IndexTracker:
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.Rational) -> IndexTracker:
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.Float) -> IndexTracker:
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.Idx) -> IndexTracker:
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.Indexed) -> IndexTracker:
+        basename = str(expr.args[0])
+        if basename in self.defn:
+            bn, indices = self.defn[basename]
+            if len(indices)+1 != len(expr.args):
+                raise SymIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
+        else:
+            assert len(self.defn) == 0
+        it = IndexTracker()
+        for a in expr.args[1:]:
+            a_it = self.visit(a)
+            assert isinstance(a, Idx)
+            if not it.add(a):
+                raise SymIndexError(f"Invalid indices in indexed:")
+        return it
+
+    @visit.register
+    def _(self, expr: sy.Function) -> IndexTracker:
+        it = IndexTracker()
+        for a in expr.args:
+            if isinstance(a, Idx):
+                if not it.add(a):
+                    raise SymIndexError(f"Invalid indices in function:")
+            else:
+                a_it = self.visit(a)
+                for idx in a_it.all():
+                    it.add(idx)
+        return it
+
+    @visit.register
+    def _(self, expr: sy.Pow) -> IndexTracker:
+        for a in expr.args:
+            it = self.visit(a)
+            assert len(it.free) == 0
+            assert len(it.contracted) == 0
+        return IndexTracker()
+
+    @visit.register
+    def _(self, expr: sy.IndexedBase) -> IndexTracker:
+        basename = str(expr)
+        if basename not in self.defn:
+            if len(self.defn) == 0:
+                n = 0
+            else:
+                raise SymIndexError(f"Undefined symbol in '{self.defn}':")
+        else:
+            bn, indices = self.defn[basename]
+            n = len(indices)
+        if n != 0:
+            if n == 1:
+                msg = "1 index"
+            else:
+                msg = f"{n} indices"
+            raise SymIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
+        return IndexTracker()
+
+### ind subs
+class IndexSubsVisitor:
+    def __init__(self, defn:Dict[Indexed, Expr])->None:
+        self.defn = defn
+        self.idxsubs: Dict[Idx, Idx]  = dict()
+
+    @multimethod
+    def visit(self, expr: sy.Add) -> Expr:
+        r = do_sympify(0)
+        for a in expr.args:
+            r += self.visit(a)
+        return r
+
+    @visit.register
+    def _(self, expr: sy.Mul) -> Expr:
+        r = do_sympify(1)
+        for a in expr.args:
+            r *= self.visit(a)
+        return r
+
+    @visit.register
+    def _(self, expr: sy.Symbol) -> Expr:
+        return expr
+
+    @visit.register
+    def _(self, expr: sy.Integer) -> Expr:
+        return expr
+
+    @visit.register
+    def _(self, expr: sy.Rational) -> Expr:
+        return expr
+
+    @visit.register
+    def _(self, expr: sy.Float) -> Expr:
+        return expr
+
+    @visit.register
+    def _(self, expr: sy.Idx) -> Expr:
+        res = self.idxsubs.get(expr, None)
+        if res is None:
+            return expr
+        else:
+            return res
+
+    @visit.register
+    def _(self, expr: sy.Indexed) -> Expr:
+        r: Indexed = expr
+        if len(self.idxsubs) > 0:
+            indexes : List[Idx] = list()
+            for a in expr.args[1:]:
+                assert isinstance(a, Idx)
+                indexes.append(self.idxsubs.get(a,a))
+            r = mkIndexed(expr.base, *indexes)
+        res = self.defn.get(r, None)
+        if res is None:
+            return r
+        else:
+            return res
+
+    @visit.register
+    def _(self, expr: sy.Function) -> Expr:
+        f = expr.func
+        args = tuple([self.visit(a) for a in expr.args])
+        r = f(*args)
+        assert isinstance(r, Expr)
+        return r
+
+    @visit.register
+    def _(self, expr: sy.Pow) -> Expr:
+        return cast(Expr, sy.Pow(self.visit(expr.args[0]), self.visit(expr.args[1])))
+
+    @visit.register
+    def _(self, expr: sy.IndexedBase) -> Expr:
+        return expr
+
+def do_isub(expr:Expr, subs:Optional[Dict[Indexed,Expr]]=None, idxsubs:Optional[Dict[Idx,Idx]]=None)->Expr:
+    if subs is None:
+        subs = dict()
+    if idxsubs is None:
+        idxsubs = dict()
+    isub = IndexSubsVisitor(subs)
+    isub.idxsubs = idxsubs
+    # FIXME Why is this cast needed?
+    return cast(Expr, isub.visit(expr))
+
+def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None)->IndexTracker:
+    """
+    This function not only checks the validity of indexed expressions, it returns
+    all free and contracted indices.
+    """
+    if defn is None:
+        defn = dict()
+    err = SympyExprErrorVisitor(defn)
+    ret : IndexTracker
+    try:
+        ret = err.visit(rhs)
+        die = False
+        msg = ''
+    finally:
+        pass
+    #except SymIndexError as sie:
+    #    die = True
+    #    msg = sie.message
+    #if die:
+    #    raise SymIndexError(msg+str(rhs))
+    return ret
+###
+# Need Expand Visitor
+###
 
 ####
 # Generic derivatives
@@ -35,11 +319,21 @@ Symbolic derivative function.
 if div.__module__ is None:
     div.__module__ = "use_indices"
 
-lookup_pair = dict()
 
-
-def mkPair(s: str) -> Tuple[Idx, Idx]:
-    assert len(s)
+pair_tmp_name = "A"
+def mkPair(s: Optional[str]=None) -> Tuple[Idx, Idx]:
+    """
+    Returns a tuple containing an upper/lower index pair.
+    """
+    global pair_tmp_name
+    if s is None:
+        s = pair_tmp_name
+        tmpnum = ord(pair_tmp_name[-1])
+        if tmpnum == ord("Z"):
+            pair_tmp_name += "A"
+        else:
+            pair_tmp_name = pair_tmp_name[0:-1] + chr(tmpnum+1)
+        tmpnum += 1
     u, l = mkIdxs(f"u{s} l{s}")
     lookup_pair[l] = u
     lookup_pair[u] = l
@@ -52,7 +346,7 @@ def to_num(ind: Idx) -> int:
     return int(s[1])
 
 
-# Some basic indexes to use
+# Some basic indices to use
 ui, li = mkPair('i')
 uj, lj = mkPair('j')
 uk, lk = mkPair('k')
@@ -72,143 +366,274 @@ u5, l5 = mkPair('5')
 up_indices = u0, u1, u2, u3, u4, u5
 down_indices = l0, l1, l2, l3, l4, l5
 
-p0 = mkWild("p0", exclude=[0])
-p1 = mkWild("p1", exclude=[0])
-p2 = mkWild("p2", exclude=[0])
-p3 = mkWild("p3", exclude=[0])
+### dmv
+from sympy import sin, cos
+div = mkFunction("div")
+x = mkSymbol("x")
+y = mkSymbol("y")
+z = mkSymbol("z")
+one = do_sympify(1)
+zero = do_sympify(0)
+noidx = mkIdx("noidx")
 
-pp1 = mkWild("pp1", exclude=[0, 1])
-pp2 = mkWild("pp2", exclude=[0, 1])
+def mkdiv(expr:Expr, *args:Idx)->Expr:
+    r = div(expr, *args)
+    assert isinstance(r, Expr)
+    return r
 
-pnum = mkWild("pnn1", properties=[lambda x: isinstance(x, Number)])
-pn0 = mkWild("pn0", exclude=[0, 1], properties=[lambda x: isinstance(x, Number)])
-pind = mkWild("pind", properties=[lambda x: isinstance(x, Indexed)])
-is_ln = mkWild("is_l0", exclude=[0], properties=[lambda x: x in [l0, l1, l2, l3]])
-is_ln2 = mkWild("is_l2", exclude=[0], properties=[lambda x: x in [l0, l1, l2]])
-is_t = mkWild("is_t", properties=[lambda x: x.is_Symbol or x.is_Function])
-
-
-def is_func_of_xyz(arg: Expr, coords: List[Symbol]) -> bool:
-    class check:
-        def __init__(self) -> None:
-            self.found_xyz = False
-            self.found_indexed = False
-
-        def m(self, expr: Expr) -> bool:
-            if expr in coords:
-                self.found_xyz = True
-            elif type(expr) == Indexed:
-                self.found_indexed = True
-            return False
-
-        def r(self, expr: Expr) -> Expr:
-            return expr
-
-    ck = check()
-    do_replace(arg, ck.m, ck.r)
-    return ck.found_xyz and not ck.found_indexed
-
-
-class DivMaker(Applier):
-    def __init__(self, params: Set[str], coords: List[Symbol]) -> None:
-        self.res: Optional[Expr] = None
+class DivMakerVisitor:
+    def __init__(self, coords: Optional[List[Symbol]]=None)->None:
+        self.params:Set[Symbol] = set()
+        if coords is None:
+            coords = [x,y,z]
         self.coords = coords
-        self.ppar = mkWild("ppar", properties=[lambda x: str(x) in params])
-        self.isxyz = mkWild("isxyz", properties=[lambda x: is_func_of_xyz(x, coords)])
+        self.idxmap = dict()
+        for i in range(len(coords)):
+            self.idxmap[coords[i]] = down_indices[i]
 
-    def repl(self, expr: Expr) -> Optional[Expr]:
-        # Div of constants
-        if do_match(expr, div(pnum, p0)):
-            return do_sympify(0)
-        if do_match(expr, div(pnum, p0, p1)):
-            return do_sympify(0)
-        if do_match(expr, div(self.ppar, p0)):
-            return do_sympify(0)
-        if do_match(expr, div(self.ppar, p0, p1)):
-            return do_sympify(0)
+    @multimethod
+    def visit(self, expr: sy.Basic, idx: sy.Idx) -> Expr:
+        raise Exception(str(expr)+" "+str(type(expr)))
 
-        # Symmetry of Div operation
-        g = do_match(expr, div(p0, is_ln, is_ln2))
-        if g:
-            q0, q1, q2 = g[p0], g[is_ln], g[is_ln2]
-            assert isinstance(q1, Idx)
-            assert isinstance(q2, Idx)
-            if to_num(q1) > to_num(q2):
-                return cast(Expr, div(q0, q2, q1))
+    @visit.register
+    def _(self, expr: sy.Add, idx: sy.Idx) -> Expr:
+        r = zero
+        for a in expr.args:
+            r += self.visit(a, idx)
+        return r
 
-        # Div of Div
-        g = do_match(expr, div(div(p0, p1), p2))
-        if g:
-            q0, q1, q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, div(q0, q1, q2))
+    @visit.register
+    def _(self, expr: sy.Mul, idx: sy.Idx) -> Expr:
+        if idx is not noidx:
+            s = zero
+            for i in range(len(expr.args)):
+                term = one
+                for j in range(len(expr.args)):
+                    a = expr.args[j]
+                    if i==j:
+                        term *= self.visit(a, idx)
+                    else:
+                        term *= self.visit(a, noidx)
+                s += term
+            return s
+        else:
+            s = one
+            for a in expr.args:
+                s *= self.visit(a, noidx)
+            return s
 
-        # Div of a sum
-        g = do_match(expr, div(p0 + p1, p2))
-        if g:
-            q0, q1, q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, div(q0, q2) + div(q1, q2))
-        g = do_match(expr, div(p0 + p1, p2, p3))
-        if g:
-            q0, q1, q2, q3 = g[p0], g[p1], g[p2], g[p3]
-            return cast(Expr, div(div(q0, q2) + div(q1, q2), q3))
+    @visit.register
+    def _(self, expr: sy.Symbol, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        ####
+        # This is written in a bad way
+        if idx == l0:
+            if expr == x:
+                return one
+            elif expr in [y, z]:
+                return zero
 
-        # Div of a product
-        g = do_match(expr, div(pp1 * pp2, p2))
-        if g:
-            q0, q1, q2 = g[pp1], g[pp2], g[p2]
-            return cast(Expr, div(q0, q2) * q1 + q0 * div(q1, q2))
+        elif idx == l1:
+            if expr == y:
+                return one
+            elif expr in [x, z]:
+                return zero
 
-        # Div of power
-        g = do_match(expr, div(Pow(p0, pn0), p1))
-        if g:
-            q0, q1, q2 = g[p0], g[pn0], g[p1]
-            return cast(Expr, q1 * Pow(q0, q1 - 1) * div(q0, q2))
+        elif idx == l2:
+            if expr == z:
+                return one
+            elif expr in [x, y]:
+                return zero
 
-        # Div of sqrt
-        g = do_match(expr, div(sqrt(p0), p1))
-        if g:
-            q0, q1 = g[p0], g[p1]
-            return cast(Expr, (1 / 2) * div(q0, q1) / sqrt(q0))
-        g = do_match(expr, div(sqrt(p0), p1, p2))
-        if g:
-            q0, q1, q2 = g[p0], g[p1], g[p2]
-            return cast(Expr, (1 / 2) * div(div(q0, q1) / sqrt(q0), q2))
+        else:
+            raise Exception(f"Bad index passed to derivative: {expr}")
 
-        # Div of an indexed quantity
-        if do_match(expr, div(pind, p2)):
-            return None
+        return mkdiv(expr, idx)
+        ####
 
-        # Div with a numeric index as 2nd arg
-        g = do_match(expr, div(self.isxyz, is_ln))
-        if g:
-            q0 = g[self.isxyz]
-            q1 = g[is_ln]
-            assert isinstance(q1, Idx)
-            return do_diff(q0, self.coords[to_num(q1)])
+        if expr in self.params:
+            return zero
 
-        # Div with a numeric index as 2nd arg
-        g = do_match(expr, div(self.isxyz, is_ln, is_ln2))
-        if g:
-            q0 = g[self.isxyz]
-            q1 = g[is_ln]
-            q2 = g[is_ln2]
-            assert isinstance(q1, Idx)
-            assert isinstance(q2, Idx)
-            return do_diff(do_diff(q0, self.coords[to_num(q1)]), self.coords[to_num(q2)])
+        elif expr in self.coords:
+            if expr == self.idxmap[idx]:
+                return one
+            else:
+                return zero
 
-        return None
+        return div(expr, idx)
 
-    def m(self, expr: Expr) -> bool:
-        self.res = self.repl(expr)
-        return self.res is not None
+    @visit.register
+    def _(self, expr: sy.Integer, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        return zero
 
-    def r(self, expr: Expr) -> Expr:
-        assert self.res is not None
-        return self.res
+    @visit.register
+    def _(self, expr: sy.Rational, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        return zero
 
-    def apply(self, arg: Basic) -> Basic:
-        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
+    @visit.register
+    def _(self, expr: sy.Float, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        return zero
 
+    @visit.register
+    def _(self, expr: sy.Idx, idx: sy.Idx) -> Expr:
+        raise Exception("Derivative of Index")
+
+    @visit.register
+    def _(self, expr: sy.Indexed, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        return mkdiv(expr, idx)
+
+    @visit.register
+    def _(self, expr: sy.IndexedBase, idx: sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        return mkdiv(expr, idx)
+
+    @visit.register
+    def _(self, expr: sy.Function, idx: sy.Idx) -> Expr:
+        r = expr.args[0]
+        name = expr.func.__name__
+        if name == "div":
+
+            # Handle div of div
+            assert isinstance(expr.args[0], Expr)
+            sub: Expr = expr.args[0]
+            sub = self.visit(sub, noidx)
+            if len(expr.args) > 2:
+                for idx1 in expr.args[1:]:
+                    sub = self.visit(sub, idx1)
+                return sub
+            if isinstance(sub, sy.Function) and sub.func.__name__ == "div":
+                args = sorted(sub.args[1:] + expr.args[1:],key=lambda x : str(x))
+                return mkdiv(sub.args[0], *args)
+
+            for idx1 in expr.args[1:]:
+                sub = self.visit(sub, idx1)
+
+            if idx is not noidx:
+                sub = self.visit(div(sub, idx), noidx)
+
+            return sub
+        elif idx is noidx:
+            return expr
+        else:
+            if name == "sin":
+                f = cos(r)*self.visit(r, idx)
+            elif name == "cos":
+                f = -sin(r)*self.visit(r, idx)
+            elif name == "exp":
+                f = exp(r)*self.visit(r, idx)
+            else:
+                raise Exception("unknown func")
+            assert isinstance(f, Expr)
+            return f
+
+    @visit.register
+    def _(self, expr: sy.Pow, idx:sy.Idx) -> Expr:
+        if idx is noidx:
+            return expr
+        else:
+            r = expr.args[0]
+            n = expr.args[1]
+            ret = n*r**(n-1)*self.visit(r, idx)
+            assert isinstance(ret, Expr)
+            return ret
+
+dmv = DivMakerVisitor()
+
+def assert_eq(a: Expr ,b: Expr)->None:
+    assert a is not None
+    r =  do_simplify(a - b)
+    assert r == 0, f"{a} minus {b} !=0, instead {r}"
+
+def do_div(expr: Basic)->Expr:
+    r = dmv.visit(expr, noidx)
+    assert isinstance(r, Expr)
+    return r
+
+if __name__ == "__main__":
+    foo = mkIndexedBase("foo",(1,))
+    gxx = mkSymbol("gxx")
+    gxy = mkSymbol("gxy")
+    gyy = mkSymbol("gyy")
+    gzz = mkSymbol("gzz")
+    gyz = mkSymbol("gyz")
+    gxz = mkSymbol("gxz")
+
+    expr1 = div(gxx**2, l0, l0)
+    #expr2 = 2*div(gxx*div(gxx, l0),l0)
+    expr2 = 2*div(gxx, l0)**2 + 2*gxx*div(gxx, l0, l0)
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = - gyy*div(-gxz, l0) - gyy*div(gxz, l0)
+    expr2 = zero
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = -2*gxy*div(gxy, l2) + div(gxy**2, l2)
+    expr2 = zero
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = div(-gxy**2, l2)
+    expr2 = -2*gxy*div(gxy, l2)
+    assert_eq( do_div(expr1), expr2 )
+
+    expr1 = div(gxx*gyy - gxy**2, l2)
+    expr2 = gxx*div(gyy,l2)+div(gxx,l2)*gyy-2*gxy*div(gxy,l2)
+    assert_eq( do_div(expr1), expr2 )
+
+    assert_eq(do_div(div(x,l0)),one)
+    assert_eq(do_div(div(y,l0)),zero)
+    assert_eq(do_div(div(x**3,l0)),3*x**2)
+    assert_eq(do_div(div(sin(x),l0)),cos(x))
+    assert_eq(do_div(div(x**2+x**3,l0)),2*x + 3*x**2)
+    assert_eq(do_div(div(x**2+x**3,l1)),zero)
+    assert_eq(do_div(div(1/(2+x**2),l0)),-2*x/(2+x**2)**2)
+    assert_eq(do_div(div(x**3/(2+x**2),l0)),-2*x**4/(2+x**2)**2 + 3*x**2/(2+x**2))
+    assert_eq(do_div(div(x**2*sin(x),l0)),x*(x*cos(x)+2*sin(x)))
+    assert_eq(do_div(div(sin(x**3),l0)),cos(x**3)*3*x**2)
+    assert_eq(do_div(div(foo[la],l0)),div(foo[la],l0))
+    assert_eq(do_div(div(div(foo[la],lb),lc)), div(foo[la],lb,lc))
+    assert_eq(do_div(div(div(foo[la],lc),lb)), div(foo[la],lb,lc))
+    assert_eq(do_div(div(div(foo[la],l0),l1)), div(foo[la],l0,l1))
+    assert_eq(do_div(div(div(foo[la],l1),l0)), div(foo[la],l0,l1))
+    assert_eq(do_div(x*div(x,l0)), x)
+    assert_eq(do_div(x+div(x,l0)), x+1)
+    assert_eq(do_div(x+x*div(x,l0)), 2*x)
+    assert_eq(do_div(x*(x+x*div(x,l0))), 2*x**2)
+    assert_eq(do_div(x*(x/2+3*x*div(x,l0))), (7/2)*x**2)
+    assert_eq(do_div(div(foo,l0)), div(foo,l0))
+    assert_eq( do_div(div(gxx, l1)/2 + div(gxy, l0)), div(gxx, l1)/2 + div(gxy, l0) )
+    assert_eq( do_div(div(exp(x),l0)), exp(x))
+    assert_eq( do_div(div(exp(x)/2,l0)), exp(x)/2)
+    expr = (gxy*gyz - gxz*gyy)*(-div(gxx, l2)/2 + div(gxz, l0))
+    assert_eq(do_div(expr), expr)
+    expr1 = (gxy*gyz - gxz*gyy + gzz)*(-div(gxx, l2)/2 + div(gxz+gzz, l0))
+    expr2 = (gxy*gyz - gxz*gyy + gzz)*(-div(gxx, l2)/2 + div(gxz, l0) +div(gzz, l0))
+    assert_eq(do_div(expr1), expr2)
+    expr = (gxx*gyz - gxy*gxz)*(div(gxx, l1) - 2*div(gxy, l0))/2 + (gxy*gyz - gxz*gyy)*div(gxx, l0)/2
+    assert_eq( do_div(expr), expr )
+    expr1 = div(gxx*gyy, l0)
+    expr2 = div(gxx, l0)*gyy + div(gyy, l0)*gxx
+    assert_eq( do_div(expr1), expr2 )
+    expr1 = x**6/3 + sin(x)/x
+    expr2 = 2*x**5 + cos(x)/x - sin(x)/x**2
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    expr1 = (x+sin(x))*(1/x+cos(x))
+    expr2 = (1+cos(x))*(1/x+cos(x))-(1/x**2+sin(x))*(x+sin(x))
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    expr1 = 1/(x+sin(x))
+    expr2 = -(1+cos(x))/(x+sin(x))**2
+    assert_eq( do_div(div(expr1, l0)), expr2 )
+    assert_eq( do_div(div(do_sqrt(x), l0)), 1/do_sqrt(x)/2 )
+### dmv
 
 TA = TypeVar("TA")
 
@@ -261,7 +686,7 @@ def is_letter_index(sym: Basic) -> bool:
     if type(sym) != Idx:
         return False
     s = str(sym)
-    if len(s) != 2:
+    if sym not in lookup_pair:
         return False
     if s[0] not in ["u", "l"]:
         return False
@@ -289,8 +714,8 @@ def get_indices(xpr: Expr) -> OrderedSet[Idx]:
 def byname(x: Idx) -> str:
     """ Return a string suitable for sorting a list of upper/lower indices. """
     s = str(x)
-    assert len(s) == 2
-    return s[1] + s[0]
+    assert x in lookup_pair 
+    return s[1:] + s[0]
 
 
 num0 = ord('0')
@@ -299,7 +724,7 @@ num9 = ord('9')
 
 def is_numeric_index(x: Idx) -> bool:
     s = str(x)
-    assert len(s) == 2, f"x={x}"
+    assert x in lookup_pair
     n = ord(s[1])
     return num0 <= n and n <= num9
 
@@ -324,9 +749,9 @@ def get_pair(x: Idx) -> Tuple[Idx, Idx]:
 def is_pair(a: Idx, b: Idx) -> bool:
     sa = str(a)
     sb = str(b)
-    assert len(sa) == 2
-    assert len(sb) == 2
-    if sa[1] == sb[1] and ((sa[0] == 'u' and sb[0] == 'l') or (sa[0] == 'l' and sb[0] == 'u')):
+    assert a in lookup_pair
+    assert b in lookup_pair
+    if sa[1:] == sb[1:] and ((sa[0] == 'u' and sb[0] == 'l') or (sa[0] == 'l' and sb[0] == 'u')):
         return True
     else:
         return False
@@ -452,7 +877,7 @@ def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx],
     return output
 
 
-def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> str:
+def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> Expr:
     newstr = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
@@ -465,10 +890,10 @@ def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> str:
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
         newstr += str(to_num(ind))
-    return newstr
+    return mkSymbol(newstr)
 
 
-def mksymbol_for_tensor(sym: Indexed) -> Symbol:
+def mksymbol_for_tensor(sym: Indexed) -> Expr:
     """
     Define a symbol for a tensor using standard NRPy+ rules.
     For an upper index put a U, for a lower index put a D.
@@ -495,7 +920,7 @@ def mksymbol_for_tensor(sym: Indexed) -> Symbol:
             newstr += str(to_num(ind))
         return mkSymbol(newstr)
     else:
-        return mkSymbol(_mksymbol_for_tensor(sym))
+        return _mksymbol_for_tensor(sym)
 
 
 ## mksymbol_for_tensor_xyz
@@ -508,10 +933,10 @@ def _mksymbol_for_tensor_xyz(sym: Indexed, *args: Idx) -> str:
     return newstr
 
 
-def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
+def mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
     """
     Define a symbol for a tensor using standard Cactus rules.
-    Don't distinguish up/down indexes. Use suffixes based on
+    Don't distinguish up/down indices. Use suffixes based on
     x, y, and z at the end.
 
     :param out: The tensor expression with integer indices.
@@ -529,22 +954,11 @@ def __mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
         return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
 
-# It's horrible that Python can't let me type this any other way
-mk_subst_type = Union[
-    Callable[[Expr, Idx], Expr],
-    Callable[[Expr, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx, Idx], Expr],
-    Callable[[Expr, Idx, Idx, Idx, Idx, Idx, Idx], Expr]]
+mk_subst_type = Callable[[Indexed, VarArg(int)], Expr]
 
 
-def mk_subst_default_(out: Indexed, *inds: int) -> Expr:
+def mk_subst_default(out: Indexed, *inds: int) -> Expr:
     return mksymbol_for_tensor(out)
-
-
-mk_subst_default = cast(mk_subst_type, mk_subst_default_)
-mksymbol_for_tensor_xyz = cast(mk_subst_type, __mksymbol_for_tensor_xyz)
 
 param_default_type = Union[float, int, str, bool]
 param_values_type = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
@@ -792,6 +1206,8 @@ class ScheduleBin(ScheduleBinEnum):
     Init = auto(), 'Init', True
     Analysis = auto(), 'Analysis', True
     EstimateError = auto(), 'EstimateError', False
+    DriverInit = auto(), 'ODESolvers_Initial', False
+    PostStep = auto(), 'ODESolvers_PostStep', False
 
 
 class ThornFunction:
@@ -810,15 +1226,6 @@ class ThornFunction:
         self.schedule_after: Collection[str] = schedule_after or list()
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
-        # TODO: Is the type checker correct here?
-        if isinstance(lhs2, Symbol):
-            pass
-        elif isinstance(lhs2, IndexedBase):
-            pass
-        # elif isinstance(lhs2, Indexed) and len(lhs2.args)==1:
-        #    pass
-        else:
-            raise Exception(f"'add_eqn('{lhs2}',...) is not the correct type. It is '{type(lhs2)}'")
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
         if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
             self.eqn_list.add_output(lhs2)
@@ -842,13 +1249,14 @@ class ThornFunction:
                     self.msg = f"Index passed to add_eqn: '{expr}'"
                 elif type(expr) == Indexed:
                     if len(expr.args) != 1:
-                        self.msg = f"Tensor passed to add_eqn: '{expr}'"
+                        mms = mk_mk_subst(str(expr))
+                        self.msg = f"'{expr}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?"
                 return False
 
             def r(self, expr: Expr) -> Expr:
                 return expr
 
-        rhs2_: Basic = self.thorn_def.do_subs(rhs2)
+        rhs2_: Basic = do_isub(rhs2)
         assert isinstance(rhs2_, Expr)
         rhs2_ = divs.apply(rhs2_)
         assert isinstance(rhs2_, Expr)
@@ -861,66 +1269,74 @@ class ThornFunction:
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
 
-    def add_eqn(self, lhs: Union[Indexed, IndexedBase, Symbol], rhs: Union[Matrix, Expr]) -> None:
+    def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
+        it = check_indices(expr, self.thorn_def.defn)
+        return it.free
+
+    #def expand_free_indices(self, expr : Expr)->Expr
+
+    @multimethod
+    def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
+        check_indices(rhs, self.thorn_def.defn)
+
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
         lhs2: Symbol
-        if type(lhs) == Indexed:
-            if isinstance(rhs, Expr):
-                if get_free_indices(lhs) != get_free_indices(rhs):
-                    raise Exception(f"Free indices of '{lhs}' and '{rhs}' do not match.")
-            count = 0
-            for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
-                count += 1
-                lhsx, inds, _ = tup
-                lhs2_: Basic = self.thorn_def.do_subs(lhsx, self.thorn_def.subs)
-                assert isinstance(lhs2_, Symbol), f"'{lhs2_}' is not a Symbol. Did you forget to call mk_subst()?"
-                lhs2 = lhs2_
-                if type(rhs) == Matrix:
-                    arr_inds = toNumTup(lhs.args[1:], inds)
-                    rhs0 = rhs[arr_inds]
-                else:
-                    rhs0 = rhs
-                rhs2 = self.thorn_def.do_subs(rhs0, inds, self.thorn_def.subs)
-                # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
-                self._add_eqn2(lhs2, rhs2)
-            if count == 0:
-                assert isinstance(rhs, Expr)
-                # TODO: Understand what's going on with arg 0
-                for ind in lhs.args[1:]:
-                    assert isinstance(ind, Idx)
-                    assert is_numeric_index(ind)
-                lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-                rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
-                self._add_eqn2(lhs2, rhs2)
-        elif type(lhs) in [IndexedBase, Symbol]:
-            assert isinstance(rhs, Expr)
-            lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
-            rhs2 = self.thorn_def.do_subs(eci, self.thorn_def.subs)
+        if self.get_free_indices(lhs) != self.get_free_indices(rhs):
+            raise Exception(f"Free indices of '{lhs}' and '{rhs}' do not match.")
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, _ = tup
+            lhs2_: Basic = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            if not isinstance(lhs2_, Symbol):
+                mms = mk_mk_subst(repr(lhs2_))
+                raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
+            lhs2 = lhs2_
+            rhs0 = rhs
+            rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
+            # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
             self._add_eqn2(lhs2, rhs2)
-        elif isinstance(rhs, MatrixBase):
+        if count == 0:
+            # TODO: Understand what's going on with arg 0
+            for ind in lhs.args[1:]:
+                assert isinstance(ind, Idx)
+                assert is_numeric_index(ind)
             lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
-            for item in expand_free_indices(lhs2, self.thorn_def.symmetries):
-                rhsm = rhs
-                for idx in item[2]:
-                    # print(rhsm,idx,"->",end=" ")
-                    if isinstance(rhsm, MatrixBase):
-                        idx2 = do_subs(idx, item[1])
-                        assert isinstance(idx2, Idx)
-                        index = to_num(idx)
-                        rhsm = rhsm[index, :][:]
-                    elif isinstance(rhsm, list):
-                        rhsm = rhsm[to_num(do_subs(idx, item[1]))]
-                    else:
-                        rhsm = do_subs(rhs2, item[1])
-                    # print(rhsm)
-                assert isinstance(rhsm, Expr)
-                rhs2 = self.thorn_def.do_subs(rhsm, self.thorn_def.subs)
-        else:
-            print("other:", lhs, rhs, type(lhs), type(rhs))
-            raise Exception()
+            rhs2 = self.thorn_def.do_subs(rhs, self.thorn_def.subs)
+            self._add_eqn2(lhs2, rhs2)
+
+    @add_eqn.register
+    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        lhs2 = cast(Symbol, self.thorn_def.do_subs(lhs, self.thorn_def.subs))
+        eci = expand_contracted_indices(rhs, self.thorn_def.symmetries)
+        rhs2 = do_isub(eci)
+        self._add_eqn2(lhs2, rhs2)
+        
+    @add_eqn.register
+    def _(self, lhs: Indexed, rhs: Matrix) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, _ = tup
+            lhs2_ = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            lhs2 = lhs2_
+            arr_inds = toNumTup(lhs.args[1:], inds)
+            rhs0 = rhs[arr_inds]
+            rhs2 = self.thorn_def.do_subs(rhs0, self.thorn_def.subs, inds)
+            # rhs2 = self.thorn_def.do_subs(rhs2, inds, self.thorn_def.subs)
+            assert isinstance(lhs2, Symbol)
+            self._add_eqn2(lhs2, rhs2)
+        assert count > 0
 
     def madd(self) -> None:
         self.eqn_list.madd()
@@ -995,8 +1411,9 @@ class ThornDef:
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
+        self.group_name : Dict[str, str]=dict()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
-        self.subs: Dict[Expr, Expr] = dict()
+        self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
         self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
@@ -1021,6 +1438,10 @@ class ThornDef:
             mkFunction("divyz"): True,
             mkFunction("divzz"): True
         }
+
+    def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
+        it = check_indices(expr, self.defn)
+        return it.free
 
     def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
@@ -1100,6 +1521,7 @@ class ThornDef:
         rhs: Math
         from_thorn: str
         parity: TensorParity
+        group_name: str
 
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:
@@ -1112,6 +1534,7 @@ class ThornDef:
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
+        self.group_name[basename] = kwargs.get('group_name', basename)
 
         if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
@@ -1124,10 +1547,10 @@ class ThornDef:
 
         return ret
 
-    def find_indexes(self, foo: Basic) -> List[Idx]:
+    def find_indices(self, foo: Basic) -> List[Idx]:
         ret: List[Idx] = list()
         if type(foo) == div:
-            ret = self.find_indexes(foo.args[0])
+            ret = self.find_indices(foo.args[0])
         for arg in foo.args[1:]:
             assert isinstance(arg, Idx)
             ret.append(arg)
@@ -1154,13 +1577,13 @@ class ThornDef:
         return msym_list
 
     def get_matrix(self, ind: Indexed) -> Matrix:
-        print(ind, ind.args)
         values: Dict[Idx, Idx] = dict()
         result = mkZeros(*tuple([dimension] * (len(ind.args) - 1)))
         ind_args: List[Idx] = [chkcast(x, Idx) for x in ind.args[1:]]
         while incr(ind_args, values):
             arr_inds = tuple([to_num(chkcast(do_subs(x, values), Idx)) for x in ind_args])
-            result[arr_inds] = self.do_subs(ind, values)
+            r = self.do_subs(ind, idxsubs=values)
+            result[arr_inds] = r
         return result
 
     def get_indices(self, expr: Expr) -> List[Idx]:
@@ -1181,61 +1604,30 @@ class ThornDef:
     def get_params(self) -> Set[str]:
         return OrderedSet(self.params)
 
-    def mk_subst(self, indexed: Indexed, f: Union[mk_subst_type, Matrix, Expr] = mk_subst_default) -> None:
-        indexes: List[Idx]
-        if type(indexed) == Indexed:
-            iter_var = indexed
-            iter_syms = self.find_symmetries(indexed)
-            indexes = self.find_indexes(indexed)
-        else:
-            # Here we declare an iteration variable
-            # with the same symmetries as the expression
-            # we want to iterate over.
-            assert isinstance(indexed.args[0], Indexed), f"{indexed} {indexed.args}"
-            iter_syms = self.find_symmetries(indexed)
-            indexes = self.find_indexes(indexed)
-            # for arg in indexed.args[1:]:
-            #    assert isinstance(arg, Idx), f"{indexed} {indexed.args}"
-            #    indexes.append(arg)
-            iter_var_base: IndexedBase = self.decl("iter_var", indexes)
-            iter_var = iter_var_base[indexes]
-            self.symmetries.sd[iter_var_base] = iter_syms
-        # print("<<","indexed:",indexed)
-        # print("  ","iter_var:",iter_var)
-        # print("  ","iter_syms:",iter_syms)
-        # print("  ","indexes:",indexes)
+    @multimethod
+    def mk_subst(self, indexed: Indexed, f: Callable[[Indexed, int, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0], n[1])
+        self.mk_subst(indexed, f2)
 
-        if isinstance(f, MatrixBase):
-            set_matrix = f
-            for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep, alist = tup
-                assert isinstance(out, Indexed)
-                arr_inds = tuple([to_num(x) for x in out.indices])
-                if self.run_simplify:
-                    narray = len(arr_inds)
-                    res = do_simplify(set_matrix[arr_inds[0:2]])
-                    if narray >= 3:
-                        res = self.do_subs(res, indrep)
-                    self.subs[out] = res
-                else:
-                    self.subs[out] = set_matrix[arr_inds]
-                print("out:", out)
-                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
-            return None
-        elif isinstance(f, Expr):
-            dm = DivMaker(self.get_params(), self.get_coords())
-            if get_free_indices(iter_var) != get_free_indices(f):
-                raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
-            for tup in expand_free_indices(iter_var, self.symmetries):
-                out, indrep, _ = tup
-                assert isinstance(out, Indexed)
-                arr_inds = tuple([to_num(x) for x in out.indices])
-                if self.run_simplify:
-                    self.subs[out] = do_simplify(self.do_subs(f, indrep))
-                else:
-                    self.subs[out] = self.do_subs(f, indrep)
-                print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
-            return None
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Callable[[Indexed, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0])
+        self.mk_subst(indexed, f2)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Callable[[Indexed, int, int, int], Expr]) -> None:
+        def f2(ix: Indexed, *n:int)->Expr:
+            return f(ix, n[0], n[1], n[2])
+        self.mk_subst(indexed, f2)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: mk_subst_type = mk_subst_default) -> None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
 
         for tup in expand_free_indices(iter_var, self.symmetries):
             out, indrep, _ = tup
@@ -1250,40 +1642,97 @@ class ThornDef:
             elif subval_.is_Function:
                 pass
             else:
-                assert subval_.is_Symbol, f"{type(subval_)}, {subval_.__class__}, {subval_.is_Function}"
-                subval = cast(Symbol, subval_)
-                self.gfs[str(subval)] = subval
-                self.centering[str(subval)] = self.centering[str(out.base)]
-                self.var2base[str(subval)] = str(out.base)
-                if str(out.base) not in self.groups:
-                    self.groups[str(out.base)] = list()
-                members = self.groups[str(out.base)]
-                members.append(str(subval))
-            print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval_, "cyan"))
+                subval = str(subval_)
+                outstr = str(out.base)
+                assert isinstance(subval_, Symbol)
+                self.gfs[subval] = subval_
+                self.centering[subval] = self.centering[outstr]
+                self.var2base[subval] = outstr
+                if outstr not in self.groups:
+                    self.groups[outstr] = list()
+                members = self.groups[outstr]
+                members.append(subval)
+            print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval, "cyan"))
             self.subs[subj] = subval_
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: Expr) -> None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
+
+        if self.get_free_indices(iter_var) != self.get_free_indices(f):
+            raise Exception(f"Free indices of '{indexed}' and '{f}' do not match.")
+        for tup in expand_free_indices(iter_var, self.symmetries):
+            out, indrep, _ = tup
+            assert isinstance(out, Indexed)
+            arr_inds = tuple([to_num(x) for x in out.indices])
+            if self.run_simplify:
+                self.subs[out] = do_simplify(self.do_subs(f, idxsubs=indrep))
+            else:
+                self.subs[out] = self.do_subs(f, idxsubs=indrep)
+            print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
+        return None
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: ImmutableDenseMatrix) -> None:
+        self.mk_subst_matrix(indexed, f)
+
+    @mk_subst.register
+    def _(self, indexed: Indexed, f: MatrixBase) -> None:
+        self.mk_subst_matrix(indexed, f)
+
+    def mk_subst_matrix(self, indexed: Indexed, f: MatrixBase)->None:
+        indices: List[Idx]
+        iter_var = indexed
+        iter_syms = self.find_symmetries(indexed)
+        indices = self.find_indices(indexed)
+
+        set_matrix = f
+        for tup in expand_free_indices(iter_var, self.symmetries):
+            out, indrep, alist = tup
+            assert isinstance(out, Indexed)
+            arr_inds = tuple([to_num(x) for x in out.indices])
+            if self.run_simplify:
+                narray = len(arr_inds)
+                res = do_simplify(set_matrix[arr_inds[0:2]])
+                if narray >= 3:
+                    res = self.do_subs(res, idxsubs=indrep)
+                self.subs[out] = res
+            else:
+                self.subs[out] = set_matrix[arr_inds]
+            print("out:", out)
+            print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
+        return None
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
         result: List[Eq] = list()
         for tup in expand_free_indices(eqn.lhs, self.symmetries):
             lhs, inds, _ = tup
-            result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, inds, self.subs))]
+            result += [mkEq(self.do_subs(lhs, self.subs), self.do_subs(eqn.rhs, self.subs, inds))]
         return result
 
-    # def expand(self, arg:Symbol)->Expr:
-    #    return self.do_subs(expand_contracted_indices(arg, self.symmetries), self.subs)
-
-    def do_subs(self, arg: Expr, *subs: do_subs_table_type) -> Expr:
-        dm = DivMaker(self.get_params(), self.get_coords())
+    def do_subs(self, arg: Expr, subs: Optional[Dict[Indexed, Expr]]=None, idxsubs: Optional[Dict[Idx,Idx]]=None) -> Expr:
+        if subs is None:
+            subs = dict()
+        if idxsubs is None:
+            idxsubs = dict()
+        isub = IndexSubsVisitor(self.subs)
+        arg1 = arg
         for i in range(20):
-            new_arg = arg
+            new_arg = arg1
             new_arg = expand_contracted_indices(new_arg, self.symmetries)
             new_arg = cast(Expr, self.symmetries.apply(new_arg))
-            new_arg = cast(Expr, dm.apply(new_arg))
-            new_arg = do_subs(new_arg, self.subs, *subs)
-            if new_arg == arg:
+
+
+            isub.idxsubs = idxsubs
+            new_arg = isub.visit(new_arg)
+            new_arg = do_div(new_arg)
+            if new_arg == arg1:
                 return new_arg
-            arg = new_arg
-        raise Exception(str(arg))
+            arg1 = new_arg
+        raise Exception(arg)
 
 def _parity_of(p: int | Parity) -> Parity:
     if isinstance(p, Parity):
@@ -1344,6 +1793,6 @@ if __name__ == "__main__":
 
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
-    foo = gf.create_function("foo", ScheduleBin.Analysis)
-    foo.add_eqn(a, do_sympify(dimension))
-    foo.add_eqn(b, a + do_sympify(2))
+    foofunc = gf.create_function("foo", ScheduleBin.Analysis)
+    foofunc.add_eqn(a, do_sympify(dimension))
+    foofunc.add_eqn(b, a + do_sympify(2))

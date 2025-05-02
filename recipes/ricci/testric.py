@@ -1,10 +1,11 @@
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction, AtOrIn
 from EmitCactus.emit.tree import Identifier, String
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+from sympy import MatrixBase
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv
+    from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv, do_sympify
     from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions
@@ -29,6 +30,7 @@ if __name__ == "__main__":
 
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
     gmat = gf.get_matrix(g[la,lb])
+    print(gmat)
     imat = do_simplify(do_inv(gmat)*do_det(gmat)) #*idetg
     gf.mk_subst(g[ua, ub], imat)
     gf.mk_subst(ZeroVal[li,lj])
@@ -37,12 +39,13 @@ if __name__ == "__main__":
     # Metric
     grr = do_sqrt(1+c**2)*(a+b*x**2)
     gqq = do_sqrt(1+c**2)/(a+b*x**2)
-    gpp = 1
+    gpp = do_sympify(1)
+    Z = do_sympify(0)
     gmat = mkMatrix([
-    [grr,   c,   0],
-    [  c, gqq,   0],
-    [  0,   0, gpp]])
-    assert gmat.det() == 1
+    [grr,   c,   Z],
+    [  c, gqq,   Z],
+    [  Z,   Z, gpp]])
+    assert do_det(gmat) == 1
 
     # Define the affine connections
     gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
