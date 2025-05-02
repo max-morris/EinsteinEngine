@@ -18,6 +18,7 @@ from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
+from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
@@ -1210,14 +1211,16 @@ class ScheduleBin(ScheduleBinEnum):
     PostStep = auto(), 'ODESolvers_PostStep', False
 
 
+ScheduleTarget = ScheduleBin | ScheduleBlock
+
 class ThornFunction:
     def __init__(self,
                  name: str,
-                 schedule_bin: ScheduleBin,
+                 schedule_target: ScheduleTarget,
                  thorn_def: "ThornDef",
                  schedule_before: Optional[Collection[str]],
                  schedule_after: Optional[Collection[str]]) -> None:
-        self.schedule_bin = schedule_bin
+        self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
         self.eqn_list: EqnList = EqnList(thorn_def.is_stencil)
@@ -1458,11 +1461,11 @@ class ThornDef:
 
     def create_function(self,
                         name: str,
-                        schedule_bin: ScheduleBin,
+                        schedule_target: ScheduleTarget,
                         *,
                         schedule_before: Optional[Collection[str]] = None,
                         schedule_after: Optional[Collection[str]] = None) -> ThornFunction:
-        tf = ThornFunction(name, schedule_bin, self, schedule_before, schedule_after)
+        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after)
         self.thorn_functions[name] = tf
         return tf
 

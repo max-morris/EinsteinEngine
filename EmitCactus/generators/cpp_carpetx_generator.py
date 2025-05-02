@@ -85,20 +85,29 @@ class CppCarpetXGenerator(CactusGenerator):
 
         for fn_name, fn in self.thorn_def.thorn_functions.items():
             schedule_bin: Identifier
-            if fn.schedule_bin is ScheduleBin.Init:
-                schedule_bin = Identifier('initial')
-            elif fn.schedule_bin is ScheduleBin.Analysis:
-                schedule_bin = Identifier('analysis')
-            elif fn.schedule_bin is ScheduleBin.EstimateError:
-                schedule_bin = Identifier('ODESolvers_EstimateError')
-            elif fn.schedule_bin is ScheduleBin.Evolve:
-                schedule_bin = Identifier('ODESolvers_RHS')
-            elif fn.schedule_bin is ScheduleBin.DriverInit:
-                schedule_bin = Identifier('ODESolvers_Initial')
-            elif fn.schedule_bin is ScheduleBin.PostStep:
-                schedule_bin = Identifier('ODESolvers_PostStep')
+            at_or_in: AtOrIn
+
+            if isinstance(fn.schedule_target, ScheduleBlock):
+                schedule_bin = fn.schedule_target.name
+                at_or_in = fn.schedule_target.at_or_in
             else:
-                raise NotImplementedError(f'Bad ScheduleBin enum member {fn.schedule_bin}')
+                assert isinstance(fn.schedule_target, ScheduleBin)
+                at_or_in = AtOrIn.At if fn.schedule_target.is_builtin else AtOrIn.In
+
+                if fn.schedule_target is ScheduleBin.Init:
+                    schedule_bin = Identifier('initial')
+                elif fn.schedule_target is ScheduleBin.Analysis:
+                    schedule_bin = Identifier('analysis')
+                elif fn.schedule_target is ScheduleBin.EstimateError:
+                    schedule_bin = Identifier('ODESolvers_EstimateError')
+                elif fn.schedule_target is ScheduleBin.Evolve:
+                    schedule_bin = Identifier('ODESolvers_RHS')
+                elif fn.schedule_target is ScheduleBin.DriverInit:
+                    schedule_bin = Identifier('ODESolvers_Initial')
+                elif fn.schedule_target is ScheduleBin.PostStep:
+                    schedule_bin = Identifier('ODESolvers_PostStep')
+                else:
+                    raise NotImplementedError(f'Bad ScheduleBin enum member {fn.schedule_target}')
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
@@ -134,7 +143,7 @@ class CppCarpetXGenerator(CactusGenerator):
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
-                at_or_in=AtOrIn.At if fn.schedule_bin.is_builtin else AtOrIn.In,
+                at_or_in=at_or_in,
                 schedule_bin=schedule_bin,
                 description=String(fn_name),
                 lang=Language.C,
