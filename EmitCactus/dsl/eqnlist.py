@@ -14,7 +14,7 @@ from EmitCactus.util import OrderedSet, incr_and_get
 from EmitCactus.dsl.sympywrap import *
 from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
-from EmitCactus.util import get_or_compute
+from EmitCactus.util import get_or_compute, ProgressBar
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -493,7 +493,7 @@ class EqnList:
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
             val1: int = complete[k]
             for k2 in finder(v):
-                val2: Optional[int] = complete.get(cast(Symbol, k2), None)
+                val2: Optional[int] = complete.get(k2, None)
                 assert val2 is not None, f"k2={k2}"
                 assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
         for k in needed:

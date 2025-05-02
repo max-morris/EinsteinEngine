@@ -3,6 +3,9 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
 
+from types import TracebackType
+from time import time, sleep
+
 
 def get_class_name(x: Any) -> str:
     name = x.__class__.__name__
@@ -93,3 +96,42 @@ class OrderedSet(Set[T0], Generic[T0]):
     def __iter__(self) -> Iterator[T0]:
         r = set.__iter__(self)
         return sorted(list(r), key=lambda a: repr(a)).__iter__()
+
+
+class ProgressBarImpl:
+    def __init__(self, n_items: int, name: str, bar_size: int) -> None:
+        self.n_items = n_items
+        self.name = name
+        self.bar_size = bar_size
+        self.n = 0
+        self.t0 = time()
+
+    def __call__(self) -> None:
+        self.n += 1
+        n = self.n
+        nt = self.n_items
+        t0 = self.t0
+        tn = time()
+        frac = n / nt
+        delt = tn - t0
+        tt = delt / frac
+        tr = tt - delt
+        n_star = int(self.bar_size * n / nt)
+        bar = ("*" * n_star) + (" " * (self.bar_size - n_star))
+        if delt >= 1.5 and tt >= 3.0:
+            print("%s: %s %d/%d (%.2f%%) time: (remaining: %.2fs, total: %.2fs)   " % (
+                self.name, bar, n, nt, 100 * n / nt, tr, tt), end='\r')
+
+
+class ProgressBar:
+    def __init__(self, n_items: int, name: str = "progress", bar_size: int = 40) -> None:
+        self.n_items = n_items
+        self.bar_size = bar_size
+        self.name = name
+
+    def __enter__(self) -> ProgressBarImpl:
+        return ProgressBarImpl(self.n_items, self.name, self.bar_size)
+
+    def __exit__(self, ty: Optional[type[BaseException]], val: Optional[BaseException],
+                 tb: Optional[TracebackType]) -> None:
+        print()

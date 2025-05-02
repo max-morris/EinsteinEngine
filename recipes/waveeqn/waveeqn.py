@@ -2,6 +2,8 @@
 from EmitCactus.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from EmitCactus.emit.tree import Identifier, String, Centering
 from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
+from EmitCactus.dsl.sympywrap import do_sqrt, mkMatrix
+from sympy import Indexed, Symbol
 
 if __name__ == "__main__":
 
@@ -11,7 +13,7 @@ if __name__ == "__main__":
 
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import *
-    from sympy import Expr, Idx, sin, cos
+    from sympy import Expr, Idx, sin, cos, Matrix
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 
@@ -30,14 +32,10 @@ if __name__ == "__main__":
     cfu.verbose = True
 
 
-    def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
-        i = to_num(ni)
-        j = to_num(nj)
-        if i == j:
-            return do_sympify(1)
-        else:
-            return do_sympify(0)
-
+    flat_metric = mkMatrix([
+        [1,0,0],
+        [0,1,0],
+        [0,0,1]])
 
     # Create a set of grid functions
     gf = ThornDef("TestEmitCactus", "WaveEqn")
@@ -64,7 +62,7 @@ if __name__ == "__main__":
     kz = gf.add_param("kz", default=pi / 20, desc="The wave number in the z-direction")
     amp = gf.add_param("amp", default=10, desc="The amplitude")
     # c = w/k
-    w = spd*sqrt(kx**2 + ky**2 + kz**2)
+    w = spd*do_sqrt(kx**2 + ky**2 + kz**2)
 
     # Fill in values
     gf.mk_subst(g[li, lj], flat_metric)

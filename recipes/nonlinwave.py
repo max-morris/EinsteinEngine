@@ -17,9 +17,7 @@ if __name__ == "__main__":
     cfu.verbose = True
 
 
-    def flat_metric(out: Expr, ni: Idx, nj: Idx) -> Expr:
-        i = to_num(ni)
-        j = to_num(nj)
+    def flat_metric(out: Expr, i:int, j:int) -> Expr:
         if i == 2 or j == 2:
             return do_sympify(0)
         elif i == j:
