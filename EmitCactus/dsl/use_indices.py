@@ -18,6 +18,7 @@ from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
+from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
@@ -1210,20 +1211,25 @@ class ScheduleBin(ScheduleBinEnum):
     PostStep = auto(), 'ODESolvers_PostStep', False
 
 
+ScheduleTarget = ScheduleBin | ScheduleBlock
+
 class ThornFunction:
     def __init__(self,
                  name: str,
-                 schedule_bin: ScheduleBin,
+                 schedule_target: ScheduleTarget,
                  thorn_def: "ThornDef",
                  schedule_before: Optional[Collection[str]],
                  schedule_after: Optional[Collection[str]]) -> None:
-        self.schedule_bin = schedule_bin
+        self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
         self.eqn_list: EqnList = EqnList(thorn_def.is_stencil)
         self.been_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
+
+        if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
+            raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
@@ -1458,11 +1464,11 @@ class ThornDef:
 
     def create_function(self,
                         name: str,
-                        schedule_bin: ScheduleBin,
+                        schedule_target: ScheduleTarget,
                         *,
                         schedule_before: Optional[Collection[str]] = None,
                         schedule_after: Optional[Collection[str]] = None) -> ThornFunction:
-        tf = ThornFunction(name, schedule_bin, self, schedule_before, schedule_after)
+        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after)
         self.thorn_functions[name] = tf
         return tf
 
