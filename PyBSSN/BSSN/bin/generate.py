@@ -10,7 +10,7 @@ if __name__ == "__main__":
     from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
     from EmitCactus.generators.cactus_generator import InteriorSyncMode
 
-    from sympy import exp, log, Idx, Expr
+    from sympy import exp, log, Idx, Expr, cbrt
 
     ###
     # Thorn definitions
@@ -270,23 +270,13 @@ if __name__ == "__main__":
     poststep_group_a = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
         name=Identifier("BSSN_PostStepGroup"),
-        at_or_in=AtOrIn.In,
-        schedule_bin=Identifier("ODESolvers_Initial"),
-        description=String("BSSN post time step routines"),
-        after=[Identifier("BSSN_InitialGroup")],
-        before=[Identifier("ADMBaseX_SetADMVars")]
-    )
-
-    poststep_group_b = ScheduleBlock(
-        group_or_function=GroupOrFunction.Group,
-        name=Identifier("BSSN_PostStepGroup"),
         at_or_in=AtOrIn.At,
         schedule_bin=Identifier("postregrid"),
         description=String("BSSN post time step routines"),
         before=[Identifier("ADMBaseX_SetADMVars")]
     )
 
-    poststep_group_c = ScheduleBlock(
+    poststep_group_b = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
         name=Identifier("BSSN_PostStepGroup"),
         at_or_in=AtOrIn.In,
@@ -333,26 +323,25 @@ if __name__ == "__main__":
         initial_group
     )
 
-    phi_tmp = (1/12) * log(detg)
-    trK_tmp = g[ua, ub] * k[la, lb]
-
     fun_adm2bssn.add_eqn(
         gt[li, lj],
-        exp(-4 * phi_tmp) * g[li, lj]
+        (1 / cbrt(detg)) * g[li, lj]
     )
 
-    fun_adm2bssn.add_eqn(phi, phi_tmp)
+    fun_adm2bssn.add_eqn(phi, 1 / 12 * log(detg))
 
     fun_adm2bssn.add_eqn(
         At[li, lj],
-        exp(-4 * phi_tmp) * (k[li, lj] - (1/3) * g[li, lj] * trK_tmp)
+        (1 / cbrt(detg)) * (
+            k[li, lj] - (1/3) * g[li, lj] * g[ua, ub] * k[la, lb]
+        )
     )
 
-    fun_adm2bssn.add_eqn(trK, trK_tmp)
+    fun_adm2bssn.add_eqn(trK, g[ua, ub] * k[la, lb])
 
     fun_adm2bssn.add_eqn(
         ConfConnect[ui],
-        -div(exp(-4 * phi_tmp) * g[ui, uj], lj)
+        -div(cbrt(detg) * g[ui, uj], lj)
     )
 
     fun_adm2bssn.add_eqn(evo_lapse, alp)
@@ -540,7 +529,6 @@ if __name__ == "__main__":
                 rhs_group,
                 poststep_group_a,
                 poststep_group_b,
-                poststep_group_c,
                 analysis_group,
                 fun_sync_state_schedule
             ]
