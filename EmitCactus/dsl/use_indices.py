@@ -1405,6 +1405,7 @@ class ThornFunction:
 
 class ThornDef:
     def __init__(self, arr: str, name: str, run_simplify: bool = True) -> None:
+        self.iter_tmp:int = 0
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
@@ -1438,6 +1439,10 @@ class ThornDef:
             mkFunction("divyz"): True,
             mkFunction("divzz"): True
         }
+
+    def next_tmp_iter_var(self):
+        self.iter_tmp += 1
+        return "iter_var_%d" % self.iter_tmp
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
@@ -1674,6 +1679,20 @@ class ThornDef:
                 self.subs[out] = self.do_subs(f, idxsubs=indrep)
             print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
         return None
+
+    @mk_subst.register
+    def _(self, divIndexed: div, f: mk_subst_type = mk_subst_default) -> None:
+        # Here we declare an iteration variable
+        # with the same symmetries as the expression
+        # we want to iterate over.
+        assert isinstance(divIndexed.args[0], Indexed), f"{divIndexed} {divIndexed.args}"
+        iter_syms = self.find_symmetries(divIndexed)
+        indexes = self.find_indices(divIndexed)
+        iter_var_name = self.next_tmp_iter_var()
+        iter_var_base: IndexedBase = self.decl(iter_var_name, indexes, declare_as_temp=True)
+        iter_var = iter_var_base[indexes]
+        self.symmetries.sd[iter_var_base] = iter_syms
+        self.mk_subst(iter_var, f)
 
     @mk_subst.register
     def _(self, indexed: Indexed, f: ImmutableDenseMatrix) -> None:
