@@ -1,0 +1,84 @@
+implements: BSSN
+inherits: ADMBaseX,Driver
+
+
+public:
+REAL At TYPE=GF TAGS='rhs="BSSN::At_rhs" parities={+1 +1 +1  -1 -1 +1  -1 +1 -1  +1 +1 +1  +1 -1 -1  +1 +1 +1}' CENTERING={ VVV }
+{
+    AtDD00, AtDD01, AtDD02, AtDD11, AtDD12, AtDD22
+}
+public:
+REAL At_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1  -1 -1 +1  -1 +1 -1  +1 +1 +1  +1 -1 -1  +1 +1 +1}' CENTERING={ VVV }
+{
+    At_rhsDD00, At_rhsDD01, At_rhsDD02, At_rhsDD11, At_rhsDD12, At_rhsDD22
+}
+public:
+REAL ConfConnect TYPE=GF TAGS='rhs="BSSN::ConfConnect_rhs" parities={+1 +1 +1  +1 -1 +1  +1 +1 -1}' CENTERING={ VVV }
+{
+    ConfConnectU0, ConfConnectU1, ConfConnectU2
+}
+public:
+REAL ConfConnect_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1  +1 -1 +1  +1 +1 -1}' CENTERING={ VVV }
+{
+    ConfConnect_rhsU0, ConfConnect_rhsU1, ConfConnect_rhsU2
+}
+public:
+REAL HamCons TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    HamCons
+}
+public:
+REAL MomCons TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1  +1 -1 +1  +1 +1 -1}' CENTERING={ VVV }
+{
+    MomConsU0, MomConsU1, MomConsU2
+}
+public:
+REAL evo_lapse TYPE=GF TAGS='rhs="BSSN::evo_lapse_rhs" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    evo_lapse
+}
+public:
+REAL evo_lapse_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    evo_lapse_rhs
+}
+public:
+REAL evo_shift TYPE=GF TAGS='rhs="BSSN::evo_shift_rhs" parities={+1 +1 +1  +1 -1 +1  +1 +1 -1}' CENTERING={ VVV }
+{
+    evo_shiftU0, evo_shiftU1, evo_shiftU2
+}
+public:
+REAL evo_shift_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1  +1 -1 +1  +1 +1 -1}' CENTERING={ VVV }
+{
+    evo_shift_rhsU0, evo_shift_rhsU1, evo_shift_rhsU2
+}
+public:
+REAL gt TYPE=GF TAGS='rhs="BSSN::gt_rhs" parities={+1 +1 +1  -1 -1 +1  -1 +1 -1  +1 +1 +1  +1 -1 -1  +1 +1 +1}' CENTERING={ VVV }
+{
+    gtDD00, gtDD01, gtDD02, gtDD11, gtDD12, gtDD22
+}
+public:
+REAL gt_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1  -1 -1 +1  -1 +1 -1  +1 +1 +1  +1 -1 -1  +1 +1 +1}' CENTERING={ VVV }
+{
+    gt_rhsDD00, gt_rhsDD01, gt_rhsDD02, gt_rhsDD11, gt_rhsDD12, gt_rhsDD22
+}
+public:
+REAL phi TYPE=GF TAGS='rhs="BSSN::phi_rhs" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    phi
+}
+public:
+REAL phi_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    phi_rhs
+}
+public:
+REAL trK TYPE=GF TAGS='rhs="BSSN::trK_rhs" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    trK
+}
+public:
+REAL trK_rhs TYPE=GF TAGS='checkpoint="no" parities={+1 +1 +1}' CENTERING={ VVV }
+{
+    trK_rhs
+}

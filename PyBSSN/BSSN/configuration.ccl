@@ -1,0 +1,7 @@
+REQUIRES Arith Loop BSSN_gen AMReX
+
+PROVIDES BSSN_gen
+{
+#   SCRIPT bin/generate.py
+#   LANG python3
+}

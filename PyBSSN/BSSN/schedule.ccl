@@ -1,0 +1,60 @@
+STORAGE: At[1]
+STORAGE: At_rhs[1]
+STORAGE: ConfConnect[1]
+STORAGE: ConfConnect_rhs[1]
+STORAGE: HamCons[1]
+STORAGE: MomCons[1]
+STORAGE: evo_lapse[1]
+STORAGE: evo_lapse_rhs[1]
+STORAGE: evo_shift[1]
+STORAGE: evo_shift_rhs[1]
+STORAGE: gt[1]
+STORAGE: gt_rhs[1]
+STORAGE: phi[1]
+STORAGE: phi_rhs[1]
+STORAGE: trK[1]
+STORAGE: trK_rhs[1]
+SCHEDULE adm2bssn IN BSSN_InitialGroup
+{
+LANG: C
+SYNC: At, ConfConnect, evo_lapse, evo_shift, gt, phi, trK
+Reads: ADMBaseX::alp(Everywhere), ADMBaseX::betax(Everywhere), ADMBaseX::betay(Everywhere), ADMBaseX::betaz(Everywhere), ADMBaseX::gxx(Everywhere), ADMBaseX::gxy(Everywhere), ADMBaseX::gxz(Everywhere), ADMBaseX::gyy(Everywhere), ADMBaseX::gyz(Everywhere), ADMBaseX::gzz(Everywhere), ADMBaseX::kxx(Everywhere), ADMBaseX::kxy(Everywhere), ADMBaseX::kxz(Everywhere), ADMBaseX::kyy(Everywhere), ADMBaseX::kyz(Everywhere), ADMBaseX::kzz(Everywhere)
+Writes: AtDD00(Interior), AtDD01(Interior), AtDD02(Interior), AtDD11(Interior), AtDD12(Interior), AtDD22(Interior), ConfConnectU0(Interior), ConfConnectU1(Interior), ConfConnectU2(Interior), evo_lapse(Interior), evo_shiftU0(Interior), evo_shiftU1(Interior), evo_shiftU2(Interior), gtDD00(Interior), gtDD01(Interior), gtDD02(Interior), gtDD11(Interior), gtDD12(Interior), gtDD22(Interior), phi(Interior), trK(Interior)
+} "adm2bssn"
+SCHEDULE bssn2adm IN BSSN_PostStepGroup AFTER sync_state
+{
+LANG: C
+Reads: AtDD00(Everywhere), AtDD01(Everywhere), AtDD02(Everywhere), AtDD11(Everywhere), AtDD12(Everywhere), AtDD22(Everywhere), evo_lapse(Everywhere), evo_shiftU0(Everywhere), evo_shiftU1(Everywhere), evo_shiftU2(Everywhere), gtDD00(Everywhere), gtDD01(Everywhere), gtDD02(Everywhere), gtDD11(Everywhere), gtDD12(Everywhere), gtDD22(Everywhere), phi(Everywhere), trK(Everywhere)
+Writes: ADMBaseX::alp(Everywhere), ADMBaseX::betax(Everywhere), ADMBaseX::betay(Everywhere), ADMBaseX::betaz(Everywhere), ADMBaseX::gxx(Everywhere), ADMBaseX::gxy(Everywhere), ADMBaseX::gxz(Everywhere), ADMBaseX::gyy(Everywhere), ADMBaseX::gyz(Everywhere), ADMBaseX::gzz(Everywhere), ADMBaseX::kxx(Everywhere), ADMBaseX::kxy(Everywhere), ADMBaseX::kxz(Everywhere), ADMBaseX::kyy(Everywhere), ADMBaseX::kyz(Everywhere), ADMBaseX::kzz(Everywhere)
+} "bssn2adm"
+SCHEDULE bssn_cons IN BSSN_AnalysisGroup
+{
+LANG: C
+SYNC: HamCons, MomCons
+Reads: ADMBaseX::gxx(Everywhere), ADMBaseX::gxy(Everywhere), ADMBaseX::gxz(Everywhere), ADMBaseX::gyy(Everywhere), ADMBaseX::gyz(Everywhere), ADMBaseX::gzz(Everywhere), AtDD00(Everywhere), AtDD01(Everywhere), AtDD02(Everywhere), AtDD11(Everywhere), AtDD12(Everywhere), AtDD22(Everywhere), ConfConnectU0(Everywhere), ConfConnectU1(Everywhere), ConfConnectU2(Everywhere), gtDD00(Everywhere), gtDD01(Everywhere), gtDD02(Everywhere), gtDD11(Everywhere), gtDD12(Everywhere), gtDD22(Everywhere), phi(Everywhere), trK(Everywhere)
+Writes: HamCons(Interior), MomConsU0(Interior), MomConsU1(Interior), MomConsU2(Interior)
+} "bssn_cons"
+SCHEDULE rhs IN BSSN_RHSGroup
+{
+LANG: C
+SYNC: At_rhs, ConfConnect_rhs, evo_shift_rhs, gt_rhs
+Reads: ADMBaseX::gxx(Everywhere), ADMBaseX::gxy(Everywhere), ADMBaseX::gxz(Everywhere), ADMBaseX::gyy(Everywhere), ADMBaseX::gyz(Everywhere), ADMBaseX::gzz(Everywhere), AtDD00(Everywhere), AtDD01(Everywhere), AtDD02(Everywhere), AtDD11(Everywhere), AtDD12(Everywhere), AtDD22(Everywhere), ConfConnectU0(Everywhere), ConfConnectU1(Everywhere), ConfConnectU2(Everywhere), evo_lapse(Everywhere), evo_shiftU0(Everywhere), evo_shiftU1(Everywhere), evo_shiftU2(Everywhere), gtDD00(Everywhere), gtDD01(Everywhere), gtDD02(Everywhere), gtDD11(Everywhere), gtDD12(Everywhere), gtDD22(Everywhere), phi(Everywhere), trK(Everywhere)
+Writes: At_rhsDD00(Interior), At_rhsDD01(Interior), At_rhsDD02(Interior), At_rhsDD11(Interior), At_rhsDD12(Interior), At_rhsDD22(Interior), ConfConnect_rhsU0(Interior), ConfConnect_rhsU1(Interior), ConfConnect_rhsU2(Interior), evo_lapse_rhs(Interior), evo_shift_rhsU0(Interior), evo_shift_rhsU1(Interior), evo_shift_rhsU2(Interior), gt_rhsDD00(Interior), gt_rhsDD01(Interior), gt_rhsDD02(Interior), gt_rhsDD11(Interior), gt_rhsDD12(Interior), gt_rhsDD22(Interior), phi_rhs(Interior), trK_rhs(Interior)
+} "rhs"
+SCHEDULE GROUP BSSN_InitialGroup IN ODESolvers_Initial AFTER ADMBaseX_PostInitial
+{
+} "BSSN initialization routines"
+SCHEDULE GROUP BSSN_RHSGroup IN ODESolvers_RHS
+{
+} "BSSN equations RHS computation"
+SCHEDULE GROUP BSSN_PostStepGroup IN ODESolvers_PostStep BEFORE ADMBaseX_SetADMVars
+{
+} "BSSN post time step routines"
+SCHEDULE GROUP BSSN_AnalysisGroup AT analysis
+{
+} "BSSN analysis routones"
+SCHEDULE sync_state IN BSSN_PostStepGroup
+{
+LANG: C
+SYNC: gt, phi, At, trK, ConfConnect, evo_lapse, evo_shift
+} "Synchronize the BSSN state vector"
