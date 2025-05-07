@@ -1343,6 +1343,24 @@ class ThornFunction:
             assert isinstance(lhs2, Symbol)
             self._add_eqn2(lhs2, rhs2)
         assert count > 0
+        
+    @add_eqn.register
+    def _(self, lhs: Indexed, rhs: List[Expr]) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, idx = tup
+            num_idx = to_num(inds[idx[0]])
+            lhs2_ = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            lhs2 = lhs2_
+            rhs2 = rhs[num_idx]
+            assert isinstance(lhs2, Symbol)
+            self._add_eqn2(lhs2, rhs2)
+        assert count > 0
 
     def madd(self) -> None:
         self.eqn_list.madd()

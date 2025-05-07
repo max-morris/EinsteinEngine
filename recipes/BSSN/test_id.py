@@ -1,4 +1,6 @@
 if __name__ == "__main__":
+    from typing import List
+    from sympy import Expr, cbrt
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import do_sympify, mkMatrix
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
@@ -54,7 +56,7 @@ if __name__ == "__main__":
         [0, 0, 4]
     ])
 
-    vector = mkMatrix([[6, 6, 6]])
+    vector:List[Expr] = [do_sympify(x) for x in [6, 6, 6]]
     scalar = 8
 
     ###
@@ -68,7 +70,7 @@ if __name__ == "__main__":
     fun_fill_id.add_eqn(g[li, lj], diagonal_1)
     fun_fill_id.add_eqn(k[li, lj], diagonal_2)
     fun_fill_id.add_eqn(alp, do_sympify(scalar))
-    fun_fill_id.add_eqn(beta[ua], vector[ua])
+    fun_fill_id.add_eqn(beta[ua], vector)
 
     fun_fill_id.bake()
 
