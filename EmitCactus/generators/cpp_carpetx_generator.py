@@ -1,12 +1,13 @@
 import typing
-from typing import Optional, List, Set, Tuple
-from typing_extensions import Unpack
+from typing import Optional, List, Set, Tuple, Collection
 
 import sympy as sy
+from typing_extensions import Unpack
 
+from EmitCactus.dsl.carpetx import ExplicitSyncBatch
 from EmitCactus.dsl.eqnlist import TemporaryReplacement
 from EmitCactus.dsl.sympywrap import Math
-from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin
+from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
     VariableSection
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
@@ -25,14 +26,16 @@ from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
 
 
+class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
+    explicit_syncs: Collection[ExplicitSyncBatch]
+
+
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
                                                "cmath", "tuple"]]
-
     boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
-
     boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     # TODO: We want to be able to
@@ -54,8 +57,13 @@ class CppCarpetXGenerator(CactusGenerator):
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
     """.strip().replace('    ', '')
 
-    def __init__(self, thorn_def: ThornDef, **options: Unpack[CactusGeneratorOptions]) -> None:
-        super().__init__(thorn_def, **options)
+    options: CppCarpetXGeneratorOptions
+    dummy_fn_counter: int
+
+    def __init__(self, thorn_def: ThornDef, **options: Unpack[CppCarpetXGeneratorOptions]) -> None:
+        super().__init__(thorn_def, options)
+
+        self.dummy_fn_counter = 0
 
         unbaked_fns = {name for name, fn in thorn_def.thorn_functions.items() if not fn.been_baked}
         if len(unbaked_fns) > 0:
@@ -66,8 +74,14 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
+    def get_dummy_src_file_name(self, which: int) -> str:
+        return f'{self.thorn_def.name}_{self._get_dummy_sync_function_name(which)}.cpp'
+
     def generate_makefile(self) -> str:
         srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
+
+        for dummy_idx in range(0, self.dummy_fn_counter):
+            srcs.append(self.get_dummy_src_file_name(dummy_idx))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -84,30 +98,7 @@ class CppCarpetXGenerator(CactusGenerator):
             ]))
 
         for fn_name, fn in self.thorn_def.thorn_functions.items():
-            schedule_bin: Identifier
-            at_or_in: AtOrIn
-
-            if isinstance(fn.schedule_target, ScheduleBlock):
-                schedule_bin = fn.schedule_target.name
-                at_or_in = AtOrIn.In
-            else:
-                assert isinstance(fn.schedule_target, ScheduleBin)
-                at_or_in = AtOrIn.At if fn.schedule_target.is_builtin else AtOrIn.In
-
-                if fn.schedule_target is ScheduleBin.Init:
-                    schedule_bin = Identifier('initial')
-                elif fn.schedule_target is ScheduleBin.Analysis:
-                    schedule_bin = Identifier('analysis')
-                elif fn.schedule_target is ScheduleBin.EstimateError:
-                    schedule_bin = Identifier('ODESolvers_EstimateError')
-                elif fn.schedule_target is ScheduleBin.Evolve:
-                    schedule_bin = Identifier('ODESolvers_RHS')
-                elif fn.schedule_target is ScheduleBin.DriverInit:
-                    schedule_bin = Identifier('ODESolvers_Initial')
-                elif fn.schedule_target is ScheduleBin.PostStep:
-                    schedule_bin = Identifier('ODESolvers_PostStep')
-                else:
-                    raise NotImplementedError(f'Bad ScheduleBin enum member {fn.schedule_target}')
+            schedule_bin, at_or_in = self._resolve_schedule_target(fn.schedule_target)
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
@@ -138,14 +129,14 @@ class CppCarpetXGenerator(CactusGenerator):
                     ):
                         # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
                         # assert var_name in self.thorn_def.var2base
-                        syncs.add(Identifier(self.thorn_def.var2base.get(var_name, var_name)))
+                        syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
                 at_or_in=at_or_in,
                 schedule_bin=schedule_bin,
-                description=String(fn_name),
+                description=String(f'Function `{fn_name}` generated by EmitCactus.'),
                 lang=Language.C,
                 reads=reads,
                 writes=writes,
@@ -158,10 +149,62 @@ class CppCarpetXGenerator(CactusGenerator):
             for block in self.options['extra_schedule_blocks']:
                 schedule_blocks.append(block)
 
+        if 'explicit_syncs' in self.options:
+            for sync_batch in self.options['explicit_syncs']:
+                schedule_bin, at_or_in = self._resolve_schedule_target(sync_batch.schedule_target)
+                var_names = [str(v) for v in sync_batch.vars]
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(self._get_dummy_sync_function_name(self.dummy_fn_counter)),
+                    at_or_in=at_or_in,
+                    schedule_bin=schedule_bin,
+                    description=String(f'Empty function for explicitly SYNCing state variables. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    sync=[Identifier(self.thorn_def.var2base.get(var_name, var_name)) for var_name in var_names],
+                    before=[Identifier(s) for s in sync_batch.schedule_before],
+                    after=[Identifier(s) for s in sync_batch.schedule_after]
+                ))
+
+                self.dummy_fn_counter += 1
+
         return ScheduleRoot(
             storage_section=StorageSection(storage_lines),
             schedule_section=ScheduleSection(schedule_blocks)
         )
+
+    @staticmethod
+    def _get_dummy_sync_function_name(which: int) -> str:
+        return f'DummySyncFn_{which}'
+
+    @staticmethod
+    def _resolve_schedule_target(schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
+        schedule_bin: Identifier
+        at_or_in: AtOrIn
+
+        if isinstance(schedule_target, ScheduleBlock):
+            schedule_bin = schedule_target.name
+            at_or_in = AtOrIn.In
+        else:
+            assert isinstance(schedule_target, ScheduleBin)
+            at_or_in = AtOrIn.At if schedule_target.is_builtin else AtOrIn.In
+
+            if schedule_target is ScheduleBin.Init:
+                schedule_bin = Identifier('initial')
+            elif schedule_target is ScheduleBin.Analysis:
+                schedule_bin = Identifier('analysis')
+            elif schedule_target is ScheduleBin.EstimateError:
+                schedule_bin = Identifier('ODESolvers_EstimateError')
+            elif schedule_target is ScheduleBin.Evolve:
+                schedule_bin = Identifier('ODESolvers_RHS')
+            elif schedule_target is ScheduleBin.DriverInit:
+                schedule_bin = Identifier('ODESolvers_Initial')
+            elif schedule_target is ScheduleBin.PostStep:
+                schedule_bin = Identifier('ODESolvers_PostStep')
+            else:
+                raise NotImplementedError(f'Bad ScheduleBin enum member {schedule_target}')
+
+        return schedule_bin, at_or_in
 
     def generate_interface_ccl(self) -> InterfaceRoot:
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
@@ -457,3 +500,13 @@ class CppCarpetXGenerator(CactusGenerator):
         )
 
         return CodeRoot(nodes)
+
+    def generate_dummy_function_code(self, which: int) -> CodeRoot:
+        return CodeRoot([
+            Verbatim(self.boilerplate_setup),
+            *[IncludeDirective(include) for include in self.boilerplate_includes],
+            ThornFunctionDecl(
+                Identifier(self._get_dummy_sync_function_name(which)),
+                []
+            )
+        ])

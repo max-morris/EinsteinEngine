@@ -1417,7 +1417,7 @@ class ThornDef:
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
-        self.group_name : Dict[str, str]=dict()
+        self.base2group: Dict[str, str] = dict()
         self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
         self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
@@ -1540,7 +1540,7 @@ class ThornDef:
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
-        self.group_name[basename] = kwargs.get('group_name', basename)
+        self.base2group[basename] = kwargs.get('group_name', basename)
 
         if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
