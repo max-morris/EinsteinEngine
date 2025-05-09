@@ -48,7 +48,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         param_tree = self.generator.generate_param_ccl()
         param_ccl = ParamVisitor().visit(param_tree)
         if param_ccl == "":
-            param_ccl = " " # Hack for bug in ConditionalFileUpdater
+            param_ccl = "# Empty"  # Hack for bug in ConditionalFileUpdater
         param_ccl_fname = os.path.join(base_dir, "param.ccl")
         with ConditionalFileUpdater(param_ccl_fname) as fd:
             fd.write(param_ccl)
