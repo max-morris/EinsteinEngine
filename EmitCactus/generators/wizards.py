@@ -114,9 +114,9 @@ class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
     def generate_thorn(self) -> None:
         super().generate_thorn()
 
-        for dummy_idx in range(0, self.generator.dummy_fn_counter):
-            code_tree = self.generator.generate_dummy_function_code(dummy_idx)
+        for sync_batch in self.generator.options.get('explicit_syncs', list()):
+            code_tree = self.generator.generate_sync_batch_function_code(sync_batch)
             code = self.code_visitor.visit(code_tree)
-            code_fname = os.path.join(self.base_dir, "src", self.generator.get_dummy_src_file_name(dummy_idx))
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_sync_batch_fn_src_file_name(sync_batch))
             with ConditionalFileUpdater(code_fname) as fd:
                 fd.write(code)
