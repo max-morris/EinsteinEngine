@@ -1,3 +1,0 @@
-SRCS = BSSN_adm2bssn.cpp BSSN_bssn2adm.cpp BSSN_bssn_cons.cpp BSSN_rhs.cpp
-
-SUBDIRS = 
