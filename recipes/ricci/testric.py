@@ -5,7 +5,7 @@ from sympy import MatrixBase
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, do_sqrt, do_simplify, do_det, do_inv, do_sympify
+    from EmitCactus.dsl.sympywrap import mkMatrix, sqrt, do_simplify, do_det, do_inv, do_sympify
     from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions
@@ -37,8 +37,8 @@ if __name__ == "__main__":
     gf.mk_subst(Ric[li,lj])
 
     # Metric
-    grr = do_sqrt(1+c**2)*(a+b*x**2)
-    gqq = do_sqrt(1+c**2)/(a+b*x**2)
+    grr = sqrt(1+c**2)*(a+b*x**2)
+    gqq = sqrt(1+c**2)/(a+b*x**2)
     gpp = do_sympify(1)
     Z = do_sympify(0)
     gmat = mkMatrix([

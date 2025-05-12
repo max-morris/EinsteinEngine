@@ -2,7 +2,7 @@
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs
+    from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs, cbrt
     from EmitCactus.dsl.use_indices import parities
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
     from EmitCactus.emit.tree import Identifier, Language, String
@@ -10,7 +10,7 @@ if __name__ == "__main__":
     from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
     from EmitCactus.generators.cactus_generator import InteriorSyncMode
 
-    from sympy import exp, log, Idx, Expr, cbrt
+    from sympy import exp, log, Idx, Expr
 
     ###
     # Thorn definitions
