@@ -1453,6 +1453,10 @@ class ThornFunction:
         assert count > 0
         
     @add_eqn.register
+    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
+        self._add_eqn2(lhs.args[0], rhs)
+
+    @add_eqn.register
     def _(self, lhs: Indexed, rhs: List[Expr]) -> None:
 
         if self.been_baked:
