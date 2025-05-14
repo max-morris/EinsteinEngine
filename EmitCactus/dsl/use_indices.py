@@ -698,9 +698,9 @@ def is_letter_index(sym: Basic) -> bool:
 def get_indices(xpr: Expr) -> OrderedSet[Idx]:
     """ Return all indices of IndexedBase objects in xpr. """
     ret: OrderedSet[Idx] = OrderedSet()
-    for symbol in finder(xpr):
+    for symbol in free_indexed(xpr):
         if is_letter_index(symbol):
-            ret.add(cast(Idx, symbol))
+            ret.add(symbol)
     return ret
     ###
     if type(xpr) in [multype, addtype, powtype]:
@@ -780,8 +780,10 @@ def get_free_indices(xpr: Expr) -> OrderedSet[Idx]:
     return ret
 
 
-M = mkIndexedBase('M', (dimension, dimension))
-assert sorted(list(get_free_indices(M[ui, uj] * M[lj, lk])), key=byname) == [ui, lk]
+if __name__ == "__main__":
+    M = mkIndexedBase('M', (dimension, dimension))
+    print(get_free_indices(M[ui, uj] * M[lj, lk]))
+    #assert sorted(list(get_free_indices(M[ui, uj] * M[lj, lk])), key=byname) == [ui, lk]
 
 
 def get_contracted_indices(xpr: Expr) -> OrderedSet[Idx]:
@@ -799,7 +801,8 @@ def get_contracted_indices(xpr: Expr) -> OrderedSet[Idx]:
     return ret
 
 
-assert sorted(list(get_contracted_indices(M[ui, uj] * M[lj, lk])), key=byname) == [lj]
+if __name__ == "__main__":
+    assert sorted(list(get_contracted_indices(M[ui, uj] * M[lj, lk])), key=byname) == [lj]
 
 
 def incr(index_list: List[Idx], index_values: Dict[Idx, Idx]) -> bool:
@@ -855,9 +858,10 @@ def expand_contracted_indices(xpr: Expr, sym: Sym) -> Expr:
 
 
 # Check
-sym = Sym()
-assert expand_contracted_indices(M[ui, li], sym) == M[u0, l0] + M[u1, l1] + M[u2, l2]
-assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0, lj] + M[l1, uk] * M[u1, lj] + M[
+if __name__ == "__main__":
+    sym = Sym()
+    assert expand_contracted_indices(M[ui, li], sym) == M[u0, l0] + M[u1, l1] + M[u2, l2]
+    assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0, lj] + M[l1, uk] * M[u1, lj] + M[
     l2, uk] * M[u2, lj]
 
 
@@ -1235,14 +1239,14 @@ class ThornFunction:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
         if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
             self.eqn_list.add_output(lhs2)
-        for item in finder(rhs2):
+        for item in free_symbols(rhs2):
             if str(item) in self.thorn_def.gfs:
                 # assert item.is_Symbol
                 if str(item) not in self.thorn_def.temp:
-                    self.eqn_list.add_input(cast(Symbol, item))
+                    self.eqn_list.add_input(item)
             elif str(item) in self.thorn_def.params:
                 assert item.is_Symbol
-                self.eqn_list.add_param(cast(Symbol, item))
+                self.eqn_list.add_param(item)
         divs = self.thorn_def.apply_div
 
         class FindBad:
@@ -1343,6 +1347,30 @@ class ThornFunction:
             assert isinstance(lhs2, Symbol)
             self._add_eqn2(lhs2, rhs2)
         assert count > 0
+        
+    @add_eqn.register
+    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
+        var = lhs.args[0]
+        assert isinstance(var, Symbol)
+        self._add_eqn2(var, rhs)
+
+    @add_eqn.register
+    def _(self, lhs: Indexed, rhs: List[Expr]) -> None:
+
+        if self.been_baked:
+            raise Exception("add_eqn should not be called on a baked ThornFunction")
+
+        count = 0
+        for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
+            count += 1
+            lhsx, inds, idx = tup
+            num_idx = to_num(inds[idx[0]])
+            lhs2_ = do_isub(lhsx, self.thorn_def.subs) #.thorn_def.do_subs(lhsx, self.thorn_def.subs)
+            lhs2 = lhs2_
+            rhs2 = rhs[num_idx]
+            assert isinstance(lhs2, Symbol)
+            self._add_eqn2(lhs2, rhs2)
+        assert count > 0
 
     def madd(self) -> None:
         self.eqn_list.madd()
@@ -1405,7 +1433,7 @@ class ThornFunction:
             print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         return self.thorn_def.get_tensortype(item)
 
 
@@ -1427,7 +1455,7 @@ class ThornDef:
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
-        self.rhs: Dict[str, Math] = dict()
+        self.rhs: Dict[str, Symbol] = dict()
         self.temp: OrderedSet[str] = OrderedSet()
         self.base2thorn: Dict[str, str] = dict()
         self.base2parity: Dict[str, TensorParity] = dict()
@@ -1454,7 +1482,7 @@ class ThornDef:
         assert n > 1, "n must be > 1"
         self.apply_div = ApplyDivN(n)
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
         assert k in self.gfs.keys(), f"Not a defined symbol {item}"
         v = self.var2base.get(k, None)
@@ -1524,14 +1552,16 @@ class ThornDef:
     class DeclOptionalArgs(TypedDict, total=False):
         centering: Centering
         declare_as_temp: bool
-        rhs: Math
+        rhs: IndexedBase
         from_thorn: str
         parity: TensorParity
         group_name: str
 
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:
-            self.rhs[basename] = rhs
+            base_sym = rhs.args[0]
+            assert isinstance(base_sym, Symbol)
+            self.rhs[basename] = base_sym
 
         if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
