@@ -467,7 +467,7 @@ if __name__ == "__main__":
     fun_bssn_rhs.add_eqn(
         At_rhs[li, lj],
         exp(-4 * phi) * (
-            T[li, lj] - (1/3) * g[li, lj] * g[ua, ub] * T[la, lb]
+            T[li, lj] - (1/3) * gt[li, lj] * gt[ua, ub] * T[la, lb]
         )
         + evo_lapse * (trK * At[li, lj] - 2 * At[li, lk] * At[uk, lj])
         + evo_shift[uk] * div(At[li, lj], lk)
@@ -523,7 +523,7 @@ if __name__ == "__main__":
         pybssn,
         CppCarpetXGenerator(
             pybssn,
-            interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+            interior_sync_mode=InteriorSyncMode.Never,
             extra_schedule_blocks=[
                 initial_group,
                 rhs_group,
