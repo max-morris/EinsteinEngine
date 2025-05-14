@@ -1,13 +1,17 @@
 from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
-from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Expr, Mul, Indexed, \
-    Function, Matrix, zeros, Wild, diff, simplify, sqrt
+from sympy import Expr
+cbrt : Callable[[Expr],Expr]
+from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
+    Function, Matrix, zeros, Wild, diff, simplify, sqrt, cbrt
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
+from EmitCactus.dsl.dsl_exception import DslException
 
 from EmitCactus.util import OrderedSet
 
-Math = Union[Symbol, IndexedBase, Idx]
+from multimethod import multimethod
+from here import here
 
 
 class Applier(ABC):
@@ -83,8 +87,8 @@ def mkIndexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
 do_subs_table_type = Union[
     Mapping[Idx, Idx],
     Mapping[Indexed, Indexed],
-    Mapping[Expr, Expr],
-    Mapping[Math, Math],
+    Mapping[Symbol, Expr],
+    Mapping[Symbol, Symbol],
     Applier
 ]
 
@@ -116,14 +120,12 @@ def do_matrix_subs(mat: Matrix, *tables: do_subs_table_type) -> Matrix:
 call_match = Union[
     Callable[[Expr], bool],
     Callable[[IndexedBase], bool],
-    Callable[[Symbol], bool],
-    Callable[[Math], bool]]
+    Callable[[Symbol], bool]]
 
 call_replace = Union[
     Callable[[Expr], Expr],
     Callable[[IndexedBase], Expr],
-    Callable[[Symbol], Expr],
-    Callable[[Math], Expr]]
+    Callable[[Symbol], Expr]]
 
 
 def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> Expr:
@@ -137,28 +139,47 @@ def do_diff(expr:Expr, sym:Symbol)->Expr:
 def do_match(expr:Expr, pat:Wild)->Optional[Dict[Wild, Expr]]:
     return cast(Optional[Dict[Wild, Expr]], expr.match(pat)) # type: ignore[no-untyped-call]
 
-def finder(expr: Expr) -> Set[Math]:
-    result: Dict[str, Math] = dict()
+###
+@multimethod
+def add_free_indexed(arg: IndexedBase, rhs: Set[Idx])->None:
+    pass
 
-    def m(msym: Math) -> bool:
-        ty = type(msym)
-        if ty == Symbol:
-            mstr = repr(msym)
-            if mstr not in result:
-                result[mstr] = msym
-        elif ty == IndexedBase:
-            mstr = repr(msym)
-            result[mstr] = msym
-        elif ty == Idx:
-            mstr = repr(msym)
-            result[mstr] = msym
-        return False
+@add_free_indexed.register
+def _(arg: Idx, rhs: Set[Idx])->None:
+    rhs.add(arg)
 
-    def r(msym: Expr) -> Expr:
-        return msym
+@add_free_indexed.register
+def _(arg: Basic, rhs: Set[Idx])->None:
+    for arg in arg.args:
+        add_free_indexed(arg, rhs)
 
-    do_replace(expr, m, r)
-    return OrderedSet(result.values())
+def free_indexed(expr: Expr) -> Set[Idx]:
+    rhs: Set[Idx] = set()
+    add_free_indexed(expr, rhs)
+    return rhs
+###
+@multimethod
+def add_free_symbol(arg: Symbol, rhs: Set[Symbol])->None:
+    rhs.add(arg)
 
-def free_symbols(expr: Expr) -> Set[Math]:
-    return cast(Set[Math], expr.free_symbols)
+@add_free_symbol.register
+def _(arg: IndexedBase, rhs: Set[Symbol])->None:
+    add_free_symbol(arg.args[0], rhs)
+
+@add_free_symbol.register
+def _(arg: Indexed, rhs: Set[Symbol])->None:
+    raise DslException(f"Not a symbol: {arg}")
+
+@add_free_symbol.register
+def _(arg: Idx, rhs: Set[Symbol])->None:
+    pass #raise DslException(f"Not a symbol: {arg}")
+
+@add_free_symbol.register
+def _(arg: Basic, rhs: Set[Symbol])->None:
+    for arg in arg.args:
+        add_free_symbol(arg, rhs)
+
+def free_symbols(expr: Expr) -> Set[Symbol]:
+    rhs: Set[Symbol] = set()
+    add_free_symbol(expr, rhs)
+    return rhs
