@@ -22,7 +22,6 @@ from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, S
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
-from here import here
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
@@ -346,12 +345,12 @@ def mkPair(s: Optional[str]=None) -> Tuple[Idx, Idx]:
 
 def is_down(ind: Idx) -> bool:
     s = str(ind)
-    assert s[0] in ["u", "l"]
+    assert s[0] in ["u", "l"], f"ind={ind}"
     return s[0] == "l"
 
 def to_num(ind: Idx) -> int:
     s = str(ind)
-    assert s[0] in ["u", "l"]
+    assert s[0] in ["u", "l"], f"ind={ind}"
     return int(s[1])
 
 
@@ -384,6 +383,7 @@ z = mkSymbol("z")
 one = do_sympify(1)
 zero = do_sympify(0)
 noidx = mkIdx("noidx")
+dummy = mkSymbol("_dummy_")
 
 def mkdiv(expr:Expr, *args:Idx)->Expr:
     r = div(expr, *args)
@@ -1106,22 +1106,44 @@ class ApplyDivN(Applier):
     Use NRPy to calculate the stencil coefficients.
     """
 
-    def __init__(self, n: int) -> None:
+    def __init__(self, n: int, funs1:Dict[Tuple[UFunc,Idx],Expr], funs2:Dict[Tuple[UFunc,Idx,Idx],Expr]) -> None:
         self.val: Optional[Expr] = None
         self.n = n
         self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
+        self.funs1 = funs1
+        self.funs2 = funs2
+
+    def is_user_func(self, f:Expr)->Optional[Expr]:
+        if not f.is_Function:
+            return None
+        if len(f.args) == 2:
+            #assert isinstance(f.func, UFunc)
+            assert isinstance(f.args[1], Idx)
+            return self.funs1.get((f.func, f.args[1]),None)
+        elif len(f.args) == 3:
+            assert isinstance(f.args[1], Idx)
+            assert isinstance(f.args[2], Idx)
+            if f.args[1] == f.args[2]:
+                return self.funs1.get((f.func, f.args[1]),None)
+            else:
+                return self.funs2.get((f.func, f.args[1], f.args[2]),None)
+        return None
 
     def m(self, expr: Expr) -> bool:
-        if expr.is_Function and hasattr(expr, "name") and expr.name == "stencil":
-            new_expr: List[int]= list() 
+        if (fundef := self.is_user_func(expr)) is not None:
+            assert isinstance(expr.args[0], Expr)
+            self.val = do_subs(fundef, {dummy:expr.args[0]})
+            return True
+        elif expr.is_Function and hasattr(expr, "name") and expr.name == "stencil":
+            new_expr1: List[int]= list() 
             for arg in expr.args[1:]:
                 if isinstance(arg, Idx):
-                    new_expr.append(to_num(arg))
-                elif type(arg) == int or isinstance(arg, sy.Integer):
-                    new_expr.append(arg)
+                    new_expr1.append(to_num(arg))
+                elif isinstance(arg, sy.Integer):
+                    new_expr1.append(arg)
                 else:
                     assert False, f"arg={arg}, type={type(arg)}"
-            self.val = expr.func(expr.args[0], *new_expr)
+            self.val = expr.func(expr.args[0], *new_expr1)
             return True
                 
         elif expr.is_Function and hasattr(expr, "name") and expr.name == "div":
@@ -1294,7 +1316,6 @@ class ThornFunction:
         assert isinstance(rhs2_, Expr)
         rhs2 = rhs2_
         fb = FindBad(self)
-        here(rhs2)
         do_replace(rhs2, fb.m, fb.r)
         if fb.msg is not None:
             print(self.thorn_def.subs)
@@ -1495,6 +1516,8 @@ class ThornDef:
             mkFunction("divyz"): True,
             mkFunction("divzz"): True
         }
+        self.funs1: Dict[Tuple[UFunc,Idx],Expr] = dict()
+        self.funs2: Dict[Tuple[UFunc,Idx,Idx],Expr] = dict()
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
@@ -1503,7 +1526,7 @@ class ThornDef:
     def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
-        self.apply_div = ApplyDivN(n)
+        self.apply_div = ApplyDivN(n, self.funs1, self.funs2)
 
     def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
@@ -1572,28 +1595,39 @@ class ThornDef:
             assert False
         return self.coords
 
+    @multimethod
     def mk_stencil(self, func_name:str, idx:Idx, expr:Expr)->UFunc:
+        result = self.mk_stencil(func_name, expr, [idx])
+        assert isinstance(result, UFunc)
+        return result
 
-        xxx = mkSymbol("xxx")
+    @mk_stencil.register
+    def _(self, func_name:str, idx1:Idx, idx2:Idx, expr:Expr)->UFunc:
+        result = self.mk_stencil(func_name, expr, [idx1,idx2])
+        assert isinstance(result, UFunc)
+        return result
+
+    @mk_stencil.register
+    def _(self, func_name:str, expr:Expr, idxlist:List[Idx])->UFunc:
 
         @multimethod
-        def mk_sten(idx:Idx, idx0:Idx, expr:sy.Function)->Expr:
+        def mk_sten(idxmap:Dict[Idx,Idx], expr:sy.Function)->Expr:
+            # TODO: Rewrite so it does not require 3 dimensions
             assert get_dimension() == 3
             if expr.func == stencil:
                 if len(expr.args) != 1:
                     raise DslException(expr)
-                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                arg = mk_sten(idxmap, expr.args[0])
                 c0 = coef(l0, arg)
                 c1 = coef(l1, arg)
                 c2 = coef(l2, arg)
-                ret = stencil(xxx, c0, c1, c2)
+                ret = stencil(dummy, c0, c1, c2)
                 assert isinstance(ret, Expr)
                 return ret
             elif expr.func == DD:
                 if len(expr.args) != 1:
                     raise DslException(expr)
-                assert get_dimension() == 3
-                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                arg = mk_sten(idx, idx0, expr.args[0])
                 if arg == l0:
                     return DX
                 elif arg == l1:
@@ -1604,7 +1638,7 @@ class ThornDef:
             elif expr.func == DDI:
                 if len(expr.args) != 1:
                     raise DslException(expr)
-                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                arg = mk_sten(idxmap, expr.args[0])
                 if arg == l0:
                     return DXI
                 elif arg == l1:
@@ -1612,51 +1646,74 @@ class ThornDef:
                 elif arg == l2:
                     return DZI
                 assert False
-            ret = mk_sten(idx, idx0, expr)
-            return ret
-
-        @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:sy.Integer)->Expr:
-            return expr
-
-        @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:sy.Rational)->Expr:
-            return expr
-
-        @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:sy.Pow)->Expr:
-            return Pow(mk_sten(idx,idx0,expr.args[0]),expr.args[1])
-
-        @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:Idx)->Expr:
-            if expr == idx:
-                return idx0
             else:
-                return expr
+                raise DslException("Bad Func")
 
         @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:sy.Add)->Expr:
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Integer)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Rational)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Pow)->Expr:
+            result:Expr = Pow(mk_sten(idxmap,expr.args[0]),expr.args[1])
+            return result
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:Idx)->Expr:
+            retval = idxmap.get(expr, expr)
+            return retval
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Add)->Expr:
             ret = zero
             for a in expr.args:
-                ret += mk_sten(idx, idx0, a)
+                term = mk_sten(idxmap, a)
+                ret += term
             return ret
 
         @mk_sten.register
-        def _(idx:Idx, idx0:Idx, expr:sy.Mul)->Expr:
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Mul)->Expr:
             ret = one
             for a in expr.args:
-                ret *= mk_sten(idx, idx0, a)
+                term = mk_sten(idxmap, a)
+                ret *= term
             return ret
 
         func = mkFunction(func_name)
         repl: Dict[int,Expr] = dict()
-        is_down_idx = is_down(idx)
-        for i in range(get_dimension()):
-            if is_down_idx:
-                idx0 = down_indices[i]
-            else:
-                idx0 = up_indices[i]
-            here(">>>",idx,idx0,expr,"->",mk_sten(idx, idx0, expr))
+        if len(idxlist)==1 or (len(idxlist)==2 and idxlist[0] == idxlist[1]):
+            idx = idxlist[0]
+            is_down_idx = is_down(idx)
+            for i in range(get_dimension()):
+                if is_down_idx:
+                    idx0 = down_indices[i]
+                else:
+                    idx0 = up_indices[i]
+                result = mk_sten({idx: idx0}, expr)
+                self.funs1[(func, idx0)] = result
+        elif len(idxlist)==2:
+            idx1 = idxlist[0]
+            idx2 = idxlist[1]
+            is_down_idx1 = is_down(idx1)
+            is_down_idx2 = is_down(idx2)
+            for i in range(get_dimension()):
+                if is_down_idx1:
+                    idx10 = down_indices[i]
+                else:
+                    idx10 = up_indices[i]
+                for j in range(get_dimension()):
+                    if i==j:
+                        continue
+                    if is_down_idx2:
+                        idx20 = down_indices[j]
+                    else:
+                        idx20 = up_indices[j]
+                    result = mk_sten({idx1: idx10, idx2: idx20}, expr)
+                    self.funs2[(func, idx10, idx20)] = result
 
         return mkFunction(func_name)
 
