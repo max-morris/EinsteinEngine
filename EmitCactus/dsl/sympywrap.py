@@ -11,7 +11,6 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.util import OrderedSet
 
 from multimethod import multimethod
-from here import here
 
 
 class Applier(ABC):
