@@ -24,6 +24,9 @@ from multimethod import multimethod
 DXI = mkSymbol("DXI")
 DYI = mkSymbol("DYI")
 DZI = mkSymbol("DZI")
+DX = mkSymbol("DX")
+DY = mkSymbol("DY")
+DZ = mkSymbol("DZ")
 
 
 @dataclass
