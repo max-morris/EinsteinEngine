@@ -13,17 +13,20 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix
 from sympy.core.function import UndefinedFunction as UFunc
 
+from EmitCactus.dsl.coef import coef
 from EmitCactus.dsl.dsl_exception import DslException
-from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
+from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
+from here import here
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
+           "stencil","DD","DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
@@ -340,6 +343,11 @@ def mkPair(s: Optional[str]=None) -> Tuple[Idx, Idx]:
     lookup_pair[u] = l
     return u, l
 
+
+def is_down(ind: Idx) -> bool:
+    s = str(ind)
+    assert s[0] in ["u", "l"]
+    return s[0] == "l"
 
 def to_num(ind: Idx) -> int:
     s = str(ind)
@@ -660,6 +668,8 @@ def toNumTup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
 
 
 stencil = mkFunction("stencil")
+DD = mkFunction("DD")
+DDI = mkFunction("DDI")
 noop = mkFunction("noop")
 
 multype = Mul  # type(i*j)
@@ -1102,7 +1112,19 @@ class ApplyDivN(Applier):
         self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
 
     def m(self, expr: Expr) -> bool:
-        if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+        if expr.is_Function and hasattr(expr, "name") and expr.name == "stencil":
+            new_expr: List[int]= list() 
+            for arg in expr.args[1:]:
+                if isinstance(arg, Idx):
+                    new_expr.append(to_num(arg))
+                elif type(arg) == int or isinstance(arg, sy.Integer):
+                    new_expr.append(arg)
+                else:
+                    assert False, f"arg={arg}, type={type(arg)}"
+            self.val = expr.func(expr.args[0], *new_expr)
+            return True
+                
+        elif expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             new_expr = list()
             dxt = do_sympify(1)
             if len(expr.args) == 2:
@@ -1272,6 +1294,7 @@ class ThornFunction:
         assert isinstance(rhs2_, Expr)
         rhs2 = rhs2_
         fb = FindBad(self)
+        here(rhs2)
         do_replace(rhs2, fb.m, fb.r)
         if fb.msg is not None:
             print(self.thorn_def.subs)
@@ -1548,6 +1571,94 @@ class ThornDef:
         else:
             assert False
         return self.coords
+
+    def mk_stencil(self, func_name:str, idx:Idx, expr:Expr)->UFunc:
+
+        xxx = mkSymbol("xxx")
+
+        @multimethod
+        def mk_sten(idx:Idx, idx0:Idx, expr:sy.Function)->Expr:
+            assert get_dimension() == 3
+            if expr.func == stencil:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                c0 = coef(l0, arg)
+                c1 = coef(l1, arg)
+                c2 = coef(l2, arg)
+                ret = stencil(xxx, c0, c1, c2)
+                assert isinstance(ret, Expr)
+                return ret
+            elif expr.func == DD:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                assert get_dimension() == 3
+                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                if arg == l0:
+                    return DX
+                elif arg == l1:
+                    return DY
+                elif arg == l2:
+                    return DZ
+                assert False
+            elif expr.func == DDI:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                arg:Expr = mk_sten(idx, idx0, expr.args[0])
+                if arg == l0:
+                    return DXI
+                elif arg == l1:
+                    return DYI
+                elif arg == l2:
+                    return DZI
+                assert False
+            ret = mk_sten(idx, idx0, expr)
+            return ret
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:sy.Integer)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:sy.Rational)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:sy.Pow)->Expr:
+            return Pow(mk_sten(idx,idx0,expr.args[0]),expr.args[1])
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:Idx)->Expr:
+            if expr == idx:
+                return idx0
+            else:
+                return expr
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:sy.Add)->Expr:
+            ret = zero
+            for a in expr.args:
+                ret += mk_sten(idx, idx0, a)
+            return ret
+
+        @mk_sten.register
+        def _(idx:Idx, idx0:Idx, expr:sy.Mul)->Expr:
+            ret = one
+            for a in expr.args:
+                ret *= mk_sten(idx, idx0, a)
+            return ret
+
+        func = mkFunction(func_name)
+        repl: Dict[int,Expr] = dict()
+        is_down_idx = is_down(idx)
+        for i in range(get_dimension()):
+            if is_down_idx:
+                idx0 = down_indices[i]
+            else:
+                idx0 = up_indices[i]
+            here(">>>",idx,idx0,expr,"->",mk_sten(idx, idx0, expr))
+
+        return mkFunction(func_name)
 
     class DeclOptionalArgs(TypedDict, total=False):
         centering: Centering
