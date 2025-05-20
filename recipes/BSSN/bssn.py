@@ -58,6 +58,12 @@ if __name__ == "__main__":
         desc="partial_t beta^i = ... - eta_beta * beta^i"
     )
 
+    conformal_factor_floor = pybssn.add_param(
+        "conformal_factor_floor",
+        default=1.0e-4,
+        desc="The conformal factor W will never be smaller than this value"
+    )
+
     ###
     # Tensor parities
     ###
@@ -141,10 +147,9 @@ if __name__ == "__main__":
     ric = pybssn.decl("ric", [li, lj])  # R_{ij} = \tilde{R}_{ij} + R^\phi_{ij}
     pybssn.add_sym(ric[li, lj], li, lj)
 
-    # Conversion factor from non-conformal to conformal connection coefficients, i.e.,
-    # ConfConv^i_{j k} = \Gamma^i_{jk} - \tilde{\Gamma}^i_{j k} +
-    ConfConv = pybssn.decl("ConfConv", [ua, lb, lc])
-    pybssn.add_sym(ConfConv[ua, lb, lc], lb, lc)
+    # Conversion factor from non-conformal to conformal connection coefficients
+    ConfConv = pybssn.decl("ConfConv", [uc, la, lb])
+    pybssn.add_sym(ConfConv[uc, la, lb], la, lb)
 
     # D_i D_j \alpha expressed in terms of conformal quantities
     D_i_D_j_alp = pybssn.decl("D_i_D_j_alp", [li, lj])
@@ -162,8 +167,14 @@ if __name__ == "__main__":
     D_i_D_j_phi = pybssn.decl("D_i_D_j_phi", [li, lj])
     pybssn.add_sym(D_i_D_j_phi[li, lj], li, lj)
 
-    # Prevents the elimination of ConfConnect_rhs
-    ConfConnect_rhs_tmp = pybssn.decl("ConfConnect_rhs_tmp", [ui])
+    # Temporaries used during constraint enforcemnt
+    w_enforce = pybssn.decl("w_enforce", [], parity=parity_scalar)
+
+    gt_enforce = pybssn.decl("gt_enforce", [li, lj], parity=parity_sym2ten)
+    pybssn.add_sym(gt_enforce[li, lj], li, lj)
+
+    At_enforce = pybssn.decl("At_enforce", [li, lj], parity=parity_sym2ten)
+    pybssn.add_sym(At_enforce[li, lj], li, lj)
 
     ###
     # Substitution rules
@@ -205,7 +216,8 @@ if __name__ == "__main__":
     pybssn.mk_subst(D_i_D_j_alp_ric_tf[li, lj])
     pybssn.mk_subst(D_i_D_j_phi[li, lj])
 
-    pybssn.mk_subst(ConfConnect_rhs_tmp[ui])
+    pybssn.mk_subst(gt_enforce[li, lj])
+    pybssn.mk_subst(At_enforce[li, lj])
 
     ###
     # Aux. functions
@@ -224,14 +236,14 @@ if __name__ == "__main__":
 
     def compute_ricci(function: ThornFunction) -> None:
         """
-        Adds equations to a function that compute the Ricci tensor.
+        Adds equations to a function to compute the Ricci tensor.
         """
 
         # B-S Eq. (1.18)
         function.add_eqn(
-            Gammat[ld, lb, lc],
+            Gammat[lc, la, lb],
             Rational(1, 2) * (
-                div(gt[ld, lb], lc) + div(gt[ld, lc], lb) - div(gt[lb, lc], ld)
+                div(gt[lc, la], lb) + div(gt[lc, lb], la) - div(gt[la, lb], lc)
             )
         )
 
@@ -239,10 +251,10 @@ if __name__ == "__main__":
 
         function.add_eqn(
             D_i_D_j_phi[li, lj],
-            (1 / (2 * w**2)) * (
-                div(w, li) * div(w, lj)
-                + w * div(w, la) * Gammat[ua, li, lj]
-                - w * div(w, lj, li)
+            (1 / (2 * w)) * (
+                div(w, li) * div(w, lj) / w
+                + Gammat[uk, li, lj] * div(w, lk)
+                - div(w, lj, li)
             )
         )
 
@@ -250,21 +262,24 @@ if __name__ == "__main__":
             ric[li, lj],
 
             # \tilde{R}_{ij}
-            - (1/2) * gt[ua, ub] * div(gt[li, lj], lb, la)
-            + sym(gt[lk, li] * div(ConfConnect[uk], lj), li, lj)
-            + gt[ua, ub] * Gammat[uk, la, lb] * sym(Gammat[li, lj, lk], li, lj)
-            + gt[ua, ub] * (
-                2 * sym(Gammat[uk, la, li] * Gammat[lj, lk, lb], li, lj)
-                + Gammat[uk, li, lb] * Gammat[lk, la, lj]
+            Rational(-1, 2) * gt[ua, ub] * div(gt[li, lj], lb, la)
+            + Rational(1, 2) * (
+                gt[lk, li] * div(ConfConnect[uk], lj)
+                + gt[lk, lj] * div(ConfConnect[uk], li)
             )
+            + Rational(1, 2) * (
+                gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk]
+                + gt[ua, ub] * Gammat[uk, la, lb] * Gammat[lj, li, lk]
+            )
+            + gt[ua, ub] * Gammat[uk, la, li] * Gammat[lj, lk, lb]
+            + gt[ua, ub] * Gammat[uk, la, lj] * Gammat[li, lk, lb]
+            + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
 
             # R^{\phi}_{ij}
             - 2 * D_i_D_j_phi[li, lj]
             - 2 * gt[li, lj] * gt[ua, ub] * D_i_D_j_phi[la, lb]
-            + (1 / (w**2)) * (
-                div(w, li) * div(w, lj)
-                - gt[li, lj] * gt[ua, ub] * div(w, la) * div(w, lb)
-            )
+            + (div(w, li) * div(w, lj)) / (w**2)
+            - (gt[li, lj] * gt[ua, ub] * div(w, la) * div(w, lb)) / (w**2)
         )
 
     ###
@@ -276,8 +291,8 @@ if __name__ == "__main__":
         name=Identifier("BSSN_InitialGroup"),
         at_or_in=AtOrIn.In,
         schedule_bin=Identifier("ODESolvers_Initial"),
-        description=String("BSSN initialization routines"),
-        after=[Identifier("ADMBaseX_PostInitial")]
+        after=[Identifier("ADMBaseX_PostInitial")],
+        description=String("BSSN initialization routines")
     )
 
     # RHS
@@ -295,8 +310,8 @@ if __name__ == "__main__":
         name=Identifier("BSSN_PostStepGroup"),
         at_or_in=AtOrIn.In,
         schedule_bin=Identifier("ODESolvers_PostStep"),
-        description=String("BSSN post time step routines"),
-        before=[Identifier("ADMBaseX_SetADMVars")]
+        before=[Identifier("ADMBaseX_SetADMVars")],
+        description=String("BSSN post time step routines")
     )
 
     # Analysis
@@ -316,6 +331,50 @@ if __name__ == "__main__":
         schedule_target=poststep_group,
         name="state_sync"
     )
+
+    ###
+    # Enforce algebraic constraints
+    ###
+    fun_bssn_enforce_pt1 = pybssn.create_function(
+        "bssn_enforce_pt1",
+        poststep_group,
+        schedule_after=["state_sync"],
+        schedule_before=["bssn_enforce_pt2"]
+    )
+
+    # Enforce \det(\tilde{\gamma}) = 1
+    fun_bssn_enforce_pt1.add_eqn(
+        gt_enforce[li, lj],
+        gt[li, lj] / (cbrt(detgt))
+    )
+
+    # Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0
+    fun_bssn_enforce_pt1.add_eqn(
+        At_enforce[li, lj],
+        At[li, lj] - Rational(1, 3) * gt[li, lj] * gt[ua, ub] * At[la, lb]
+    )
+
+    # Enforce conformal factor floor
+    # TODO: min(w, conformal_factor_floor)
+    fun_bssn_enforce_pt1.add_eqn(
+        w_enforce,
+        w
+    )
+
+    fun_bssn_enforce_pt1.bake()
+
+    fun_bssn_enforce_pt2 = pybssn.create_function(
+        "bssn_enforce_pt2",
+        poststep_group,
+        schedule_after=["fun_bssn_enforce_pt1"],
+        schedule_before=["bssn2adm"]
+    )
+
+    fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])
+    fun_bssn_enforce_pt2.add_eqn(At[li, lj], At_enforce[li, lj])
+    fun_bssn_enforce_pt2.add_eqn(w, w_enforce)
+
+    fun_bssn_enforce_pt2.bake()
 
     ###
     # Convert ADM to BSSN variables
@@ -360,7 +419,7 @@ if __name__ == "__main__":
     fun_bssn2adm = pybssn.create_function(
         "bssn2adm",
         poststep_group,
-        schedule_after=["state_sync"]
+        schedule_after=["bssn_enforce_pt2"]
     )
 
     fun_bssn2adm.add_eqn(g[li, lj], (1/(w**2)) * gt[li, lj])
@@ -379,7 +438,7 @@ if __name__ == "__main__":
     fun_bssn2adm.bake()
 
     ###
-    # Compute constraints
+    # Compute non enforced constraints
     ###
     fun_bssn_cons = pybssn.create_function(
         "bssn_cons",
@@ -395,7 +454,6 @@ if __name__ == "__main__":
         - gt[ui, ua] * gt[uj, ub] * At[la, lb] * At[li, lj]
     )
 
-    # TODO: Different than canoli
     fun_bssn_cons.add_eqn(
         MomCons[ui],
         gt[ui, ua] * gt[uj, ub] * (
@@ -432,11 +490,11 @@ if __name__ == "__main__":
     compute_ricci(fun_bssn_rhs)
 
     fun_bssn_rhs.add_eqn(
-        ConfConv[ui, lj, lk],
-        (1 / w) * gt[ui, ua] * (
-            div(w, la) * gt[lj, lk]
-            - div(w, lk) * gt[la, lj]
-            - div(w, lj) * gt[la, lk]
+        ConfConv[uc, la, lb],
+        (1 / w) * gt[uc, ud] * (
+           gt[lb, ld] * div(w, la)
+           + gt[la, ld] * div(w, lb)
+           - gt[la, lb] * div(w, ld)
         )
     )
 
@@ -444,13 +502,13 @@ if __name__ == "__main__":
         D_i_D_j_alp[li, lj],
         div(evo_lapse, lj, li)
         - Gammat[uk, li, lj] * div(evo_lapse, lk)
-        - ConfConv[uk, li, lj] * div(evo_lapse, lk)
+        + ConfConv[uk, li, lj] * div(evo_lapse, lk)
     )
 
     fun_bssn_rhs.add_eqn(
         D_i_D_j_alp_ric[li, lj],
-        ric[li, lj] * evo_lapse
         - D_i_D_j_alp[li, lj]
+        + evo_lapse * ric[li, lj]
     )
 
     fun_bssn_rhs.add_eqn(
@@ -477,7 +535,7 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(
         At_rhs[li, lj],
-        w**2 * D_i_D_j_alp_ric_tf[li, lj]
+        (w**2) * D_i_D_j_alp_ric_tf[li, lj]
         + evo_lapse * (trK * At[li, lj] - 2 * At[li, lk] * At[uk, lj])
         + evo_shift[uk] * div_advect(At[li, lj], lk)
         + At[li, lk] * div(evo_shift[uk], lj)
@@ -487,13 +545,13 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(
         trK_rhs,
-        -w**2 * gt[ui, uj] * D_i_D_j_alp[li, lj]
-        + evo_lapse * (At[ui, uj] * At[li, lj] + Rational(1, 3) * trK**2)
+        (-1 / (w**2)) * gt[ui, uj] * D_i_D_j_alp[li, lj]
+        + evo_lapse * (At[li, lj] * At[ui, uj] + Rational(1, 3) * (trK**2))
         + evo_shift[uk] * div_advect(trK, lk)
     )
 
     fun_bssn_rhs.add_eqn(
-        ConfConnect_rhs_tmp[ui],
+        ConfConnect_rhs[ui],
         gt[uj, uk] * div(evo_shift[ui], lk, lj)
         + Rational(1, 3) * gt[ui, uj] * div(evo_shift[uk], lk, lj)
         + evo_shift[uj] * div_advect(ConfConnect[ui], lj)
@@ -507,7 +565,6 @@ if __name__ == "__main__":
             - Rational(2, 3) * gt[ui, uj] * div(trK, lj)
         )
     )
-    fun_bssn_rhs.add_eqn(ConfConnect_rhs[ui], ConfConnect_rhs_tmp[ui])
 
     # 1 + log lapse. See [6]
     fun_bssn_rhs.add_eqn(
@@ -520,7 +577,7 @@ if __name__ == "__main__":
     fun_bssn_rhs.add_eqn(
         evo_shift_rhs[ua],
         zeta_beta * evo_shift[uj] * div_advect(evo_shift[ua], lj)
-        + beta_Gamma * evo_lapse**beta_Alp * ConfConnect[ua]
+        + beta_Gamma * evo_lapse**beta_Alp * gt[ui, uj] * Gammat[ua, li, lj]
         - eta_beta * evo_shift[ua]
     )
 
