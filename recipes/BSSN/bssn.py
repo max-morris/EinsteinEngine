@@ -545,7 +545,7 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(
         trK_rhs,
-        (-1 / (w**2)) * gt[ui, uj] * D_i_D_j_alp[li, lj]
+        (w**2) * gt[ui, uj] * D_i_D_j_alp[li, lj]
         + evo_lapse * (At[li, lj] * At[ui, uj] + Rational(1, 3) * (trK**2))
         + evo_shift[uk] * div_advect(trK, lk)
     )
