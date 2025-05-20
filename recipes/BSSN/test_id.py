@@ -44,20 +44,20 @@ if __name__ == "__main__":
     ###
     # Test tensors
     ###
-    diagonal_1 = mkMatrix([
-        [2, 0, 0],
-        [0, 2, 0],
-        [0, 0, 2]
+    metric = mkMatrix([
+        [0.80844453181356, 1.0178757064160044, 0.9238218996035843],
+        [1.0178757064160044, 2.003518799964363, 1.1850198748510654],
+        [0.9238218996035843, 1.1850198748510654, 1.1600443923219084]
     ])
 
-    diagonal_2 = mkMatrix([
-        [4, 0, 0],
-        [0, 4, 0],
-        [0, 0, 4]
+    curvature = mkMatrix([
+        [0.9815332963412572, 0.25255038792827084, 0.6472937536092036],
+        [0.25255038792827084, 0.63449037381151, 0.13626331505166864],
+        [0.6472937536092036, 0.13626331505166864, 0.44455234454241144]
     ])
 
-    vector:List[Expr] = [do_sympify(x) for x in [6, 6, 6]]
-    scalar = 8
+    shift: List[Expr] = [do_sympify(x) for x in [1, 2, 3]]
+    lapse = 0
 
     ###
     # Initialize
@@ -67,10 +67,10 @@ if __name__ == "__main__":
         test_id_group
     )
 
-    fun_fill_id.add_eqn(g[li, lj], diagonal_1)
-    fun_fill_id.add_eqn(k[li, lj], diagonal_2)
-    fun_fill_id.add_eqn(alp, do_sympify(scalar))
-    fun_fill_id.add_eqn(beta[ua], vector)
+    fun_fill_id.add_eqn(g[li, lj], metric)
+    fun_fill_id.add_eqn(k[li, lj], curvature)
+    fun_fill_id.add_eqn(alp, do_sympify(lapse))
+    fun_fill_id.add_eqn(beta[ua], shift)
 
     fun_fill_id.bake()
 
