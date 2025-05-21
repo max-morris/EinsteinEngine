@@ -22,7 +22,6 @@ from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, S
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
-from here import here
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
@@ -219,7 +218,6 @@ class IndexSubsVisitor:
     def _(self, expr: sy.Mul) -> Expr:
         r = do_sympify(1)
         for a in expr.args:
-            here(a,type(a))
             r *= self.visit(a)
         return r
 
@@ -1404,7 +1402,6 @@ class ThornFunction:
     def _(self, lhs: IndexedBase, rhs: Expr) -> None:
         var = lhs.args[0]
         assert isinstance(var, Symbol)
-        here(var, rhs)
         self._add_eqn2(var, rhs)
 
     @add_eqn.register
