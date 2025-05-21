@@ -1661,6 +1661,10 @@ class ThornDef:
                 raise DslException("Bad Func")
 
         @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Float)->Expr:
+            return expr
+
+        @mk_sten.register
         def _(idxmap:Dict[Idx,Idx], expr:sy.Integer)->Expr:
             return expr
 
