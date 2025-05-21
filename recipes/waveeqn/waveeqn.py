@@ -70,8 +70,9 @@ if __name__ == "__main__":
 
     # stencil(la) -> [stencil(f,1,0,0), stencil(f,0,1,0), stencil(f,0,0,1)]
 
-    mydiv = gf.mk_stencil("mydiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
-    gf.mk_stencil("mydiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
+    mdiv = gf.mk_stencil("mdiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
+    gf.mk_stencil("mdiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
+    max = gf.declfun("max", args=2, is_stencil=False)
 
     ## gf.mk_stencil(mydiv,la,la,(stencil(la)-2*stencil(0)+stencil(-la))/(DD[la]**2))
     ## gf.mk_stencil(mydiv,la,lb,(stencil(la+lb)-stencil(la-lb)+stencil(-la-lb)-stencil(-la+lb))/(2*DD[la]*DD[lb]))
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     # Add the equations we want to evolve.
     fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
     fun.add_eqn(v_t, u)
-    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * mydiv(v, li, lj))
+    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * mdiv(v, li, lj))
     print('*** ThornFunction wave_evo:')
     fun.bake()
 
@@ -100,7 +101,7 @@ if __name__ == "__main__":
     # du/dt = spd**2 * ((d/dx)**2 u + (d/dy)**2 u)
     # dv/dt = u
     vfun = amp*sin(kx * x) * sin(ky * y) * sin(kz * z) * sin(w * t)
-    ufun = vfun.diff(t)
+    ufun = max(vfun.diff(t), -2*amp*w)
     fun = gf.create_function("newwave_init", ScheduleBin.Init)
     fun.add_eqn(u,  ufun)
     fun.add_eqn(v,  vfun)
