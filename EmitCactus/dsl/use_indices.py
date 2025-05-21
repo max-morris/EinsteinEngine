@@ -22,6 +22,7 @@ from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, S
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
+from here import here
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
@@ -218,6 +219,7 @@ class IndexSubsVisitor:
     def _(self, expr: sy.Mul) -> Expr:
         r = do_sympify(1)
         for a in expr.args:
+            here(a,type(a))
             r *= self.visit(a)
         return r
 
@@ -1106,19 +1108,25 @@ class ApplyDivN(Applier):
     Use NRPy to calculate the stencil coefficients.
     """
 
-    def __init__(self, n: int, funs1:Dict[Tuple[UFunc,Idx],Expr], funs2:Dict[Tuple[UFunc,Idx,Idx],Expr]) -> None:
+    def __init__(self, n: int, funs1:Dict[Tuple[UFunc,Idx],Expr], funs2:Dict[Tuple[UFunc,Idx,Idx],Expr], fun_args:Dict[str,int]) -> None:
         self.val: Optional[Expr] = None
         self.n = n
         self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
         self.funs1 = funs1
         self.funs2 = funs2
+        self.fun_args = fun_args
 
     def is_user_func(self, f:Expr)->Optional[Expr]:
         if not f.is_Function:
             return None
-        if len(f.args) == 2:
+        if hasattr(f,"name") and f.name in self.fun_args:
+            nargs = self.fun_args[f.name]
+            if len(f.args) != nargs:
+                raise DslException(f"function {f.name} called with wrong number of args. Expected {nargs}, got {len(f.args)}. Expr: {f}")
+            return None
+        elif len(f.args) == 2:
             #assert isinstance(f.func, UFunc)
-            assert isinstance(f.args[1], Idx)
+            assert isinstance(f.args[1], Idx), f"f={f}"
             return self.funs1.get((f.func, f.args[1]),None)
         elif len(f.args) == 3:
             assert isinstance(f.args[1], Idx)
@@ -1396,6 +1404,7 @@ class ThornFunction:
     def _(self, lhs: IndexedBase, rhs: Expr) -> None:
         var = lhs.args[0]
         assert isinstance(var, Symbol)
+        here(var, rhs)
         self._add_eqn2(var, rhs)
 
     @add_eqn.register
@@ -1483,6 +1492,7 @@ class ThornFunction:
 
 class ThornDef:
     def __init__(self, arr: str, name: str, run_simplify: bool = True) -> None:
+        self.fun_args:Dict[str,int] = dict()
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
@@ -1526,7 +1536,7 @@ class ThornDef:
     def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
-        self.apply_div = ApplyDivN(n, self.funs1, self.funs2)
+        self.apply_div = ApplyDivN(n, self.funs1, self.funs2, self.fun_args)
 
     def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
@@ -1567,10 +1577,11 @@ class ThornDef:
             i1, i2 = i2, i1
         self.symmetries.add(tens.base, i1, i2, sgn)
 
-    def declfun(self, funname: str, is_stencil_fun: bool) -> UFunc:
+    def declfun(self, funname: str, args:int=1, is_stencil: bool=False) -> UFunc:
         fun = mkFunction(funname)
+        self.fun_args[funname] = args
         # self.eqnlist.add_func(fun, is_stencil)
-        self.is_stencil[fun] = is_stencil_fun
+        self.is_stencil[fun] = is_stencil
 
         return fun
 
@@ -1997,6 +2008,19 @@ if __name__ == "__main__":
 
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
+    c = gf.decl("c", [])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, do_sympify(dimension))
     foofunc.add_eqn(b, a + do_sympify(2))
+
+    def getsym(a: IndexedBase)->Symbol:
+        b = a.args[0]
+        assert isinstance(b, Symbol)
+        return b
+
+    # Now test functions
+    fmax = gf.declfun("fmax", 2)
+    foofunc.add_eqn(c, fmax(a,b))
+    foofunc.bake()
+    assert foofunc.eqn_list.depends_on(getsym(c), getsym(a))
+    assert foofunc.eqn_list.depends_on(getsym(c), getsym(b))

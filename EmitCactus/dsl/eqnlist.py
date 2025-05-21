@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import symbols, Basic
+from sympy import symbols, Basic, IndexedBase
 from sympy.core.expr import Expr
 from sympy.core.function import UndefinedFunction as UFunc
 from sympy.core.symbol import Symbol
@@ -12,7 +12,6 @@ from typing import cast, Dict, List, Tuple, Optional, Set
 from EmitCactus.util import OrderedSet, incr_and_get
 
 from EmitCactus.dsl.sympywrap import *
-from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.util import get_or_compute, ProgressBar
 from EmitCactus.dsl.dsl_exception import DslException
@@ -96,6 +95,8 @@ class EqnList:
         self.temporaries: Set[Symbol] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
         self.split_lhs_prime_count: Dict[Symbol, int] = dict()
+        self.provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
+        self.requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -295,6 +296,7 @@ class EqnList:
     def order_builder(self, complete:Dict[Symbol, int], cno:int)->None:
         provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
         requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
+        self.requires = dict()
         # Thus for
         #   u_t = v
         #   v_t = div(u,la,lb) g[ua,ub]
@@ -303,11 +305,13 @@ class EqnList:
         for k in self.eqns:
             if k not in requires:
                 requires[k] = set()
+                self.requires[k] = set()
             for v in free_symbols(self.eqns[k]):
                 if v not in provides:
                     provides[v] = set()
                 provides[v].add(k)
                 requires[k].add(v)
+                self.requires[k].add(v)
         self.order = list()
         self.sublists = list()
         result = list()
@@ -335,6 +339,7 @@ class EqnList:
             for vv in v2:
                 if vv not in self.params:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
+        self.provides = provides
 
 
     def bake(self) -> None:
@@ -656,6 +661,17 @@ class EqnList:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
             print(" ", colorize(k, "cyan"), "=", self.eqns[k])
+
+    def depends_on(self, a:Symbol, b:Symbol) -> bool:
+        """
+        Dependency checker. Assumes no cycles.
+        """
+        for c in self.requires:
+            if c == b:
+                return True
+            else:
+                return self.depends_on(a, c)
+        return False
 
 
 if __name__ == "__main__":
