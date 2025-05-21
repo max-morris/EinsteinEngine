@@ -2,7 +2,7 @@
 
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.carpetx import ExplicitSyncBatch
+    #from EmitCactus.dsl.carpetx import ExplicitSyncBatch
     from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs, mkMatrix, cbrt
     from EmitCactus.dsl.use_indices import parities
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
@@ -215,6 +215,12 @@ if __name__ == "__main__":
     ###
     # Aux. functions
     ###
+    mydiv = pybssn.mk_stencil(
+        "mydiv",
+        la,
+        (stencil(-2*la) - 8 * stencil(-la) + 8*stencil(la) - stencil(2*la)) * (DDI(la) * (1/12))
+    )
+
     def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
         """
         Index symmetrizer
@@ -236,7 +242,7 @@ if __name__ == "__main__":
         function.add_eqn(
             Gammat[ld, lb, lc],
             1 / 2 * (
-                div(gt[ld, lb], lc) + div(gt[ld, lc], lb) - div(gt[lb, lc], ld)
+                mydiv(gt[ld, lb], lc) + mydiv(gt[ld, lc], lb) - mydiv(gt[lb, lc], ld)
             )
         )
 
@@ -305,11 +311,11 @@ if __name__ == "__main__":
     ###
     # State synchronization
     ###
-    state_sync = ExplicitSyncBatch(
-        vars=[gt, phi, At, trK, ConfConnect, evo_lapse, evo_shift],
-        schedule_target=poststep_group,
-        name="state_sync"
-    )
+    # state_sync = ExplicitSyncBatch(
+    #     vars=[gt, phi, At, trK, ConfConnect, evo_lapse, evo_shift],
+    #     schedule_target=poststep_group,
+    #     name="state_sync"
+    # )
 
     ###
     # Convert ADM to BSSN variables
@@ -530,7 +536,7 @@ if __name__ == "__main__":
                 poststep_group,
                 analysis_group
             ],
-            explicit_syncs=[state_sync]
+            #explicit_syncs=[state_sync]
         )
     ).generate_thorn()
 
