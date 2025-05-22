@@ -30,8 +30,16 @@ if __name__ == "__main__":
     ###
     # Finite difference stencils
     ###
-    # 4th order. TODO: Use upwind stencils for the shift
-    pybssn.set_div_stencil(5)
+    # pybssn.set_div_stencil(5)
+    
+    # First derivative, 4th order accurate, centered stencil
+    fd4c = pybssn.mk_stencil(
+        "fd4c",
+        la,
+        Rational(1, 12) * DDI(la) * (
+            -8 * stencil(-la) + stencil(-2*la) + 8 * stencil(la) - stencil(2*la)
+        )
+    )
 
     ###
     # Thorn parameters
@@ -395,8 +403,8 @@ if __name__ == "__main__":
     fun_adm2bssn.add_eqn(
         ConfConnect[ua],
         -Rational(1, 3) * (1 / (cbrt(detg)**2)) * (
-            3 * detg * div(g[ua, ub], lb)
-            + g[ua, ub] * div(detg, lb)
+            3 * detg * fd4c(g[ua, ub], lb)
+            + g[ua, ub] * fd4c(detg, lb)
         )
     )
 

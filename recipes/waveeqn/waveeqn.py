@@ -68,12 +68,26 @@ if __name__ == "__main__":
     gf.mk_subst(g[li, lj], flat_metric)
     gf.mk_subst(g[ui, uj], flat_metric)
 
+    # stencil(la) -> [stencil(f,1,0,0), stencil(f,0,1,0), stencil(f,0,0,1)]
+
+    mdiv = gf.mk_stencil("mdiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
+    gf.mk_stencil("mdiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
+    max = gf.declfun("max", args=2, is_stencil=False)
+
+    ## gf.mk_stencil(mydiv,la,la,(stencil(la)-2*stencil(0)+stencil(-la))/(DD[la]**2))
+    ## gf.mk_stencil(mydiv,la,lb,(stencil(la+lb)-stencil(la-lb)+stencil(-la-lb)-stencil(-la+lb))/(2*DD[la]*DD[lb]))
+    ## # la + lb, if la==l0 and lb==l1, [1,0,0] + [0,1,0] => [1,1,0]
+    ## # la + l0, if la==l0, [1,0,0] + [1,0,0] => [2,0,0]
+    ## # la + l0, if la==l1, [0,1,0] + [1,0,0] => [1,1,0]
+    # gf.mk_stencil(mydiv,la,c*stencil(2*la)+b*stencil(la)+a*stencil(0))/(2*DD[la]))
+    ## # if la==l0, (c*stencil(f,2,0,0) + b*stencil(f,1,0,0) + a*stencil(f,0,0,0))/(2*DX)
+
     t, x, y, z = gf.mk_coords(with_time=True)
 
     # Add the equations we want to evolve.
     fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
     fun.add_eqn(v_t, u)
-    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
+    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * mdiv(v, li, lj))
     print('*** ThornFunction wave_evo:')
     fun.bake()
 
@@ -87,7 +101,7 @@ if __name__ == "__main__":
     # du/dt = spd**2 * ((d/dx)**2 u + (d/dy)**2 u)
     # dv/dt = u
     vfun = amp*sin(kx * x) * sin(ky * y) * sin(kz * z) * sin(w * t)
-    ufun = vfun.diff(t)
+    ufun = max(vfun.diff(t), -2*amp*w)
     fun = gf.create_function("newwave_init", ScheduleBin.Init)
     fun.add_eqn(u,  ufun)
     fun.add_eqn(v,  vfun)

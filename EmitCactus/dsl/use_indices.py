@@ -13,8 +13,9 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Integer, Number, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix, Expr
 from sympy.core.function import UndefinedFunction as UFunc
 
+from EmitCactus.dsl.coef import coef
 from EmitCactus.dsl.dsl_exception import DslException
-from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI
+from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
@@ -24,6 +25,7 @@ from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
 __all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
+           "stencil","DD","DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
@@ -406,9 +408,14 @@ def mkPair(s: Optional[str]=None) -> Tuple[Idx, Idx]:
     return u, l
 
 
+def is_down(ind: Idx) -> bool:
+    s = str(ind)
+    assert s[0] in ["u", "l"], f"ind={ind}"
+    return s[0] == "l"
+
 def to_num(ind: Idx) -> int:
     s = str(ind)
-    assert s[0] in ["u", "l"]
+    assert s[0] in ["u", "l"], f"ind={ind}"
     return int(s[1])
 
 
@@ -439,6 +446,7 @@ x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
 noidx = mkIdx("noidx")
+dummy = mkSymbol("_dummy_")
 
 def mkdiv(expr:Expr, *args:Idx)->Expr:
     r = div(expr, *args)
@@ -723,6 +731,8 @@ def toNumTup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
 
 
 stencil = mkFunction("stencil")
+DD = mkFunction("DD")
+DDI = mkFunction("DDI")
 noop = mkFunction("noop")
 
 multype = Mul  # type(i*j)
@@ -761,9 +771,9 @@ def is_letter_index(sym: Basic) -> bool:
 def get_indices(xpr: Expr) -> OrderedSet[Idx]:
     """ Return all indices of IndexedBase objects in xpr. """
     ret: OrderedSet[Idx] = OrderedSet()
-    for symbol in finder(xpr):
+    for symbol in free_indexed(xpr):
         if is_letter_index(symbol):
-            ret.add(cast(Idx, symbol))
+            ret.add(symbol)
     return ret
     ###
     if type(xpr) in [multype, addtype, powtype]:
@@ -843,8 +853,10 @@ def get_free_indices(xpr: Expr) -> OrderedSet[Idx]:
     return ret
 
 
-M = mkIndexedBase('M', (dimension, dimension))
-assert sorted(list(get_free_indices(M[ui, uj] * M[lj, lk])), key=byname) == [ui, lk]
+if __name__ == "__main__":
+    M = mkIndexedBase('M', (dimension, dimension))
+    print(get_free_indices(M[ui, uj] * M[lj, lk]))
+    #assert sorted(list(get_free_indices(M[ui, uj] * M[lj, lk])), key=byname) == [ui, lk]
 
 
 def get_contracted_indices(xpr: Expr) -> OrderedSet[Idx]:
@@ -862,7 +874,8 @@ def get_contracted_indices(xpr: Expr) -> OrderedSet[Idx]:
     return ret
 
 
-assert sorted(list(get_contracted_indices(M[ui, uj] * M[lj, lk])), key=byname) == [lj]
+if __name__ == "__main__":
+    assert sorted(list(get_contracted_indices(M[ui, uj] * M[lj, lk])), key=byname) == [lj]
 
 
 def incr(index_list: List[Idx], index_values: Dict[Idx, Idx]) -> bool:
@@ -958,15 +971,9 @@ def expand_contracted_indices(in_expr:Expr, sym:Sym)->Expr:
 # Check
 if __name__ == "__main__":
     sym = Sym()
-    def check_expand(expr1:Expr, expr2:Expr)->None:
-        expr3 = expand_contracted_indices(expr1, sym)
-        expr4 = do_simplify(expr3 - expr2)
-        assert expr4 == 0, f"{expr1} -> {expr3} != {expr2} : {expr4}"
-    check_expand(M[ui, li], M[u0, l0] + M[u1, l1] + M[u2, l2])
-    check_expand(M[ui, li]*M[ua,la], (M[u0, l0] + M[u1, l1] + M[u2, l2])**2)
-    check_expand(M[ui, lj] * M[li, uk],M[l0, uk] * M[u0, lj] + M[l1, uk] * M[u1, lj] + M[
-        l2, uk] * M[u2, lj])
-    #check_expand(sqrt(M[ui, li])*M[ua,la], sqrt(M[u0, l0] + M[u1, l1] + M[u2, l2])*(M[u0, l0] + M[u1, l1] + M[u2, l2]))
+    assert expand_contracted_indices(M[ui, li], sym) == M[u0, l0] + M[u1, l1] + M[u2, l2]
+    assert expand_contracted_indices(M[ui, lj] * M[li, uk], sym) == M[l0, uk] * M[u0, lj] + M[l1, uk] * M[u1, lj] + M[
+    l2, uk] * M[u2, lj]
 
 
 def expand_free_indices(xpr: Expr, sym: Sym) -> List[Tuple[Expr, Dict[Idx, Idx], List[Idx]]]:
@@ -1200,13 +1207,53 @@ class ApplyDivN(Applier):
     Use NRPy to calculate the stencil coefficients.
     """
 
-    def __init__(self, n: int) -> None:
+    def __init__(self, n: int, funs1:Dict[Tuple[UFunc,Idx],Expr], funs2:Dict[Tuple[UFunc,Idx,Idx],Expr], fun_args:Dict[str,int]) -> None:
         self.val: Optional[Expr] = None
         self.n = n
         self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
+        self.funs1 = funs1
+        self.funs2 = funs2
+        self.fun_args = fun_args
+
+    def is_user_func(self, f:Expr)->Optional[Expr]:
+        if not f.is_Function:
+            return None
+        if hasattr(f,"name") and f.name in self.fun_args:
+            nargs = self.fun_args[f.name]
+            if len(f.args) != nargs:
+                raise DslException(f"function {f.name} called with wrong number of args. Expected {nargs}, got {len(f.args)}. Expr: {f}")
+            return None
+        elif len(f.args) == 2:
+            #assert isinstance(f.func, UFunc)
+            assert isinstance(f.args[1], Idx), f"f={f}"
+            return self.funs1.get((f.func, f.args[1]),None)
+        elif len(f.args) == 3:
+            assert isinstance(f.args[1], Idx)
+            assert isinstance(f.args[2], Idx)
+            if f.args[1] == f.args[2]:
+                return self.funs1.get((f.func, f.args[1]),None)
+            else:
+                return self.funs2.get((f.func, f.args[1], f.args[2]),None)
+        return None
 
     def m(self, expr: Expr) -> bool:
-        if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+        if (fundef := self.is_user_func(expr)) is not None:
+            assert isinstance(expr.args[0], Expr)
+            self.val = do_subs(fundef, {dummy:expr.args[0]})
+            return True
+        elif expr.is_Function and hasattr(expr, "name") and expr.name == "stencil":
+            new_expr1: List[int]= list() 
+            for arg in expr.args[1:]:
+                if isinstance(arg, Idx):
+                    new_expr1.append(to_num(arg))
+                elif isinstance(arg, sy.Integer):
+                    new_expr1.append(arg)
+                else:
+                    assert False, f"arg={arg}, type={type(arg)}"
+            self.val = expr.func(expr.args[0], *new_expr1)
+            return True
+                
+        elif expr.is_Function and hasattr(expr, "name") and expr.name == "div":
             new_expr = list()
             dxt = do_sympify(1)
             if len(expr.args) == 2:
@@ -1343,14 +1390,14 @@ class ThornFunction:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
         if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
             self.eqn_list.add_output(lhs2)
-        for item in finder(rhs2):
+        for item in free_symbols(rhs2):
             if str(item) in self.thorn_def.gfs:
                 # assert item.is_Symbol
                 if str(item) not in self.thorn_def.temp:
-                    self.eqn_list.add_input(cast(Symbol, item))
+                    self.eqn_list.add_input(item)
             elif str(item) in self.thorn_def.params:
                 assert item.is_Symbol
-                self.eqn_list.add_param(cast(Symbol, item))
+                self.eqn_list.add_param(item)
         divs = self.thorn_def.apply_div
 
         class FindBad:
@@ -1454,7 +1501,9 @@ class ThornFunction:
         
     @add_eqn.register
     def _(self, lhs: IndexedBase, rhs: Expr) -> None:
-        self._add_eqn2(lhs.args[0], rhs)
+        var = lhs.args[0]
+        assert isinstance(var, Symbol)
+        self._add_eqn2(var, rhs)
 
     @add_eqn.register
     def _(self, lhs: Indexed, rhs: List[Expr]) -> None:
@@ -1535,12 +1584,13 @@ class ThornFunction:
             print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         return self.thorn_def.get_tensortype(item)
 
 
 class ThornDef:
     def __init__(self, arr: str, name: str, run_simplify: bool = True) -> None:
+        self.fun_args:Dict[str,int] = dict()
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
@@ -1557,7 +1607,7 @@ class ThornDef:
         self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
-        self.rhs: Dict[str, Math] = dict()
+        self.rhs: Dict[str, Symbol] = dict()
         self.temp: OrderedSet[str] = OrderedSet()
         self.base2thorn: Dict[str, str] = dict()
         self.base2parity: Dict[str, TensorParity] = dict()
@@ -1574,6 +1624,8 @@ class ThornDef:
             mkFunction("divyz"): True,
             mkFunction("divzz"): True
         }
+        self.funs1: Dict[Tuple[UFunc,Idx],Expr] = dict()
+        self.funs2: Dict[Tuple[UFunc,Idx,Idx],Expr] = dict()
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
@@ -1582,9 +1634,9 @@ class ThornDef:
     def set_div_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
-        self.apply_div = ApplyDivN(n)
+        self.apply_div = ApplyDivN(n, self.funs1, self.funs2, self.fun_args)
 
-    def get_tensortype(self, item: Union[str, Math]) -> Tuple[str, List[Idx], List[str]]:
+    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
         k = str(item)
         assert k in self.gfs.keys(), f"Not a defined symbol {item}"
         v = self.var2base.get(k, None)
@@ -1623,10 +1675,11 @@ class ThornDef:
             i1, i2 = i2, i1
         self.symmetries.add(tens.base, i1, i2, sgn)
 
-    def declfun(self, funname: str, is_stencil_fun: bool) -> UFunc:
+    def declfun(self, funname: str, args:int=1, is_stencil: bool=False) -> UFunc:
         fun = mkFunction(funname)
+        self.fun_args[funname] = args
         # self.eqnlist.add_func(fun, is_stencil)
-        self.is_stencil[fun] = is_stencil_fun
+        self.is_stencil[fun] = is_stencil
 
         return fun
 
@@ -1651,17 +1704,145 @@ class ThornDef:
             assert False
         return self.coords
 
+    @multimethod
+    def mk_stencil(self, func_name:str, idx:Idx, expr:Expr)->UFunc:
+        result = self.mk_stencil(func_name, expr, [idx])
+        assert isinstance(result, UFunc)
+        return result
+
+    @mk_stencil.register
+    def _(self, func_name:str, idx1:Idx, idx2:Idx, expr:Expr)->UFunc:
+        result = self.mk_stencil(func_name, expr, [idx1,idx2])
+        assert isinstance(result, UFunc)
+        return result
+
+    @mk_stencil.register
+    def _(self, func_name:str, expr:Expr, idxlist:List[Idx])->UFunc:
+
+        @multimethod
+        def mk_sten(idxmap:Dict[Idx,Idx], expr:sy.Function)->Expr:
+            # TODO: Rewrite so it does not require 3 dimensions
+            assert get_dimension() == 3
+            if expr.func == stencil:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                arg = mk_sten(idxmap, expr.args[0])
+                c0 = coef(l0, arg)
+                c1 = coef(l1, arg)
+                c2 = coef(l2, arg)
+                ret = stencil(dummy, c0, c1, c2)
+                assert isinstance(ret, Expr)
+                return ret
+            elif expr.func == DD:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                arg = mk_sten(idx, idx0, expr.args[0])
+                if arg == l0:
+                    return DX
+                elif arg == l1:
+                    return DY
+                elif arg == l2:
+                    return DZ
+                assert False
+            elif expr.func == DDI:
+                if len(expr.args) != 1:
+                    raise DslException(expr)
+                arg = mk_sten(idxmap, expr.args[0])
+                if arg == l0:
+                    return DXI
+                elif arg == l1:
+                    return DYI
+                elif arg == l2:
+                    return DZI
+                assert False
+            else:
+                raise DslException("Bad Func")
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Float)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Integer)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Rational)->Expr:
+            return expr
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Pow)->Expr:
+            result:Expr = Pow(mk_sten(idxmap,expr.args[0]),expr.args[1])
+            return result
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:Idx)->Expr:
+            retval = idxmap.get(expr, expr)
+            return retval
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Add)->Expr:
+            ret = zero
+            for a in expr.args:
+                term = mk_sten(idxmap, a)
+                ret += term
+            return ret
+
+        @mk_sten.register
+        def _(idxmap:Dict[Idx,Idx], expr:sy.Mul)->Expr:
+            ret = one
+            for a in expr.args:
+                term = mk_sten(idxmap, a)
+                ret *= term
+            return ret
+
+        func = mkFunction(func_name)
+        repl: Dict[int,Expr] = dict()
+        if len(idxlist)==1 or (len(idxlist)==2 and idxlist[0] == idxlist[1]):
+            idx = idxlist[0]
+            is_down_idx = is_down(idx)
+            for i in range(get_dimension()):
+                if is_down_idx:
+                    idx0 = down_indices[i]
+                else:
+                    idx0 = up_indices[i]
+                result = mk_sten({idx: idx0}, expr)
+                self.funs1[(func, idx0)] = result
+        elif len(idxlist)==2:
+            idx1 = idxlist[0]
+            idx2 = idxlist[1]
+            is_down_idx1 = is_down(idx1)
+            is_down_idx2 = is_down(idx2)
+            for i in range(get_dimension()):
+                if is_down_idx1:
+                    idx10 = down_indices[i]
+                else:
+                    idx10 = up_indices[i]
+                for j in range(get_dimension()):
+                    if i==j:
+                        continue
+                    if is_down_idx2:
+                        idx20 = down_indices[j]
+                    else:
+                        idx20 = up_indices[j]
+                    result = mk_sten({idx1: idx10, idx2: idx20}, expr)
+                    self.funs2[(func, idx10, idx20)] = result
+
+        return mkFunction(func_name)
+
     class DeclOptionalArgs(TypedDict, total=False):
         centering: Centering
         declare_as_temp: bool
-        rhs: Math
+        rhs: IndexedBase
         from_thorn: str
         parity: TensorParity
         group_name: str
 
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:
-            self.rhs[basename] = rhs
+            base_sym = rhs.args[0]
+            assert isinstance(base_sym, Symbol)
+            self.rhs[basename] = base_sym
 
         if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
@@ -1979,6 +2160,19 @@ if __name__ == "__main__":
 
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
+    c = gf.decl("c", [])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, do_sympify(dimension))
     foofunc.add_eqn(b, a + do_sympify(2))
+
+    def getsym(a: IndexedBase)->Symbol:
+        b = a.args[0]
+        assert isinstance(b, Symbol)
+        return b
+
+    # Now test functions
+    fmax = gf.declfun("fmax", 2)
+    foofunc.add_eqn(c, fmax(a,b))
+    foofunc.bake()
+    assert foofunc.eqn_list.depends_on(getsym(c), getsym(a))
+    assert foofunc.eqn_list.depends_on(getsym(c), getsym(b))
