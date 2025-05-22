@@ -6,7 +6,6 @@ from typing_extensions import Unpack
 
 from EmitCactus.dsl.carpetx import ExplicitSyncBatch
 from EmitCactus.dsl.eqnlist import TemporaryReplacement
-from EmitCactus.dsl.sympywrap import Math
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
     VariableSection
@@ -442,7 +441,7 @@ class CppCarpetXGenerator(CactusGenerator):
         eqn_list = thorn_fn.eqn_list
         reassigned_lhses: Set[int] = set()
 
-        def do_recycle_temporaries(lhs: Math, rhs: sy.Expr, i: int) -> Tuple[Math, sy.Expr]:
+        def do_recycle_temporaries(lhs: sy.Symbol, rhs: sy.Expr, i: int) -> Tuple[sy.Symbol, sy.Expr]:
             active_replacements: List[TemporaryReplacement] = (
                 sorted(filter(lambda r: r.begin_eqn <= i <= r.end_eqn, eqn_list.temporary_replacements),
                        key=lambda r: r.begin_eqn,

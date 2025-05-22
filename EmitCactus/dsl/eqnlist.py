@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import symbols
+from sympy import symbols, Basic, IndexedBase
 from sympy.core.expr import Expr
 from sympy.core.function import UndefinedFunction as UFunc
 from sympy.core.symbol import Symbol
@@ -12,20 +12,25 @@ from typing import cast, Dict, List, Tuple, Optional, Set
 from EmitCactus.util import OrderedSet, incr_and_get
 
 from EmitCactus.dsl.sympywrap import *
-from sympy import IndexedBase
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.util import get_or_compute, ProgressBar
+from EmitCactus.dsl.dsl_exception import DslException
+
+from multimethod import multimethod
 
 # These symbols represent the inverse of the
 # spatial discretization.
 DXI = mkSymbol("DXI")
 DYI = mkSymbol("DYI")
 DZI = mkSymbol("DZI")
+DX = mkSymbol("DX")
+DY = mkSymbol("DY")
+DZ = mkSymbol("DZ")
 
 
 @dataclass
 class TemporaryLifetime:
-    symbol: Math
+    symbol: Symbol
     prime: int
     read_at: OrderedSet[int]
     written_at: int
@@ -51,8 +56,8 @@ class TemporaryLifetime:
 
 @dataclass(frozen=True)
 class TemporaryReplacement:
-    old: Math
-    new: Math
+    old: Symbol
+    new: Symbol
     begin_eqn: int
     end_eqn: int
 
@@ -74,22 +79,24 @@ class EqnList:
     """
 
     def __init__(self, is_stencil: Dict[UFunc, bool]) -> None:
-        self.eqns: Dict[Math, Expr] = dict()
-        self.params: Set[Math] = OrderedSet()
-        self.inputs: Set[Math] = OrderedSet()
-        self.outputs: Set[Math] = OrderedSet()
-        self.temps: Set[Math] = OrderedSet()
-        self.order: List[Math] = list()
-        self.sublists: List[List[Math]] = list()
+        self.eqns: Dict[Symbol, Expr] = dict()
+        self.params: Set[Symbol] = OrderedSet()
+        self.inputs: Set[Symbol] = OrderedSet()
+        self.outputs: Set[Symbol] = OrderedSet()
+        self.temps: Set[Symbol] = OrderedSet()
+        self.order: List[Symbol] = list()
+        self.sublists: List[List[Symbol]] = list()
         self.verbose = True
-        self.read_decls: Dict[Math, IntentRegion] = dict()
-        self.write_decls: Dict[Math, IntentRegion] = dict()
+        self.read_decls: Dict[Symbol, IntentRegion] = dict()
+        self.write_decls: Dict[Symbol, IntentRegion] = dict()
         # TODO: need a better default
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
         self.is_stencil: Dict[UFunc, bool] = is_stencil
-        self.temporaries: Set[Math] = OrderedSet()
+        self.temporaries: Set[Symbol] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
-        self.split_lhs_prime_count: Dict[Math, int] = dict()
+        self.split_lhs_prime_count: Dict[Symbol, int] = dict()
+        self.provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
+        self.requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -98,7 +105,7 @@ class EqnList:
         self.add_param(DZI)
 
     @cached_property
-    def variables(self) -> Set[Math]:
+    def variables(self) -> Set[Symbol]:
         return self.inputs | self.outputs | self.temporaries
 
     def add_param(self, lhs: Symbol) -> None:
@@ -106,15 +113,23 @@ class EqnList:
         assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
         self.params.add(lhs)
 
-    def add_input(self, lhs: Math) -> None:
+    @multimethod
+    def add_input(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
         #assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
         if lhs in self.outputs:
             self.temps.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
+        assert isinstance(lhs, Symbol)
         self.inputs.add(lhs)
+    @add_input.register
+    def _(self, lhs: IndexedBase) -> None:
+        self.add_input(lhs.args[0])
+    @add_input.register
+    def _(self, lhs: Basic) -> None:
+        raise DslException("bad input")
 
-    def add_output(self, lhs: Math) -> None:
+    def add_output(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
         #assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
         if lhs in self.inputs:
@@ -122,11 +137,11 @@ class EqnList:
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.outputs.add(lhs)
 
-    def add_eqn(self, lhs: Math, rhs: Expr) -> None:
+    def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
         self.eqns[lhs] = rhs
 
-    def _prepend_split_subeqn(self, target_lhs: Math, new_lhs: Math, new_rhs: Expr) -> None:
+    def _prepend_split_subeqn(self, target_lhs: Symbol, new_lhs: Symbol, new_rhs: Expr) -> None:
         """
         Insert a new equation into the list. Said equation will represent one subexpression of another equation
         which it precedes.
@@ -145,8 +160,8 @@ class EqnList:
         self.order.insert(self.order.index(target_lhs), new_lhs)
         self.temporaries.add(new_lhs)
 
-    def _split_sympy_expr(self, lhs: Math, expr: Expr) -> Tuple[Expr, Dict[Math, Expr]]:
-        subexpressions: Dict[Math, Expr] = OrderedDict()
+    def _split_sympy_expr(self, lhs: Symbol, expr: Expr) -> Tuple[Expr, Dict[Symbol, Expr]]:
+        subexpressions: Dict[Symbol, Expr] = OrderedDict()
 
         for subexpression in expr.args:
             subexpression_lhs = f'{lhs}_{incr_and_get(self.split_lhs_prime_count, lhs)}'
@@ -155,7 +170,7 @@ class EqnList:
         new_expr = expr.func(*subexpressions.keys())
         return new_expr, subexpressions
 
-    def split_eqn(self, target_lhs: Math) -> None:
+    def split_eqn(self, target_lhs: Symbol) -> None:
         assert target_lhs in self.eqns
 
         expr = self.eqns[target_lhs]
@@ -181,8 +196,8 @@ class EqnList:
             self.split_eqn(output)
 
     def recycle_temporaries(self) -> None:
-        temp_reads: Dict[Math, OrderedSet[int]] = OrderedDict()
-        temp_writes: Dict[Math, OrderedSet[int]] = OrderedDict()
+        temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()
+        temp_writes: Dict[Symbol, OrderedSet[int]] = OrderedDict()
 
         for lhs, rhs in self.eqns.items():
             eqn_i = self.order.index(lhs)
@@ -191,6 +206,7 @@ class EqnList:
                 get_or_compute(temp_writes, lhs, lambda _: OrderedSet()).add(eqn_i)
 
             if len(temps_read := free_symbols(rhs).intersection(self.temporaries)) > 0:
+                temp_var : Symbol
                 for temp_var in temps_read:
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
@@ -257,29 +273,30 @@ class EqnList:
         for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
             print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
 
-    def uses_dict(self)->Dict[Math,int]:
-        uses : Dict[Math,int] = dict()
+    def uses_dict(self)->Dict[Symbol,int]:
+        uses : Dict[Symbol,int] = dict()
         for k,v in self.eqns.items():
-            for k2 in finder(v):
+            for k2 in free_symbols(v):
                 old = uses.get(k2,0)
                 uses[k2] = old + 1
         return uses
 
-    def apply_order(self, k:Math, provides:Dict[Math,Set[Math]], requires:Dict[Math,Set[Math]])->List[Math]:
+    def apply_order(self, k:Symbol, provides:Dict[Symbol,Set[Symbol]], requires:Dict[Symbol,Set[Symbol]])->List[Symbol]:
         result = list()
         if k not in self.params and k not in self.inputs:
             self.order.append(k)
         for v in provides.get(k,set()):
             req = requires[v]
-            assert k in req
-            req.remove(k)
+            if k in req:
+                req.remove(k)
             if len(req) == 0:
                 result.append(v)
         return result
             
-    def order_builder(self, complete:Dict[Math, int], cno:int)->None:
-        provides : Dict[Math,Set[Math]] = dict() # vals require key
-        requires : Dict[Math,Set[Math]] = dict() # key requires vals
+    def order_builder(self, complete:Dict[Symbol, int], cno:int)->None:
+        provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
+        requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
+        self.requires = dict()
         # Thus for
         #   u_t = v
         #   v_t = div(u,la,lb) g[ua,ub]
@@ -288,11 +305,13 @@ class EqnList:
         for k in self.eqns:
             if k not in requires:
                 requires[k] = set()
-            for v in finder(self.eqns[k]):
+                self.requires[k] = set()
+            for v in free_symbols(self.eqns[k]):
                 if v not in provides:
                     provides[v] = set()
                 provides[v].add(k)
                 requires[k].add(v)
+                self.requires[k].add(v)
         self.order = list()
         self.sublists = list()
         result = list()
@@ -319,22 +338,23 @@ class EqnList:
         for k,v2 in requires.items():
             for vv in v2:
                 if vv not in self.params:
-                    raise Exception(f"Unsatisfied {k} <- {vv} : {self.params}")
+                    raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
+        self.provides = provides
 
 
     def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
-        needed: Set[Math] = OrderedSet()
-        complete: Dict[Math, int] = dict()
+        needed: Set[Symbol] = OrderedSet()
+        complete: Dict[Symbol, int] = dict()
         self.order = list()
 
-        read: Set[Math] = OrderedSet()
-        written: Set[Math] = OrderedSet()
+        read: Set[Symbol] = OrderedSet()
+        written: Set[Symbol] = OrderedSet()
 
         self.read_decls.clear()
         self.write_decls.clear()
 
-        self.lhs: Math
+        self.lhs: Symbol
 
         # TODO: Automatically assign temps?
         for temp in self.temps:
@@ -375,10 +395,12 @@ class EqnList:
             rhs.replace(ftrace, noop)  # type: ignore[no-untyped-call]
 
         for arg in self.inputs:
+            assert isinstance(arg, Symbol), f"{arg}, type={type(arg)}"
             if arg not in self.read_decls:
                 self.read_decls[arg] = self.default_read_write_spec
 
         for lhs in self.eqns:
+            assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
             rhs = self.eqns[lhs]
             print(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs)
 
@@ -388,8 +410,9 @@ class EqnList:
             print(colorize("Params:", "green"), self.params)
 
         for k in self.eqns:
+            assert isinstance(k, Symbol), f"{k}, type={type(k)}"
             written.add(k)
-            for q in finder(self.eqns[k]):
+            for q in free_symbols(self.eqns[k]):
                 read.add(q)
 
         if self.verbose:
@@ -397,17 +420,24 @@ class EqnList:
             print(colorize("Written:", "green"), written)
 
         for k in self.inputs:
+            assert isinstance(k, Symbol), f"{k}, type={type(k)}"
+            if k not in read:
+                for kk in self.eqns:
+                    print(">>",kk,"=",self.eqns[kk])
             assert k in read, f"Symbol '{k}' is in inputs, but it is never read. {read}"
             assert k not in written, f"Symbol '{k}' is in inputs, but it is assigned to."
 
         for k in self.outputs:
+            assert isinstance(k, Symbol)
             assert k in written, f"Symbol '{k}' is in outputs, but it is never written"
 
         for k in written:
+            assert isinstance(k, Symbol)
             if k not in self.outputs:
                 self.temporaries.add(k)
 
         for k in read:
+            assert isinstance(k, Symbol), f"{k}, type={type(k)}"
             if k not in self.inputs and k not in self.params:
                 self.temporaries.add(k)
 
@@ -456,7 +486,7 @@ class EqnList:
                 spec = default_write_spec
                 # if there are variables only valid in the interior on the RHS of the
                 # equation where the var is assigned, then it must have spec = Interior
-                for rvar in finder(self.eqns[var]):
+                for rvar in free_symbols(self.eqns[var]):
                     if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
                         spec = IntentRegion.Interior
                         break
@@ -470,7 +500,7 @@ class EqnList:
                     default_write_spec = IntentRegion.Everywhere
                 spec = default_write_spec
                 if spec != IntentRegion.Interior:
-                    for rvar in finder(self.eqns[var]):
+                    for rvar in free_symbols(self.eqns[var]):
                         if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
                             spec = IntentRegion.Interior
                             break
@@ -492,7 +522,7 @@ class EqnList:
         for k, v in self.eqns.items():
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
             val1: int = complete[k]
-            for k2 in finder(v):
+            for k2 in free_symbols(v):
                 val2: Optional[int] = complete.get(k2, None)
                 assert val2 is not None, f"k2={k2}"
                 assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
@@ -528,14 +558,14 @@ class EqnList:
 
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
-        subs: Dict[Math, Symbol] = dict()
+        subs: Dict[Symbol, Symbol] = dict()
         for k, v in self.eqns.items():
             if v.is_symbol:
                 # k is not not needed
                 subs[k] = cast(Symbol, v)
                 print(f"Warning: equation '{k} = {v}' can be trivially eliminated")
 
-        new_eqns: Dict[Math, Expr] = dict()
+        new_eqns: Dict[Symbol, Expr] = dict()
         for k in self.eqns:
             if k not in subs:
                 v = self.eqns[k]
@@ -608,7 +638,7 @@ class EqnList:
     def cse(self) -> None:
         """ Invoke Sympy's CSE method, but ensure that the order of the resulting assignments is correct. """
         print("Call CSE")
-        indexes: List[Math] = list()
+        indexes: List[Symbol] = list()
         old_eqns: List[Expr] = list()
         for k in self.eqns:
             indexes.append(k)
@@ -631,6 +661,17 @@ class EqnList:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
             print(" ", colorize(k, "cyan"), "=", self.eqns[k])
+
+    def depends_on(self, a:Symbol, b:Symbol) -> bool:
+        """
+        Dependency checker. Assumes no cycles.
+        """
+        for c in self.requires:
+            if c == b:
+                return True
+            else:
+                return self.depends_on(a, c)
+        return False
 
 
 if __name__ == "__main__":
@@ -678,8 +719,8 @@ if __name__ == "__main__":
         el.add_eqn(a, r)
         el.add_output(a)
         el.bake()
-    except AssertionError as ae:
-        assert "cycle" in str(ae)
+    except DslException as ae:
+        assert "Unsatisfied" in str(ae)
         print("Test one passed")
         print()
 

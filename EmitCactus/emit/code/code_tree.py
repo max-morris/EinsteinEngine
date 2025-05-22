@@ -3,7 +3,6 @@ from enum import auto
 from typing import Optional, Union, List, Collection, Tuple
 
 import sympy as sy
-from EmitCactus.dsl.sympywrap import Math
 
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering
@@ -198,7 +197,7 @@ class StandardizedFunctionCall(Expr):
 @dataclass
 class CarpetXGridLoopLambda(Expr):
     preceding: Collection[CodeElem]
-    equations: List[Tuple[Math, SympyExpr]]
+    equations: List[Tuple[sy.Symbol, SympyExpr]]
     succeeding: Collection[CodeElem]
     temporaries: Collection[str]
     reassigned_lhses: Collection[int]
