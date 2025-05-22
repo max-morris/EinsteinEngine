@@ -30,16 +30,29 @@ if __name__ == "__main__":
     ###
     # Finite difference stencils
     ###
-    # pybssn.set_div_stencil(5)
     
-    # First derivative, 4th order accurate, centered stencil
-    fd4c = pybssn.mk_stencil(
-        "fd4c",
+    # The stencil size for our standard finite differences (4th order accurate)
+    pybssn.set_div_stencil(5)
+    
+    # Fith order Kreiss-Oliger disspation stencil
+    div_diss = pybssn.mk_stencil(
+        "div_diss",
         la,
-        Rational(1, 12) * DDI(la) * (
-            -8 * stencil(-la) + stencil(-2*la) + 8 * stencil(la) - stencil(2*la)
+        Rational(1, 64) * DDI(la) * (
+            stencil(-3*la) 
+            - 6.0 * stencil(-2*la)
+            + 15.0 * stencil(-la)
+            - 20.0 * stencil(0) +
+            15.0 * stencil(la)
+            - 6.0 * stencil(2*la)
+            + stencil(3*la)
         )
     )
+
+    ###
+    # Extra math functions
+    ###
+    max = pybssn.declfun("max", args=2, is_stencil=False)
 
     ###
     # Thorn parameters
@@ -90,6 +103,12 @@ if __name__ == "__main__":
         "evolved_lapse_floor",
         default=1.0e-10,
         desc="The evolved lapse will never be smaller than this value"
+    )
+
+    dissipation_epsilon = pybssn.add_param(
+        "dissipation_epsilon",
+        default=0.2,
+        desc="The ammount of dissipation to add. Should be in the [0, 1/3[ range"
     )
 
     ###
@@ -346,17 +365,15 @@ if __name__ == "__main__":
     )
 
     # Enforce conformal factor floor
-    # TODO: max(w, conformal_factor_floor)
     fun_bssn_enforce_pt1.add_eqn(
         w_enforce,
-        w
+        max(w, conformal_factor_floor)
     )
 
     # Enforce conformal factor floor
-    # TODO: max(w, conformal_factor_floor)
     fun_bssn_enforce_pt1.add_eqn(
         evo_lapse_enforce,
-        evo_lapse
+        max(evo_lapse, evolved_lapse_floor)
     )
 
     fun_bssn_enforce_pt1.bake(**gen_opts)
@@ -403,8 +420,8 @@ if __name__ == "__main__":
     fun_adm2bssn.add_eqn(
         ConfConnect[ua],
         -Rational(1, 3) * (1 / (cbrt(detg)**2)) * (
-            3 * detg * fd4c(g[ua, ub], lb)
-            + g[ua, ub] * fd4c(detg, lb)
+            3 * detg * div(g[ua, ub], lb)
+            + g[ua, ub] * div(detg, lb)
         )
     )
 
@@ -616,7 +633,12 @@ if __name__ == "__main__":
         - Rational(2, 3) *  gt[la, lb] *  div(evo_shift[uc], lc)
         # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
         + evo_shift[uc] * div(gt[la, lb], lc)
-        # TODO: Dissipation: + Dissipation[gt[la,lb]]
+        # Dissipation:
+        + dissipation_epsilon * (
+            div_diss(gt[la, lb], l0)
+            + div_diss(gt[la, lb], l1)
+            + div_diss(gt[la, lb], l2)
+        )
     )
 
     fun_bssn_rhs.add_eqn(
@@ -627,7 +649,12 @@ if __name__ == "__main__":
         )
         # TODO: Advection: + Upwind[beta[ua], phi, la]
         + evo_shift[ua] * div(w, la)
-        # TODO: Dissipation: + Dissipation[phi]
+        # Dissipation:
+        + dissipation_epsilon * (
+            div_diss(w, l0)
+            + div_diss(w, l1)
+            + div_diss(w, l2)
+        )
     )
 
     fun_bssn_rhs.add_eqn(
@@ -645,7 +672,12 @@ if __name__ == "__main__":
         - Rational(2, 3) * At[la, lb] * div(evo_shift[uc], lc)
         # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
         + evo_shift[uc] * div(At[la, lb], lc)
-        # TODO: Dissipation: + Dissipation[At[la,lb]]
+        # Dissipation:
+        + dissipation_epsilon * (
+            div_diss(At[la, lb], l0)
+            + div_diss(At[la, lb], l1)
+            + div_diss(At[la, lb], l2)
+        )
     )
 
     fun_bssn_rhs.add_eqn(
@@ -663,7 +695,12 @@ if __name__ == "__main__":
         )
         # TODO: Advection: + Upwind[beta[ua], trK, la]
         + evo_shift[ua] * div(trK, la)
-        # TODO: Dissipation: + Dissipation[trK]
+        # Dissipation:
+        + dissipation_epsilon * (
+            div_diss(trK, l0)
+            + div_diss(trK, l1)
+            + div_diss(trK, l2)
+        )
     )
 
     fun_bssn_rhs.add_eqn(
@@ -680,7 +717,12 @@ if __name__ == "__main__":
         + Rational(2, 3) * Delta[ua] * div(evo_shift[ub], lb)
         # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
         + evo_shift[ub] * div(ConfConnect[ua], lb)
-        # TODO: Dissipation: + Dissipation[Xt[ua]]
+        # Dissipation:
+        + dissipation_epsilon * (
+            div_diss(ConfConnect[ua], l0)
+            + div_diss(ConfConnect[ua], l1)
+            + div_diss(ConfConnect[ua], l2)
+        )
     )
 
     # 1 + log lapse. See [6]
