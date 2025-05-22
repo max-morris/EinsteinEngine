@@ -2,20 +2,34 @@ if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.use_indices import div as div_advect
     from EmitCactus.dsl.carpetx import ExplicitSyncBatch
-    from EmitCactus.dsl.sympywrap import do_inv, do_det, do_subs, mkMatrix
+    from EmitCactus.dsl.sympywrap import do_inv, do_det
     from EmitCactus.dsl.use_indices import parities
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
-    from EmitCactus.emit.tree import Identifier, Language, String
+    from EmitCactus.emit.tree import Identifier, String
     from EmitCactus.generators.wizards import CppCarpetXWizard
     from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
     from EmitCactus.generators.cactus_generator import InteriorSyncMode
 
-    from sympy import Idx, Expr, Rational, cbrt, sqrt
+    from sympy import Rational, cbrt, sqrt
 
     ###
     # Thorn definitions
     ###
     pybssn = ThornDef("PyBSSN", "BSSN")
+
+    ###
+    # Code generation options
+    ###
+    gen_opts = {
+        "do_cse": True,
+        "do_madd": False,
+        "do_recycle_temporaries": False,
+        "do_split_output_eqns": True
+    }
+    
+    ###
+    # Finite difference stencils
+    ###
     # 4th order. TODO: Use upwind stencils for the shift
     pybssn.set_div_stencil(5)
 
@@ -60,8 +74,14 @@ if __name__ == "__main__":
 
     conformal_factor_floor = pybssn.add_param(
         "conformal_factor_floor",
-        default=1.0e-4,
+        default=1.0e-10,
         desc="The conformal factor W will never be smaller than this value"
+    )
+
+    evolved_lapse_floor = pybssn.add_param(
+        "evolved_lapse_floor",
+        default=1.0e-10,
+        desc="The evolved lapse will never be smaller than this value"
     )
 
     ###
@@ -76,99 +96,88 @@ if __name__ == "__main__":
     ###
     # ADMBaseX vars.
     ###
-    g = pybssn.decl("g", [li, lj], from_thorn="ADMBaseX")
-    pybssn.add_sym(g[li, lj], li, lj)
-    pybssn.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
+    g = pybssn.decl("g", [la, lb], from_thorn="ADMBaseX")
+    pybssn.add_sym(g[la, lb], la, lb)
+    pybssn.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
-    k = pybssn.decl("k", [li, lj], from_thorn="ADMBaseX")
-    pybssn.add_sym(k[li, lj], li, lj)
-    pybssn.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
+    k = pybssn.decl("k", [la, lb], from_thorn="ADMBaseX")
+    pybssn.add_sym(k[la, lb], la, lb)
+    pybssn.mk_subst(k[la, lb], mksymbol_for_tensor_xyz)
 
     alp = pybssn.decl("alp", [], from_thorn="ADMBaseX")
 
     beta = pybssn.decl("beta", [ua], from_thorn="ADMBaseX")
     pybssn.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
-    dtbeta = pybssn.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
-
     ###
     # Evolved Gauge Vars.
     ###
     evo_lapse_rhs = pybssn.decl("evo_lapse_rhs", [], parity=parity_scalar)
-    evo_lapse = pybssn.decl("evo_lapse", [], rhs=evo_lapse_rhs,
-                            parity=parity_scalar)
+    evo_lapse = pybssn.decl(
+        "evo_lapse",
+        [],
+        rhs=evo_lapse_rhs,
+        parity=parity_scalar
+    )
 
-    evo_shift_rhs = pybssn.decl("evo_shift_rhs", [ui], parity=parity_vector)
-    evo_shift = pybssn.decl("evo_shift", [ui],
-                            rhs=evo_shift_rhs, parity=parity_vector)
+    evo_shift_rhs = pybssn.decl("evo_shift_rhs", [ua], parity=parity_vector)
+    evo_shift = pybssn.decl(
+        "evo_shift",
+        [ua],
+        rhs=evo_shift_rhs,
+        parity=parity_vector
+    )
 
     ###
     # Evolved BSSN Vars.
     ###
-    # \phi
+    # w (conformal factor)
     w_rhs = pybssn.decl("w_rhs", [], parity=parity_scalar)
     w = pybssn.decl("w", [], rhs=w_rhs, parity=parity_scalar)
 
-    # \tilde{\gamma_{ij}}
-    gt_rhs = pybssn.decl("gt_rhs", [li, lj], parity=parity_sym2ten)
-    pybssn.add_sym(gt_rhs[li, lj], li, lj)
-    gt = pybssn.decl("gt", [li, lj], rhs=gt_rhs, parity=parity_sym2ten)
-    pybssn.add_sym(gt[li, lj], li, lj)
+    # \tilde{\gamma_{a b}}
+    gt_rhs = pybssn.decl("gt_rhs", [la, lb], parity=parity_sym2ten)
+    pybssn.add_sym(gt_rhs[la, lb], la, lb)
+    gt = pybssn.decl("gt", [la, lb], rhs=gt_rhs, parity=parity_sym2ten)
+    pybssn.add_sym(gt[la, lb], la, lb)
 
-    # \tilde{A}_{ij}
-    At_rhs = pybssn.decl("At_rhs", [li, lj], parity=parity_sym2ten)
-    pybssn.add_sym(At_rhs[li, lj], li, lj)
-    At = pybssn.decl("At", [li, lj], rhs=At_rhs, parity=parity_sym2ten)
-    pybssn.add_sym(At[li, lj], li, lj)
+    # \tilde{A}_{a b}
+    At_rhs = pybssn.decl("At_rhs", [la, lb], parity=parity_sym2ten)
+    pybssn.add_sym(At_rhs[la, lb], la, lb)
+    At = pybssn.decl("At", [la, lb], rhs=At_rhs, parity=parity_sym2ten)
+    pybssn.add_sym(At[la, lb], la, lb)
 
-    # trace of Extrinsic Curvature
+    # K (trace of Extrinsic Curvature)
     trK_rhs = pybssn.decl("trK_rhs", [], parity=parity_scalar)
     trK = pybssn.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
 
-    # \tilde{\Gamma}^i
+    # \tilde{\Gamma}^a
     ConfConnect_rhs = pybssn.decl(
-        "ConfConnect_rhs", [ui], parity=parity_vector)
-    ConfConnect = pybssn.decl("ConfConnect", [ui],
-                              rhs=ConfConnect_rhs, parity=parity_vector)
+        "ConfConnect_rhs",
+        [ua],
+        parity=parity_vector
+    )
+    ConfConnect = pybssn.decl(
+        "ConfConnect",
+        [ua],
+        rhs=ConfConnect_rhs,
+        parity=parity_vector
+    )
 
     ###
-    # Constraint Vars.
+    # Monitored constraint Vars.
     ###
     HamCons = pybssn.decl("HamCons", [], parity=parity_scalar)
-    MomCons = pybssn.decl("MomCons", [ui], parity=parity_vector)
+    MomCons = pybssn.decl("MomCons", [ua], parity=parity_vector)
+    DeltaCons = pybssn.decl("DeltaCons", [ua], parity=parity_vector)
 
     ###
-    # Aux. Vars.
+    # Enforced Constraint Vars.
     ###
-    Gammat = pybssn.decl("Gammat", [ua, lb, lc])  # \tilde{\Gamma}^a_{bc}
-    pybssn.add_sym(Gammat[ua, lb, lc], lb, lc)
-
-    ric = pybssn.decl("ric", [li, lj])  # R_{ij} = \tilde{R}_{ij} + R^\phi_{ij}
-    pybssn.add_sym(ric[li, lj], li, lj)
-
-    # Conversion factor from non-conformal to conformal connection coefficients
-    ConfConv = pybssn.decl("ConfConv", [uc, la, lb])
-    pybssn.add_sym(ConfConv[uc, la, lb], la, lb)
-
-    # D_i D_j \alpha expressed in terms of conformal quantities
-    D_i_D_j_alp = pybssn.decl("D_i_D_j_alp", [li, lj])
-    pybssn.add_sym(D_i_D_j_alp[li, lj], li, lj)
-
-    # [-D_i D_j \alpha + \alpha R_{ij}]
-    D_i_D_j_alp_ric = pybssn.decl("D_i_D_j_alp_ric", [li, lj])
-    pybssn.add_sym(D_i_D_j_alp_ric[li, lj], li, lj)
-
-    # [-D_i D_j \alpha + \alpha R_{ij}]^{TF}
-    D_i_D_j_alp_ric_tf = pybssn.decl("D_i_D_j_alp_ric_tf", [li, lj])
-    pybssn.add_sym(D_i_D_j_alp_ric_tf[li, lj], li, lj)
-
-    # D_i D_j \phi
-    D_i_D_j_phi = pybssn.decl("D_i_D_j_phi", [li, lj])
-    pybssn.add_sym(D_i_D_j_phi[li, lj], li, lj)
-
-    # Temporaries used during constraint enforcemnt
+    # TODO: It would be good if this was not required.
     w_enforce = pybssn.decl("w_enforce", [], parity=parity_scalar)
+
+    evo_lapse_enforce = pybssn.decl("evo_lapse_enforce", [], parity=parity_scalar)
 
     gt_enforce = pybssn.decl("gt_enforce", [li, lj], parity=parity_sym2ten)
     pybssn.add_sym(gt_enforce[li, lj], li, lj)
@@ -177,110 +186,84 @@ if __name__ == "__main__":
     pybssn.add_sym(At_enforce[li, lj], li, lj)
 
     ###
+    # Aux. Vars.
+    ###
+    # \tilde{\Gamma}_{abc}
+    Gammat = pybssn.decl("Gammat", [la, lb, lc])
+    pybssn.add_sym(Gammat[la, lb, lc], lb, lc)
+
+    # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
+    Delta = pybssn.decl("Delta", [ua]) 
+
+    # \tilde{R}_{a b}
+    Rt = pybssn.decl("Rt", [la, lb])
+    pybssn.add_sym(Rt[la, lb], la, lb)
+
+    # \tilde{R}^{\phi}_{a b}
+    RPhi = pybssn.decl("RPhi", [la, lb])
+    pybssn.add_sym(RPhi[la, lb], la, lb)
+
+    # R_{a b} = \tilde{R}_{a b} + R^\phi_{a b}
+    R = pybssn.decl("R", [la, lb])
+    pybssn.add_sym(R[la, lb], la, lb)
+
+    # -D_a D_b \alpha + \alpha R_{a b}
+    Ats = pybssn.decl("Ats", [la, lb])
+    pybssn.add_sym(Ats[la, lb], la, lb)
+
+    # \tilde{D}_a \phi
+    cdphi = pybssn.decl("cdphi", [la])
+    
+    # \tilde{D}_a \tilde{D}_b \phi
+    cdphi2 = pybssn.decl("cdphi2", [la, lb])
+    pybssn.add_sym(cdphi2[la, lb], la, lb)
+
+    ###
     # Substitution rules
     ###
-    g_mat = pybssn.get_matrix(g[li, lj])
+    g_mat = pybssn.get_matrix(g[la, lb])
     g_imat = do_inv(g_mat)
     detg = do_det(g_mat)
-    pybssn.mk_subst(g[ui, uj], g_imat)
+    pybssn.mk_subst(g[ua, ub], g_imat)
 
-    pybssn.mk_subst(gt_rhs[li, lj])
-    pybssn.mk_subst(gt[li, lj])
+    pybssn.mk_subst(gt_rhs[la, lb])
+    pybssn.mk_subst(gt[la, lb])
 
-    gt_mat = pybssn.get_matrix(gt[li, lj])
+    gt_mat = pybssn.get_matrix(gt[la, lb])
     detgt = do_det(gt_mat)
     gt_imat = do_inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
-    pybssn.mk_subst(gt[ui, uj], gt_imat)
+    pybssn.mk_subst(gt[ua, ub], gt_imat)
 
-    pybssn.mk_subst(At[li, lj])
-    pybssn.mk_subst(At_rhs[li, lj])
-    pybssn.mk_subst(At[ui, uj])
-    pybssn.mk_subst(At[ui, lj])
+    pybssn.mk_subst(At[la, lb])
+    pybssn.mk_subst(At_rhs[la, lb])
+    pybssn.mk_subst(At[ua, ub])
+    pybssn.mk_subst(At[ua, lb])
 
-    pybssn.mk_subst(ConfConnect[ui])
-    pybssn.mk_subst(ConfConnect_rhs[ui])
+    pybssn.mk_subst(ConfConnect[ua])
+    pybssn.mk_subst(ConfConnect_rhs[ua])
 
-    pybssn.mk_subst(evo_shift[ui])
-    pybssn.mk_subst(evo_shift_rhs[ui])
+    pybssn.mk_subst(evo_shift[ua])
+    pybssn.mk_subst(evo_shift_rhs[ua])
 
-    pybssn.mk_subst(MomCons[ui])
+    pybssn.mk_subst(MomCons[ua])
+    pybssn.mk_subst(DeltaCons[ua])
 
-    pybssn.mk_subst(Gammat[ua, lb, lc])
     pybssn.mk_subst(Gammat[la, lb, lc])
+    pybssn.mk_subst(Gammat[ua, lb, lc])
+    pybssn.mk_subst(Gammat[la, lb, uc])
+    pybssn.mk_subst(Delta[ua])
 
-    pybssn.mk_subst(ric[li, lj])
+    pybssn.mk_subst(Rt[la, lb])
+    pybssn.mk_subst(RPhi[la, lb])
+    pybssn.mk_subst(R[la, lb])
 
-    pybssn.mk_subst(ConfConv[ua, lb, lc])
-    pybssn.mk_subst(D_i_D_j_alp[li, lj])
-    pybssn.mk_subst(D_i_D_j_alp_ric[li, lj])
-    pybssn.mk_subst(D_i_D_j_alp_ric_tf[li, lj])
-    pybssn.mk_subst(D_i_D_j_phi[li, lj])
+    pybssn.mk_subst(Ats[li, lj])
+    
+    pybssn.mk_subst(cdphi[li])
+    pybssn.mk_subst(cdphi2[li, lj])
 
     pybssn.mk_subst(gt_enforce[li, lj])
     pybssn.mk_subst(At_enforce[li, lj])
-
-    ###
-    # Aux. functions
-    ###
-    def sym(expr: Expr, ind1: Idx, ind2: Idx) -> Expr:
-        """
-        Index symmetrizer
-        """
-        uA, lA = mkPair()
-        # swap ind1 and ind2
-        x1: Expr = do_subs(expr, {ind1: uA, ind2: lA})
-        x2: Expr = do_subs(x1,   {uA: ind2, lA: ind1})
-        # add expr to itself with swapped indices
-        x3: Expr = (expr + x2)/2
-        return x3
-
-    def compute_ricci(function: ThornFunction) -> None:
-        """
-        Adds equations to a function to compute the Ricci tensor.
-        """
-
-        # B-S Eq. (1.18)
-        function.add_eqn(
-            Gammat[lc, la, lb],
-            Rational(1, 2) * (
-                div(gt[lc, la], lb) + div(gt[lc, lb], la) - div(gt[la, lb], lc)
-            )
-        )
-
-        function.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-
-        function.add_eqn(
-            D_i_D_j_phi[li, lj],
-            (1 / (2 * w)) * (
-                div(w, li) * div(w, lj) / w
-                + Gammat[uk, li, lj] * div(w, lk)
-                - div(w, lj, li)
-            )
-        )
-
-        function.add_eqn(
-            ric[li, lj],
-
-            # \tilde{R}_{ij}
-            Rational(-1, 2) * gt[ua, ub] * div(gt[li, lj], lb, la)
-            + Rational(1, 2) * (
-                gt[lk, li] * div(ConfConnect[uk], lj)
-                + gt[lk, lj] * div(ConfConnect[uk], li)
-            )
-            + Rational(1, 2) * (
-                gt[ua, ub] * Gammat[uk, la, lb] * Gammat[li, lj, lk]
-                + gt[ua, ub] * Gammat[uk, la, lb] * Gammat[lj, li, lk]
-            )
-            + gt[ua, ub] * Gammat[uk, la, li] * Gammat[lj, lk, lb]
-            + gt[ua, ub] * Gammat[uk, la, lj] * Gammat[li, lk, lb]
-            + gt[ua, ub] * Gammat[uk, li, lb] * Gammat[lk, la, lj]
-
-            # R^{\phi}_{ij}
-            - 2 * D_i_D_j_phi[li, lj]
-            - 2 * gt[li, lj] * gt[ua, ub] * D_i_D_j_phi[la, lb]
-            + (div(w, li) * div(w, lj)) / (w**2)
-            - (gt[li, lj] * gt[ua, ub] * div(w, la) * div(w, lb)) / (w**2)
-        )
 
     ###
     # Aux. groups
@@ -355,13 +338,20 @@ if __name__ == "__main__":
     )
 
     # Enforce conformal factor floor
-    # TODO: min(w, conformal_factor_floor)
+    # TODO: max(w, conformal_factor_floor)
     fun_bssn_enforce_pt1.add_eqn(
         w_enforce,
         w
     )
 
-    fun_bssn_enforce_pt1.bake()
+    # Enforce conformal factor floor
+    # TODO: max(w, conformal_factor_floor)
+    fun_bssn_enforce_pt1.add_eqn(
+        evo_lapse_enforce,
+        evo_lapse
+    )
+
+    fun_bssn_enforce_pt1.bake(**gen_opts)
 
     fun_bssn_enforce_pt2 = pybssn.create_function(
         "bssn_enforce_pt2",
@@ -373,8 +363,9 @@ if __name__ == "__main__":
     fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])
     fun_bssn_enforce_pt2.add_eqn(At[li, lj], At_enforce[li, lj])
     fun_bssn_enforce_pt2.add_eqn(w, w_enforce)
+    fun_bssn_enforce_pt2.add_eqn(evo_lapse, evo_lapse_enforce)
 
-    fun_bssn_enforce_pt2.bake()
+    fun_bssn_enforce_pt2.bake(**gen_opts)
 
     ###
     # Convert ADM to BSSN variables
@@ -385,33 +376,34 @@ if __name__ == "__main__":
     )
 
     fun_adm2bssn.add_eqn(
-        gt[li, lj],
-        (1 / cbrt(detg)) * g[li, lj]
+        gt[la, lb],
+        (1 / cbrt(detg)) * g[la, lb]
     )
 
     fun_adm2bssn.add_eqn(w, 1 / (sqrt(cbrt(detg))))
 
     fun_adm2bssn.add_eqn(
-        At[li, lj],
+        At[la, lb],
         (1 / cbrt(detg)) * (
-            k[li, lj] - Rational(1, 3) * g[li, lj] * g[ua, ub] * k[la, lb]
+            k[la, lb] 
+            - Rational(1, 3) * g[la, lb] * g[uc, ud] * k[lc, ld]
         )
     )
 
     fun_adm2bssn.add_eqn(trK, g[ua, ub] * k[la, lb])
 
     fun_adm2bssn.add_eqn(
-        ConfConnect[ui],
-        Rational(-1, 3) * (1 / (cbrt(detg)**2)) * (
-            3 * detg * div(g[ui, uj], lj)
-            + g[ui, uj] * div(detg, lj)
+        ConfConnect[ua],
+        -Rational(1, 3) * (1 / (cbrt(detg)**2)) * (
+            3 * detg * div(g[ua, ub], lb)
+            + g[ua, ub] * div(detg, lb)
         )
     )
 
     fun_adm2bssn.add_eqn(evo_lapse, alp)
     fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
 
-    fun_adm2bssn.bake()
+    fun_adm2bssn.bake(**gen_opts)
 
     ###
     # Convert BSSN to ADM variables
@@ -435,7 +427,7 @@ if __name__ == "__main__":
     fun_bssn2adm.add_eqn(alp, evo_lapse)
     fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 
-    fun_bssn2adm.bake()
+    fun_bssn2adm.bake(**gen_opts)
 
     ###
     # Compute non enforced constraints
@@ -445,35 +437,93 @@ if __name__ == "__main__":
         analysis_group
     )
 
-    compute_ricci(fun_bssn_cons)
+    # Aux. equations
+    fun_bssn_cons.add_eqn(
+        Gammat[lc, la, lb],
+        Rational(1, 2) * (
+            div(gt[lc, la], lb) + div(gt[lc, lb], la) - div(gt[la, lb], lc)
+        )
+    )
 
+    fun_bssn_cons.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
+    fun_bssn_cons.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
+    fun_bssn_cons.add_eqn(Delta[ua], gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc])
+
+    fun_bssn_cons.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
+    fun_bssn_cons.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
+
+    fun_bssn_cons.add_eqn(
+        cdphi[la],
+        -Rational(1, 2) * (1 / w) * div(w, la)
+    )
+
+    fun_bssn_cons.add_eqn(
+        cdphi2[la, lb],
+        -Rational(1, 2) * (1 / w) *  (
+            div(w, la, lb)
+            -Gammat[uc, la, lb] * div(w, lc)
+        )
+        + Rational(1, 2) * (1 / (w**2)) *div(w, la) * div(w, lb)
+    )
+
+    fun_bssn_cons.add_eqn(
+        Rt[la, lb],
+        - Rational(1, 2) * gt[uc, ud] * div(gt[la, lb], lc, ld)
+        + Rational(1, 2) * gt[lc,la] * div(ConfConnect[uc], lb)
+        + Rational(1, 2) * gt[lc,lb] * div(ConfConnect[uc], la)
+        + Rational(1, 2) * Delta[uc] * Gammat[la,lb,lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb,la,lc]
+        + (
+            + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+            + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+            + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+        )
+    )
+
+    fun_bssn_cons.add_eqn(
+        RPhi[la, lb],
+        - 2 * cdphi2[lb, la]
+        - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
+        + 4 * cdphi[la] * cdphi[lb]
+        - 4 * gt[la,lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+    )
+
+    fun_bssn_cons.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
+
+    # Hamiltonian constraint
     fun_bssn_cons.add_eqn(
         HamCons,
-        w**2 * gt[ui, uj] * ric[li, lj]
-        + Rational(2, 3) * trK**2
-        - gt[ui, ua] * gt[uj, ub] * At[la, lb] * At[li, lj]
+        (w**2) * gt[ua, ub] *  R[la, lb]
+        - At[ua, lb] * At[ub, la]
+        + Rational(2, 3) * (trK**2)
+    )
+
+    # Momentum constraint
+    fun_bssn_cons.add_eqn(
+        MomCons[ua],
+        + gt[ua, uc] * gt[ub, ud] * (
+            div(At[lc, ld], lb)
+            -Gammat[uk, lc, lb] * At[lk, ld]
+            -Gammat[uk, ld, lb] * At[lc, lk]
+        )
+        + 6 * At[ua, ub] * cdphi[lb]
+        - Rational(2, 3) * gt[ua, ub] * div(trK, lb)
     )
 
     fun_bssn_cons.add_eqn(
-        MomCons[ui],
-        gt[ui, ua] * gt[uj, ub] * (
-            div(At[la, lb], lj)
-            - Gammat[uk, lj, la] * At[lk, lb]
-            - Gammat[uk, lj, lb] * At[la, lk]
-        )
-        - (3 / w) * gt[ui, ua] * gt[uj, ub] * At[la, lb] * div(w, lj)
-        - Rational(2, 3) * gt[ui, uj] * div(trK, lj)
+        DeltaCons[ua],
+        ConfConnect[ua] - Delta[ua]
     )
 
-    fun_bssn_cons.bake()
+    fun_bssn_cons.bake(**gen_opts)
 
     ###
     # BSSN Evolution equations
     # Following [1], we will replace \tilde{\Gamma}^i with
-    # \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk} whenever the
-    # \tilde{\Gamma}^i are needed without derivatives.
+    # \Delta^i \equiv \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk} 
+    # whenever \tilde{\Gamma}^i are needed without derivatives.
     #
-    # TODO: Following [4] FD stencils are centered except for terms
+    # Following [4] FD stencils are centered except for terms
     # of the form (\shift^i \partial_i u) which are calculated
     # using an “upwind” stencil which is shifted by one point in
     # the direction of the shift, and of the same order
@@ -483,87 +533,146 @@ if __name__ == "__main__":
         rhs_group
     )
 
-    # Aux. Equations
-    fun_bssn_rhs.add_eqn(At[ui, lj], At[la, lj] * gt[ua, ui])
-    fun_bssn_rhs.add_eqn(At[ui, uj], At[ui, lb] * gt[ub, uj])
+    # Aux. equations
+    fun_bssn_rhs.add_eqn(
+        Gammat[lc, la, lb],
+        Rational(1, 2) * (
+            div(gt[lc, la], lb) + div(gt[lc, lb], la) - div(gt[la, lb], lc)
+        )
+    )
 
-    compute_ricci(fun_bssn_rhs)
+    fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
+    fun_bssn_rhs.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
+    fun_bssn_rhs.add_eqn(Delta[ua], gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc])
+
+    fun_bssn_rhs.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
+    fun_bssn_rhs.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
 
     fun_bssn_rhs.add_eqn(
-        ConfConv[uc, la, lb],
-        (1 / w) * gt[uc, ud] * (
-           gt[lb, ld] * div(w, la)
-           + gt[la, ld] * div(w, lb)
-           - gt[la, lb] * div(w, ld)
+        cdphi[la],
+        -Rational(1, 2) * (1 / w) * div(w, la)
+    )
+
+    fun_bssn_rhs.add_eqn(
+        cdphi2[la, lb],
+        -Rational(1, 2) * (1 / w) *  (
+            div(w, la, lb)
+            -Gammat[uc, la, lb] * div(w, lc)
+        )
+        + Rational(1, 2) * (1 / (w**2)) *div(w, la) * div(w, lb)
+    )
+
+    fun_bssn_rhs.add_eqn(
+        Rt[la, lb],
+        - Rational(1, 2) * gt[uc, ud] * div(gt[la, lb], lc, ld)
+        + Rational(1, 2) * gt[lc,la] * div(ConfConnect[uc], lb)
+        + Rational(1, 2) * gt[lc,lb] * div(ConfConnect[uc], la)
+        + Rational(1, 2) * Delta[uc] * Gammat[la,lb,lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb,la,lc]
+        + (
+            + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+            + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+            + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
         )
     )
 
     fun_bssn_rhs.add_eqn(
-        D_i_D_j_alp[li, lj],
-        div(evo_lapse, lj, li)
-        - Gammat[uk, li, lj] * div(evo_lapse, lk)
-        + ConfConv[uk, li, lj] * div(evo_lapse, lk)
+        RPhi[la, lb],
+        - 2 * cdphi2[lb, la]
+        - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
+        + 4 * cdphi[la] * cdphi[lb]
+        - 4 * gt[la,lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
     )
+
+    fun_bssn_rhs.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
     fun_bssn_rhs.add_eqn(
-        D_i_D_j_alp_ric[li, lj],
-        - D_i_D_j_alp[li, lj]
-        + evo_lapse * ric[li, lj]
+        Ats[la, lb],
+        (
+            -div(evo_lapse, la, lb)
+            + Gammat[uc, la, lb] * div(evo_lapse, lc)
+        )
+        + 2 * (
+            div(evo_lapse, la) * cdphi[lb]
+            +div(evo_lapse, lb) * cdphi[la]
+        )
+        + evo_lapse * R[la,lb]
     )
-
-    fun_bssn_rhs.add_eqn(
-        D_i_D_j_alp_ric_tf[li, lj],
-        D_i_D_j_alp_ric[li, lj]
-        - Rational(1, 3) * gt[li, lj] * gt[ua, ub] * D_i_D_j_alp_ric[la, lb]
-    )
-
+    
     # Evolution equations
     fun_bssn_rhs.add_eqn(
-        gt_rhs[li, lj],
-        -2 * evo_lapse * At[li, lj]
-        + evo_shift[uk] * div_advect(gt[li, lj], lk)
-        + gt[li, lk] * div(evo_shift[uk], lj)
-        + gt[lj, lk] * div(evo_shift[uk], li)
-        - Rational(2, 3) * gt[li, lj] * div(evo_shift[uk], lk)
+        gt_rhs[la, lb],
+        - 2 * evo_lapse * At[la, lb]
+        + gt[la, lc] * div(evo_shift[uc], lb)
+        + gt[lb, lc] * div(evo_shift[uc], la)
+        - Rational(2, 3) *  gt[la, lb] *  div(evo_shift[uc], lc)
+        # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
+        + evo_shift[uc] * div(gt[la, lb], lc)
+        # TODO: Dissipation: + Dissipation[gt[la,lb]]
     )
 
     fun_bssn_rhs.add_eqn(
         w_rhs,
-        Rational(1, 3) * w * (evo_lapse * trK - div(evo_shift[ui], li))
-        + evo_shift[ui] * div_advect(w, li)
+        Rational(1, 3) * w * (
+            evo_lapse * trK
+            - div(evo_shift[ua], la)
+        )
+        # TODO: Advection: + Upwind[beta[ua], phi, la]
+        + evo_shift[ua] * div(w, la)
+        # TODO: Dissipation: + Dissipation[phi]
     )
 
     fun_bssn_rhs.add_eqn(
-        At_rhs[li, lj],
-        (w**2) * D_i_D_j_alp_ric_tf[li, lj]
-        + evo_lapse * (trK * At[li, lj] - 2 * At[li, lk] * At[uk, lj])
-        + evo_shift[uk] * div_advect(At[li, lj], lk)
-        + At[li, lk] * div(evo_shift[uk], lj)
-        + At[lj, lk] * div(evo_shift[uk], li)
-        - Rational(2, 3) * At[li, lj] * div(evo_shift[uk], lk)
+        At_rhs[la, lb],
+        (w**2) * (
+            Ats[la, lb] 
+            - Rational(1, 3) * gt[la, lb] * gt[uc, ud] * Ats[lc, ld]
+        )
+        + evo_lapse * (
+            + trK * At[la, lb]
+            - 2 * At[la, lc] * At[uc, lb]
+        )
+        + At[la, lc] * div(evo_shift[uc], lb)
+        + At[lb, lc] * div(evo_shift[uc], la)
+        - Rational(2, 3) * At[la, lb] * div(evo_shift[uc], lc)
+        # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
+        + evo_shift[uc] * div(At[la, lb], lc)
+        # TODO: Dissipation: + Dissipation[At[la,lb]]
     )
 
     fun_bssn_rhs.add_eqn(
         trK_rhs,
-        (w**2) * gt[ui, uj] * D_i_D_j_alp[li, lj]
-        + evo_lapse * (At[li, lj] * At[ui, uj] + Rational(1, 3) * (trK**2))
-        + evo_shift[uk] * div_advect(trK, lk)
+        - (w**2) * (
+            gt[ua, ub] * (
+                + div(evo_lapse, la, lb)
+                + 2 * cdphi[la] * div(evo_lapse, lb)
+            )
+            - Delta[ua] * div(evo_lapse, la)
+        )
+        + evo_lapse * (
+            At[ua, lb] * At[ub, la]
+            + Rational(1, 3) * (trK**2)
+        )
+        # TODO: Advection: + Upwind[beta[ua], trK, la]
+        + evo_shift[ua] * div(trK, la)
+        # TODO: Dissipation: + Dissipation[trK]
     )
 
     fun_bssn_rhs.add_eqn(
-        ConfConnect_rhs[ui],
-        gt[uj, uk] * div(evo_shift[ui], lk, lj)
-        + Rational(1, 3) * gt[ui, uj] * div(evo_shift[uk], lk, lj)
-        + evo_shift[uj] * div_advect(ConfConnect[ui], lj)
-        - gt[ua, ub] * Gammat[uj, la, lb] * div(evo_shift[ui], lj)
-        + Rational(2, 3) * gt[ua, ub] * Gammat[ui,
-                                               la, lb] * div(evo_shift[uj], lj)
-        - 2 * At[ui, uj] * div(evo_lapse, lj)
+        ConfConnect_rhs[ua],
+        - 2 * At[ua, ub] * div(evo_lapse, lb)
         + 2 * evo_lapse * (
-            Gammat[ui, lj, lk] * At[uj, uk]
-            - (3 / w) * At[ui, uj] * div(w, lj)
-            - Rational(2, 3) * gt[ui, uj] * div(trK, lj)
+            + Gammat[ua, lb, lc] * At[ub, uc]
+            - Rational(2, 3) * gt[ua, ub] * div(trK, lb)
+            + 6 * At[ua, ub] * cdphi[lb]
         )
+        + gt[ub,uc] * div(evo_shift[ua], lb, lc)
+        + Rational(1, 3) * gt[ua,ub] * div(evo_shift[uc], lb, lc)
+        - Delta[ub] * div(evo_shift[ua], lb)
+        + Rational(2, 3) * Delta[ua] * div(evo_shift[ub], lb)
+        # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
+        + evo_shift[ub] * div(ConfConnect[ua], lb)
+        # TODO: Dissipation: + Dissipation[Xt[ua]]
     )
 
     # 1 + log lapse. See [6]
@@ -577,11 +686,11 @@ if __name__ == "__main__":
     fun_bssn_rhs.add_eqn(
         evo_shift_rhs[ua],
         zeta_beta * evo_shift[uj] * div_advect(evo_shift[ua], lj)
-        + beta_Gamma * evo_lapse**beta_Alp * gt[ui, uj] * Gammat[ua, li, lj]
+        + beta_Gamma * evo_lapse**beta_Alp * ConfConnect[ua]
         - eta_beta * evo_shift[ua]
     )
 
-    fun_bssn_rhs.bake()
+    fun_bssn_rhs.bake(**gen_opts)
 
     ###
     # Thorn creation
@@ -590,7 +699,7 @@ if __name__ == "__main__":
         pybssn,
         CppCarpetXGenerator(
             pybssn,
-            interior_sync_mode=InteriorSyncMode.Never,
+            interior_sync_mode=InteriorSyncMode.IgnoreRhs, #TODO: Custom RHS group not ignored
             extra_schedule_blocks=[
                 initial_group,
                 rhs_group,
@@ -604,6 +713,5 @@ if __name__ == "__main__":
 # References
 # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
 # [2] https://arxiv.org/abs/gr-qc/9810065
-# [3] https://arxiv.org/pdf/2109.11743.
 # [4] https://arxiv.org/pdf/0910.3803
 # [6] https://arxiv.org/abs/gr-qc/0605030.
