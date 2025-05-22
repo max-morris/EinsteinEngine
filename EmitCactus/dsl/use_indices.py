@@ -385,13 +385,15 @@ zero = do_sympify(0)
 noidx = mkIdx("noidx")
 dummy = mkSymbol("_dummy_")
 
-def mkdiv(expr:Expr, *args:Idx)->Expr:
-    r = div(expr, *args)
+def mkdiv(div_fun:UFunc, expr:Expr, *args:Idx)->Expr:
+    r = div_fun(expr, *args)
     assert isinstance(r, Expr)
     return r
 
 class DivMakerVisitor:
-    def __init__(self, coords: Optional[List[Symbol]]=None)->None:
+    def __init__(self, div_fun:UFunc, coords: Optional[List[Symbol]]=None)->None:
+        self.div_func = div_fun
+        self.div_name = str(div_fun)
         self.params:Set[Symbol] = set()
         if coords is None:
             coords = [x,y,z]
@@ -436,7 +438,8 @@ class DivMakerVisitor:
         if idx is noidx:
             return expr
         ####
-        # This is written in a bad way
+        # TODO: generalize for other dimensions than 3
+        #assert get_dimension()==3
         if idx == l0:
             if expr == x:
                 return one
@@ -458,19 +461,7 @@ class DivMakerVisitor:
         else:
             raise Exception(f"Bad index passed to derivative: {expr}")
 
-        return mkdiv(expr, idx)
-        ####
-
-        if expr in self.params:
-            return zero
-
-        elif expr in self.coords:
-            if expr == self.idxmap[idx]:
-                return one
-            else:
-                return zero
-
-        return div(expr, idx)
+        return mkdiv(self.div_func, expr, idx)
 
     @visit.register
     def _(self, expr: sy.Integer, idx: sy.Idx) -> Expr:
@@ -498,19 +489,19 @@ class DivMakerVisitor:
     def _(self, expr: sy.Indexed, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
-        return mkdiv(expr, idx)
+        return mkdiv(self.div_func, expr, idx)
 
     @visit.register
     def _(self, expr: sy.IndexedBase, idx: sy.Idx) -> Expr:
         if idx is noidx:
             return expr
-        return mkdiv(expr, idx)
+        return mkdiv(self.div_func, expr, idx)
 
     @visit.register
     def _(self, expr: sy.Function, idx: sy.Idx) -> Expr:
         r = expr.args[0]
         name = expr.func.__name__
-        if name == "div":
+        if name == self.div_name:
 
             # Handle div of div
             assert isinstance(expr.args[0], Expr)
@@ -520,15 +511,15 @@ class DivMakerVisitor:
                 for idx1 in expr.args[1:]:
                     sub = self.visit(sub, idx1)
                 return sub
-            if isinstance(sub, sy.Function) and sub.func.__name__ == "div":
+            if isinstance(sub, sy.Function) and sub.func.__name__ == self.div_name:
                 args = sorted(sub.args[1:] + expr.args[1:],key=lambda x : str(x))
-                return mkdiv(sub.args[0], *args)
+                return mkdiv(self.div_func, sub.args[0], *args)
 
             for idx1 in expr.args[1:]:
                 sub = self.visit(sub, idx1)
 
             if idx is not noidx:
-                sub = self.visit(div(sub, idx), noidx)
+                sub = self.visit(self.div_func(sub, idx), noidx)
 
             return sub
         elif idx is noidx:
@@ -556,7 +547,7 @@ class DivMakerVisitor:
             assert isinstance(ret, Expr)
             return ret
 
-dmv = DivMakerVisitor()
+dmv = DivMakerVisitor(div)
 
 def assert_eq(a: Expr ,b: Expr)->None:
     assert a is not None
@@ -1328,6 +1319,7 @@ class ThornFunction:
             raise Exception(fb.msg)
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self.eqn_list.add_eqn(lhs2, rhs2)
+        print(colorize("Add eqn:","green"),lhs2,colorize("->","cyan"),rhs2)
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.thorn_def.defn)
@@ -1525,6 +1517,9 @@ class ThornDef:
         }
         self.funs1: Dict[Tuple[UFunc,Idx],Expr] = dict()
         self.funs2: Dict[Tuple[UFunc,Idx,Idx],Expr] = dict()
+        self.dmvs:Dict[str,DivMakerVisitor]=dict()
+        self.set_div_stencil(5)
+        self.dmvs["div"] = DivMakerVisitor(div)
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
@@ -1603,16 +1598,24 @@ class ThornDef:
             assert False
         return self.coords
 
+    def do_div(self, expr:Expr)->Expr:
+        r = expr
+        for k, v in self.dmvs.items():
+            r = v.visit(r, noidx)
+        return r
+
     @multimethod
     def mk_stencil(self, func_name:str, idx:Idx, expr:Expr)->UFunc:
         result = self.mk_stencil(func_name, expr, [idx])
         assert isinstance(result, UFunc)
+        self.dmvs[func_name] = DivMakerVisitor(result)
         return result
 
     @mk_stencil.register
     def _(self, func_name:str, idx1:Idx, idx2:Idx, expr:Expr)->UFunc:
         result = self.mk_stencil(func_name, expr, [idx1,idx2])
         assert isinstance(result, UFunc)
+        self.dmvs[func_name] = DivMakerVisitor(result)
         return result
 
     @mk_stencil.register
@@ -1944,7 +1947,7 @@ class ThornDef:
 
             isub.idxsubs = idxsubs
             new_arg = isub.visit(new_arg)
-            new_arg = do_div(new_arg)
+            new_arg = self.do_div(new_arg)
             if new_arg == arg1:
                 return new_arg
             arg1 = new_arg
@@ -2010,9 +2013,17 @@ if __name__ == "__main__":
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
     c = gf.decl("c", [])
+    k = gf.decl("k", [la])
+    gf.mk_subst(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, do_sympify(dimension))
     foofunc.add_eqn(b, a + do_sympify(2))
+    
+    # Test of custom derivative operation mdiv
+    mdiv = gf.mk_stencil("mdiv", la, (stencil(la)-stencil(0))*DDI(la))
+    foofunc.add_eqn(k[la], mdiv(a**5*b,la))
+    kd0eqn = foofunc.eqn_list.eqns.get(mkSymbol("kD0"),None)
+    assert kd0eqn == 5*DXI*(-stencil(a, 0, 0, 0) + stencil(a, 1, 0, 0))*a**4*b + DXI*(-stencil(b, 0, 0, 0) + stencil(b, 1, 0, 0))*a**5
 
     def getsym(a: IndexedBase)->Symbol:
         b = a.args[0]
