@@ -632,7 +632,7 @@ if __name__ == "__main__":
     expr1 = 1/(x+sin(x))
     expr2 = -(1+cos(x))/(x+sin(x))**2
     assert_eq( do_div(div(expr1, l0)), expr2 )
-    assert_eq( do_div(div(do_sqrt(x), l0)), 1/do_sqrt(x)/2 )
+    assert_eq( do_div(div(sqrt(x), l0)), 1/sqrt(x)/2 )
 ### dmv
 
 TA = TypeVar("TA")

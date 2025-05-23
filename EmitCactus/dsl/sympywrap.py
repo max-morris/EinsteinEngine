@@ -1,8 +1,25 @@
 from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
 from sympy import Expr
+from sympy import Expr
 cbrt : Callable[[Expr],Expr]
+sqrt : Callable[[Expr],Expr]
+log  : Callable[[Expr],Expr]
+exp  : Callable[[Expr],Expr]
+cos  : Callable[[Expr],Expr]
+sin  : Callable[[Expr],Expr]
+tan  : Callable[[Expr],Expr]
+Pow  : Callable[[Expr,Expr],Expr]
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
-    Function, Matrix, zeros, Wild, diff, simplify, sqrt, cbrt
+    Function, Matrix, zeros, Wild, diff, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
+    exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_
+sqrt = sqrt_
+cbrt = cbrt_
+log = log_
+exp = exp_
+Pow = Pow_
+cos = cos_
+sin = sin_
+tan = tan_
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
@@ -11,6 +28,12 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.util import OrderedSet
 
 from multimethod import multimethod
+
+__all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
+    "do_inv","do_det","do_sympify","do_simplify","cse","mkIdx","mkSymbol",
+    "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase",
+    "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
+    "do_match"]
 
 
 class Applier(ABC):
@@ -26,9 +49,6 @@ cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 
 def do_inv(e:Matrix)->Matrix:
     return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
-
-def do_sqrt(e:Expr)->Expr:
-    return cast(Expr, sqrt(e)) # type: ignore[no-untyped-call]
 
 def do_det(e:Matrix)->Symbol:
     return cast(Symbol, e.det()) # type: ignore[no-untyped-call]
