@@ -327,7 +327,7 @@ if __name__ == "__main__":
     # State synchronization
     ###
     state_sync = ExplicitSyncBatch(
-        vars=[gt, w, At, trK, ConfConnect, evo_lapse, evo_shift],
+        vars=[gt, w, At, trK, ConfConnect, evo_lapse, evo_shift, shift_B],
         schedule_target=poststep_group,
         name="state_sync"
     )
