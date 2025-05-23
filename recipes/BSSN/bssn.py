@@ -1,6 +1,5 @@
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.use_indices import div as div_advect
     from EmitCactus.dsl.carpetx import ExplicitSyncBatch
     from EmitCactus.dsl.sympywrap import do_inv, do_det
     from EmitCactus.dsl.use_indices import parities
@@ -26,20 +25,20 @@ if __name__ == "__main__":
         "do_recycle_temporaries": False,
         "do_split_output_eqns": True
     }
-    
+
     ###
     # Finite difference stencils
     ###
-    
+
     # The stencil size for our standard finite differences (4th order accurate)
     pybssn.set_div_stencil(5)
-    
+
     # Fith order Kreiss-Oliger disspation stencil
     div_diss = pybssn.mk_stencil(
         "div_diss",
         la,
         Rational(1, 64) * DDI(la) * (
-            stencil(-3*la) 
+            stencil(-3*la)
             - 6.0 * stencil(-2*la)
             + 15.0 * stencil(-la)
             - 20.0 * stencil(0) +
@@ -57,40 +56,10 @@ if __name__ == "__main__":
     ###
     # Thorn parameters
     ###
-    zeta_alpha = pybssn.add_param(
-        "zeta_alpha",
+    eta_B = pybssn.add_param(
+        "eta_b",
         default=1.0,
-        desc="partial_t alpha = zeta_alpha * beta^i partial_i alpha ..."
-    )
-
-    kappa_alpha = pybssn.add_param(
-        "kappa_alpha",
-        default=2.0,
-        desc="partial_t alpha = ... - kappa_alpha alpha trK"
-    )
-
-    zeta_beta = pybssn.add_param(
-        "zeta_beta",
-        default=1.0,
-        desc="partial_t beta^i = zeta_beta * beta^j partial_j beta^i ..."
-    )
-
-    beta_Gamma = pybssn.add_param(
-        "beta_Gamma",
-        default=0.75,
-        desc="partial_t beta^i = ... beta_Gamma * alph^beta_Alp * Gammat^i ..."
-    )
-
-    beta_Alp = pybssn.add_param(
-        "beta_Alp",
-        default=0.0,
-        desc="partial_t beta^i = ... beta_Gamma * alph^beta_Alp * Gammat^i ..."
-    )
-
-    eta_beta = pybssn.add_param(
-        "eta_beta",
-        default=1.0,
-        desc="partial_t beta^i = ... - eta_beta * beta^i"
+        desc="Mass dependent damping coefficient for the hyperbolic gamma driver shift"
     )
 
     conformal_factor_floor = pybssn.add_param(
@@ -136,6 +105,9 @@ if __name__ == "__main__":
     beta = pybssn.decl("beta", [ua], from_thorn="ADMBaseX")
     pybssn.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
+    dtbeta = pybssn.decl("dtbeta", [ua], from_thorn="ADMBaseX")
+    pybssn.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
+
     ###
     # Evolved Gauge Vars.
     ###
@@ -152,6 +124,14 @@ if __name__ == "__main__":
         "evo_shift",
         [ua],
         rhs=evo_shift_rhs,
+        parity=parity_vector
+    )
+
+    shift_B_rhs = pybssn.decl("shift_B_rhs", [ua], parity=parity_vector)
+    shift_B = pybssn.decl(
+        "shift_B",
+        [ua],
+        rhs=shift_B_rhs,
         parity=parity_vector
     )
 
@@ -204,7 +184,8 @@ if __name__ == "__main__":
     # TODO: It would be good if this was not required.
     w_enforce = pybssn.decl("w_enforce", [], parity=parity_scalar)
 
-    evo_lapse_enforce = pybssn.decl("evo_lapse_enforce", [], parity=parity_scalar)
+    evo_lapse_enforce = pybssn.decl(
+        "evo_lapse_enforce", [], parity=parity_scalar)
 
     gt_enforce = pybssn.decl("gt_enforce", [li, lj], parity=parity_sym2ten)
     pybssn.add_sym(gt_enforce[li, lj], li, lj)
@@ -219,8 +200,13 @@ if __name__ == "__main__":
     Gammat = pybssn.decl("Gammat", [la, lb, lc])
     pybssn.add_sym(Gammat[la, lb, lc], lb, lc)
 
+    # Temporary storage for \partial_t \tilde{\Gamma}^{a}
+    # This is required because this quantity is both written to ConfConnect_rhs
+    # and read in the gamma driver shift evolution
+    ConfConnect_rhs_tmp = pybssn.decl("ConfConnect_rhs_tmp", [ua])
+
     # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
-    Delta = pybssn.decl("Delta", [ua]) 
+    Delta = pybssn.decl("Delta", [ua])
 
     # \tilde{R}_{a b}
     Rt = pybssn.decl("Rt", [la, lb])
@@ -240,7 +226,7 @@ if __name__ == "__main__":
 
     # \tilde{D}_a \phi
     cdphi = pybssn.decl("cdphi", [la])
-    
+
     # \tilde{D}_a \tilde{D}_b \phi
     cdphi2 = pybssn.decl("cdphi2", [la, lb])
     pybssn.add_sym(cdphi2[la, lb], la, lb)
@@ -272,6 +258,9 @@ if __name__ == "__main__":
     pybssn.mk_subst(evo_shift[ua])
     pybssn.mk_subst(evo_shift_rhs[ua])
 
+    pybssn.mk_subst(shift_B[ua])
+    pybssn.mk_subst(shift_B_rhs[ua])
+
     pybssn.mk_subst(MomCons[ua])
     pybssn.mk_subst(DeltaCons[ua])
 
@@ -279,13 +268,14 @@ if __name__ == "__main__":
     pybssn.mk_subst(Gammat[ua, lb, lc])
     pybssn.mk_subst(Gammat[la, lb, uc])
     pybssn.mk_subst(Delta[ua])
+    pybssn.mk_subst(ConfConnect_rhs_tmp[ua])
 
     pybssn.mk_subst(Rt[la, lb])
     pybssn.mk_subst(RPhi[la, lb])
     pybssn.mk_subst(R[la, lb])
 
     pybssn.mk_subst(Ats[li, lj])
-    
+
     pybssn.mk_subst(cdphi[li])
     pybssn.mk_subst(cdphi2[li, lj])
 
@@ -410,7 +400,7 @@ if __name__ == "__main__":
     fun_adm2bssn.add_eqn(
         At[la, lb],
         (1 / cbrt(detg)) * (
-            k[la, lb] 
+            k[la, lb]
             - Rational(1, 3) * g[la, lb] * g[uc, ud] * k[lc, ld]
         )
     )
@@ -427,6 +417,14 @@ if __name__ == "__main__":
 
     fun_adm2bssn.add_eqn(evo_lapse, alp)
     fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
+
+    fun_adm2bssn.add_eqn(
+        shift_B[ua],
+        Rational(4, 3) * (1 / alp) * (
+            dtbeta[ua]
+            - beta[ub] * div(beta[ua], lb)
+        )
+    )
 
     fun_adm2bssn.bake(**gen_opts)
 
@@ -472,7 +470,10 @@ if __name__ == "__main__":
 
     fun_bssn_cons.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
     fun_bssn_cons.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
-    fun_bssn_cons.add_eqn(Delta[ua], gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc])
+    fun_bssn_cons.add_eqn(
+        Delta[ua],
+        gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
+    )
 
     fun_bssn_cons.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
     fun_bssn_cons.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
@@ -484,20 +485,20 @@ if __name__ == "__main__":
 
     fun_bssn_cons.add_eqn(
         cdphi2[la, lb],
-        -Rational(1, 2) * (1 / w) *  (
+        -Rational(1, 2) * (1 / w) * (
             div(w, la, lb)
-            -Gammat[uc, la, lb] * div(w, lc)
+            - Gammat[uc, la, lb] * div(w, lc)
         )
-        + Rational(1, 2) * (1 / (w**2)) *div(w, la) * div(w, lb)
+        + Rational(1, 2) * (1 / (w**2)) * div(w, la) * div(w, lb)
     )
 
     fun_bssn_cons.add_eqn(
         Rt[la, lb],
         - Rational(1, 2) * gt[uc, ud] * div(gt[la, lb], lc, ld)
-        + Rational(1, 2) * gt[lc,la] * div(ConfConnect[uc], lb)
-        + Rational(1, 2) * gt[lc,lb] * div(ConfConnect[uc], la)
-        + Rational(1, 2) * Delta[uc] * Gammat[la,lb,lc]
-        + Rational(1, 2) * Delta[uc] * Gammat[lb,la,lc]
+        + Rational(1, 2) * gt[lc, la] * div(ConfConnect[uc], lb)
+        + Rational(1, 2) * gt[lc, lb] * div(ConfConnect[uc], la)
+        + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
         + (
             + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
             + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
@@ -510,7 +511,7 @@ if __name__ == "__main__":
         - 2 * cdphi2[lb, la]
         - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
         + 4 * cdphi[la] * cdphi[lb]
-        - 4 * gt[la,lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+        - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
     )
 
     fun_bssn_cons.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
@@ -518,7 +519,7 @@ if __name__ == "__main__":
     # Hamiltonian constraint
     fun_bssn_cons.add_eqn(
         HamCons,
-        (w**2) * gt[ua, ub] *  R[la, lb]
+        (w**2) * gt[ua, ub] * R[la, lb]
         - At[ua, lb] * At[ub, la]
         + Rational(2, 3) * (trK**2)
     )
@@ -528,8 +529,8 @@ if __name__ == "__main__":
         MomCons[ua],
         + gt[ua, uc] * gt[ub, ud] * (
             div(At[lc, ld], lb)
-            -Gammat[uk, lc, lb] * At[lk, ld]
-            -Gammat[uk, ld, lb] * At[lc, lk]
+            - Gammat[uk, lc, lb] * At[lk, ld]
+            - Gammat[uk, ld, lb] * At[lc, lk]
         )
         + 6 * At[ua, ub] * cdphi[lb]
         - Rational(2, 3) * gt[ua, ub] * div(trK, lb)
@@ -545,7 +546,7 @@ if __name__ == "__main__":
     ###
     # BSSN Evolution equations
     # Following [1], we will replace \tilde{\Gamma}^i with
-    # \Delta^i \equiv \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk} 
+    # \Delta^i \equiv \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk}
     # whenever \tilde{\Gamma}^i are needed without derivatives.
     #
     # Following [4] FD stencils are centered except for terms
@@ -568,7 +569,8 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
     fun_bssn_rhs.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
-    fun_bssn_rhs.add_eqn(Delta[ua], gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc])
+    fun_bssn_rhs.add_eqn(Delta[ua], gt[ub, uc] *
+                         gt[ua, ud] * Gammat[ld, lb, lc])
 
     fun_bssn_rhs.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
     fun_bssn_rhs.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
@@ -580,20 +582,20 @@ if __name__ == "__main__":
 
     fun_bssn_rhs.add_eqn(
         cdphi2[la, lb],
-        -Rational(1, 2) * (1 / w) *  (
+        -Rational(1, 2) * (1 / w) * (
             div(w, la, lb)
-            -Gammat[uc, la, lb] * div(w, lc)
+            - Gammat[uc, la, lb] * div(w, lc)
         )
-        + Rational(1, 2) * (1 / (w**2)) *div(w, la) * div(w, lb)
+        + Rational(1, 2) * (1 / (w**2)) * div(w, la) * div(w, lb)
     )
 
     fun_bssn_rhs.add_eqn(
         Rt[la, lb],
         - Rational(1, 2) * gt[uc, ud] * div(gt[la, lb], lc, ld)
-        + Rational(1, 2) * gt[lc,la] * div(ConfConnect[uc], lb)
-        + Rational(1, 2) * gt[lc,lb] * div(ConfConnect[uc], la)
-        + Rational(1, 2) * Delta[uc] * Gammat[la,lb,lc]
-        + Rational(1, 2) * Delta[uc] * Gammat[lb,la,lc]
+        + Rational(1, 2) * gt[lc, la] * div(ConfConnect[uc], lb)
+        + Rational(1, 2) * gt[lc, lb] * div(ConfConnect[uc], la)
+        + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
         + (
             + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
             + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
@@ -606,7 +608,7 @@ if __name__ == "__main__":
         - 2 * cdphi2[lb, la]
         - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
         + 4 * cdphi[la] * cdphi[lb]
-        - 4 * gt[la,lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+        - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
     )
 
     fun_bssn_rhs.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
@@ -619,18 +621,18 @@ if __name__ == "__main__":
         )
         + 2 * (
             div(evo_lapse, la) * cdphi[lb]
-            +div(evo_lapse, lb) * cdphi[la]
+            + div(evo_lapse, lb) * cdphi[la]
         )
-        + evo_lapse * R[la,lb]
+        + evo_lapse * R[la, lb]
     )
-    
+
     # Evolution equations
     fun_bssn_rhs.add_eqn(
         gt_rhs[la, lb],
         - 2 * evo_lapse * At[la, lb]
         + gt[la, lc] * div(evo_shift[uc], lb)
         + gt[lb, lc] * div(evo_shift[uc], la)
-        - Rational(2, 3) *  gt[la, lb] *  div(evo_shift[uc], lc)
+        - Rational(2, 3) * gt[la, lb] * div(evo_shift[uc], lc)
         # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
         + evo_shift[uc] * div(gt[la, lb], lc)
         # Dissipation:
@@ -660,7 +662,7 @@ if __name__ == "__main__":
     fun_bssn_rhs.add_eqn(
         At_rhs[la, lb],
         (w**2) * (
-            Ats[la, lb] 
+            Ats[la, lb]
             - Rational(1, 3) * gt[la, lb] * gt[uc, ud] * Ats[lc, ld]
         )
         + evo_lapse * (
@@ -704,15 +706,15 @@ if __name__ == "__main__":
     )
 
     fun_bssn_rhs.add_eqn(
-        ConfConnect_rhs[ua],
+        ConfConnect_rhs_tmp[ua],
         - 2 * At[ua, ub] * div(evo_lapse, lb)
         + 2 * evo_lapse * (
             + Gammat[ua, lb, lc] * At[ub, uc]
             - Rational(2, 3) * gt[ua, ub] * div(trK, lb)
             + 6 * At[ua, ub] * cdphi[lb]
         )
-        + gt[ub,uc] * div(evo_shift[ua], lb, lc)
-        + Rational(1, 3) * gt[ua,ub] * div(evo_shift[uc], lb, lc)
+        + gt[ub, uc] * div(evo_shift[ua], lb, lc)
+        + Rational(1, 3) * gt[ua, ub] * div(evo_shift[uc], lb, lc)
         - Delta[ub] * div(evo_shift[ua], lb)
         + Rational(2, 3) * Delta[ua] * div(evo_shift[ub], lb)
         # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
@@ -724,20 +726,49 @@ if __name__ == "__main__":
             + div_diss(ConfConnect[ua], l2)
         )
     )
+    fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
 
-    # 1 + log lapse. See [6]
+    # 1 + log lapse.
     fun_bssn_rhs.add_eqn(
         evo_lapse_rhs,
-        zeta_alpha * evo_shift[ui] * div_advect(evo_lapse, li)
-        - kappa_alpha * evo_lapse * trK
+        - 2 * evo_lapse * trK
+        # TODO: Advection: Upwind[beta[ua], alpha, la]
+        + evo_shift[ua] * div(evo_lapse, la)
+        # Dissipation
+        + dissipation_epsilon * (
+            div_diss(evo_lapse, l0)
+            + div_diss(evo_lapse, l1)
+            + div_diss(evo_lapse, l2)
+        )
     )
 
     # Hyperbolic Gamma Driver shift
     fun_bssn_rhs.add_eqn(
         evo_shift_rhs[ua],
-        zeta_beta * evo_shift[uj] * div_advect(evo_shift[ua], lj)
-        + beta_Gamma * evo_lapse**beta_Alp * ConfConnect[ua]
-        - eta_beta * evo_shift[ua]
+        Rational(3, 4) * evo_lapse * shift_B[ua]
+        # TODO: Advection
+        + evo_shift[ub] * div(evo_shift[ua], lb)
+        # Dissipation
+        + dissipation_epsilon * (
+            div_diss(evo_shift[ua], l0)
+            + div_diss(evo_shift[ua], l1)
+            + div_diss(evo_shift[ua], l2)
+        )
+    )
+
+    fun_bssn_rhs.add_eqn(
+        shift_B_rhs[ua],
+        ConfConnect_rhs_tmp[ua]
+        - evo_shift[ub] * div(ConfConnect[ua], lb)
+        - eta_B * shift_B[ua]
+        # TODO: Advection
+        + evo_shift[ub] * div(shift_B[ua], lb)
+        # Dissipation
+        + dissipation_epsilon * (
+            div_diss(shift_B[ua], l0)
+            + div_diss(shift_B[ua], l1)
+            + div_diss(shift_B[ua], l2)
+        )
     )
 
     fun_bssn_rhs.bake(**gen_opts)
@@ -749,7 +780,8 @@ if __name__ == "__main__":
         pybssn,
         CppCarpetXGenerator(
             pybssn,
-            interior_sync_mode=InteriorSyncMode.IgnoreRhs, #TODO: Custom RHS group not ignored
+            # TODO: Custom RHS group not ignored
+            interior_sync_mode=InteriorSyncMode.IgnoreRhs,
             extra_schedule_blocks=[
                 initial_group,
                 rhs_group,
@@ -760,8 +792,8 @@ if __name__ == "__main__":
         )
     ).generate_thorn()
 
-# References
-# [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
-# [2] https://arxiv.org/abs/gr-qc/9810065
-# [4] https://arxiv.org/pdf/0910.3803
-# [6] https://arxiv.org/abs/gr-qc/0605030.
+    # References
+    # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
+    # [2] https://arxiv.org/abs/gr-qc/9810065
+    # [4] https://arxiv.org/pdf/0910.3803
+    # [6] https://arxiv.org/abs/gr-qc/0605030.
