@@ -2,7 +2,6 @@
 from EmitCactus import *
 from sympy import Indexed, Symbol
 
-
 """
 The waveequation! It can't be solved too many times.
 """
@@ -115,4 +114,21 @@ check_zero = ScheduleBlock(
     after=[Identifier('RicZero')]
 )
 
-CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()
+####
+state_sync = ExplicitSyncBatch(
+    vars=[u, v],
+    schedule_target=poststep_group,
+    name="state_sync"
+)
+CppCarpetXWizard(
+    gf,
+    CppCarpetXGenerator(
+        gf,
+        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        extra_schedule_blocks=[ check_zero ],
+        explicit_syncs=[state_sync]
+    )
+).generate_thorn()
+####
+
+#CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()
