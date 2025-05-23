@@ -3,14 +3,10 @@ if __name__ == "__main__":
     The waveequation! It can't be solved too many times.
     """
 
-    from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_sympify
+    from EmitCactus import *
     from sympy import Expr, Idx, sin
-    from EmitCactus.emit.tree import Centering
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
-
-    from EmitCactus.generators.wizards import CppCarpetXWizard
 
     # If we change our configuration, this will show us diffs of the
     # new output and the old.
