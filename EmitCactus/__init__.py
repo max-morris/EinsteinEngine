@@ -18,7 +18,6 @@ from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,\
     mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
     free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols
 from sympy import Expr, Idx, Matrix, Indexed, Symbol
-from math import pi
 
 
 __all__ = [

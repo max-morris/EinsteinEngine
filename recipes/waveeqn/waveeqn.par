@@ -7,7 +7,7 @@ ActiveThorns = "WaveEqn CarpetX IOUtil ODESolvers ZeroTest"
 ZeroTest::max_tol = 0.011
 ZeroTest::rms_tol = 0.011
 ODESolvers::method = "RK4"
-Cactus::presync_mode = "presync-only"
+Cactus::presync_mode = "mixed-error"
 
 CarpetX::dtfac = 0.5
 Cactus::terminate = "iteration"

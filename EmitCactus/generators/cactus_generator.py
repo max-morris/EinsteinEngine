@@ -32,7 +32,7 @@ class CactusGenerator(ABC):
 
     vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
-    def __init__(self, thorn_def: ThornDef, **options: Unpack[CactusGeneratorOptions]):
+    def __init__(self, thorn_def: ThornDef, options: CactusGeneratorOptions):
         self.thorn_def = thorn_def
         self.variable_groups = dict()
         self.var_names = OrderedSet()
@@ -104,3 +104,9 @@ class CactusGenerator(ABC):
         var_base = self.thorn_def.var2base.get(var_name, var_name)
         from_thorn: Optional[str] = self.thorn_def.base2thorn.get(var_base, None)
         return var_name if from_thorn is None else f'{from_thorn}::{var_name}'
+
+    def _get_qualified_group_name_from_var_name(self, var_name: str) -> str:
+        var_base = self.thorn_def.var2base.get(var_name, var_name)
+        from_thorn: Optional[str] = self.thorn_def.base2thorn.get(var_base, None)
+        group_name = self.thorn_def.base2group.get(var_base, var_name)
+        return group_name if from_thorn is None else f'{from_thorn}::{group_name}'

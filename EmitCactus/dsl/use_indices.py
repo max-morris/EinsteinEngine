@@ -1488,8 +1488,9 @@ class ThornDef:
         self.arrangement = arr
         self.name = name
         self.symmetries = Sym()
-        self.group_name : Dict[str, str]=dict()
-        self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
+        self.base2group: Dict[str, str] = dict()
+        #self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
+        self.gfs: Dict[str, IndexedBase] = dict()
         self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
         self.var2base: Dict[str, str] = dict()
@@ -1578,11 +1579,12 @@ class ThornDef:
         return fun
 
     def declscalar(self, basename: str) -> Symbol:
-        ret = mkSymbol(basename)
+        ret = mkIndexedBase(basename, tuple())
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list())
 
-        return ret
+        assert isinstance(ret.args[0], Symbol)
+        return ret.args[0]
 
     def mk_coords(self, with_time: bool = False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
@@ -1740,6 +1742,12 @@ class ThornDef:
         parity: TensorParity
         group_name: str
 
+    def get_state(self)->List[IndexedBase]:
+        result : List[IndexedBase] = list()
+        for k in self.rhs:
+            result.append(self.gfs[k])
+        return result
+
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:
             base_sym = rhs.args[0]
@@ -1753,7 +1761,7 @@ class ThornDef:
         self.gfs[basename] = ret
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
-        self.group_name[basename] = kwargs.get('group_name', basename)
+        self.base2group[basename] = kwargs.get('group_name', basename)
 
         if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
@@ -1864,7 +1872,7 @@ class ThornDef:
                 subval = str(subval_)
                 outstr = str(out.base)
                 assert isinstance(subval_, Symbol)
-                self.gfs[subval] = subval_
+                self.gfs[subval] = mkIndexedBase(subval, tuple())
                 self.centering[subval] = self.centering[outstr]
                 self.var2base[subval] = outstr
                 if outstr not in self.groups:

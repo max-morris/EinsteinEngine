@@ -24,23 +24,24 @@ class ThornWizard(ABC, Generic[G, CV]):
     thorn_def: ThornDef
     generator: G
     code_visitor: CV
+    base_dir: str
 
     def __init__(self, thorn_def: ThornDef, generator: G, code_visitor: CV) -> None:
         self.thorn_def = thorn_def
         self.generator = generator
         self.code_visitor = code_visitor
+        self.base_dir = os.path.join(self.thorn_def.arrangement, self.thorn_def.name)
 
     def generate_thorn(self) -> None:
-        base_dir = os.path.join(self.thorn_def.arrangement, self.thorn_def.name)
-        os.makedirs(base_dir, exist_ok=True)
-        os.makedirs(os.path.join(base_dir, "src"), exist_ok=True)
+        os.makedirs(self.base_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.base_dir, "src"), exist_ok=True)
 
         for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys()):
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)
             # print(code)
-            code_fname = os.path.join(base_dir, "src", self.generator.get_src_file_name(fn_name))
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_src_file_name(fn_name))
             with ConditionalFileUpdater(code_fname) as fd:
                 fd.write(code)
 
@@ -48,8 +49,8 @@ class ThornWizard(ABC, Generic[G, CV]):
         param_tree = self.generator.generate_param_ccl()
         param_ccl = ParamVisitor().visit(param_tree)
         if param_ccl == "":
-            param_ccl = "# Empty"  # Hack for bug in ConditionalFileUpdater
-        param_ccl_fname = os.path.join(base_dir, "param.ccl")
+            param_ccl = "# Empty"  # TODO: Hack for bug in ConditionalFileUpdater
+        param_ccl_fname = os.path.join(self.base_dir, "param.ccl")
         with ConditionalFileUpdater(param_ccl_fname) as fd:
             fd.write(param_ccl)
 
@@ -57,7 +58,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         interface_tree = self.generator.generate_interface_ccl()
         interface_ccl = InterfaceVisitor().visit(interface_tree)
         # print(interface_ccl)
-        interface_ccl_fname = os.path.join(base_dir, "interface.ccl")
+        interface_ccl_fname = os.path.join(self.base_dir, "interface.ccl")
         with ConditionalFileUpdater(interface_ccl_fname) as fd:
             fd.write(interface_ccl)
 
@@ -65,7 +66,7 @@ class ThornWizard(ABC, Generic[G, CV]):
         schedule_tree = self.generator.generate_schedule_ccl()
         schedule_ccl = ScheduleVisitor().visit(schedule_tree)
         # print(schedule_ccl)
-        schedule_ccl_fname = os.path.join(base_dir, "schedule.ccl")
+        schedule_ccl_fname = os.path.join(self.base_dir, "schedule.ccl")
         with ConditionalFileUpdater(schedule_ccl_fname) as fd:
             fd.write(schedule_ccl)
 
@@ -80,14 +81,14 @@ PROVIDES {self.thorn_def.name}_gen
 }}
 """.strip()
         # print(configuration_ccl)
-        configuration_ccl_fname = os.path.join(base_dir, "configuration.ccl")
+        configuration_ccl_fname = os.path.join(self.base_dir, "configuration.ccl")
         with ConditionalFileUpdater(configuration_ccl_fname) as fd:
             fd.write(configuration_ccl)
 
         print('== make.code.defn ==')
         makefile = self.generator.generate_makefile()
         # print(makefile)
-        makefile_fname = os.path.join(base_dir, "src/make.code.defn")
+        makefile_fname = os.path.join(self.base_dir, "src/make.code.defn")
         with ConditionalFileUpdater(makefile_fname) as fd:
             fd.write(makefile)
 
@@ -97,7 +98,7 @@ PROVIDES {self.thorn_def.name}_gen
         with open(sys.argv[0], "r") as fd:
             generate_py = fd.read()
 
-        generate_py_fname = os.path.join(base_dir, "bin/generate.py")
+        generate_py_fname = os.path.join(self.base_dir, "bin/generate.py")
         os.makedirs(os.path.dirname(generate_py_fname), exist_ok=True)
         if not os.path.exists(generate_py_fname):
             with open(generate_py_fname, "w") as fd:
@@ -109,3 +110,13 @@ class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
         if generator is None:
             generator = CppCarpetXGenerator(thorn_def)
         super().__init__(thorn_def, generator, CppVisitor(generator))
+
+    def generate_thorn(self) -> None:
+        super().generate_thorn()
+
+        for sync_batch in self.generator.options.get('explicit_syncs', list()):
+            code_tree = self.generator.generate_sync_batch_function_code(sync_batch)
+            code = self.code_visitor.visit(code_tree)
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_sync_batch_fn_src_file_name(sync_batch))
+            with ConditionalFileUpdater(code_fname) as fd:
+                fd.write(code)

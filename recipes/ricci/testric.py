@@ -1,5 +1,4 @@
 from EmitCactus import *
-from sympy import MatrixBase
 
 # Create a set of grid functions
 gf = ThornDef("TestEmitCactus", "Ricci")
@@ -78,4 +77,9 @@ check_zero = ScheduleBlock(
     after=[Identifier('RicZero')]
 )
 
-CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()
+CppCarpetXWizard(gf,
+    CppCarpetXGenerator(gf,
+        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        extra_schedule_blocks=[check_zero]
+    )
+).generate_thorn()
