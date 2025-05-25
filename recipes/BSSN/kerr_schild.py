@@ -54,6 +54,7 @@ if __name__ == "__main__":
     pybssn_kerr_schild_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
     dtk = pybssn_kerr_schild_id.decl("dtk", [la, lb], from_thorn="ADMBaseX")
+    pybssn_kerr_schild_id.add_sym(dtk[la, lb], la, lb)
     pybssn_kerr_schild_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives
