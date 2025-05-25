@@ -1,0 +1,97 @@
+# Settings
+#################################
+$rho                = 1  # Refinement factor. Should be 1, 2, 4
+
+$base_cells         = 64 # Initial number of cells to use on the x direction
+
+$final_time         = 1.0
+$time_stepper       = "RK4"
+$dtfac              = 0.1
+#################################
+
+$num_cells  = $base_cells * $rho
+$out_every = 1
+
+ActiveThorns = "
+  ADMBaseX
+  BSSN
+  CarpetX
+  IOUtil
+  NewRadX
+  NoiseX
+  ODESolvers
+  TimerReport
+  TmunuBaseX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "mixed-error"
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = no
+
+# Run Termination
+Cactus::terminate       = "time"
+Cactus::cctk_final_time = $final_time
+
+# Grid setup
+CarpetX::xmin = 0.0
+CarpetX::ymin = 0.0
+CarpetX::zmin = 0.0
+
+CarpetX::xmax = 1.0
+CarpetX::ymax = 1.0
+CarpetX::zmax = 1.0
+
+CarpetX::ncells_x = $num_cells
+CarpetX::ncells_y = $num_cells
+CarpetX::ncells_z = $num_cells
+
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 3
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::periodic = yes
+CarpetX::periodic_x = yes
+CarpetX::periodic_y = yes
+CarpetX::periodic_z = yes
+
+# Initial data
+ADMBaseX::initial_data  = "Cartesian Minkowski"
+ADMBaseX::add_noise     = yes
+
+NoiseX::seed_type        = "fixed"
+NoiseX::random_engine    = "mersenne twister"
+NoiseX::fixed_seed_value = 100
+NoiseX::noise_amplitude  = 1.0e-10
+
+# Time Integration
+ODESolvers::verbose    = yes
+CarpetX::dtfac         = $dtfac
+ODESolvers::method     = $time_stepper
+
+# Spacetime evolution
+BSSN::eta_B                  = 1.0
+BSSN::conformal_factor_floor = 1.0e-10
+BSSN::evolved_lapse_floor    = 1.0e-10
+BSSN::dissipation_epsilon    = 0.0
+
+# Output
+TimerReport::out_every              = $out_every
+TimerReport::out_filename           = "TimerReport"
+TimerReport::output_schedule_timers = no
+TimerReport::n_top_timers           = 100
+
+# Norm and reduction output
+CarpetX::out_norm_vars          = "all"
+CarpetX::out_norm_omit_unstable = no
+
+# Output
+IO::out_dir    = $parfile
+IO::out_every  = $out_every
+
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = ""
+

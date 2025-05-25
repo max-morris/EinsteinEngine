@@ -1,6 +1,4 @@
 if __name__ == "__main__":
-    from typing import List
-    from sympy import Expr, cbrt
     from EmitCactus.dsl.use_indices import *
     from EmitCactus.dsl.sympywrap import do_sympify, mkMatrix
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
