@@ -11,76 +11,76 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    pybssn_kerr_schild_id = ThornDef("PyBSSN", "KerrSchildID")
+    pybssn_kerr_schilld_id = ThornDef("PyBSSN", "KerrSchildID")
 
     ###
     # Thorn parameters
     ###
-    mass = pybssn_kerr_schild_id.add_param(
+    mass = pybssn_kerr_schilld_id.add_param(
         "mass",
         default=1.0,
         desc="Black hole mass"
     )
 
-    spin = pybssn_kerr_schild_id.add_param(
+    spin = pybssn_kerr_schilld_id.add_param(
         "spin",
         default=1.0,
-        desc="Black hole spin"
+        desc="Black hole angular momentum"
     )
 
     ###
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_kerr_schild_id.decl("g", [li, lj], from_thorn="ADMBaseX")
-    pybssn_kerr_schild_id.add_sym(g[li, lj], li, lj)
-    pybssn_kerr_schild_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
+    g = pybssn_kerr_schilld_id.decl("g", [li, lj], from_thorn="ADMBaseX")
+    pybssn_kerr_schilld_id.add_sym(g[li, lj], li, lj)
+    pybssn_kerr_schilld_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = pybssn_kerr_schild_id.decl("k", [li, lj], from_thorn="ADMBaseX")
-    pybssn_kerr_schild_id.add_sym(k[li, lj], li, lj)
-    pybssn_kerr_schild_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
+    k = pybssn_kerr_schilld_id.decl("k", [li, lj], from_thorn="ADMBaseX")
+    pybssn_kerr_schilld_id.add_sym(k[li, lj], li, lj)
+    pybssn_kerr_schilld_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
-    alp = pybssn_kerr_schild_id.decl("alp", [], from_thorn="ADMBaseX")
+    alp = pybssn_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
 
-    beta = pybssn_kerr_schild_id.decl("beta", [ua], from_thorn="ADMBaseX")
-    pybssn_kerr_schild_id.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
+    beta = pybssn_kerr_schilld_id.decl("beta", [ua], from_thorn="ADMBaseX")
+    pybssn_kerr_schilld_id.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
     # First derivatives
-    dtalp = pybssn_kerr_schild_id.decl("dtalp", [], from_thorn="ADMBaseX")
+    dtalp = pybssn_kerr_schilld_id.decl("dtalp", [], from_thorn="ADMBaseX")
 
-    dtbeta = pybssn_kerr_schild_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn_kerr_schild_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
+    dtbeta = pybssn_kerr_schilld_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
+    pybssn_kerr_schilld_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    dtk = pybssn_kerr_schild_id.decl("dtk", [la, lb], from_thorn="ADMBaseX")
-    pybssn_kerr_schild_id.add_sym(dtk[la, lb], la, lb)
-    pybssn_kerr_schild_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
+    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], from_thorn="ADMBaseX")
+    pybssn_kerr_schilld_id.add_sym(dtk[la, lb], la, lb)
+    pybssn_kerr_schilld_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives
-    dt2alp = pybssn_kerr_schild_id.decl("dt2alp", [], from_thorn="ADMBaseX")
+    dt2alp = pybssn_kerr_schilld_id.decl("dt2alp", [], from_thorn="ADMBaseX")
 
-    dt2beta = pybssn_kerr_schild_id.decl(
+    dt2beta = pybssn_kerr_schilld_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
     )
-    pybssn_kerr_schild_id.mk_subst(dt2beta[ua], mksymbol_for_tensor_xyz)
+    pybssn_kerr_schilld_id.mk_subst(dt2beta[ua], mksymbol_for_tensor_xyz)
 
     ###
     # Groups
     ###
     adm_id_group = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
-        name=Identifier("KerrSchildID"),
+        name=Identifier("LinearWaveID"),
         at_or_in=AtOrIn.In,
         schedule_bin=Identifier("ADMBaseX_InitialData"),
-        description=String("Initialize ADM variables with Kerr-Schild data"),
+        description=String("Initialize ADM variables with Linear Wave data"),
     )
 
     ###
     # Base quantities
     # See https://arxiv.org/pdf/gr-qc/0002076 eqs (10)-(14)
     ###
-    x, y, z = pybssn_kerr_schild_id.mk_coords(with_time=False)
+    t, x, y, z = pybssn_kerr_schilld_id.mk_coords(with_time=True)
 
     # Radius
     r2 = Rational(1, 2) * (x**2 + y**2 + z**2 - spin**2) + sqrt(
@@ -97,24 +97,21 @@ if __name__ == "__main__":
     ly = (r * y - spin * x) / (r2 + spin**2)
     lz = z / r
 
-    # h_{ij}
-    # fmt: off
-    hij = mkMatrix([
-        [1 + 2 * H * lx * lx,     2 * H * lx * ly,     2 * H * lx * lz],
-        [    2 * H * ly * lx, 1 + 2 * H * ly * ly,     2 * H * ly * lz],
-        [    2 * H * lz * lx,     2 * H * lz * ly, 1 + 2 * H * lz * lz],
-    ])
-    # fmt: on
-
     # \alpha
     lapse = 1 / sqrt(1 + 2 * H)
 
     # \beta^{i}
-    shift = [
-        2 * H * lx / (1 + 2 * H),
-        2 * H * ly / (1 + 2 * H),
-        2 * H * lz / (1 + 2 * H)
-    ]
+    shift_x = 2 * H * lx / (1 + 2 * H)
+    shift_y = 2 * H * ly / (1 + 2 * H)
+    shift_z = 2 * H * lz / (1 + 2 * H)
+
+    # h_{ij}
+    hxx = 1 + 2 * H * lx * lx
+    hxy = 2 * H * lx * ly
+    hxz = 2 * H * lx * lz
+    hyy = 1 + 2 * H * ly * ly
+    hyz = 2 * H * ly * lz
+    hzz = 1 + 2 * H * lz * lz
 
     # K_{ij}
     drdx = r.diff(x)
@@ -155,6 +152,19 @@ if __name__ == "__main__":
     Kzz = (4*(dlzdy*H + (dHdy - 2*H**2*(dlxdy*lx + (dlydy - dlzdx)*ly)) *
            lz + dHdx*H*ly*lz**2 + dHdy*H*lz**3))/(1 + 2*H*(lx**2 + ly**2 + lz**2))
 
+    # Matrices
+    hij = mkMatrix([
+        [hxx, hxy, hxz],
+        [hxy, hyy, hyz],
+        [hxz, hyz, hzz],
+    ])
+
+    shift = [
+        shift_x,
+        shift_y,
+        shift_z,
+    ]
+
     Kij = mkMatrix([
         [Kxx, Kxy, Kxz],
         [Kxy, Kyy, Kyz],
@@ -162,19 +172,33 @@ if __name__ == "__main__":
     ])
 
     # Time derivatives
-    dt_shift = [do_sympify(0), do_sympify(0), do_sympify(0)]
+    dt_lapse = lapse.diff(t)
+
+    dt_shift = [
+        shift_x.diff(t),
+        shift_y.diff(t),
+        shift_z.diff(t),
+    ]
 
     dt_Kij = mkMatrix([
-        [do_sympify(0), do_sympify(0), do_sympify(0)],
-        [do_sympify(0), do_sympify(0), do_sympify(0)],
-        [do_sympify(0), do_sympify(0), do_sympify(0)]
+        [Kxx.diff(t), Kxy.diff(t), Kxz.diff(t)],
+        [Kxy.diff(t), Kyy.diff(t), Kyz.diff(t)],
+        [Kxz.diff(t), Kyz.diff(t), Kzz.diff(t)],
     ])
+
+    dt2_lapse = dt_lapse.diff(t)
+
+    dt2_shift = [
+        dt_shift[0].diff(t),
+        dt_shift[1].diff(t),
+        dt_shift[2].diff(t),
+    ]
 
     ###
     # Write initial data
     ###
-    fun_fill_id = pybssn_kerr_schild_id.create_function(
-        "fill_id",
+    fun_fill_id = pybssn_kerr_schilld_id.create_function(
+        "pybssn_kerr_schild_id_fill_id",
         adm_id_group
     )
 
@@ -183,12 +207,12 @@ if __name__ == "__main__":
     fun_fill_id.add_eqn(alp, lapse)
     fun_fill_id.add_eqn(beta[ua], shift)
 
-    fun_fill_id.add_eqn(dtalp, do_sympify(0))
+    fun_fill_id.add_eqn(dtalp, dt_lapse)
     fun_fill_id.add_eqn(dtbeta[ua], dt_shift)
     fun_fill_id.add_eqn(dtk[la, lb], dt_Kij)
 
-    fun_fill_id.add_eqn(dt2alp, do_sympify(0))
-    fun_fill_id.add_eqn(dt2beta[ua], dt_shift)
+    fun_fill_id.add_eqn(dt2alp, dt2_lapse)
+    fun_fill_id.add_eqn(dt2beta[ua], dt2_shift)
 
     fun_fill_id.bake(do_recycle_temporaries=False)
 
@@ -196,9 +220,9 @@ if __name__ == "__main__":
     # Thorn creation
     ###
     CppCarpetXWizard(
-        pybssn_kerr_schild_id,
+        pybssn_kerr_schilld_id,
         CppCarpetXGenerator(
-            pybssn_kerr_schild_id,
+            pybssn_kerr_schilld_id,
             interior_sync_mode=InteriorSyncMode.Never,
             extra_schedule_blocks=[adm_id_group]
         )
