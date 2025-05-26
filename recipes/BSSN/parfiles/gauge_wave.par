@@ -19,7 +19,7 @@ ActiveThorns = "
   BSSN
   CarpetX
   IOUtil
-  LinearWaveID
+  GaugeWaveID
   NewRadX
   ODESolvers
   TimerReport
@@ -67,8 +67,8 @@ ADMBaseX::initial_shift   = "none"
 ADMBaseX::initial_dtlapse = "none"
 ADMBaseX::initial_dtshift = "none"
 
-LinearWaveID::amplitude  = 1.0e-8
-LinearWaveID::wavelength = 1.0
+GaugeWaveID::amplitude  = 0.5
+GaugeWaveID::wavelength = 1.0
 
 # Time Integration
 ODESolvers::verbose    = yes
@@ -99,6 +99,7 @@ CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = ""
 
 CarpetX::out_silo_vars = "
+  ADMBaseX::lapse
   BSSN::gt
   BSSN::trK
 "
