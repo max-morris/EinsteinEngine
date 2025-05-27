@@ -66,7 +66,6 @@ CarpetX::prolongation_type   = "ddf"
 CarpetX::prolongation_order  = 5
 
 # Boundary conditions
-CarpetX::reflection_z     = no
 CarpetX::boundary_x       = "linear extrapolation"
 CarpetX::boundary_y       = "linear extrapolation"
 CarpetX::boundary_z       = "linear extrapolation"
@@ -267,8 +266,8 @@ TimerReport::output_all_timers_together = yes
 TimerReport::output_schedule_timers     = yes
 
 # Norm and reduction output
+CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "all"
-CarpetX::out_norm_omit_unstable = yes
 
 # 1D output
 CarpetX::out_tsv_vars = "

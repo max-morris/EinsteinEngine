@@ -1,0 +1,115 @@
+# Settings
+#################################
+$rho                = 1  # Refinement factor. Should be 1, 2, 4
+
+$base_cells         = 64 # Initial number of cells to use
+
+$final_iteration    = 1
+$time_stepper       = "RK4"
+$dtfac              = 0.25
+#################################
+
+# We add one to stager the grid and avoid the origin
+$num_cells = ($rho * $base_cells) + 1
+
+ActiveThorns = "
+  ADMBaseX
+  BSSN
+  CarpetX
+  IOUtil
+  KerrSchildID
+  NewRadX
+  ODESolvers
+  TimerReport
+  TmunuBaseX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "mixed-error"
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = no
+
+# Run Termination
+#Cactus::terminate       = "time"
+#Cactus::cctk_final_time = $final_time
+Cactus::terminate       = "iteration"
+Cactus::cctk_itlast     = 1
+
+# Grid setup
+CarpetX::blocking_factor_x = 1
+CarpetX::blocking_factor_y = 1
+CarpetX::blocking_factor_z = 1
+
+CarpetX::xmin = -1.0
+CarpetX::ymin = -1.0
+CarpetX::zmin = -1.0
+
+CarpetX::xmax = 1.0
+CarpetX::ymax = 1.0
+CarpetX::zmax = 1.0
+
+CarpetX::ncells_x = $num_cells
+CarpetX::ncells_y = $num_cells
+CarpetX::ncells_z = $num_cells
+
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 3
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::boundary_x       = "linear extrapolation"
+CarpetX::boundary_y       = "linear extrapolation"
+CarpetX::boundary_z       = "linear extrapolation"
+CarpetX::boundary_upper_x = "linear extrapolation"
+CarpetX::boundary_upper_y = "linear extrapolation"
+CarpetX::boundary_upper_z = "linear extrapolation"
+
+# Initial data
+ADMBaseX::initial_data    = "none"
+ADMBaseX::initial_lapse   = "none"
+ADMBaseX::initial_shift   = "none"
+ADMBaseX::initial_dtlapse = "none"
+ADMBaseX::initial_dtshift = "none"
+
+KerrSchildID::mass = 1.0 / 4.0
+KerrSchildID::spin = KerrSchildID::mass / 4.0
+
+# Time Integration
+ODESolvers::verbose = yes
+CarpetX::dtfac      = $dtfac
+ODESolvers::method  = $time_stepper
+
+# Spacetime evolution
+BSSN::eta_B                  = 1.0
+BSSN::conformal_factor_floor = 1.0e-10
+BSSN::evolved_lapse_floor    = 1.0e-10
+BSSN::dissipation_epsilon    = 0.2
+
+# Output
+TimerReport::out_every              = 1
+TimerReport::out_filename           = "TimerReport"
+TimerReport::output_schedule_timers = no
+TimerReport::n_top_timers           = 100
+
+# Norm and reduction output
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = "all"
+
+# Output
+IO::out_dir    = $parfile
+IO::out_every  = 1
+
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = "
+  ADMBaseX::metric
+  ADMBaseX::curv
+  ADMBaseX::lapse
+"
+
+CarpetX::out_silo_vars = "
+  ADMBaseX::metric
+  ADMBaseX::curv
+  ADMBaseX::lapse
+"
