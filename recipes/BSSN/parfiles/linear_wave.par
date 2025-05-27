@@ -12,7 +12,7 @@ $dtfac              = 0.25
 $num_cells  = $base_cells * $rho
 $dx = 1.0 / $num_cells
 $dt = $dtfac * $dx
-$out_every = 1.0 / $dt
+$out_every = 100.0 / $dt
 
 ActiveThorns = "
   ADMBaseX
@@ -55,7 +55,7 @@ CarpetX::prolongation_type   = "ddf"
 CarpetX::prolongation_order  = 5
 
 # Boundary conditions
-CarpetX::periodic = yes
+CarpetX::periodic   = yes
 CarpetX::periodic_x = yes
 CarpetX::periodic_y = yes
 CarpetX::periodic_z = yes
@@ -71,9 +71,9 @@ LinearWaveID::amplitude  = 1.0e-8
 LinearWaveID::wavelength = 1.0
 
 # Time Integration
-ODESolvers::verbose    = yes
-CarpetX::dtfac         = $dtfac
-ODESolvers::method     = $time_stepper
+ODESolvers::verbose = yes
+CarpetX::dtfac      = $dtfac
+ODESolvers::method  = $time_stepper
 
 # Spacetime evolution
 BSSN::eta_B                  = 1.0
@@ -88,17 +88,18 @@ TimerReport::output_schedule_timers = no
 TimerReport::n_top_timers           = 100
 
 # Norm and reduction output
-CarpetX::out_norm_vars          = "all"
 CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = "
+  BSSN::gt
+  BSSN::trK
+"
 
 # Output
 IO::out_dir    = $parfile
 IO::out_every  = $out_every
 
 CarpetX::out_tsv      = no
-CarpetX::out_tsv_vars = ""
-
-CarpetX::out_silo_vars = "
+CarpetX::out_tsv_vars = "
   BSSN::gt
   BSSN::trK
 "
