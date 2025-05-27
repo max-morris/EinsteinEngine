@@ -44,15 +44,6 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
-        #define noop(OP) (OP)
-        // 1st derivatives
-        #define divx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) - GF(p.mask, GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
-        #define divy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) - GF(p.mask, GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
-        #define divz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) - GF(p.mask, GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
-        // 2nd derivatives
-        #define divxx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) + GF(p.mask, GF ## _layout, p.I - p.DI[0]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
-        #define divyy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) + GF(p.mask, GF ## _layout, p.I - p.DI[1]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
-        #define divzz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) + GF(p.mask, GF ## _layout, p.I - p.DI[2]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
     """.strip().replace('    ', '')
 

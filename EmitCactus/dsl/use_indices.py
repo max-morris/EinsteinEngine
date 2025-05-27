@@ -1505,16 +1505,7 @@ class ThornDef:
         self.base2parity: Dict[str, TensorParity] = dict()
         self.is_stencil: Dict[UFunc, bool] = {
             mkFunction("muladd"): False,
-            mkFunction("stencil"): True,
-            mkFunction("divx"): True,
-            mkFunction("divxx"): True,
-            mkFunction("divy"): True,
-            mkFunction("divxy"): True,
-            mkFunction("divyy"): True,
-            mkFunction("divz"): True,
-            mkFunction("divxz"): True,
-            mkFunction("divyz"): True,
-            mkFunction("divzz"): True
+            mkFunction("stencil"): True
         }
         self.funs1: Dict[Tuple[UFunc,Idx],Expr] = dict()
         self.funs2: Dict[Tuple[UFunc,Idx,Idx],Expr] = dict()
