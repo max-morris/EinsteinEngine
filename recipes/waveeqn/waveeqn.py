@@ -18,7 +18,7 @@ cfu.verbose = True
 flat_metric = mkMatrix([
     [1,0,0],
     [0,1,0],
-    [0,0,1]])
+    [0,0,0]])
 
 # Create a set of grid functions
 gf = ThornDef("TestEmitCactus", "WaveEqn")
@@ -35,17 +35,15 @@ u = gf.decl("u", [], centering=Centering.VVV, rhs=u_t)
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
 # Declare the metric
-g = gf.decl("g", [li, lj])
-gf.add_sym(g[li, lj], li, lj)
+g = gf.decl("g", [li, lj], sym=[(li, lj, 1)])
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")
 kx = gf.add_param("kx", default=pi / 20, desc="The wave number in the x-direction")
 ky = gf.add_param("ky", default=pi / 20, desc="The wave number in the y-direction")
-kz = gf.add_param("kz", default=pi / 20, desc="The wave number in the z-direction")
 amp = gf.add_param("amp", default=10, desc="The amplitude")
 # c = w/k
-w = spd*sqrt(kx**2 + ky**2 + kz**2)
+w = spd*sqrt(kx**2 + ky**2)
 
 # Fill in values
 gf.mk_subst(g[li, lj], flat_metric)
@@ -53,9 +51,9 @@ gf.mk_subst(g[ui, uj], flat_metric)
 
 # stencil(la) -> [stencil(f,1,0,0), stencil(f,0,1,0), stencil(f,0,0,1)]
 
-mdiv = gf.mk_stencil("mdiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
-gf.mk_stencil("mdiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
-max = gf.declfun("max", args=2, is_stencil=False)
+#mdiv = gf.mk_stencil("mdiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
+#gf.mk_stencil("mdiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
+#max = gf.declfun("max", args=2, is_stencil=False)
 
 ## gf.mk_stencil(mydiv,la,la,(stencil(la)-2*stencil(0)+stencil(-la))/(DD[la]**2))
 ## gf.mk_stencil(mydiv,la,lb,(stencil(la+lb)-stencil(la-lb)+stencil(-la-lb)-stencil(-la+lb))/(2*DD[la]*DD[lb]))
@@ -70,7 +68,7 @@ t, x, y, z = gf.mk_coords(with_time=True)
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
-fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * mdiv(v, li, lj))
+fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
 print('*** ThornFunction wave_evo:')
 fun.bake()
 
@@ -83,19 +81,19 @@ fun.show_tensortypes()
 # Again for wave_init
 # du/dt = spd**2 * ((d/dx)**2 u + (d/dy)**2 u)
 # dv/dt = u
-vfun = amp*sin(kx * x) * sin(ky * y) * sin(kz * z) * sin(w * t)
-ufun = max(vfun.diff(t), -2*amp*w)
+vfun = amp*sin(kx * x) * sin(ky * y) * sin(w * t)
+ufun = vfun.diff(t) #max(vfun.diff(t), -2*amp*w)
 fun = gf.create_function("newwave_init", ScheduleBin.Init)
 fun.add_eqn(u,  ufun)
 fun.add_eqn(v,  vfun)
 fun.bake()
-fun.dump()
-fun.show_tensortypes()
+#fun.dump()
+#fun.show_tensortypes()
 
 fun = gf.create_function("refine", ScheduleBin.EstimateError)
 regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetXRegrid')
 #fun.add_eqn(regrid_error, 2*v*v)
-fun.add_eqn(regrid_error, do_sympify(0)) #9/((x-20)**2 + (y-20)**2))
+fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
 fun.bake()
 
 fun = gf.create_function("WaveZero", ScheduleBin.Analysis)

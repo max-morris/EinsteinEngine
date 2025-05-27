@@ -1741,6 +1741,7 @@ class ThornDef:
         from_thorn: str
         parity: TensorParity
         group_name: str
+        sym: List[Tuple[Idx,Idx,int]]
 
     def get_state(self)->List[IndexedBase]:
         result : List[IndexedBase] = list()
@@ -1772,6 +1773,11 @@ class ThornDef:
         if (parity := kwargs.get('parity', None)) is not None:
             self.base2parity[basename] = parity
 
+        if (sym := kwargs.get("sym",None)) is not None:
+            reti = mkIndexed(ret, *tuple(indices))
+            print("reti:",reti)
+            for sym_arg in sym:
+                self.add_sym(reti,*sym_arg)
         return ret
 
     def find_indices(self, foo: Basic) -> List[Idx]:
