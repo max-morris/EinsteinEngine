@@ -18,7 +18,7 @@ if __name__ == "__main__":
     ###
     pybssn = ThornDef("PyBSSN", "BSSN")
     # 4th order. TODO: Use upwind stencils for the shift
-    pybssn.set_div_stencil(5)
+    pybssn.set_derivative_stencil(5)
 
     ###
     # Thorn parameters

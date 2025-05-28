@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     # Create a set of grid functions
     gf = ThornDef("TestAffine", "Affine")
-    gf.set_div_stencil(3)
+    gf.set_derivative_stencil(3)
 
     # Declare gfs
     g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")

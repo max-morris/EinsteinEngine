@@ -47,10 +47,10 @@ if __name__ == "__main__":
     gf.mk_subst(g[la, lb], gmat)
     imat = do_inv(gmat)
     gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la)) / 2)
+    gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
     gf.mk_subst(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
     gf.mk_subst(Ric[li, lj],
-                div(G[ua, li, lj], la) - div(G[ua, la, li], lj) +
+                D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
                 G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
     for i in range(4):

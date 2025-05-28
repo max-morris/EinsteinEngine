@@ -8,7 +8,7 @@ from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtO
 from .generators.wizards import CppCarpetXWizard
 from .dsl.use_indices import parities
 
-from .dsl.use_indices import div, to_num, mk_subst_type, Param, ThornFunction, ScheduleBin, ThornDef, \
+from .dsl.use_indices import D, div, to_num, mk_subst_type, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, mksymbol_for_tensor_xyz, mkPair, \
        stencil,DD,DDI,\
        ui, uj, uk, ua, ub, uc, ud, u0, u1, u2, u3, u4, u5, \
@@ -29,7 +29,7 @@ __all__ = [
     "parities",
     "ScheduleBin", "do_sympify",
     "sin", "cos",
-    "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
+    "D", "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
     "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
     "stencil","DD","DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",

@@ -23,7 +23,7 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFun
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
-__all__ = ["div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
+__all__ = ["D", "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
            "stencil","DD","DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
@@ -314,6 +314,7 @@ def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None
 ####
 # Generic derivatives
 div = mkFunction("div")
+D = mkFunction("D")
 """
 Symbolic derivative function.
 """
@@ -376,10 +377,11 @@ down_indices = l0, l1, l2, l3, l4, l5
 
 ### dmv
 from sympy import sin, cos
-div = mkFunction("div")
+
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
+
 one = do_sympify(1)
 zero = do_sympify(0)
 noidx = mkIdx("noidx")
@@ -445,11 +447,15 @@ class DivMakerVisitor:
                 return one
             elif expr in [y, z]:
                 return zero
+            elif expr in self.params:
+                return zero
 
         elif idx == l1:
             if expr == y:
                 return one
             elif expr in [x, z]:
+                return zero
+            elif expr in self.params:
                 return zero
 
         elif idx == l2:
@@ -457,9 +463,11 @@ class DivMakerVisitor:
                 return one
             elif expr in [x, y]:
                 return zero
+            elif expr in self.params:
+                return zero
 
         else:
-            raise Exception(f"Bad index passed to derivative: {expr}")
+            raise Exception(f"Bad index passed to derivative: {expr}: idx={idx}")
 
         return mkdiv(self.div_func, expr, idx)
 
@@ -548,6 +556,7 @@ class DivMakerVisitor:
             return ret
 
 dmv = DivMakerVisitor(div)
+dmv2 = DivMakerVisitor(D)
 
 def assert_eq(a: Expr ,b: Expr)->None:
     assert a is not None
@@ -556,6 +565,7 @@ def assert_eq(a: Expr ,b: Expr)->None:
 
 def do_div(expr: Basic)->Expr:
     r = dmv.visit(expr, noidx)
+    r = dmv2.visit(r, noidx)
     assert isinstance(r, Expr)
     return r
 
@@ -1143,7 +1153,7 @@ class ApplyDivN(Applier):
             self.val = expr.func(expr.args[0], *new_expr1)
             return True
                 
-        elif expr.is_Function and hasattr(expr, "name") and expr.name == "div":
+        elif expr.is_Function and hasattr(expr, "name") and expr.name in ["div", "D"]:
             new_expr = list()
             dxt = do_sympify(1)
             if len(expr.args) == 2:
@@ -1510,14 +1520,17 @@ class ThornDef:
         self.funs1: Dict[Tuple[UFunc,Idx],Expr] = dict()
         self.funs2: Dict[Tuple[UFunc,Idx,Idx],Expr] = dict()
         self.dmvs:Dict[str,DivMakerVisitor]=dict()
-        self.set_div_stencil(5)
+        self.set_derivative_stencil(5)
         self.dmvs["div"] = DivMakerVisitor(div)
+        self.dmvs["D"] = DivMakerVisitor(D)
+        for dmv in self.dmvs.values():
+            dmv.params = self.mk_param_set()
 
     def get_free_indices(self, expr : Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
         return it.free
 
-    def set_div_stencil(self, n: int) -> None:
+    def set_derivative_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
         self.apply_div = ApplyDivN(n, self.funs1, self.funs2, self.fun_args)
@@ -1591,9 +1604,17 @@ class ThornDef:
             assert False
         return self.coords
 
+    def mk_param_set(self)->Set[Symbol]:
+        ret: Set[Symbol] = set()
+        for k in self.params:
+            ret.add(mkSymbol(k))
+        return ret
+
     def do_div(self, expr:Expr)->Expr:
+        params = self.mk_param_set()
         r = expr
         for k, v in self.dmvs.items():
+            v.params = params
             r = v.visit(r, noidx)
         return r
 
@@ -1773,7 +1794,7 @@ class ThornDef:
 
     def find_indices(self, foo: Basic) -> List[Idx]:
         ret: List[Idx] = list()
-        if type(foo) == div:
+        if type(foo) in [div, D]:
             ret = self.find_indices(foo.args[0])
         for arg in foo.args[1:]:
             assert isinstance(arg, Idx)
@@ -1782,7 +1803,7 @@ class ThornDef:
 
     def find_symmetries(self, foo: Basic) -> List[Tuple[int, int, int]]:
         msym_list: List[Tuple[int, int, int]] = list()
-        if foo.is_Function and hasattr(foo, "name") and foo.name == "div":
+        if foo.is_Function and hasattr(foo, "name") and foo.name in ["div", "D"]:
             # This is a derivative
             if len(foo.args) == 3:
                 # This is a 2nd derivative, symmetric in the last 2 args
@@ -1812,7 +1833,7 @@ class ThornDef:
 
     def get_indices(self, expr: Expr) -> List[Idx]:
         out: List[Idx] = list()
-        if type(expr) == div:
+        if type(expr) in [div, D]:
             for arg in expr.args[0].args[1:]:
                 assert isinstance(arg, Idx)
                 out.append(arg)
@@ -1926,7 +1947,6 @@ class ThornDef:
                 self.subs[out] = res
             else:
                 self.subs[out] = set_matrix[arr_inds]
-            print("out:", out)
             print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
         return None
 
