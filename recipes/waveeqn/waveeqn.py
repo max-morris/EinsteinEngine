@@ -50,8 +50,9 @@ gf.mk_subst(g[ui, uj], flat_metric)
 
 # stencil(la) -> [stencil(f,1,0,0), stencil(f,0,1,0), stencil(f,0,0,1)]
 
-#mdiv = gf.mk_stencil("mdiv",la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2)
-#gf.mk_stencil("mdiv",la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
+mdiv = gf.mk_stencil("mdiv",
+    la,la,(-2*stencil(0)+stencil(la)+stencil(-la))*DDI(la)**2,
+    la,lb,(stencil(la+lb)-stencil(la-lb)-stencil(lb-la)+stencil(-la-lb))*DDI(la)*DDI(lb))
 #max = gf.declfun("max", args=2, is_stencil=False)
 
 ## gf.mk_stencil(mydiv,la,la,(stencil(la)-2*stencil(0)+stencil(-la))/(DD[la]**2))
