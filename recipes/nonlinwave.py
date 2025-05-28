@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # Use a NRPy calculated stencil instead
     # of simply calling functions such as divx()
-    gf.set_div_stencil(3)
+    gf.set_derivative_stencil(3)
 
     # Declare gfs
     v_t = gf.decl("v_t", [], centering=Centering.VVC)

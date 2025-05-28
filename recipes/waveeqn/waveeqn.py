@@ -24,8 +24,7 @@ flat_metric = mkMatrix([
 gf = ThornDef("TestEmitCactus", "WaveEqn")
 
 # Use a NRPy calculated stencil instead
-# of simply calling functions such as divx()
-gf.set_div_stencil(5)
+gf.set_derivative_stencil(5)
 
 # Declare gfs
 v_t = gf.decl("v_t", [], centering=Centering.VVV)
@@ -68,7 +67,7 @@ t, x, y, z = gf.mk_coords(with_time=True)
 # Add the equations we want to evolve.
 fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 fun.add_eqn(v_t, u)
-fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj))
+fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * D(v, li, lj))
 print('*** ThornFunction wave_evo:')
 fun.bake()
 

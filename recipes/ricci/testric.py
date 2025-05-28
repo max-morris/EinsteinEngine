@@ -2,7 +2,7 @@ from EmitCactus import *
 
 # Create a set of grid functions
 gf = ThornDef("TestEmitCactus", "Ricci")
-gf.set_div_stencil(5)
+gf.set_derivative_stencil(5)
 
 a = gf.add_param("a", default=10.0, desc="Just a constant")
 b = gf.add_param("b", default=0.2, desc="Just a constant")
@@ -35,7 +35,7 @@ gmat = mkMatrix([
 assert do_det(gmat) == 1
 
 # Define the affine connections
-gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
+gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la))/2)
 gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
 
 gf.mk_subst(Ric[la, lb])
@@ -43,7 +43,7 @@ gf.mk_subst(Ric[la, lb])
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
 
 fun.add_eqn(Ric[li, lj],
-             div(G[ua, li, lj], la) - div(G[ua, la, li], lj) +
+             D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
              G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
 fun.bake()
