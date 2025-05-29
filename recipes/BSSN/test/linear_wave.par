@@ -82,4 +82,6 @@ CarpetX::out_tsv_vars = "
   BSSN::evo_lapse
   BSSN::evo_shift
   BSSN::shift_B
+  BSSN::HamCons
+  BSSN::MomCons
 "
