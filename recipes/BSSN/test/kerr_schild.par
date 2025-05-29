@@ -1,17 +1,3 @@
-# Settings
-#################################
-# This choice produces grids which avoid the origin
-$rho                = 1    # Refinement factor. Should be 1, 3, 9
-$base_cells         = 3**3 # Initial number of cells to use
-
-$final_iteration    = 1
-$time_stepper       = "RK4"
-$dtfac              = 0.25
-#################################
-
-# We add one to stager the grid and avoid the origin
-$num_cells = ($rho * $base_cells) + 1
-
 ActiveThorns = "
   ADMBaseX
   BSSN
@@ -20,7 +6,7 @@ ActiveThorns = "
   KerrSchildID
   NewRadX
   ODESolvers
-  TimerReport
+  TestBSSN
   TmunuBaseX
 "
 
@@ -28,11 +14,11 @@ ActiveThorns = "
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = yes
-CarpetX::poison_undefined_values = no
+CarpetX::poison_undefined_values = yes
 
 # Run Termination
-Cactus::terminate       = "iteration"
-Cactus::cctk_itlast     = 1
+Cactus::terminate   = "iteration"
+Cactus::cctk_itlast = 1
 
 # Grid setup
 CarpetX::blocking_factor_x = 1
@@ -47,9 +33,10 @@ CarpetX::xmax = 1.0
 CarpetX::ymax = 1.0
 CarpetX::zmax = 1.0
 
-CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = $num_cells
-CarpetX::ncells_z = $num_cells
+# This choice produces grids which avoid the origin
+CarpetX::ncells_x = 21
+CarpetX::ncells_y = 21
+CarpetX::ncells_z = 21
 
 CarpetX::ghost_size          = 3
 CarpetX::interpolation_order = 3
@@ -65,6 +52,7 @@ CarpetX::boundary_upper_y = "linear extrapolation"
 CarpetX::boundary_upper_z = "linear extrapolation"
 
 # Initial data
+#ADMBaseX::initial_data    = "Cartesian Minkowski"
 ADMBaseX::initial_data    = "none"
 ADMBaseX::initial_lapse   = "none"
 ADMBaseX::initial_shift   = "none"
@@ -76,8 +64,8 @@ KerrSchildID::spin = KerrSchildID::mass / 4.0
 
 # Time Integration
 ODESolvers::verbose = yes
-CarpetX::dtfac      = $dtfac
-ODESolvers::method  = $time_stepper
+CarpetX::dtfac      = 0.25
+ODESolvers::method  = "RK4"
 
 # Spacetime evolution
 BSSN::eta_B                  = 1.0
@@ -86,14 +74,8 @@ BSSN::evolved_lapse_floor    = 1.0e-10
 BSSN::dissipation_epsilon    = 0.2
 
 # Output
-TimerReport::out_every              = 1
-TimerReport::out_filename           = "TimerReport"
-TimerReport::output_schedule_timers = no
-TimerReport::n_top_timers           = 100
-
-# Norm and reduction output
 CarpetX::out_norm_omit_unstable = no
-CarpetX::out_norm_vars          = "all"
+CarpetX::out_norm_vars          = ""
 
 # Output
 IO::out_dir    = $parfile
@@ -101,13 +83,13 @@ IO::out_every  = 1
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  ADMBaseX::metric
-  ADMBaseX::curv
-  ADMBaseX::lapse
-"
-
-CarpetX::out_silo_vars = "
-  ADMBaseX::metric
-  ADMBaseX::curv
-  ADMBaseX::lapse
+  BSSN::gt
+  BSSN::w
+  BSSN::At
+  BSSN::trK
+  BSSN::ConfConnect
+  BSSN::evo_lapse
+  BSSN::evo_shift
+  BSSN::shift_B
+  TestBSSN::HamConsTest
 "
