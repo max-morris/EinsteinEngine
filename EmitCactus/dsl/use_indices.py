@@ -1629,7 +1629,9 @@ class ThornDef:
     def _(self, func_name:str, idxa1:Idx, idxa2:Idx, expra:Expr,
                                idxb1:Idx, idxb2:Idx, exprb:Expr)->UFunc:
         self.mk_stencil(func_name, idxa1, idxa2, expra)
-        return self.mk_stencil(func_name, idxb1, idxb2, exprb)
+        result = self.mk_stencil(func_name, idxb1, idxb2, exprb)
+        assert isinstance(result, UFunc)
+        return result
 
     @mk_stencil.register
     def _(self, func_name:str, idx1:Idx, idx2:Idx, expr:Expr)->UFunc:

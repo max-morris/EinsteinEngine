@@ -45,6 +45,7 @@ class CppCarpetXGenerator(CactusGenerator):
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
+        #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
     options: CppCarpetXGeneratorOptions
@@ -440,6 +441,12 @@ class CppCarpetXGenerator(CactusGenerator):
             for n, s in enumerate(['DXI', 'DYI', 'DZI'])
         ]
 
+        stencil_limit_checks = []
+        stencil_limits = thorn_fn.eqn_list.stencil_limits()
+        for i in range(3):
+            if stencil_limits[i] != 0:
+                stencil_limit_checks.append(VerbatimExpr(Verbatim(f'CCTK_ASSERT(cctk_nghostzones[{i}] >= {stencil_limits[i]});')))
+
         eqn_list = thorn_fn.eqn_list
         reassigned_lhses: Set[int] = set()
 
@@ -477,6 +484,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
                  *layout_decls,
                  *di_decls,
+                 *stencil_limit_checks,
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,

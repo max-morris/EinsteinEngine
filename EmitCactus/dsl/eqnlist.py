@@ -4,10 +4,8 @@ from dataclasses import dataclass
 from functools import cached_property
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import symbols, Basic, IndexedBase
-from sympy.core.expr import Expr
-from sympy.core.function import UndefinedFunction as UFunc
-from sympy.core.symbol import Symbol
+from sympy import symbols, Basic, IndexedBase, Expr, Symbol, Integer
+from sympy.core.function import UndefinedFunction as UFunc, Function
 from typing import cast, Dict, List, Tuple, Optional, Set
 from EmitCactus.util import OrderedSet, incr_and_get
 
@@ -656,6 +654,23 @@ class EqnList:
             m = mod_eqns[i]
             self.eqns[k] = m
         self.uncse()
+
+    def stencil_limits(self)->typing.Tuple[int,int,int]:
+        result = [0,0,0]
+        for eqn in self.eqns.values():
+            self.stencil_limits_(result, eqn)
+        return (result[0], result[1], result[2])
+
+    def stencil_limits_(self, result:List[int], expr:Expr) -> None:
+        for arg in expr.args:
+            if str(type(arg)) == "stencil":
+                for i in range(3):
+                    ivar = arg.args[i+1]
+                    assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
+                    result[i] = max(result[i], abs(int(ivar)))
+            else:
+                if isinstance(arg, Expr):
+                    self.stencil_limits_(result, arg)
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
