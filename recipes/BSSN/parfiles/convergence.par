@@ -1,0 +1,96 @@
+# Settings
+#################################
+$rho                = 1  # Refinement factor. Should be 1, 2, 4
+$base_cells         = 64 # Initial number of cells to use
+#################################
+
+$ncells = ($base_cells * $rho)
+
+ActiveThorns = "
+  ADMBaseX
+  BSSN
+  CarpetX
+  CoordinatesX
+  IOUtil
+  ODESolvers
+  TwoPuncturesX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "mixed-error"
+CarpetX::verbose                 = no
+CarpetX::poison_undefined_values = no
+
+# Run Termination
+Cactus::terminate   = "iteration"
+Cactus::cctk_itlast = 1
+
+# Grid setup
+CarpetX::xmin       = -5.0
+CarpetX::ymin       = -5.0
+CarpetX::zmin       = -5.0
+CarpetX::xmax       = 5.0
+CarpetX::ymax       = 5.0
+CarpetX::zmax       = 5.0
+CarpetX::ncells_x   = $ncells
+CarpetX::ncells_y   = $ncells
+CarpetX::ncells_z   = $ncells
+CarpetX::ghost_size = 3
+
+CarpetX::interpolation_order = 3
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::boundary_x       = "linear extrapolation"
+CarpetX::boundary_y       = "linear extrapolation"
+CarpetX::boundary_z       = "linear extrapolation"
+CarpetX::boundary_upper_x = "linear extrapolation"
+CarpetX::boundary_upper_y = "linear extrapolation"
+CarpetX::boundary_upper_z = "linear extrapolation"
+
+# Initial data
+ADMBaseX::initial_data           = "TwoPunctures"
+ADMBaseX::initial_lapse          = "TwoPunctures-averaged"
+TwoPuncturesX::verbose           = yes
+TwoPuncturesX::par_b             = 1.5
+TwoPuncturesX::par_m_plus        = 0.5
+TwoPuncturesX::par_m_minus       = 0.5
+TwoPuncturesX::grid_setup_method = "evaluation"
+TwoPuncturesX::TP_epsilon        = 1.0e-2
+TwoPuncturesX::TP_Tiny           = 1.0e-2
+
+# Time Integration
+CarpetX::dtfac         = 0.25
+ODESolvers::verbose    = yes
+ODESolvers::method     = "RK4"
+
+# Spacetime evolution
+BSSN::eta_B                  = 1.0
+BSSN::conformal_factor_floor = 1.0e-10
+BSSN::evolved_lapse_floor    = 1.0e-10
+BSSN::dissipation_epsilon    = 0.2
+
+# Checkpoint and recovery
+IO::out_dir                         = $parfile
+IO::out_every                       = 1
+
+# Norm and reduction output
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = ""
+
+# 1D output
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = "
+  BSSN::gt
+  BSSN::w
+  BSSN::At
+  BSSN::trK
+  BSSN::ConfConnect
+  BSSN::evo_lapse
+  BSSN::evo_shift
+  BSSN::shift_B
+  BSSN::HamCons
+  BSSN::MomCons
+"
