@@ -10,13 +10,9 @@ if __name__ == "__main__":
     gf = ThornDef("TestKerr", "Kerr")
 
     # Declare gfs
-    g = gf.decl("g", [li, lj], centering=Centering.VVC)
-    G = gf.decl("Affine", [ua, lb, lc], centering=Centering.VVC)
-    Ric = gf.decl("Ric", [la, lb], centering=Centering.VVC)
-
-    gf.add_sym(g[li, lj], li, lj)
-    gf.add_sym(Ric[li, lj], li, lj)
-    gf.add_sym(G[ua, lb, lc], lb, lc)
+    g = gf.decl("g", [li, lj], sym=[(li,lj,1)], centering=Centering.VVC)
+    G = gf.decl("Affine", [ua, lb, lc], sym=[(lb,lc,1)], centering=Centering.VVC)
+    Ric = gf.decl("Ric", [la, lb], sym=[(la,lb,1)], centering=Centering.VVC)
 
     spin = False
     a: Expr

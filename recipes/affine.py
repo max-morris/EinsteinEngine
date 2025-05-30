@@ -15,23 +15,19 @@ if __name__ == '__main__':
     gf.set_derivative_stencil(3)
 
     # Declare gfs
-    g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
+    g = gf.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
     x, y, z = gf.mk_coords()
-    G = gf.decl("Affine", [ua, lb, lc])
-    Ric = gf.decl("Ric", [la, lb])
-
-    gf.add_sym(g[li, lj], li, lj)
-    gf.add_sym(G[ua, lb, lc], lb, lc)
-    gf.add_sym(Ric[la, lb], la, lb)
+    G = gf.decl("Affine", [ua, lb, lc], sym=[(lb,lc,1)])
+    Ric = gf.decl("Ric", [la, lb], sym=[(la,lb,1)])
 
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
     gmat = gf.get_matrix(g[la, lb])
     imat = do_inv(gmat)
     gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(div(g[la, lb], lc))  # div(g[l0,l1],l2) -> gDD01_dD2
-    gf.mk_subst(div(g[ua, ub], lc))
-    gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la)) / 2)
+    gf.mk_subst(D(g[la, lb], lc))  # D(g[l0,l1],l2) -> gDD01_dD2
+    gf.mk_subst(D(g[ua, ub], lc))
+    gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
     gf.mk_subst(G[ud, lb, lc])  # , g[ud,ua]*G[la, lb, lc])
 
     fun = gf.create_function("setAff", ScheduleBin.Analysis)

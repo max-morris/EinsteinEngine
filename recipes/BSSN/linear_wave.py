@@ -1,12 +1,6 @@
 if __name__ == "__main__":
-    from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_sympify, mkMatrix
-    from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
-    from EmitCactus.emit.tree import Identifier, String
-    from EmitCactus.generators.wizards import CppCarpetXWizard
-    from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
-    from EmitCactus.generators.cactus_generator import InteriorSyncMode
-    from sympy import Rational, sin
+    from EmitCactus import *
+    from sympy import Rational
 
     ###
     # Thorn definition
@@ -32,12 +26,10 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_linear_wave_id.decl("g", [li, lj], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.add_sym(g[li, lj], li, lj)
+    g = pybssn_linear_wave_id.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
     pybssn_linear_wave_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = pybssn_linear_wave_id.decl("k", [li, lj], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.add_sym(k[li, lj], li, lj)
+    k = pybssn_linear_wave_id.decl("k", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
     pybssn_linear_wave_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
     alp = pybssn_linear_wave_id.decl("alp", [], from_thorn="ADMBaseX")
@@ -51,8 +43,7 @@ if __name__ == "__main__":
     dtbeta = pybssn_linear_wave_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
     pybssn_linear_wave_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    dtk = pybssn_linear_wave_id.decl("dtk", [la, lb], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.add_sym(dtk[la, lb], la, lb)
+    dtk = pybssn_linear_wave_id.decl("dtk", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
     pybssn_linear_wave_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives
@@ -107,9 +98,9 @@ if __name__ == "__main__":
     Kxx = do_sympify(0)
     Kxy = do_sympify(0)
     Kxz = do_sympify(0)
-    Kyy = -Rational(1, 2) * H.diff(t)
+    Kyy = -Rational(1, 2) * diff(H, t)
     Kyz = do_sympify(0)
-    Kzz = Rational(1, 2) * H.diff(t)
+    Kzz = Rational(1, 2) * diff(H, t)
 
     # Matrices
     hij = mkMatrix([
@@ -131,26 +122,26 @@ if __name__ == "__main__":
     ])
 
     # Time derivatives
-    dt_lapse = lapse.diff(t)
+    dt_lapse = diff(lapse, t)
 
     dt_shift = [
-        shift_x.diff(t),
-        shift_y.diff(t),
-        shift_z.diff(t),
+        diff(shift_x, t),
+        diff(shift_y, t),
+        diff(shift_z, t),
     ]
 
     dt_Kij = mkMatrix([
-        [Kxx.diff(t), Kxy.diff(t), Kxz.diff(t)],
-        [Kxy.diff(t), Kyy.diff(t), Kyz.diff(t)],
-        [Kxz.diff(t), Kyz.diff(t), Kzz.diff(t)],
+        [diff(Kxx, t), diff(Kxy, t), diff(Kxz, t)],
+        [diff(Kxy, t), diff(Kyy, t), diff(Kyz, t)],
+        [diff(Kxz, t), diff(Kyz, t), diff(Kzz, t)],
     ])
 
-    dt2_lapse = dt_lapse.diff(t)
+    dt2_lapse = diff(dt_lapse, t)
 
     dt2_shift = [
-        dt_shift[0].diff(t),
-        dt_shift[1].diff(t),
-        dt_shift[2].diff(t),
+        diff(dt_shift[0], t),
+        diff(dt_shift[1], t),
+        diff(dt_shift[2], t),
     ]
 
     ###

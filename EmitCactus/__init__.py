@@ -13,7 +13,7 @@ from .dsl.use_indices import D, div, to_num, mk_subst_type, Param, ThornFunction
        stencil,DD,DDI,\
        ui, uj, uk, ua, ub, uc, ud, u0, u1, u2, u3, u4, u5, \
        li, lj, lk, la, lb, lc, ld, l0, l1, l2, l3, l4, l5
-from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,\
+from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
     do_inv,do_det,do_sympify,do_simplify,cse,mkIdx,mkSymbol,\
     mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
     free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols
@@ -34,7 +34,7 @@ __all__ = [
     "stencil","DD","DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
     "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5",
-    "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
+    "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",
     "do_inv","do_det","do_sympify","do_simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols"]
