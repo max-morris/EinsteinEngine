@@ -1,12 +1,6 @@
 if __name__ == "__main__":
-    from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_sympify, mkMatrix
-    from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
-    from EmitCactus.emit.tree import Identifier, String
-    from EmitCactus.generators.wizards import CppCarpetXWizard
-    from EmitCactus.generators.cpp_carpetx_generator import CppCarpetXGenerator
-    from EmitCactus.generators.cactus_generator import InteriorSyncMode
-    from sympy import Rational, sqrt
+    from EmitCactus import *
+    from sympy import Rational
 
     ###
     # Thorn definition
@@ -32,12 +26,10 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_kerr_schilld_id.decl("g", [li, lj], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_sym(g[li, lj], li, lj)
+    g = pybssn_kerr_schilld_id.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = pybssn_kerr_schilld_id.decl("k", [li, lj], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_sym(k[li, lj], li, lj)
+    k = pybssn_kerr_schilld_id.decl("k", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
     alp = pybssn_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
@@ -51,8 +43,7 @@ if __name__ == "__main__":
     dtbeta = pybssn_kerr_schilld_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_sym(dtk[la, lb], la, lb)
+    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives
@@ -114,25 +105,25 @@ if __name__ == "__main__":
     hzz = 1 + 2 * H * lz * lz
 
     # K_{ij}
-    drdx = r.diff(x)
-    drdy = r.diff(y)
-    drdz = r.diff(z)
+    drdx = diff(r, x)
+    drdy = diff(r, y)
+    drdz = diff(r, z)
 
-    dHdx = H.diff(x)
-    dHdy = H.diff(y)
-    dHdz = H.diff(z)
+    dHdx = diff(H, x)
+    dHdy = diff(H, y)
+    dHdz = diff(H, z)
 
-    dlxdx = lx.diff(x)
-    dlxdy = lx.diff(y)
-    dlxdz = lx.diff(z)
+    dlxdx = diff(lx, x)
+    dlxdy = diff(lx, y)
+    dlxdz = diff(lx, z)
 
-    dlydx = ly.diff(x)
-    dlydy = ly.diff(y)
-    dlydz = ly.diff(z)
+    dlydx = diff(ly, x)
+    dlydy = diff(ly, y)
+    dlydz = diff(ly, z)
 
-    dlzdx = lz.diff(x)
-    dlzdy = lz.diff(y)
-    dlzdz = lz.diff(z)
+    dlzdx = diff(lz, x)
+    dlzdy = diff(lz, y)
+    dlzdz = diff(lz, z)
 
     Kxx = (4*H*lx*(lx*(dHdx*ly + dHdy*lz) + 2*H*(dlxdx*ly + dlxdy*lz))) / \
         (1 + 2*H*(lx**2 + ly**2 + lz**2))
@@ -172,26 +163,26 @@ if __name__ == "__main__":
     ])
 
     # Time derivatives
-    dt_lapse = lapse.diff(t)
+    dt_lapse = diff(lapse, t)
 
     dt_shift = [
-        shift_x.diff(t),
-        shift_y.diff(t),
-        shift_z.diff(t),
+        diff(shift_x, t),
+        diff(shift_y, t),
+        diff(shift_z, t),
     ]
 
     dt_Kij = mkMatrix([
-        [Kxx.diff(t), Kxy.diff(t), Kxz.diff(t)],
-        [Kxy.diff(t), Kyy.diff(t), Kyz.diff(t)],
-        [Kxz.diff(t), Kyz.diff(t), Kzz.diff(t)],
+        [diff(Kxx, t), diff(Kxy, t), diff(Kxz, t)],
+        [diff(Kxy, t), diff(Kyy, t), diff(Kyz, t)],
+        [diff(Kxz, t), diff(Kyz, t), diff(Kzz, t)],
     ])
 
-    dt2_lapse = dt_lapse.diff(t)
+    dt2_lapse = diff(dt_lapse, t)
 
     dt2_shift = [
-        dt_shift[0].diff(t),
-        dt_shift[1].diff(t),
-        dt_shift[2].diff(t),
+        diff(dt_shift[0], t),
+        diff(dt_shift[1], t),
+        diff(dt_shift[2], t),
     ]
 
     ###
