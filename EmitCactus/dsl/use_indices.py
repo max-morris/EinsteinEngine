@@ -29,6 +29,9 @@ __all__ = ["D", "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "Sch
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
+one = do_sympify(1)
+zero = do_sympify(0)
+
 lookup_pair:Dict[Idx,Idx] = dict()
 
 ###
@@ -50,7 +53,7 @@ def mk_mk_subst(s : str)->str:
 ###
 import sympy as sy
 
-class SymIndexError(Exception):
+class InvalidIndexError(DslException):
     def __init__(self, message:str)->None:
         self.message = message
         super().__init__(self.message)
@@ -59,7 +62,12 @@ class IndexTracker:
     def __init__(self)->None:
         self.free:OrderedSet[Idx] = OrderedSet()
         self.contracted:OrderedSet[Idx] = OrderedSet()
+        self.used:OrderedSet[Idx] = OrderedSet()
+
     def all(self)->OrderedSet[Idx]:
+        """
+        The set of all contracted and free.
+        """
         ret:OrderedSet[Idx] = OrderedSet()
         for a in self.free:
             ret.add(a)
@@ -67,15 +75,32 @@ class IndexTracker:
             ret.add(a)
             ret.add(lookup_pair[a])
         return ret
+
+    def used_overlap(self, used:OrderedSet[Idx])->bool:
+        for u in self.used:
+            if u in used:
+                return True
+        for u in used:
+            if u in self.used:
+                return True
+        return False
+
     def add(self, idx:Idx)->bool:
+        """
+        We keep single indices. So if we get ua and la,
+        only la goes in contracted. If we get get ua and lc,
+        both indices go in free. Used should not be added
+        here.
+        """
         global lookup_pair
         if (idx in self.free) or (idx in self.contracted):
             return False
+        # TODO: Factor this logic out elsewhere
         letter_or_num = ord(str(idx)[1])
         if letter_or_num >= ord('0') and letter_or_num <= ord('9'):
             return True
-        assert idx in lookup_pair, f"{idx} not in {lookup_pair}"
-        pdx = lookup_pair[idx]
+        pdx = lookup_pair.get(idx, None)
+        assert pdx is not None, f"{idx} not in {lookup_pair}"
         if pdx in self.free:
             self.free.remove(pdx)
             if str(idx)[0] == 'u':
@@ -88,69 +113,97 @@ class IndexTracker:
             self.free.add(idx)
         return True
     def __repr__(self)->str:
-        return "("+repr(self.free)+", "+repr(self.contracted)+")"
+        return "(free:"+repr(self.free)+", contracted:"+repr(self.contracted)+", used:"+repr(self.used)+")"
 
-class SympyExprErrorVisitor:
+class IndexContractionVisitor:
     def __init__(self, defn:Dict[str, Tuple[str, List[Idx]]])->None:
         self.defn = defn
 
     @multimethod
-    def visit(self, expr: sy.Basic) -> IndexTracker:
+    def visit(self, expr: sy.Basic) -> Tuple[Expr,IndexTracker]:
         raise Exception(str(expr)+" "+str(type(expr)))
 
     @visit.register
-    def _(self, expr: sy.Add) -> IndexTracker:
+    def _(self, expr: sy.Add) -> Tuple[Expr,IndexTracker]:
         it:Optional[IndexTracker] = None
-        arg = None
+        last_arg = None
+        new_expr = zero 
         for a in expr.args:
-            a_it = self.visit(a)
+            a_expr, a_it = self.visit(a)
+            a_expr, a_it = self.contract(a_expr, a_it)
+            new_expr += a_expr
             if it is None:
                 it = a_it
+            # TODO: check for used/free mismatch
             if it.free != a_it.free:
-                raise SymIndexError(f"Invalid indices in add '{a}:{it.free}' != '{arg}:{a_it.free}':")
-            arg = a
+                raise InvalidIndexError(f"Invalid indices in add '{a}:{it.free}' != '{last_arg}:{a_it.free}':")
+            last_arg = a
         if it is None:
-            return IndexTracker()
+            return (new_expr, IndexTracker())
         else:
-            return it
+            return (new_expr, it)
+
+    def contract(self, expr:Expr, it:IndexTracker)->Tuple[Expr,IndexTracker]:
+        #print("contract:",expr)
+        if len(it.contracted) > 0:
+            #print(colorize("CONTRACTED:", "cyan"), expr, it)
+            for loidx in it.contracted:
+                new_expr:Expr = zero
+                upidx = lookup_pair[loidx]
+                for i in range(get_dimension()): 
+                    loidx_val = [l0,l1,l2,l3,l4,l5][i]
+                    upidx_val = [u0,u1,u2,u3,u4,u5][i]
+                    new_expr += do_isub(expr, dict(), {loidx: loidx_val, upidx: upidx_val})
+                expr = new_expr
+            it.used = it.contracted
+            it.contracted = OrderedSet()
+            return new_expr, it
+        else:
+            return expr, it
 
     @visit.register
-    def _(self, expr: sy.Mul) -> IndexTracker:
+    def _(self, expr: sy.Mul) -> Tuple[Expr,IndexTracker]:
         it = IndexTracker()
+        new_expr = one
         for a in expr.args:
-            a_it = self.visit(a)
+            a_expr, a_it = self.visit(a)
+            if a_it.used_overlap(it.used):
+                raise InvalidIndexError(repr(expr))
+            new_expr *= a_expr
+            for idx in a_it.used:
+                it.used.add(idx)
             for idx in a_it.all():
                 if not it.add(idx):
-                    raise SymIndexError(f"Invalid indices in mul:")
-        return it
+                    raise InvalidIndexError(repr(expr))
+        return self.contract(new_expr, it)
 
     @visit.register
-    def _(self, expr: sy.Symbol) -> IndexTracker:
-        return IndexTracker()
+    def _(self, expr: sy.Symbol) -> Tuple[Expr,IndexTracker]:
+        return expr, IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Integer) -> IndexTracker:
-        return IndexTracker()
+    def _(self, expr: sy.Integer) -> Tuple[Expr,IndexTracker]:
+        return expr, IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Rational) -> IndexTracker:
-        return IndexTracker()
+    def _(self, expr: sy.Rational) -> Tuple[Expr,IndexTracker]:
+        return expr, IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Float) -> IndexTracker:
-        return IndexTracker()
+    def _(self, expr: sy.Float) -> Tuple[Expr,IndexTracker]:
+        return expr, IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Idx) -> IndexTracker:
-        return IndexTracker()
+    def _(self, expr: sy.Idx) -> Tuple[Expr,IndexTracker]:
+        return expr, IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.Indexed) -> IndexTracker:
+    def _(self, expr: sy.Indexed) -> Tuple[Expr,IndexTracker]:
         basename = str(expr.args[0])
         if basename in self.defn:
             bn, indices = self.defn[basename]
             if len(indices)+1 != len(expr.args):
-                raise SymIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
+                raise InvalidIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
         else:
             assert len(self.defn) == 0
         it = IndexTracker()
@@ -158,38 +211,45 @@ class SympyExprErrorVisitor:
             a_it = self.visit(a)
             assert isinstance(a, Idx)
             if not it.add(a):
-                raise SymIndexError(f"Invalid indices in indexed:")
-        return it
+                raise InvalidIndexError(str(expr))
+        return self.contract(expr, it)
 
     @visit.register
-    def _(self, expr: sy.Function) -> IndexTracker:
+    def _(self, expr: sy.Function) -> Tuple[Expr,IndexTracker]:
         it = IndexTracker()
+        new_args : List[Expr] = list()
         for a in expr.args:
             if isinstance(a, Idx):
                 if not it.add(a):
-                    raise SymIndexError(f"Invalid indices in function:")
+                    raise InvalidIndexError(repr(expr))
+                new_args.append(a)
             else:
-                a_it = self.visit(a)
+                a_expr , a_it = self.visit(a)
+                new_args.append(a_expr)
                 for idx in a_it.all():
                     it.add(idx)
-        return it
+        ret = self.contract(expr.func(*new_args), it)
+        return ret
 
     @visit.register
-    def _(self, expr: sy.Pow) -> IndexTracker:
+    def _(self, expr: sy.Pow) -> Tuple[Expr,IndexTracker]:
+        new_args: List[Expr] = list()
         for a in expr.args:
-            it = self.visit(a)
-            assert len(it.free) == 0
-            assert len(it.contracted) == 0
-        return IndexTracker()
+            new_arg, it = self.visit(a)
+            #print("-->", a, expr, it)
+            new_args += [new_arg]
+            if len(it.free) != 0 or len(it.contracted) != 0:
+                raise InvalidIndexError(repr(expr))
+        return sy.Pow(*new_args), IndexTracker()
 
     @visit.register
-    def _(self, expr: sy.IndexedBase) -> IndexTracker:
+    def _(self, expr: sy.IndexedBase) -> Tuple[Expr,IndexTracker]:
         basename = str(expr)
         if basename not in self.defn:
             if len(self.defn) == 0:
                 n = 0
             else:
-                raise SymIndexError(f"Undefined symbol in '{self.defn}':")
+                raise InvalidIndexError(f"Undefined symbol in '{self.defn}':")
         else:
             bn, indices = self.defn[basename]
             n = len(indices)
@@ -198,8 +258,9 @@ class SympyExprErrorVisitor:
                 msg = "1 index"
             else:
                 msg = f"{n} indices"
-            raise SymIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
-        return IndexTracker()
+            raise InvalidIndexError(f"Expression '{expr}' was declared with {msg}, but was used in this expression without indices: ")
+        return expr, IndexTracker()
+
 
 ### ind subs
 class IndexSubsVisitor:
@@ -293,19 +354,19 @@ def check_indices(rhs:Expr, defn:Optional[Dict[str, Tuple[str, List[Idx]]]]=None
     """
     if defn is None:
         defn = dict()
-    err = SympyExprErrorVisitor(defn)
+    err = IndexContractionVisitor(defn)
     ret : IndexTracker
     try:
-        ret = err.visit(rhs)
+        _, ret = err.visit(rhs)
         die = False
         msg = ''
     finally:
         pass
-    #except SymIndexError as sie:
+    #except InvalidIndexError as sie:
     #    die = True
     #    msg = sie.message
     #if die:
-    #    raise SymIndexError(msg+str(rhs))
+    #    raise InvalidIndexError(msg+str(rhs))
     return ret
 ###
 # Need Expand Visitor
@@ -377,13 +438,9 @@ down_indices = l0, l1, l2, l3, l4, l5
 
 ### dmv
 from sympy import sin, cos
-
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
-
-one = do_sympify(1)
-zero = do_sympify(0)
 noidx = mkIdx("noidx")
 dummy = mkSymbol("_dummy_")
 
@@ -852,20 +909,12 @@ while incr(ilist, dvals):
 assert valscount == dimension ** 2
 
 
-def expand_contracted_indices(xpr: Expr, sym: Sym) -> Expr:
-    if type(xpr) == addtype:
-        ret: Expr = do_sympify(0)
-        for arg in xpr.args:
-            ret += expand_contracted_indices(arg, sym)
-        return ret
-    index_list = sorted(list(get_contracted_indices(xpr)), key=byname)
-    if len(index_list) == 0:
-        return xpr
-    output = do_sympify(0)
-    index_values: Dict[Idx, Idx] = dict()
-    while incr(index_list, index_values):
-        output += do_subs(xpr, index_values, sym)
-    return output
+def expand_contracted_indices(in_expr:Expr, sym:Sym)->Expr:
+    viz = IndexContractionVisitor(dict())
+    expr, it = viz.visit(in_expr)
+    expr = sym.apply(expr)
+    assert isinstance(expr, Expr)
+    return expr
 
 
 # Check
@@ -1499,7 +1548,6 @@ class ThornDef:
         self.name = name
         self.symmetries = Sym()
         self.base2group: Dict[str, str] = dict()
-        #self.gfs: Dict[str, Union[Indexed, IndexedBase, Symbol]] = dict()
         self.gfs: Dict[str, IndexedBase] = dict()
         self.subs: Dict[Indexed, Expr] = dict()
         self.params: Dict[str, Param] = dict()
@@ -1558,7 +1606,7 @@ class ThornDef:
         return mkSymbol(name)
 
     def add_sym(self, tens: Indexed, ix1: Idx, ix2: Idx, sgn: int = 1) -> None:
-        assert type(tens) == Indexed
+        assert type(tens) == Indexed, f"{tens}, {type(tens)}"
         base: IndexedBase = cast(IndexedBase, tens.args[0])
         i1 = -1
         i2 = -1
@@ -2013,10 +2061,60 @@ def parities(*args: Parity | int) -> TensorParity:
 if __name__ == "__main__":
     gf = ThornDef("ARR", "TST")
     B = gf.decl("B", [lc, lb])
+    gf.add_sym(B[la, lb], la, lb, 1)
     M = gf.decl("M", [la, lb])
+    gf.add_sym(M[la, lb], la, lb, -1)
+    V = gf.decl("V", [la])
+    A = gf.decl("A", [ub,la,lc])
+    gf.add_sym(A[ua,lb,lc],lb,lc,1)
+
+    ####
+    fail_expr = mkSymbol("fail_expr")
+    def testerr(gf:ThornDef, in_expr:Expr, result_expr:Expr)->None:
+        viz = IndexContractionVisitor(dict())
+        try:
+            expr, it = viz.visit(in_expr)
+            expr = gf.do_subs(expr)
+        except InvalidIndexError as iie:
+            print(iie)
+            it = IndexTracker()
+            expr = fail_expr
+        zero_expr = do_simplify(expr - result_expr)
+        if zero_expr == 0:
+            result_color : Literal['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']
+            if result_expr == fail_expr:
+                result_color = "red"
+            else:
+                result_color = "green"
+            print(colorize("success:","green"),in_expr,colorize("->","cyan"),colorize(result_expr,result_color))
+        else:
+            print(colorize("FAIL","red"))
+            print(colorize(in_expr,"yellow"))
+            print(colorize(result_expr,"cyan"))
+            print(colorize(expr,"green"))
+            print(colorize(it,"blue"))
+            raise Exception(colorize("Fail","red"))
+    testerr(gf, M[la,ub]*B[lb,uc], M[la,u0]*B[l0,uc] + M[la,u1]*B[l1,uc] + M[la,u2]*B[l2,uc])
+    testerr(gf, M[la,ua]*B[ub,lb] ,(M[l0,u0]+M[l1,u1]+M[l2,u2])*(B[u0,l0]+B[u1,l1]+B[u2,l2]))
+    testerr(gf, sqrt(M[la,ua])*B[ub,lb] ,sqrt(M[l0,u0]+M[l1,u1]+M[l2,u2])*(B[u0,l0]+B[u1,l1]+B[u2,l2]))
+    testerr(gf, M[la,ua]*(1+B[ub,lb]), (M[l0,u0]+M[l1,u1]+M[l2,u2])*(1+B[u0,l0]+B[u1,l1]+B[u2,l2]))
+    testerr(gf, M[la,ua]*B[la,ua],fail_expr)
+    testerr(gf, M[ua,lb] + 1, fail_expr)
+    testerr(gf, sqrt(V[ua]), fail_expr)
+    testerr(gf, sqrt(V[ua]*V[la]), sqrt(V[u0]*V[l0]+V[u1]*V[l1]+V[u2]*V[l2]))
+    testerr(gf, B[la,lb]*V[ua]*V[ub], B[l0,l0]*V[u0]**2 + B[l1,l1]*V[u1]**2 + B[l2,l2]*V[u2]**2 + 2*B[l0,l1]*V[u0]*V[u1] + 2*B[l1,l2]*V[u1]*V[u2] + 2*B[l0,l2]*V[u0]*V[u2])
+    testerr(gf, M[la,lb]*V[ua]*V[ub], zero)
+    testerr(gf, A[ua,lb,la]*V[ub], (A[u0, l0, l0] + A[u1, l0, l1] + A[u2, l0, l2])*V[u0] + (A[u0, l0, l1] + A[u1, l1, l1] + A[u2, l1, l2])*V[u1] + (A[u0, l0, l2] + A[u1, l1, l2] + A[u2, l2, l2])*V[u2])
+
+    #testerr(gf, div(V[la],lb)*B[ua,ub],
+    #    div(V[l0],l0)*B[u0,u0] + div(V[l1],l0)*B[u0,u1] + div(V[l2],l0)*B[u0,u2]+
+    #    div(V[l0],l1)*B[u0,u1] + div(V[l1],l1)*B[u1,u1] + div(V[l2],l1)*B[u1,u2]+
+    #    div(V[l0],l2)*B[u0,u2] + div(V[l1],l2)*B[u1,u2] + div(V[l2],l2)*B[u2,u2])
+    testerr(gf, div(A[ua, l0, l0], la), div(A[u0, l0, l0], l0)+div(A[u1, l0, l0], l1)+div(A[u2, l0, l0], l2))
+    testerr(gf, div(A[ua, la, l0], l0), div(A[u0, l0, l0], l0)+div(A[u1, l0, l1], l0)+div(A[u2, l0, l2], l0))
+    ####
 
     # Anti-Symmetric
-    gf.add_sym(M[la, lb], la, lb, -1)
 
     n = 0
     for out in gf.expand_eqn(mkEq(M[la, lb], B[la, lb])):

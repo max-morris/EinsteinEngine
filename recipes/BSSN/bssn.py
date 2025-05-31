@@ -300,18 +300,18 @@ if __name__ == "__main__":
     ###
     # State synchronization
     ###
-    state_sync = ExplicitSyncBatch(
-        vars=[gt, w, At, trK, ConfConnect, evo_lapse, evo_shift, shift_B],
-        schedule_target=poststep_group,
-        name="state_sync"
-    )
+    #state_sync = ExplicitSyncBatch(
+    #    vars=[gt, w, At, trK, ConfConnect, evo_lapse, evo_shift, shift_B],
+    #    schedule_target=poststep_group,
+    #    name="state_sync"
+    #)
 
     ###
     # Enforce algebraic constraints
     ###
     fun_bssn_enforce_pt1 = pybssn.create_function(
         "bssn_enforce_pt1",
-        poststep_group,
+        ScheduleBin.PostStep,
         schedule_after=["state_sync"],
         schedule_before=["bssn_enforce_pt2"]
     )
@@ -344,7 +344,7 @@ if __name__ == "__main__":
 
     fun_bssn_enforce_pt2 = pybssn.create_function(
         "bssn_enforce_pt2",
-        poststep_group,
+        ScheduleBin.PostStep,
         schedule_after=["fun_bssn_enforce_pt1"],
         schedule_before=["bssn2adm"]
     )
@@ -407,7 +407,7 @@ if __name__ == "__main__":
     ###
     fun_bssn2adm = pybssn.create_function(
         "bssn2adm",
-        poststep_group,
+        ScheduleBin.PostStep,
         schedule_after=["bssn_enforce_pt2"]
     )
 
@@ -759,10 +759,10 @@ if __name__ == "__main__":
             extra_schedule_blocks=[
                 initial_group,
                 rhs_group,
-                poststep_group,
+                #poststep_group,
                 analysis_group
-            ],
-            explicit_syncs=[state_sync]
+            ]#,
+            #explicit_syncs=[state_sync]
         )
     ).generate_thorn()
 
