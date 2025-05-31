@@ -1,0 +1,1279 @@
+# CarpetX Metadata
+---
+!carpetx-metadata-1.0.0
+nghostzones: [3, 3, 3]
+iteration: 1
+time: 0.023809523809523808
+delta_time: 0.023809523809523808
+ghext: !ghext-2.0.0
+  globaldata: !globaldata-1.0.0
+    arraygroupdata:
+      []
+  patchdata:
+    - !patchdata-1.0.0
+      patch: 0
+      amrcore: !amrcore-1.0.0
+        maxLevel: 0
+        finestLevel: 0
+        geometry:
+          - !geometry-1.0.0
+            prob_domain: !realbox-1.0.0 {xlo: [-1, -1, -1], xhi: [1, 1, 1]}
+            domain: !box-1.0.0 {small: [0, 0, 0], big: [20, 20, 20]}
+            is_periodic: [0, 0, 0]
+        distributionMapping:
+          - !distributionmapping-1.0.0
+            processorMap: [1, 2, 5, 3, 4, 6, 7, 0, 0]
+        boxArray:
+          - !boxarray-1.0.0
+            - !box-1.0.0 {small: [0, 0, 0], big: [20, 6, 6]}
+            - !box-1.0.0 {small: [0, 7, 0], big: [20, 13, 6]}
+            - !box-1.0.0 {small: [0, 14, 0], big: [20, 20, 6]}
+            - !box-1.0.0 {small: [0, 0, 7], big: [20, 6, 13]}
+            - !box-1.0.0 {small: [0, 7, 7], big: [20, 13, 13]}
+            - !box-1.0.0 {small: [0, 14, 7], big: [20, 20, 13]}
+            - !box-1.0.0 {small: [0, 0, 14], big: [20, 6, 20]}
+            - !box-1.0.0 {small: [0, 7, 14], big: [20, 13, 20]}
+            - !box-1.0.0 {small: [0, 14, 14], big: [20, 20, 20]}
+      leveldata:
+        - !leveldata-1.1.0
+          patch: 0
+          level: 0
+          is_subcycling_level: false
+          iteration: !rational-1.0.0 [1, 1]
+          delta_iteration: !rational-1.0.0 [1, 1]
+          fab: !fabarraybase-1.0.0
+            ixType: [0, 0, 0]
+            nGrowVect: [3, 3, 3]
+            boxArray: !boxarray-1.0.0
+              - !box-1.0.0 {small: [0, 0, 0], big: [20, 6, 6]}
+              - !box-1.0.0 {small: [0, 7, 0], big: [20, 13, 6]}
+              - !box-1.0.0 {small: [0, 14, 0], big: [20, 20, 6]}
+              - !box-1.0.0 {small: [0, 0, 7], big: [20, 6, 13]}
+              - !box-1.0.0 {small: [0, 7, 7], big: [20, 13, 13]}
+              - !box-1.0.0 {small: [0, 14, 7], big: [20, 20, 13]}
+              - !box-1.0.0 {small: [0, 0, 14], big: [20, 6, 20]}
+              - !box-1.0.0 {small: [0, 7, 14], big: [20, 13, 20]}
+              - !box-1.0.0 {small: [0, 14, 14], big: [20, 20, 20]}
+          groupdata:
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::METRIC
+                numvars: 6
+                varnames: [gxx, gxy, gxz, gyy, gyz, gzz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::CURV
+                numvars: 6
+                varnames: [kxx, kxy, kxz, kyy, kyz, kzz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::LAPSE
+                numvars: 1
+                varnames: [alp]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::DTLAPSE
+                numvars: 1
+                varnames: [dtalp]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::SHIFT
+                numvars: 3
+                varnames: [betax, betay, betaz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn2adm: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::DTSHIFT
+                numvars: 3
+                varnames: [dtbetax, dtbetay, dtbetaz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::DTCURV
+                numvars: 6
+                varnames: [dtkxx, dtkxy, dtkxz, dtkyy, dtkyz, dtkzz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::DT2LAPSE
+                numvars: 1
+                varnames: [dt2alp]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: ADMBASEX::DT2SHIFT
+                numvars: 3
+                varnames: [dt2betax, dt2betay, dt2betaz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 LinearWaveID: KerrSchildID::pybssn_kerr_schild_id_fill_id: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::AT
+                numvars: 6
+                varnames: [AtDD00, AtDD01, AtDD02, AtDD11, AtDD12, AtDD22]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::AT_ENFORCE
+                numvars: 6
+                varnames: [At_enforceDD00, At_enforceDD01, At_enforceDD02, At_enforceDD11, At_enforceDD12, At_enforceDD22]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::AT_RHS
+                numvars: 6
+                varnames: [At_rhsDD00, At_rhsDD01, At_rhsDD02, At_rhsDD11, At_rhsDD12, At_rhsDD22]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::CONFCONNECT
+                numvars: 3
+                varnames: [ConfConnectU0, ConfConnectU1, ConfConnectU2]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::CONFCONNECT_RHS
+                numvars: 3
+                varnames: [ConfConnect_rhsU0, ConfConnect_rhsU1, ConfConnect_rhsU2]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::DELTACONS
+                numvars: 3
+                varnames: [DeltaConsU0, DeltaConsU1, DeltaConsU2]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::HAMCONS
+                numvars: 1
+                varnames: [HamCons]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::MOMCONS
+                numvars: 3
+                varnames: [MomConsU0, MomConsU1, MomConsU2]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_AnalysisGroup: BSSN::bssn_cons: Mark output variables as valid"
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::EVO_LAPSE
+                numvars: 1
+                varnames: [evo_lapse]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::EVO_LAPSE_ENFORCE
+                numvars: 1
+                varnames: [evo_lapse_enforce]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::EVO_LAPSE_RHS
+                numvars: 1
+                varnames: [evo_lapse_rhs]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::EVO_SHIFT
+                numvars: 3
+                varnames: [evo_shiftU0, evo_shiftU1, evo_shiftU2]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::EVO_SHIFT_RHS
+                numvars: 3
+                varnames: [evo_shift_rhsU0, evo_shift_rhsU1, evo_shift_rhsU2]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::GT
+                numvars: 6
+                varnames: [gtDD00, gtDD01, gtDD02, gtDD11, gtDD12, gtDD22]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::GT_ENFORCE
+                numvars: 6
+                varnames: [gt_enforceDD00, gt_enforceDD01, gt_enforceDD02, gt_enforceDD11, gt_enforceDD12, gt_enforceDD22]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::GT_RHS
+                numvars: 6
+                varnames: [gt_rhsDD00, gt_rhsDD01, gt_rhsDD02, gt_rhsDD11, gt_rhsDD12, gt_rhsDD22]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::SHIFT_B
+                numvars: 3
+                varnames: [shift_BU0, shift_BU1, shift_BU2]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::SHIFT_B_RHS
+                numvars: 3
+                varnames: [shift_B_rhsU0, shift_B_rhsU1, shift_B_rhsU2]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::TRK
+                numvars: 1
+                varnames: [trK]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: Set from RHS in ODESolvers
+                        outer: "SyncGroupsByDirI after syncing: Mark outer boundaries as valid"
+                        ghosts: "SyncGroupsByDirI after syncing: Mark ghost zones as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::TRK_RHS
+                numvars: 1
+                varnames: [trK_rhs]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::W
+                numvars: 1
+                varnames: [w]
+                do_checkpoint: true
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt2: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::W_ENFORCE
+                numvars: 1
+                varnames: [w_enforce]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 BSSN_PostStepGroup: BSSN::bssn_enforce_pt1: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: BSSN::W_RHS
+                numvars: 1
+                varnames: [w_rhs]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: false, outer: false, ghosts: false}
+                      why:
+                        int: ODESolvers updated the state vector
+                        outer: ODESolvers updated the state vector
+                        ghosts: ODESolvers updated the state vector
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: CARPETXREGRID::REGRID_ERROR
+                numvars: 1
+                varnames: [regrid_error]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 0 CCTK_BASEGRID: CarpetXRegrid::CarpetXRegrid_InitError: Mark output variables as valid"
+                        outer: "CallFunction iteration 0 CCTK_BASEGRID: CarpetXRegrid::CarpetXRegrid_InitError: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 0 CCTK_BASEGRID: CarpetXRegrid::CarpetXRegrid_InitError: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [1, 1, 1]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: TESTBSSN::HAMCONSTEST
+                numvars: 1
+                varnames: [HamConsTest]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 CCTK_ANALYSIS: TestBSSN::pybssn_test_bssn: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 CCTK_ANALYSIS: TestBSSN::pybssn_test_bssn: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 CCTK_ANALYSIS: TestBSSN::pybssn_test_bssn: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: TMUNUBASEX::ETTT
+                numvars: 1
+                varnames: [eTtt]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: TMUNUBASEX::ETTI
+                numvars: 3
+                varnames: [eTtx, eTty, eTtz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[-1, 1, 1], [1, -1, 1], [1, 1, -1]]
+              fluxes: ["", "", ""]
+            - !groupdata-1.1.0
+              commongroupdata: !commongroupdata-1.0.0
+                groupname: TMUNUBASEX::ETIJ
+                numvars: 6
+                varnames: [eTxx, eTxy, eTxz, eTyy, eTyz, eTzz]
+                do_checkpoint: false
+                do_restrict: true
+                valid:
+                  -
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                    - !why_valid-1.0.0
+                      valid: !valid-1.0.0 {int: true, outer: true, ghosts: true}
+                      why:
+                        int: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        outer: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+                        ghosts: "CallFunction iteration 1 TmunuBaseX_SetTmunuVars: TmunuBaseX::TmunuBaseX_ZeroTmunu: Mark output variables as valid"
+              patch: 0
+              level: 0
+              indextype: [0, 0, 0]
+              nghostzones: [3, 3, 3]
+              parities: [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, 1], [1, -1, -1], [1, 1, 1]]
+              fluxes: ["", "", ""]
+...
