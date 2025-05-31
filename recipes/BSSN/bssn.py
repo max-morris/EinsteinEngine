@@ -278,16 +278,6 @@ if __name__ == "__main__":
         description=String("BSSN equations RHS computation"),
     )
 
-    # Post-step
-    poststep_group = ScheduleBlock(
-        group_or_function=GroupOrFunction.Group,
-        name=Identifier("BSSN_PostStepGroup"),
-        at_or_in=AtOrIn.In,
-        schedule_bin=Identifier("ODESolvers_PostStep"),
-        before=[Identifier("ADMBaseX_SetADMVars")],
-        description=String("BSSN post time step routines")
-    )
-
     # Analysis
     analysis_group = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
@@ -296,15 +286,6 @@ if __name__ == "__main__":
         schedule_bin=Identifier("analysis"),
         description=String("BSSN analysis routones"),
     )
-
-    ###
-    # State synchronization
-    ###
-    #state_sync = ExplicitSyncBatch(
-    #    vars=[gt, w, At, trK, ConfConnect, evo_lapse, evo_shift, shift_B],
-    #    schedule_target=poststep_group,
-    #    name="state_sync"
-    #)
 
     ###
     # Enforce algebraic constraints
@@ -759,7 +740,6 @@ if __name__ == "__main__":
             extra_schedule_blocks=[
                 initial_group,
                 rhs_group,
-                #poststep_group,
                 analysis_group
             ]#,
             #explicit_syncs=[state_sync]
