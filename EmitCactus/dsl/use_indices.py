@@ -1811,11 +1811,8 @@ class ThornDef:
         group_name: str
         sym: List[Tuple[Idx,Idx,int]]
 
-    def get_state(self)->List[IndexedBase]:
-        result : List[IndexedBase] = list()
-        for k in self.rhs:
-            result.append(self.gfs[k])
-        return result
+    def get_state(self) -> List[IndexedBase]:
+        return [self.gfs[k] for k in self.rhs]
 
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
         if (rhs := kwargs.get('rhs', None)) is not None:

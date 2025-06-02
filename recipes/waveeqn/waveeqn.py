@@ -115,7 +115,7 @@ CppCarpetXWizard(
     gf,
     CppCarpetXGenerator(
         gf,
-        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
-        extra_schedule_blocks=[ check_zero ]
+        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        extra_schedule_blocks=[check_zero]
     )
 ).generate_thorn()

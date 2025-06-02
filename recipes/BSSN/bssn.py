@@ -735,13 +735,12 @@ CppCarpetXWizard(
     CppCarpetXGenerator(
         pybssn,
         # TODO: Custom RHS group not ignored
-        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        interior_sync_mode=InteriorSyncMode.MixedRhs,
         extra_schedule_blocks=[
             initial_group,
             rhs_group,
             analysis_group
-        ]#,
-        #explicit_syncs=[state_sync]
+        ]
     )
 ).generate_thorn()
 
