@@ -27,24 +27,24 @@ if __name__ == "__main__":
     ###
     # Variables
     g = pybssn_linear_wave_id.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(g[li, lj], subst_tensor_xyz)
 
     k = pybssn_linear_wave_id.decl("k", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(k[li, lj], subst_tensor_xyz)
 
     alp = pybssn_linear_wave_id.decl("alp", [], from_thorn="ADMBaseX")
 
     beta = pybssn_linear_wave_id.decl("beta", [ua], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(beta[ua], subst_tensor_xyz)
 
     # First derivatives
     dtalp = pybssn_linear_wave_id.decl("dtalp", [], from_thorn="ADMBaseX")
 
     dtbeta = pybssn_linear_wave_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(dtbeta[ua], subst_tensor_xyz)
 
     dtk = pybssn_linear_wave_id.decl("dtk", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(dtk[la, lb], subst_tensor_xyz)
 
     # Second derivatives
     dt2alp = pybssn_linear_wave_id.decl("dt2alp", [], from_thorn="ADMBaseX")
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         [ua],
         from_thorn="ADMBaseX"
     )
-    pybssn_linear_wave_id.mk_subst(dt2beta[ua], mksymbol_for_tensor_xyz)
+    pybssn_linear_wave_id.add_substitution_rule(dt2beta[ua], subst_tensor_xyz)
 
     ###
     # Groups

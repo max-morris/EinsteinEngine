@@ -80,18 +80,10 @@ parity_sym2ten = parities(+1,+1,+1,  -1,-1,+1,  -1,+1,-1,  +1,+1,+1,  +1,-1,-1, 
 # ADMBaseX vars.
 ###
 g = pybssn.decl("g", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-pybssn.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
-
 k = pybssn.decl("k", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-pybssn.mk_subst(k[la, lb], mksymbol_for_tensor_xyz)
-
 alp = pybssn.decl("alp", [], from_thorn="ADMBaseX")
-
 beta = pybssn.decl("beta", [ua], from_thorn="ADMBaseX")
-pybssn.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
-
 dtbeta = pybssn.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-pybssn.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
 ###
 # Evolved Gauge Vars.
@@ -210,50 +202,50 @@ cdphi2 = pybssn.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 g_mat = pybssn.get_matrix(g[la, lb])
 g_imat = do_inv(g_mat)
 detg = do_det(g_mat)
-pybssn.mk_subst(g[ua, ub], g_imat)
+pybssn.add_substitution_rule(g[ua, ub], g_imat)
 
-pybssn.mk_subst(gt_rhs[la, lb])
-pybssn.mk_subst(gt[la, lb])
+pybssn.add_substitution_rule(gt_rhs[la, lb])
+pybssn.add_substitution_rule(gt[la, lb])
 
 gt_mat = pybssn.get_matrix(gt[la, lb])
 detgt = do_det(gt_mat)
 gt_imat = do_inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
-pybssn.mk_subst(gt[ua, ub], gt_imat)
+pybssn.add_substitution_rule(gt[ua, ub], gt_imat)
 
-pybssn.mk_subst(At[la, lb])
-pybssn.mk_subst(At_rhs[la, lb])
-pybssn.mk_subst(At[ua, ub])
-pybssn.mk_subst(At[ua, lb])
+pybssn.add_substitution_rule(At[la, lb])
+pybssn.add_substitution_rule(At_rhs[la, lb])
+pybssn.add_substitution_rule(At[ua, ub])
+pybssn.add_substitution_rule(At[ua, lb])
 
-pybssn.mk_subst(ConfConnect[ua])
-pybssn.mk_subst(ConfConnect_rhs[ua])
+pybssn.add_substitution_rule(ConfConnect[ua])
+pybssn.add_substitution_rule(ConfConnect_rhs[ua])
 
-pybssn.mk_subst(evo_shift[ua])
-pybssn.mk_subst(evo_shift_rhs[ua])
+pybssn.add_substitution_rule(evo_shift[ua])
+pybssn.add_substitution_rule(evo_shift_rhs[ua])
 
-pybssn.mk_subst(shift_B[ua])
-pybssn.mk_subst(shift_B_rhs[ua])
+pybssn.add_substitution_rule(shift_B[ua])
+pybssn.add_substitution_rule(shift_B_rhs[ua])
 
-pybssn.mk_subst(MomCons[ua])
-pybssn.mk_subst(DeltaCons[ua])
+pybssn.add_substitution_rule(MomCons[ua])
+pybssn.add_substitution_rule(DeltaCons[ua])
 
-pybssn.mk_subst(Gammat[la, lb, lc])
-pybssn.mk_subst(Gammat[ua, lb, lc])
-pybssn.mk_subst(Gammat[la, lb, uc])
-pybssn.mk_subst(Delta[ua])
-pybssn.mk_subst(ConfConnect_rhs_tmp[ua])
+pybssn.add_substitution_rule(Gammat[la, lb, lc])
+pybssn.add_substitution_rule(Gammat[ua, lb, lc])
+pybssn.add_substitution_rule(Gammat[la, lb, uc])
+pybssn.add_substitution_rule(Delta[ua])
+pybssn.add_substitution_rule(ConfConnect_rhs_tmp[ua])
 
-pybssn.mk_subst(Rt[la, lb])
-pybssn.mk_subst(RPhi[la, lb])
-pybssn.mk_subst(R[la, lb])
+pybssn.add_substitution_rule(Rt[la, lb])
+pybssn.add_substitution_rule(RPhi[la, lb])
+pybssn.add_substitution_rule(R[la, lb])
 
-pybssn.mk_subst(Ats[li, lj])
+pybssn.add_substitution_rule(Ats[li, lj])
 
-pybssn.mk_subst(cdphi[li])
-pybssn.mk_subst(cdphi2[li, lj])
+pybssn.add_substitution_rule(cdphi[li])
+pybssn.add_substitution_rule(cdphi2[li, lj])
 
-pybssn.mk_subst(gt_enforce[li, lj])
-pybssn.mk_subst(At_enforce[li, lj])
+pybssn.add_substitution_rule(gt_enforce[li, lj])
+pybssn.add_substitution_rule(At_enforce[li, lj])
 
 ###
 # Aux. groups
