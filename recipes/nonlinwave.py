@@ -4,7 +4,7 @@ if __name__ == "__main__":
     """
 
     from EmitCactus import *
-    from sympy import Expr, Idx, sin
+    from sympy import Expr, Idx, sin, Indexed
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 
@@ -13,7 +13,7 @@ if __name__ == "__main__":
     cfu.verbose = True
 
 
-    def flat_metric(out: Expr, i:int, j:int) -> Expr:
+    def flat_metric(_: Indexed, i: int, j: int) -> Expr:
         if i == 2 or j == 2:
             return do_sympify(0)
         elif i == j:
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     u = gf.decl("u", [], centering=Centering.VVC, rhs=u_t)
 
     # Declare the metric
-    g = gf.decl("g", [li, lj], symmetries=[(li, lj)])
+    g = gf.decl("g", [li, lj], symmetries=[(li, lj)], substitution_rule=flat_metric)
 
     # Declare params
     spd = gf.add_param("spd", default=1.0, desc="The wave speed")
@@ -44,8 +44,7 @@ if __name__ == "__main__":
     ky = gf.add_param("ky", default=pi / 20, desc="The wave number in the y-direction")
 
     # Fill in values
-    gf.mk_subst(g[li, lj], flat_metric)
-    gf.mk_subst(g[ui, uj], flat_metric)
+    gf.add_substitution_rule(g[ui, uj], flat_metric)
 
     x, y, z = gf.mk_coords()
 

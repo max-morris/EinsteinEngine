@@ -20,15 +20,12 @@ if __name__ == '__main__':
     G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)])
     Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 
-    gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
-
     gmat = gf.get_matrix(g[la, lb])
     imat = do_inv(gmat)
-    gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(D(g[la, lb], lc))  # D(g[l0,l1],l2) -> gDD01_dD2
-    gf.mk_subst(D(g[ua, ub], lc))
-    gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
-    gf.mk_subst(G[ud, lb, lc])  # , g[ud,ua]*G[la, lb, lc])
+    gf.add_substitution_rule(g[ua, ub], imat)
+    gf.add_substitution_rule(D(g[la, lb], lc))  # D(g[l0,l1],l2) -> gDD01_dD2
+    gf.add_substitution_rule(D(g[ua, ub], lc))
+    gf.add_substitution_rule(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
 
     fun = gf.create_function("setAff", ScheduleBin.Analysis)
 
