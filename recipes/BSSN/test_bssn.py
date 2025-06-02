@@ -48,6 +48,6 @@ if __name__ == "__main__":
         pybssn_test_bssn,
         CppCarpetXGenerator(
             pybssn_test_bssn,
-            interior_sync_mode=InteriorSyncMode.Never
+            interior_sync_mode=InteriorSyncMode.HandsOff
         )
     ).generate_thorn()
