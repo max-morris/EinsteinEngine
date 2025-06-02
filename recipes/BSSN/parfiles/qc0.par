@@ -1,0 +1,284 @@
+# Settings
+#################################
+$itlast             = 1000000000
+$final_time         = 200
+$max_runtime        = 23 * 60 # In minutes
+
+$xmin               = -120.0
+$xmax               = +120.0
+
+$ncells             = 120
+$nlevels            = 7
+
+$time_stepper       = "RK4"
+$dtfac              = 0.25
+$error_threshold    = 0.9
+
+$out_every          = 64
+$wave_extract_every = $out_every
+$ah_every           = $out_every
+#################################
+
+ActiveThorns = "
+  ADMBaseX
+  AEILocalInterp
+  AHFinderDirect
+  BoxInBox
+  BSSN
+  CarpetX
+  CoordinatesX
+  IOUtil
+  Multipole
+  ODESolvers
+  PunctureTracker
+  SphericalSurface
+  TimerReport
+  TmunuBaseX
+  TwoPuncturesX
+  WeylScal4
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "mixed-error"
+CarpetX::verbose                 = no
+CarpetX::poison_undefined_values = no
+
+# Run Termination
+Cactus::terminate       = "any"
+Cactus::max_runtime     = $max_runtime
+Cactus::cctk_final_time = $final_time
+Cactus::cctk_itlast     = $itlast
+
+# Grid setup
+CarpetX::xmin                = $xmin
+CarpetX::ymin                = $xmin
+CarpetX::zmin                = $xmin
+CarpetX::xmax                = $xmax
+CarpetX::ymax                = $xmax
+CarpetX::zmax                = $xmax
+CarpetX::ncells_x            = $ncells
+CarpetX::ncells_y            = $ncells
+CarpetX::ncells_z            = $ncells
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 3
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::boundary_x       = "linear extrapolation"
+CarpetX::boundary_y       = "linear extrapolation"
+CarpetX::boundary_z       = "linear extrapolation"
+CarpetX::boundary_upper_x = "linear extrapolation"
+CarpetX::boundary_upper_y = "linear extrapolation"
+CarpetX::boundary_upper_z = "linear extrapolation"
+
+# Mesh refinement
+CarpetX::max_num_levels         = $nlevels
+CarpetX::regrid_every           = 128
+CarpetX::regrid_error_threshold = $error_threshold
+
+BoxInBox::num_regions  = 2
+
+# Region 1
+BoxInBox::shape_1      = "cube"
+BoxInBox::num_levels_1 = $nlevels
+BoxInBox::position_x_1 = +1.168642873
+BoxInBox::radius_1     = [-1., 64., 16., 8., 4., 2., 1.]
+
+# Region 2
+BoxInBox::shape_2      = "cube"
+BoxInBox::num_levels_2 = $nlevels
+BoxInBox::position_x_2 = -1.168642873
+BoxInBox::radius_2     = [-1., 64., 16., 8., 4., 2., 1.]
+
+# Initial data
+ADMBaseX::initial_data           = "TwoPunctures"
+ADMBaseX::initial_lapse          = "TwoPunctures-averaged"
+TwoPuncturesX::verbose           = yes
+TwoPuncturesX::par_b             = 1.168642873
+TwoPuncturesX::par_m_plus        = 0.453
+TwoPuncturesX::par_m_minus       = 0.453
+TwoPuncturesX::par_P_plus [1]    = +0.3331917498
+TwoPuncturesX::par_P_minus[1]    = -0.3331917498
+TwoPuncturesX::grid_setup_method = "evaluation"
+TwoPuncturesX::TP_epsilon        = 1.0e-2
+TwoPuncturesX::TP_Tiny           = 1.0e-2
+
+# Time Integration
+CarpetX::dtfac         = $dtfac
+ODESolvers::verbose    = yes
+ODESolvers::method     = $time_stepper
+
+# Spacetime evolution
+BSSN::eta_B                  = 1.0
+BSSN::conformal_factor_floor = 1.0e-10
+BSSN::evolved_lapse_floor    = 1.0e-10
+BSSN::dissipation_epsilon    = 0.2
+
+# Spherical surfaces
+SphericalSurface::nsurfaces = 5
+SphericalSurface::maxntheta = 39
+SphericalSurface::maxnphi   = 76
+SphericalSurface::verbose   = no
+
+# Surfaces 0 and 1 are used by PunctureTracker
+
+# Tracker 1
+SphericalSurface::ntheta      [0] = 39
+SphericalSurface::nphi        [0] = 76
+SphericalSurface::nghoststheta[0] = 2
+SphericalSurface::nghostsphi  [0] = 2
+
+# Tracker 2
+SphericalSurface::ntheta      [1] = 39
+SphericalSurface::nphi        [1] = 76
+SphericalSurface::nghoststheta[1] = 2
+SphericalSurface::nghostsphi  [1] = 2
+
+# Surfaces 2, 3, 4 are used by AHFinderDirect and QuasiLocalMeasures
+# Horizon 1
+SphericalSurface::ntheta       [2] = 39
+SphericalSurface::nphi         [2] = 76
+SphericalSurface::nghoststheta [2] = 2
+SphericalSurface::nghostsphi   [2] = 2
+
+# Horizon 2
+SphericalSurface::ntheta      [3] = 39
+SphericalSurface::nphi        [3] = 76
+SphericalSurface::nghoststheta[3] = 2
+SphericalSurface::nghostsphi  [3] = 2
+ 
+# Horizon 3
+SphericalSurface::ntheta      [4] = 39
+SphericalSurface::nphi        [4] = 76
+SphericalSurface::nghoststheta[4] = 2
+SphericalSurface::nghostsphi  [4] = 2
+
+# Puncture tracking 
+PunctureTracker::verbose       = no
+PunctureTracker::track_boxes   = yes
+PunctureTracker::interp_order  = 3
+PunctureTracker::track     [0] = yes
+PunctureTracker::initial_x [0] = +1.168642873
+PunctureTracker::track     [1] = yes
+PunctureTracker::initial_x [1] = -1.168642873
+
+# Apparent horizons
+AHFinderDirect::find_every                         = $ah_every 
+AHFinderDirect::verbose_level                      = "physics details"
+AHFinderDirect::output_BH_diagnostics              = "true"
+AHFinderDirect::run_at_CCTK_POST_RECOVER_VARIABLES = no 
+AHFinderDirect::output_h_every                     = $ah_every 
+ 
+AHFinderDirect::max_Newton_iterations__initial           = 50
+AHFinderDirect::max_Newton_iterations__subsequent        = 50
+AHFinderDirect::max_allowable_Theta_growth_iterations    = 10
+AHFinderDirect::max_allowable_Theta_nonshrink_iterations = 10
+AHFinderDirect::geometry_interpolator_name               = "CarpetX"
+AHFinderDirect::geometry_interpolator_pars                = "order=3 boundary_off_centering_tolerance={1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10} boundary_extrapolation_tolerance={0.0 0.0 0.0 0.0 0.0 0.0}"
+AHFinderDirect::surface_interpolator_name                 = "Lagrange polynomial interpolation"
+AHFinderDirect::surface_interpolator_pars                 = "order=3"
+ 
+AHFinderDirect::move_origins            = yes 
+AHFinderDirect::reshape_while_moving    = yes 
+AHFinderDirect::predict_origin_movement = yes 
+ 
+AHFinderDirect::N_horizons = 3
+ 
+AHFinderDirect::origin_x                             [1] = +1.168642873
+AHFinderDirect::origin_y                             [1] = 0
+AHFinderDirect::origin_z                             [1] = 0
+AHFinderDirect::initial_guess_method                 [1] = "coordinate sphere"
+AHFinderDirect::initial_guess__coord_sphere__x_center[1] = +1.168642873
+AHFinderDirect::initial_guess__coord_sphere__y_center[1] = 0
+AHFinderDirect::initial_guess__coord_sphere__z_center[1] = 0
+AHFinderDirect::initial_guess__coord_sphere__radius  [1] = 0.25
+AHFinderDirect::which_surface_to_store_info          [1] = 2 
+AHFinderDirect::set_mask_for_individual_horizon      [1] = no
+AHFinderDirect::reset_horizon_after_not_finding      [1] = no
+AHFinderDirect::dont_find_after_individual_time      [1] = 30.0 
+ 
+AHFinderDirect::origin_x                             [2] = -1.168642873
+AHFinderDirect::origin_y                             [2] = 0
+AHFinderDirect::origin_z                             [2] = 0
+AHFinderDirect::initial_guess_method                 [2] = "coordinate sphere"
+AHFinderDirect::initial_guess__coord_sphere__x_center[2] = -1.168642873
+AHFinderDirect::initial_guess__coord_sphere__y_center[2] = 0
+AHFinderDirect::initial_guess__coord_sphere__z_center[2] = 0
+AHFinderDirect::initial_guess__coord_sphere__radius  [2] =  0.25
+AHFinderDirect::which_surface_to_store_info          [2] = 3 
+AHFinderDirect::reset_horizon_after_not_finding      [2] = no
+AHFinderDirect::dont_find_after_individual_time      [2] = 30.0
+ 
+AHFinderDirect::origin_x                             [3] = 0.0
+AHFinderDirect::origin_y                             [3] = 0
+AHFinderDirect::origin_z                             [3] = 0
+AHFinderDirect::initial_guess_method                 [3] = "coordinate sphere"
+AHFinderDirect::initial_guess__coord_sphere__x_center[3] = 0.0
+AHFinderDirect::initial_guess__coord_sphere__y_center[3] = 0
+AHFinderDirect::initial_guess__coord_sphere__z_center[3] = 0
+AHFinderDirect::initial_guess__coord_sphere__radius  [3] = 0.6 
+AHFinderDirect::which_surface_to_store_info          [3] = 4 
+AHFinderDirect::find_after_individual_time           [3] = 0.0
+
+# Wave extraction
+WeylScal4::WeylScal4_psi4_calc_4th_calc_every = $wave_extract_every 
+Multipole::verbose   = no
+Multipole::nradii    = 8
+Multipole::radius[0] = 15
+Multipole::radius[1] = 30
+Multipole::radius[2] = 40
+Multipole::radius[3] = 50
+Multipole::radius[4] = 60
+Multipole::radius[5] = 70
+Multipole::radius[6] = 80
+Multipole::radius[7] = 90
+Multipole::ntheta    = 120
+Multipole::nphi      = 240
+Multipole::variables = "
+  WeylScal4::Psi4r{sw=-2 cmplx='WeylScal4::Psi4i' name='Psi4'}
+"
+Multipole::out_every         = $wave_extract_every
+Multipole::l_max             = 4
+Multipole::interpolator_pars = "order=3"
+
+# Checkpoint and recovery
+IO::out_dir                         = $parfile
+IO::out_every                       = $out_every
+IO::parfile_write                   = no
+IO::checkpoint_dir                  = "checkpoints_$parfile"
+IO::recover_dir                     = "checkpoints_$parfile"
+IO::checkpoint_ID                   = no
+IO::checkpoint_every_walltime_hours = 6
+IO::checkpoint_on_terminate         = yes
+IO::recover                         = "autoprobe"
+CarpetX::checkpoint_method          = "openpmd"
+CarpetX::recover_method             = "openpmd"
+
+# Output
+TimerReport::out_every                  = $out_every
+TimerReport::out_filename               = "TimerReport"
+TimerReport::n_top_timers               = 200
+TImerReport::output_all_timers          = yes
+TimerReport::output_all_timers_readable = yes
+TimerReport::output_all_timers_together = yes
+TimerReport::output_schedule_timers     = yes
+
+# Norm and reduction output
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = "all"
+
+# 1D output
+CarpetX::out_tsv_vars = "
+  PunctureTracker::pt_loc
+  PunctureTracker::pt_vel
+"
+
+# 3D output
+CarpetX::out_silo_vars = "
+  ADMBaseX::lapse
+  WeylScal4::Psi4r
+  WeylScal4::Psi4i
+"
+

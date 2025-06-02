@@ -1,32 +1,26 @@
 from EmitCactus import *
-from sympy import MatrixBase
 
 # Create a set of grid functions
 gf = ThornDef("TestEmitCactus", "Ricci")
-gf.set_div_stencil(5)
+gf.set_derivative_stencil(5)
 
 a = gf.add_param("a", default=10.0, desc="Just a constant")
 b = gf.add_param("b", default=0.2, desc="Just a constant")
 c = gf.add_param("c", default=0.1, desc="Just a constant")
 
 # Declare gfs
-g = gf.decl("g", [li, lj], from_thorn="ADMBaseX")
+g = gf.decl("g", [li, lj], sym=[(li, lj, 1)], from_thorn="ADMBaseX")
 x,y,z = gf.mk_coords()
 
-Ric = gf.decl("Ric", [la, lb])
+Ric = gf.decl("Ric", [la, lb], sym=[(la, lb, 1)])
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
-G = gf.decl("Affine", [ua, lb, lc])
-
-gf.add_sym(g[li, lj], li, lj)
-gf.add_sym(Ric[li, lj], li, lj)
-gf.add_sym(ZeroVal[li, lj], li, lj) # this is an error
+G = gf.decl("Affine", [ua, lb, lc], sym=[(lb, lc, 1)])
 
 gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 gmat = gf.get_matrix(g[la,lb])
 print(gmat)
-imat = do_simplify(do_inv(gmat)*do_det(gmat)) #*idetg
+imat = do_simplify(do_inv(gmat)*do_det(gmat)) 
 gf.mk_subst(g[ua, ub], imat)
-gf.mk_subst(ZeroVal[li,lj])
 gf.mk_subst(Ric[li,lj])
 
 # Metric
@@ -41,24 +35,17 @@ gmat = mkMatrix([
 assert do_det(gmat) == 1
 
 # Define the affine connections
-gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la))/2)
+gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la))/2)
 gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
 
 gf.mk_subst(Ric[la, lb])
-# Check on this?
-#gf.mk_subst(div(g[la, lb], lc), gmat.applyfunc(lambda x : div(x, lc)))
-#gf.mk_subst(div(g[la, lb], lc, ld), gmat.applyfunc(lambda x : div(x, lc, ld)))
 
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
 
 fun.add_eqn(Ric[li, lj],
-             div(G[ua, li, lj], la) - div(G[ua, la, li], lj) +
+             D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
              G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
-#x, y, z = gf.mk_coords()
-
-#fun = gf.create_function("setGL", ScheduleBin.Analysis)
-#fun.add_eqn(Ric[la,lb], RicVal[la,lb])
 fun.bake()
 
 fun = gf.create_function("MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
@@ -78,4 +65,9 @@ check_zero = ScheduleBlock(
     after=[Identifier('RicZero')]
 )
 
-CppCarpetXWizard(gf, CppCarpetXGenerator(gf, extra_schedule_blocks=[check_zero])).generate_thorn()
+CppCarpetXWizard(gf,
+    CppCarpetXGenerator(gf,
+        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        extra_schedule_blocks=[check_zero]
+    )
+).generate_thorn()

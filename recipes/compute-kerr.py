@@ -10,13 +10,9 @@ if __name__ == "__main__":
     gf = ThornDef("TestKerr", "Kerr")
 
     # Declare gfs
-    g = gf.decl("g", [li, lj], centering=Centering.VVC)
-    G = gf.decl("Affine", [ua, lb, lc], centering=Centering.VVC)
-    Ric = gf.decl("Ric", [la, lb], centering=Centering.VVC)
-
-    gf.add_sym(g[li, lj], li, lj)
-    gf.add_sym(Ric[li, lj], li, lj)
-    gf.add_sym(G[ua, lb, lc], lb, lc)
+    g = gf.decl("g", [li, lj], sym=[(li,lj,1)], centering=Centering.VVC)
+    G = gf.decl("Affine", [ua, lb, lc], sym=[(lb,lc,1)], centering=Centering.VVC)
+    Ric = gf.decl("Ric", [la, lb], sym=[(la,lb,1)], centering=Centering.VVC)
 
     spin = False
     a: Expr
@@ -47,10 +43,10 @@ if __name__ == "__main__":
     gf.mk_subst(g[la, lb], gmat)
     imat = do_inv(gmat)
     gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(G[la, lb, lc], (div(g[la, lb], lc) + div(g[la, lc], lb) - div(g[lb, lc], la)) / 2)
+    gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
     gf.mk_subst(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
     gf.mk_subst(Ric[li, lj],
-                div(G[ua, li, lj], la) - div(G[ua, la, li], lj) +
+                D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
                 G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
     for i in range(4):

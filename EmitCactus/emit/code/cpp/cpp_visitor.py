@@ -131,6 +131,8 @@ class CppVisitor(Visitor[CodeNode]):
     def _(self, n: FunctionCall) -> str:
         fn_name = self.visit(n.name)
         fn_args = ",".join(visit_each(self, n.args))
+        if fn_name == "noop":
+            return f'({fn_args})'
 
         if len(n.template_args) == 0:
             return f'{fn_name}({fn_args})'

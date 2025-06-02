@@ -1,11 +1,12 @@
 import typing
-from typing import Optional, List, Set, Tuple
-from typing_extensions import Unpack
+from typing import Optional, List, Set, Tuple, Collection
 
 import sympy as sy
+from typing_extensions import Unpack
 
+from EmitCactus.dsl.carpetx import ExplicitSyncBatch
 from EmitCactus.dsl.eqnlist import TemporaryReplacement
-from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin
+from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
     VariableSection
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
@@ -24,14 +25,16 @@ from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.util import OrderedSet
 
 
+class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
+    explicit_syncs: Collection[ExplicitSyncBatch]
+
+
 class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
                                                "cmath", "tuple"]]
-
     boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
-
     boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     # TODO: We want to be able to
@@ -41,20 +44,14 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
-        #define noop(OP) (OP)
-        // 1st derivatives
-        #define divx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) - GF(p.mask, GF ## _layout, p.I - p.DI[0]))/(2*CCTK_DELTA_SPACE(0))
-        #define divy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) - GF(p.mask, GF ## _layout, p.I - p.DI[1]))/(2*CCTK_DELTA_SPACE(1))
-        #define divz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) - GF(p.mask, GF ## _layout, p.I - p.DI[2]))/(2*CCTK_DELTA_SPACE(2))
-        // 2nd derivatives
-        #define divxx(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[0]) + GF(p.mask, GF ## _layout, p.I - p.DI[0]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(0)*CCTK_DELTA_SPACE(0))
-        #define divyy(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[1]) + GF(p.mask, GF ## _layout, p.I - p.DI[1]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(1)*CCTK_DELTA_SPACE(1))
-        #define divzz(GF) (GF(p.mask, GF ## _layout, p.I + p.DI[2]) + GF(p.mask, GF ## _layout, p.I - p.DI[2]) - 2*GF(p.mask, GF ## _layout, p.I))/(CCTK_DELTA_SPACE(2)*CCTK_DELTA_SPACE(2))
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
+        #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
-    def __init__(self, thorn_def: ThornDef, **options: Unpack[CactusGeneratorOptions]) -> None:
-        super().__init__(thorn_def, **options)
+    options: CppCarpetXGeneratorOptions
+
+    def __init__(self, thorn_def: ThornDef, **options: Unpack[CppCarpetXGeneratorOptions]) -> None:
+        super().__init__(thorn_def, options)
 
         unbaked_fns = {name for name, fn in thorn_def.thorn_functions.items() if not fn.been_baked}
         if len(unbaked_fns) > 0:
@@ -65,8 +62,14 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
+    def get_sync_batch_fn_src_file_name(self, which: ExplicitSyncBatch) -> str:
+        return f'{self.thorn_def.name}_{which.name}.cpp'
+
     def generate_makefile(self) -> str:
         srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
+
+        for sync_batch in self.options.get('explicit_syncs', list()):
+            srcs.append(self.get_sync_batch_fn_src_file_name(sync_batch))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -83,30 +86,7 @@ class CppCarpetXGenerator(CactusGenerator):
             ]))
 
         for fn_name, fn in self.thorn_def.thorn_functions.items():
-            schedule_bin: Identifier
-            at_or_in: AtOrIn
-
-            if isinstance(fn.schedule_target, ScheduleBlock):
-                schedule_bin = fn.schedule_target.name
-                at_or_in = AtOrIn.In
-            else:
-                assert isinstance(fn.schedule_target, ScheduleBin)
-                at_or_in = AtOrIn.At if fn.schedule_target.is_builtin else AtOrIn.In
-
-                if fn.schedule_target is ScheduleBin.Init:
-                    schedule_bin = Identifier('initial')
-                elif fn.schedule_target is ScheduleBin.Analysis:
-                    schedule_bin = Identifier('analysis')
-                elif fn.schedule_target is ScheduleBin.EstimateError:
-                    schedule_bin = Identifier('ODESolvers_EstimateError')
-                elif fn.schedule_target is ScheduleBin.Evolve:
-                    schedule_bin = Identifier('ODESolvers_RHS')
-                elif fn.schedule_target is ScheduleBin.DriverInit:
-                    schedule_bin = Identifier('ODESolvers_Initial')
-                elif fn.schedule_target is ScheduleBin.PostStep:
-                    schedule_bin = Identifier('ODESolvers_PostStep')
-                else:
-                    raise NotImplementedError(f'Bad ScheduleBin enum member {fn.schedule_target}')
+            schedule_bin, at_or_in = self._resolve_schedule_target(fn.schedule_target)
 
             reads: list[Intent] = list()
             writes: list[Intent] = list()
@@ -137,14 +117,14 @@ class CppCarpetXGenerator(CactusGenerator):
                     ):
                         # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
                         # assert var_name in self.thorn_def.var2base
-                        syncs.add(Identifier(self.thorn_def.var2base.get(var_name, var_name)))
+                        syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
                 at_or_in=at_or_in,
                 schedule_bin=schedule_bin,
-                description=String(fn_name),
+                description=String(f'Function `{fn_name}` generated by EmitCactus.'),
                 lang=Language.C,
                 reads=reads,
                 writes=writes,
@@ -157,10 +137,67 @@ class CppCarpetXGenerator(CactusGenerator):
             for block in self.options['extra_schedule_blocks']:
                 schedule_blocks.append(block)
 
+        if self.options.get('interior_sync_mode',InteriorSyncMode.Never) is InteriorSyncMode.IgnoreRhs:
+            new_explicit_syncs:List[ExplicitSyncBatch] = list(self.options.get('explicit_syncs', list()))
+            new_explicit_syncs.append(
+                ExplicitSyncBatch(
+                    vars=self.thorn_def.get_state(),
+                    schedule_target=ScheduleBin.PostStep,
+                    name="state_sync"
+                )
+            )
+            self.options['explicit_syncs'] = new_explicit_syncs
+
+        if (sync_batch_items := self.options.get('explicit_syncs', None)) is not None:
+            for sync_batch in sync_batch_items:
+                schedule_bin, at_or_in = self._resolve_schedule_target(sync_batch.schedule_target)
+                var_names = [str(v) for v in sync_batch.vars]
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(sync_batch.name),
+                    at_or_in=at_or_in,
+                    schedule_bin=schedule_bin,
+                    description=String(f'Empty function for explicitly SYNCing state variables. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    sync=[Identifier(self._get_qualified_group_name_from_var_name(var_name)) for var_name in var_names],
+                    before=[Identifier(s) for s in sync_batch.schedule_before],
+                    after=[Identifier(s) for s in sync_batch.schedule_after]
+                ))
+
         return ScheduleRoot(
             storage_section=StorageSection(storage_lines),
             schedule_section=ScheduleSection(schedule_blocks)
         )
+
+    @staticmethod
+    def _resolve_schedule_target(schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
+        schedule_bin: Identifier
+        at_or_in: AtOrIn
+
+        if isinstance(schedule_target, ScheduleBlock):
+            schedule_bin = schedule_target.name
+            at_or_in = AtOrIn.In
+        else:
+            assert isinstance(schedule_target, ScheduleBin)
+            at_or_in = AtOrIn.At if schedule_target.is_builtin else AtOrIn.In
+
+            if schedule_target is ScheduleBin.Init:
+                schedule_bin = Identifier('initial')
+            elif schedule_target is ScheduleBin.Analysis:
+                schedule_bin = Identifier('analysis')
+            elif schedule_target is ScheduleBin.EstimateError:
+                schedule_bin = Identifier('ODESolvers_EstimateError')
+            elif schedule_target is ScheduleBin.Evolve:
+                schedule_bin = Identifier('ODESolvers_RHS')
+            elif schedule_target is ScheduleBin.DriverInit:
+                schedule_bin = Identifier('ODESolvers_Initial')
+            elif schedule_target is ScheduleBin.PostStep:
+                schedule_bin = Identifier('ODESolvers_PostStep')
+            else:
+                raise NotImplementedError(f'Bad ScheduleBin enum member {schedule_target}')
+
+        return schedule_bin, at_or_in
 
     def generate_interface_ccl(self) -> InterfaceRoot:
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
@@ -404,6 +441,12 @@ class CppCarpetXGenerator(CactusGenerator):
             for n, s in enumerate(['DXI', 'DYI', 'DZI'])
         ]
 
+        stencil_limit_checks = []
+        stencil_limits = thorn_fn.eqn_list.stencil_limits()
+        for i in range(3):
+            if stencil_limits[i] != 0:
+                stencil_limit_checks.append(VerbatimExpr(Verbatim(f'CCTK_ASSERT(cctk_nghostzones[{i}] >= {stencil_limits[i]});')))
+
         eqn_list = thorn_fn.eqn_list
         reassigned_lhses: Set[int] = set()
 
@@ -441,6 +484,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
                  *layout_decls,
                  *di_decls,
+                 *stencil_limit_checks,
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,
@@ -456,3 +500,13 @@ class CppCarpetXGenerator(CactusGenerator):
         )
 
         return CodeRoot(nodes)
+
+    def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch) -> CodeRoot:
+        return CodeRoot([
+            Verbatim(self.boilerplate_setup),
+            *[IncludeDirective(include) for include in self.boilerplate_includes],
+            ThornFunctionDecl(
+                Identifier(sync_batch.name),
+                []
+            )
+        ])
