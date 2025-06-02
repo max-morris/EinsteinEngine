@@ -1605,8 +1605,7 @@ class ThornDef:
         self.params[name] = Param(name, default, desc, values)
         return mkSymbol(name)
 
-    def add_sym(self, tens: Indexed, ix1: Idx, ix2: Idx, sgn: int = 1) -> None:
-        assert type(tens) == Indexed, f"{tens}, {type(tens)}"
+    def _add_sym(self, tens: Indexed, ix1: Idx, ix2: Idx, sgn: int = 1) -> None:
         base: IndexedBase = cast(IndexedBase, tens.args[0])
         i1 = -1
         i2 = -1
@@ -1809,7 +1808,8 @@ class ThornDef:
         from_thorn: str
         parity: TensorParity
         group_name: str
-        sym: List[Tuple[Idx,Idx,int]]
+        symmetries: List[Tuple[Idx, Idx]]
+        anti_symmetries: List[Tuple[Idx, Idx]]
 
     def get_state(self)->List[IndexedBase]:
         result : List[IndexedBase] = list()
@@ -1826,8 +1826,10 @@ class ThornDef:
         if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
 
-        ret = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
-        self.gfs[basename] = ret
+        the_symbol = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
+        indexed_symbol = mkIndexed(the_symbol, *tuple(indices))
+
+        self.gfs[basename] = the_symbol
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
         self.base2group[basename] = kwargs.get('group_name', basename)
@@ -1841,12 +1843,15 @@ class ThornDef:
         if (parity := kwargs.get('parity', None)) is not None:
             self.base2parity[basename] = parity
 
-        if (sym := kwargs.get("sym",None)) is not None:
-            reti = mkIndexed(ret, *tuple(indices))
-            print("reti:",reti)
-            for sym_arg in sym:
-                self.add_sym(reti,*sym_arg)
-        return ret
+        if (symmetries := kwargs.get('symmetries', None)) is not None:
+            for sym in symmetries:
+                self._add_sym(indexed_symbol, *sym, sgn=1)
+
+        if (anti_symmetries := kwargs.get('anti_symmetries', None)) is not None:
+            for a_sym in anti_symmetries:
+                self._add_sym(indexed_symbol, *a_sym, sgn=-1)
+
+        return the_symbol
 
     def find_indices(self, foo: Basic) -> List[Idx]:
         ret: List[Idx] = list()
@@ -2061,12 +2066,12 @@ def parities(*args: Parity | int) -> TensorParity:
 if __name__ == "__main__":
     gf = ThornDef("ARR", "TST")
     B = gf.decl("B", [lc, lb])
-    gf.add_sym(B[la, lb], la, lb, 1)
+    gf._add_sym(B[la, lb], la, lb, 1)
     M = gf.decl("M", [la, lb])
-    gf.add_sym(M[la, lb], la, lb, -1)
+    gf._add_sym(M[la, lb], la, lb, -1)
     V = gf.decl("V", [la])
     A = gf.decl("A", [ub,la,lc])
-    gf.add_sym(A[ua,lb,lc],lb,lc,1)
+    gf._add_sym(A[ua,lb,lc], lb, lc, 1)
 
     ####
     fail_expr = mkSymbol("fail_expr")
@@ -2124,7 +2129,7 @@ if __name__ == "__main__":
 
     # Symmetric
     N = gf.decl("N", [la, lb])
-    gf.add_sym(N[la, lb], la, lb, 1)
+    gf._add_sym(N[la, lb], la, lb, 1)
 
     n = 0
     for out in gf.expand_eqn(mkEq(N[la, lb], B[la, lb])):
