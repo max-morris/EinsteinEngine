@@ -9,9 +9,10 @@ cos  : Callable[[Expr],Expr]
 sin  : Callable[[Expr],Expr]
 tan  : Callable[[Expr],Expr]
 Pow  : Callable[[Expr,Expr],Expr]
+diff : Callable[[Expr,Expr],Expr]
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
-    Function, Matrix, zeros, Wild, diff, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
-    exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_
+    Function, Matrix, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
+    exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, diff as diff_
 sqrt = sqrt_
 cbrt = cbrt_
 log = log_
@@ -20,6 +21,7 @@ Pow = Pow_
 cos = cos_
 sin = sin_
 tan = tan_
+diff = diff_
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
@@ -53,7 +55,7 @@ def do_inv(e:Matrix)->Matrix:
 def do_det(e:Matrix)->Symbol:
     return cast(Symbol, e.det()) # type: ignore[no-untyped-call]
 
-def do_sympify(e:Union[int,Expr])->Expr:
+def do_sympify(e:Union[int,float,Expr])->Expr:
     return cast(Expr, sympify(e)) # type: ignore[no-untyped-call]
 
 def do_simplify(e:Union[int,Expr])->Expr:
@@ -106,8 +108,8 @@ def mkIndexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
 do_subs_table_type = Union[
     Mapping[Idx, Idx],
     Mapping[Indexed, Indexed],
+    Mapping[Expr, Expr],
     Mapping[Symbol, Expr],
-    Mapping[Symbol, Symbol],
     Applier
 ]
 
@@ -152,8 +154,8 @@ def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> Expr:
     assert isinstance(ret, Expr)
     return ret
 
-def do_diff(expr:Expr, sym:Symbol)->Expr:
-    return cast(Expr, diff(expr, sym)) # type: ignore[no-untyped-call]
+#def do_diff(expr:Expr, sym:Symbol)->Expr:
+#    return cast(Expr, diff(expr, sym)) # type: ignore[no-untyped-call]
 
 def do_match(expr:Expr, pat:Wild)->Optional[Dict[Wild, Expr]]:
     return cast(Optional[Dict[Wild, Expr]], expr.match(pat)) # type: ignore[no-untyped-call]

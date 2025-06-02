@@ -8,17 +8,16 @@ from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtO
 from .generators.wizards import CppCarpetXWizard
 from .dsl.use_indices import parities
 
-from .dsl.use_indices import div, to_num, mk_subst_type, Param, ThornFunction, ScheduleBin, ThornDef, \
+from .dsl.use_indices import D, div, to_num, mk_subst_type, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, mksymbol_for_tensor_xyz, mkPair, \
        stencil,DD,DDI,\
        ui, uj, uk, ua, ub, uc, ud, u0, u1, u2, u3, u4, u5, \
        li, lj, lk, la, lb, lc, ld, l0, l1, l2, l3, l4, l5
-from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,\
+from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
     do_inv,do_det,do_sympify,do_simplify,cse,mkIdx,mkSymbol,\
     mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
     free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols
 from sympy import Expr, Idx, Matrix, Indexed, Symbol
-from math import pi
 
 
 __all__ = [
@@ -30,12 +29,12 @@ __all__ = [
     "parities",
     "ScheduleBin", "do_sympify",
     "sin", "cos",
-    "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
+    "D", "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
     "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
     "stencil","DD","DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
     "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5",
-    "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
+    "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",
     "do_inv","do_det","do_sympify","do_simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols"]

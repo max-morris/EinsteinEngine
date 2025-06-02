@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     # Use a NRPy calculated stencil instead
     # of simply calling functions such as divx()
-    gf.set_div_stencil(3)
+    gf.set_derivative_stencil(3)
 
     # Declare gfs
     v_t = gf.decl("v_t", [], centering=Centering.VVC)
@@ -36,8 +36,7 @@ if __name__ == "__main__":
     u = gf.decl("u", [], centering=Centering.VVC, rhs=u_t)
 
     # Declare the metric
-    g = gf.decl("g", [li, lj])
-    gf.add_sym(g[li, lj], li, lj)
+    g = gf.decl("g", [li, lj], sym=[(li,lj,1)])
 
     # Declare params
     spd = gf.add_param("spd", default=1.0, desc="The wave speed")
@@ -53,7 +52,7 @@ if __name__ == "__main__":
     # Add the equations we want to evolve.
     fun = gf.create_function("newwave_evo", ScheduleBin.Evolve)
     fun.add_eqn(v_t, u)
-    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * div(v, li, lj) + g[ui,uj]*div(v,li)*div(v, lj))
+    fun.add_eqn(u_t, spd ** 2 * g[ui, uj] * D(v, li, lj) + g[ui,uj]*D(v,li)*D(v, lj))
     print('*** ThornFunction wave_evo:')
     fun.bake()
 

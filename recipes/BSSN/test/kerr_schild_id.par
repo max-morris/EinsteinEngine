@@ -1,0 +1,83 @@
+ActiveThorns = "
+  ADMBaseX
+  CarpetX
+  IOUtil
+  KerrSchildID
+  ODESolvers
+  TmunuBaseX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "mixed-error"
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = yes
+CarpetX::out_performance         = no
+CarpetX::out_metadata            = no
+
+# Run Termination
+Cactus::terminate   = "iteration"
+Cactus::cctk_itlast = 0
+
+# Grid setup
+CarpetX::blocking_factor_x = 1
+CarpetX::blocking_factor_y = 1
+CarpetX::blocking_factor_z = 1
+
+CarpetX::xmin = -1.0
+CarpetX::ymin = -1.0
+CarpetX::zmin = -1.0
+
+CarpetX::xmax = 1.0
+CarpetX::ymax = 1.0
+CarpetX::zmax = 1.0
+
+# This choice produces grids which avoid the origin
+CarpetX::ncells_x = 21
+CarpetX::ncells_y = 21
+CarpetX::ncells_z = 21
+
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 3
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::boundary_x       = "linear extrapolation"
+CarpetX::boundary_y       = "linear extrapolation"
+CarpetX::boundary_z       = "linear extrapolation"
+CarpetX::boundary_upper_x = "linear extrapolation"
+CarpetX::boundary_upper_y = "linear extrapolation"
+CarpetX::boundary_upper_z = "linear extrapolation"
+
+# Initial data
+#ADMBaseX::initial_data    = "Cartesian Minkowski"
+ADMBaseX::initial_data    = "none"
+ADMBaseX::initial_lapse   = "none"
+ADMBaseX::initial_shift   = "none"
+ADMBaseX::initial_dtlapse = "none"
+ADMBaseX::initial_dtshift = "none"
+
+KerrSchildID::mass = 1.0 / 4.0
+KerrSchildID::spin = KerrSchildID::mass / 4.0
+
+# Time Integration
+ODESolvers::verbose = yes
+CarpetX::dtfac      = 0.25
+ODESolvers::method  = "RK4"
+
+# Output
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = ""
+
+# Output
+IO::out_dir    = $parfile
+IO::out_every  = 1
+
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = "
+  ADMBaseX::metric
+  ADMBaseX::curv
+  ADMBaseX::lapse
+  ADMBaseX::shift
+"
