@@ -13,6 +13,8 @@ Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = no
 CarpetX::poison_undefined_values = no
+CarpetX::out_performance         = no
+CarpetX::out_metadata            = no
 
 # Run Termination
 Cactus::terminate   = "iteration"

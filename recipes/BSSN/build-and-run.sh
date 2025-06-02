@@ -50,13 +50,12 @@ echo PyBSSN/TestBSSN >> .pre_bssn.th
 
 set -e
 
-PAR_FILE="$EMIT_CACTUS_DIR/recipes/BSSN/parfiles/test_kerr_schild.par"
+PAR_FILE1="$EMIT_CACTUS_DIR/recipes/BSSN/test/kerr_schild.par"
+PAR_FILE2="$EMIT_CACTUS_DIR/recipes/BSSN/test/linear_wave.par"
+PAR_FILE3="$EMIT_CACTUS_DIR/recipes/BSSN/test/qc0.par"
 TEST_NAME=bssn_test
 
-if [ ! -r bssn.th ]
-then
-    perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE"
-fi
+perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3"
 
 CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
 ./simfactory/bin/sim build bssn -j$(($CPUS / 4)) --thornlist bssn.th |& tee make.out
