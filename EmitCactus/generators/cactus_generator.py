@@ -14,9 +14,30 @@ from enum import auto, Enum
 
 
 class InteriorSyncMode(Enum):
-    Never = auto()
+    """
+    Determines explicit syncing behavior for variables (grid functions) which are written on the interior.
+    """
+
+    HandsOff = auto()
+    """
+    Never emit SYNC statements. Use this if you are relying on `presync-only`.
+    """
+
     IgnoreRhs = auto()
+    """
+    Emit SYNC statements for all variables written on the interior, except those which are the RHS of a state variable.
+    """
+
+    MixedRhs = auto()
+    """
+    Emit SYNC statements for all variables written on the interior, except those which are the RHS of a state variable.
+    When targeting CarpetX, also produce an `ExplicitSyncBatch` containing all the state variables. 
+    """
+
     Always = auto()
+    """
+    Emit SYNC statements for all variables written on the interior.
+    """
 
 
 class CactusGeneratorOptions(TypedDict, total=False):
