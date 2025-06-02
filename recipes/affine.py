@@ -15,10 +15,10 @@ if __name__ == '__main__':
     gf.set_derivative_stencil(3)
 
     # Declare gfs
-    g = gf.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
+    g = gf.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
     x, y, z = gf.mk_coords()
-    G = gf.decl("Affine", [ua, lb, lc], sym=[(lb,lc,1)])
-    Ric = gf.decl("Ric", [la, lb], sym=[(la,lb,1)])
+    G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)])
+    Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 
     gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
