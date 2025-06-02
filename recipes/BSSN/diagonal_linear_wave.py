@@ -5,18 +5,18 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    pybssn_linear_wave_id = ThornDef("PyBSSN", "LinearWaveID")
+    pybssn_diagonal_linear_wave_id = ThornDef("PyBSSN", "DiagonalLinearWaveID")
 
     ###
     # Thorn parameters
     ###
-    amplitude = pybssn_linear_wave_id.add_param(
+    amplitude = pybssn_diagonal_linear_wave_id.add_param(
         "amplitude",
         default=1.0,
         desc="Linear wave amplitude"
     )
 
-    wavelength = pybssn_linear_wave_id.add_param(
+    wavelength = pybssn_diagonal_linear_wave_id.add_param(
         "wavelength",
         default=1.0,
         desc="Linear wave wavelength"
@@ -26,35 +26,35 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_linear_wave_id.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
+    g = pybssn_diagonal_linear_wave_id.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
+    pybssn_diagonal_linear_wave_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = pybssn_linear_wave_id.decl("k", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
+    k = pybssn_diagonal_linear_wave_id.decl("k", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
+    pybssn_diagonal_linear_wave_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
-    alp = pybssn_linear_wave_id.decl("alp", [], from_thorn="ADMBaseX")
+    alp = pybssn_diagonal_linear_wave_id.decl("alp", [], from_thorn="ADMBaseX")
 
-    beta = pybssn_linear_wave_id.decl("beta", [ua], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
+    beta = pybssn_diagonal_linear_wave_id.decl("beta", [ua], from_thorn="ADMBaseX")
+    pybssn_diagonal_linear_wave_id.mk_subst(beta[ua], mksymbol_for_tensor_xyz)
 
     # First derivatives
-    dtalp = pybssn_linear_wave_id.decl("dtalp", [], from_thorn="ADMBaseX")
+    dtalp = pybssn_diagonal_linear_wave_id.decl("dtalp", [], from_thorn="ADMBaseX")
 
-    dtbeta = pybssn_linear_wave_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
+    dtbeta = pybssn_diagonal_linear_wave_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
+    pybssn_diagonal_linear_wave_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    dtk = pybssn_linear_wave_id.decl("dtk", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
-    pybssn_linear_wave_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
+    dtk = pybssn_diagonal_linear_wave_id.decl("dtk", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
+    pybssn_diagonal_linear_wave_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives
-    dt2alp = pybssn_linear_wave_id.decl("dt2alp", [], from_thorn="ADMBaseX")
+    dt2alp = pybssn_diagonal_linear_wave_id.decl("dt2alp", [], from_thorn="ADMBaseX")
 
-    dt2beta = pybssn_linear_wave_id.decl(
+    dt2beta = pybssn_diagonal_linear_wave_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
     )
-    pybssn_linear_wave_id.mk_subst(dt2beta[ua], mksymbol_for_tensor_xyz)
+    pybssn_diagonal_linear_wave_id.mk_subst(dt2beta[ua], mksymbol_for_tensor_xyz)
 
     ###
     # Groups
@@ -73,7 +73,7 @@ if __name__ == "__main__":
     #   https://arxiv.org/abs/gr-qc/0305023
     #   https://arxiv.org/abs/0709.3559
     ###
-    t, x, y, z = pybssn_linear_wave_id.mk_coords(with_time=True)
+    t, x, y, z = pybssn_diagonal_linear_wave_id.mk_coords(with_time=True)
 
     pi = do_sympify(3.141592653589793)
     two = do_sympify(2)
@@ -149,8 +149,8 @@ if __name__ == "__main__":
     ###
     # Write initial data
     ###
-    fun_fill_id = pybssn_linear_wave_id.create_function(
-        "pybssn_linear_wave_id_fill_id",
+    fun_fill_id = pybssn_diagonal_linear_wave_id.create_function(
+        "pybssn_diagonal_linear_wave_id_fill_id",
         adm_id_group
     )
 
@@ -172,9 +172,9 @@ if __name__ == "__main__":
     # Thorn creation
     ###
     CppCarpetXWizard(
-        pybssn_linear_wave_id,
+        pybssn_diagonal_linear_wave_id,
         CppCarpetXGenerator(
-            pybssn_linear_wave_id,
+            pybssn_diagonal_linear_wave_id,
             interior_sync_mode=InteriorSyncMode.Never,
             extra_schedule_blocks=[adm_id_group]
         )
