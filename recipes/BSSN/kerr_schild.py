@@ -26,10 +26,10 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_kerr_schilld_id.decl("g", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
+    g = pybssn_kerr_schilld_id.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(g[li, lj], mksymbol_for_tensor_xyz)
 
-    k = pybssn_kerr_schilld_id.decl("k", [li, lj], sym=[(li,lj,1)], from_thorn="ADMBaseX")
+    k = pybssn_kerr_schilld_id.decl("k", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(k[li, lj], mksymbol_for_tensor_xyz)
 
     alp = pybssn_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     dtbeta = pybssn_kerr_schilld_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(dtbeta[ua], mksymbol_for_tensor_xyz)
 
-    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
+    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
     pybssn_kerr_schilld_id.mk_subst(dtk[la, lb], mksymbol_for_tensor_xyz)
 
     # Second derivatives

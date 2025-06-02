@@ -79,10 +79,10 @@ parity_sym2ten = parities(+1,+1,+1,  -1,-1,+1,  -1,+1,-1,  +1,+1,+1,  +1,-1,-1, 
 ###
 # ADMBaseX vars.
 ###
-g = pybssn.decl("g", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
+g = pybssn.decl("g", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
 pybssn.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 
-k = pybssn.decl("k", [la, lb], sym=[(la,lb,1)], from_thorn="ADMBaseX")
+k = pybssn.decl("k", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
 pybssn.mk_subst(k[la, lb], mksymbol_for_tensor_xyz)
 
 alp = pybssn.decl("alp", [], from_thorn="ADMBaseX")
@@ -128,12 +128,12 @@ w_rhs = pybssn.decl("w_rhs", [], parity=parity_scalar)
 w = pybssn.decl("w", [], rhs=w_rhs, parity=parity_scalar)
 
 # \tilde{\gamma_{a b}}
-gt_rhs = pybssn.decl("gt_rhs", [la, lb], sym=[(la,lb,1)], parity=parity_sym2ten)
-gt = pybssn.decl("gt", [la, lb], sym=[(la,lb,1)], rhs=gt_rhs, parity=parity_sym2ten)
+gt_rhs = pybssn.decl("gt_rhs", [la, lb], symmetries=[(la, lb)], parity=parity_sym2ten)
+gt = pybssn.decl("gt", [la, lb], symmetries=[(la, lb)], rhs=gt_rhs, parity=parity_sym2ten)
 
 # \tilde{A}_{a b}
-At_rhs = pybssn.decl("At_rhs", [la, lb], sym=[(la,lb,1)], parity=parity_sym2ten)
-At = pybssn.decl("At", [la, lb], sym=[(la,lb,1)], rhs=At_rhs, parity=parity_sym2ten)
+At_rhs = pybssn.decl("At_rhs", [la, lb], symmetries=[(la, lb)], parity=parity_sym2ten)
+At = pybssn.decl("At", [la, lb], symmetries=[(la, lb)], rhs=At_rhs, parity=parity_sym2ten)
 
 # K (trace of Extrinsic Curvature)
 trK_rhs = pybssn.decl("trK_rhs", [], parity=parity_scalar)
@@ -168,15 +168,15 @@ w_enforce = pybssn.decl("w_enforce", [], parity=parity_scalar)
 evo_lapse_enforce = pybssn.decl(
     "evo_lapse_enforce", [], parity=parity_scalar)
 
-gt_enforce = pybssn.decl("gt_enforce", [li, lj], sym=[(li,lj,1)], parity=parity_sym2ten)
+gt_enforce = pybssn.decl("gt_enforce", [li, lj], symmetries=[(li, lj)], parity=parity_sym2ten)
 
-At_enforce = pybssn.decl("At_enforce", [li, lj], sym=[(li,lj,1)], parity=parity_sym2ten)
+At_enforce = pybssn.decl("At_enforce", [li, lj], symmetries=[(li, lj)], parity=parity_sym2ten)
 
 ###
 # Aux. Vars.
 ###
 # \tilde{\Gamma}_{abc}
-Gammat = pybssn.decl("Gammat", [la, lb, lc], sym=[(lb,lc,1)])
+Gammat = pybssn.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 
 # Temporary storage for \partial_t \tilde{\Gamma}^{a}
 # This is required because this quantity is both written to ConfConnect_rhs
@@ -187,22 +187,22 @@ ConfConnect_rhs_tmp = pybssn.decl("ConfConnect_rhs_tmp", [ua])
 Delta = pybssn.decl("Delta", [ua])
 
 # \tilde{R}_{a b}
-Rt = pybssn.decl("Rt", [la, lb], sym=[(la,lb,1)])
+Rt = pybssn.decl("Rt", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{R}^{\phi}_{a b}
-RPhi = pybssn.decl("RPhi", [la, lb], sym=[(la,lb,1)])
+RPhi = pybssn.decl("RPhi", [la, lb], symmetries=[(la, lb)])
 
 # R_{a b} = \tilde{R}_{a b} + R^\phi_{a b}
-R = pybssn.decl("R", [la, lb], sym=[(la,lb,1)])
+R = pybssn.decl("R", [la, lb], symmetries=[(la, lb)])
 
 # -D_a D_b \alpha + \alpha R_{a b}
-Ats = pybssn.decl("Ats", [la, lb], sym=[(la,lb,1)])
+Ats = pybssn.decl("Ats", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{D}_a \phi
 cdphi = pybssn.decl("cdphi", [la])
 
 # \tilde{D}_a \tilde{D}_b \phi
-cdphi2 = pybssn.decl("cdphi2", [la, lb], sym=[(la,lb,1)])
+cdphi2 = pybssn.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 
 ###
 # Substitution rules

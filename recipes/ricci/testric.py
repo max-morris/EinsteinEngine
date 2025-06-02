@@ -9,12 +9,12 @@ b = gf.add_param("b", default=0.2, desc="Just a constant")
 c = gf.add_param("c", default=0.1, desc="Just a constant")
 
 # Declare gfs
-g = gf.decl("g", [li, lj], sym=[(li, lj, 1)], from_thorn="ADMBaseX")
+g = gf.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
 x,y,z = gf.mk_coords()
 
-Ric = gf.decl("Ric", [la, lb], sym=[(la, lb, 1)])
+Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
-G = gf.decl("Affine", [ua, lb, lc], sym=[(lb, lc, 1)])
+G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)])
 
 gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 gmat = gf.get_matrix(g[la,lb])
