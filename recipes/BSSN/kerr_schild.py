@@ -214,7 +214,7 @@ if __name__ == "__main__":
         pybssn_kerr_schilld_id,
         CppCarpetXGenerator(
             pybssn_kerr_schilld_id,
-            interior_sync_mode=InteriorSyncMode.Never,
+            interior_sync_mode=InteriorSyncMode.HandsOff,
             extra_schedule_blocks=[adm_id_group]
         )
     ).generate_thorn()
