@@ -1824,7 +1824,11 @@ class ThornDef:
             centering = Centering.VVV
 
         the_symbol = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
-        indexed_symbol = mkIndexed(the_symbol, *tuple(indices))
+
+        if len(indices) != 0:
+            indexed_symbol = mkIndexed(the_symbol, *tuple(indices))
+        else:
+            indexed_symbol = None
 
         self.gfs[basename] = the_symbol
         self.defn[basename] = (basename, list(indices))
@@ -1841,10 +1845,16 @@ class ThornDef:
             self.base2parity[basename] = parity
 
         if (symmetries := kwargs.get('symmetries', None)) is not None:
+            if indexed_symbol is None:
+                raise DslException('Symmetries cannot be applied to a scalar variable')
+
             for sym in symmetries:
                 self._add_sym(indexed_symbol, *sym, sgn=1)
 
         if (anti_symmetries := kwargs.get('anti_symmetries', None)) is not None:
+            if indexed_symbol is None:
+                raise DslException('Anti-symmetries cannot be applied to a scalar variable')
+
             for a_sym in anti_symmetries:
                 self._add_sym(indexed_symbol, *a_sym, sgn=-1)
 
