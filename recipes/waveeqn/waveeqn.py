@@ -34,7 +34,7 @@ u = gf.decl("u", [], centering=Centering.VVV, rhs=u_t)
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
 # Declare the metric
-g = gf.decl("g", [li, lj], sym=[(li, lj, 1)])
+g = gf.decl("g", [li, lj], symmetries=[(li, lj)])
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")

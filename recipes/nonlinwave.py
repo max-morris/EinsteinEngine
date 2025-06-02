@@ -36,7 +36,7 @@ if __name__ == "__main__":
     u = gf.decl("u", [], centering=Centering.VVC, rhs=u_t)
 
     # Declare the metric
-    g = gf.decl("g", [li, lj], sym=[(li,lj,1)])
+    g = gf.decl("g", [li, lj], symmetries=[(li, lj)])
 
     # Declare params
     spd = gf.add_param("spd", default=1.0, desc="The wave speed")
