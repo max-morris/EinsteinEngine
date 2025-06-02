@@ -67,7 +67,7 @@ check_zero = ScheduleBlock(
 
 CppCarpetXWizard(gf,
     CppCarpetXGenerator(gf,
-        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        interior_sync_mode=InteriorSyncMode.MixedRhs,
         extra_schedule_blocks=[check_zero]
     )
 ).generate_thorn()

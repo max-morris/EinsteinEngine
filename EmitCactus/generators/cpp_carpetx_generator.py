@@ -113,7 +113,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
                     if spec is IntentRegion.Interior and (
                             self.options['interior_sync_mode'] is InteriorSyncMode.Always
-                            or self.options['interior_sync_mode'] is InteriorSyncMode.IgnoreRhs and var not in self.thorn_def.rhs.values()
+                            or (self.options['interior_sync_mode'] is not InteriorSyncMode.HandsOff
+                                and var not in self.thorn_def.rhs.values())
                     ):
                         # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
                         # assert var_name in self.thorn_def.var2base
@@ -137,13 +138,13 @@ class CppCarpetXGenerator(CactusGenerator):
             for block in self.options['extra_schedule_blocks']:
                 schedule_blocks.append(block)
 
-        if self.options.get('interior_sync_mode',InteriorSyncMode.Never) is InteriorSyncMode.IgnoreRhs:
-            new_explicit_syncs:List[ExplicitSyncBatch] = list(self.options.get('explicit_syncs', list()))
+        if self.options['interior_sync_mode'] is InteriorSyncMode.MixedRhs:
+            new_explicit_syncs: List[ExplicitSyncBatch] = list(self.options.get('explicit_syncs', list()))
             new_explicit_syncs.append(
                 ExplicitSyncBatch(
                     vars=self.thorn_def.get_state(),
                     schedule_target=ScheduleBin.PostStep,
-                    name="state_sync"
+                    name="StateSync"
                 )
             )
             self.options['explicit_syncs'] = new_explicit_syncs

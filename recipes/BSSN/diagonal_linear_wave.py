@@ -175,7 +175,7 @@ if __name__ == "__main__":
         pybssn_diagonal_linear_wave_id,
         CppCarpetXGenerator(
             pybssn_diagonal_linear_wave_id,
-            interior_sync_mode=InteriorSyncMode.Never,
+            interior_sync_mode=InteriorSyncMode.HandsOff,
             extra_schedule_blocks=[adm_id_group]
         )
     ).generate_thorn()
