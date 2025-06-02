@@ -10,7 +10,7 @@ from multimethod import multimethod
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Number, Pow, Expr, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix
+from sympy import Integer, Number, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, Mul, MatrixBase, exp, ImmutableDenseMatrix, Expr
 from sympy.core.function import UndefinedFunction as UFunc
 
 from EmitCactus.dsl.coef import coef
