@@ -108,8 +108,8 @@ def mkIndexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
 do_subs_table_type = Union[
     Mapping[Idx, Idx],
     Mapping[Indexed, Indexed],
+    Mapping[Expr, Expr],
     Mapping[Symbol, Expr],
-    Mapping[Symbol, Symbol],
     Applier
 ]
 

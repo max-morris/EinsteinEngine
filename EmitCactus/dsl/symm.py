@@ -45,9 +45,13 @@ class Sym(Applier):
         args = [cast(Idx, a) for a in expr.args[1:]]
         retsgn = 1
         for ind1, ind2, sgn in syms:
+            # TODO standardize this
             s1 = str(args[ind1])
             s2 = str(args[ind2])
             if s1[0] != s2[0]:
+                if s1[1:] == s2[1:] and sgn < 0:
+                    self.modified = True
+                    return do_sympify(0)
                 continue
             if s1 > s2:
                 self.modified = True
@@ -82,8 +86,12 @@ def test() -> None:
     sym.add(eps, 1, 2, -1)
     assert sym.apply(eps[u2, u1, u0]) == -eps[u0, u1, u2]
     assert sym.apply(eps[u0, u2, u1]) == -eps[u0, u1, u2]
-    assert sym.apply(eps[u0, u1, u2]) == eps[u0, u1, u2]
+    assert sym.apply(eps[u0, u1, u2]) ==  eps[u0, u1, u2]
     assert sym.apply(eps[u0, u1, u1]) == 0
+    M = mkIndexedBase("M", shape=(3,3))
+    sym.add(M, 0, 1, -1)
+    assert sym.apply(M[u0,u1]) ==  M[u0,u1]
+    assert sym.apply(M[u1,u0]) == -M[u0,u1]
 
 
 if __name__ == "__main__":
