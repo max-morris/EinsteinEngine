@@ -212,8 +212,8 @@ pybssn.add_substitution_rule(gt[ua, ub], gt_imat)
 pybssn.add_substitution_rule(At[ua, ub])
 pybssn.add_substitution_rule(At[ua, lb])
 
-pybssn.add_substitution_rule(Gammat[la, lb, lc])
-
+pybssn.add_substitution_rule(Gammat[ua, lb, lc])
+pybssn.add_substitution_rule(Gammat[la, lb, uc])
 ###
 # Aux. groups
 ###
