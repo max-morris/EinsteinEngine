@@ -204,48 +204,15 @@ g_imat = do_inv(g_mat)
 detg = do_det(g_mat)
 pybssn.add_substitution_rule(g[ua, ub], g_imat)
 
-pybssn.add_substitution_rule(gt_rhs[la, lb])
-pybssn.add_substitution_rule(gt[la, lb])
-
 gt_mat = pybssn.get_matrix(gt[la, lb])
 detgt = do_det(gt_mat)
 gt_imat = do_inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
 pybssn.add_substitution_rule(gt[ua, ub], gt_imat)
 
-pybssn.add_substitution_rule(At[la, lb])
-pybssn.add_substitution_rule(At_rhs[la, lb])
 pybssn.add_substitution_rule(At[ua, ub])
 pybssn.add_substitution_rule(At[ua, lb])
 
-pybssn.add_substitution_rule(ConfConnect[ua])
-pybssn.add_substitution_rule(ConfConnect_rhs[ua])
-
-pybssn.add_substitution_rule(evo_shift[ua])
-pybssn.add_substitution_rule(evo_shift_rhs[ua])
-
-pybssn.add_substitution_rule(shift_B[ua])
-pybssn.add_substitution_rule(shift_B_rhs[ua])
-
-pybssn.add_substitution_rule(MomCons[ua])
-pybssn.add_substitution_rule(DeltaCons[ua])
-
 pybssn.add_substitution_rule(Gammat[la, lb, lc])
-pybssn.add_substitution_rule(Gammat[ua, lb, lc])
-pybssn.add_substitution_rule(Gammat[la, lb, uc])
-pybssn.add_substitution_rule(Delta[ua])
-pybssn.add_substitution_rule(ConfConnect_rhs_tmp[ua])
-
-pybssn.add_substitution_rule(Rt[la, lb])
-pybssn.add_substitution_rule(RPhi[la, lb])
-pybssn.add_substitution_rule(R[la, lb])
-
-pybssn.add_substitution_rule(Ats[li, lj])
-
-pybssn.add_substitution_rule(cdphi[li])
-pybssn.add_substitution_rule(cdphi2[li, lj])
-
-pybssn.add_substitution_rule(gt_enforce[li, lj])
-pybssn.add_substitution_rule(At_enforce[li, lj])
 
 ###
 # Aux. groups
