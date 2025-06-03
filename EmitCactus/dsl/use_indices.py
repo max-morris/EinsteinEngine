@@ -2094,6 +2094,7 @@ if __name__ == "__main__":
     ####
     fail_expr = mkSymbol("fail_expr")
     def testerr(gf:ThornDef, in_expr:Expr, result_expr:Expr)->None:
+        result_expr = gf.do_subs(result_expr)
         viz = IndexContractionVisitor(dict())
         try:
             expr, it = viz.visit(in_expr)
