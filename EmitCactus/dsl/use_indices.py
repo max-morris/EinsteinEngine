@@ -1019,13 +1019,13 @@ def subst_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
         return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
 
+BaseIndexedSubstFnType = Callable[[Indexed, VarArg(int)], Expr]
 IndexedSubstFnType = (
         Callable[[Indexed, int], Expr] |
         Callable[[Indexed, int, int], Expr] |
         Callable[[Indexed, int, int, int], Expr] |
-        Callable[[Indexed, VarArg(int)], Expr]
+        BaseIndexedSubstFnType
 )
-
 MkSubstType = IndexedSubstFnType | Expr | ImmutableDenseMatrix | MatrixBase
 
 ParamDefaultType = Union[float, int, str, bool]
@@ -1947,7 +1947,7 @@ class ThornDef:
         self.add_substitution_rule(indexed, f2)
 
     @add_substitution_rule.register
-    def _(self, indexed: Indexed, f: IndexedSubstFnType = subst_tensor) -> None:
+    def _(self, indexed: Indexed, f: BaseIndexedSubstFnType = subst_tensor) -> None:
         indices: List[Idx]
         iter_var = indexed
         iter_syms = self.find_symmetries(indexed)
