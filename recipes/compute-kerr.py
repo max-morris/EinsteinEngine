@@ -9,11 +9,6 @@ if __name__ == "__main__":
     # Create a set of grid functions
     gf = ThornDef("TestKerr", "Kerr")
 
-    # Declare gfs
-    g = gf.decl("g", [li, lj], symmetries=[(li, lj)], centering=Centering.VVC)
-    G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)], centering=Centering.VVC)
-    Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)], centering=Centering.VVC)
-
     spin = False
     a: Expr
     if spin:
@@ -40,14 +35,19 @@ if __name__ == "__main__":
         [Z, Z, gqq, Z],
         [gtp, Z, Z, gpp]])
 
-    gf.mk_subst(g[la, lb], gmat)
+    # Declare gfs
+    g = gf.decl("g", [li, lj], symmetries=[(li, lj)], centering=Centering.VVC, substitution_rule=gmat)
+    G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)], centering=Centering.VVC, substitution_rule=None)
+    Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)], centering=Centering.VVC, substitution_rule=None)
+
     imat = do_inv(gmat)
-    gf.mk_subst(g[ua, ub], imat)
-    gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
-    gf.mk_subst(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
-    gf.mk_subst(Ric[li, lj],
-                D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
-                G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
+    gf.add_substitution_rule(g[ua, ub], imat)
+
+    gf.add_substitution_rule(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
+    gf.add_substitution_rule(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
+    gf.add_substitution_rule(Ric[li, lj],
+                             D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
+                             G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
     for i in range(4):
         for j in range(i + 1, 4):

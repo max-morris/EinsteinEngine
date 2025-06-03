@@ -34,7 +34,7 @@ u = gf.decl("u", [], centering=Centering.VVV, rhs=u_t)
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
 # Declare the metric
-g = gf.decl("g", [li, lj], symmetries=[(li, lj)])
+g = gf.decl("g", [li, lj], symmetries=[(li, lj)], substitution_rule=flat_metric)
 
 # Declare params
 spd = gf.add_param("spd", default=1.0, desc="The wave speed")
@@ -45,8 +45,7 @@ amp = gf.add_param("amp", default=10, desc="The amplitude")
 w = spd*sqrt(kx**2 + ky**2)
 
 # Fill in values
-gf.mk_subst(g[li, lj], flat_metric)
-gf.mk_subst(g[ui, uj], flat_metric)
+gf.add_substitution_rule(g[ui, uj], flat_metric)
 
 # stencil(la) -> [stencil(f,1,0,0), stencil(f,0,1,0), stencil(f,0,0,1)]
 

@@ -10,18 +10,16 @@ c = gf.add_param("c", default=0.1, desc="Just a constant")
 
 # Declare gfs
 g = gf.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-x,y,z = gf.mk_coords()
+x, y, z = gf.mk_coords()
 
 Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
-G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)])
+G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)], substitution_rule=None)
 
-gf.mk_subst(g[la, lb], mksymbol_for_tensor_xyz)
 gmat = gf.get_matrix(g[la,lb])
 print(gmat)
 imat = do_simplify(do_inv(gmat)*do_det(gmat)) 
-gf.mk_subst(g[ua, ub], imat)
-gf.mk_subst(Ric[li,lj])
+gf.add_substitution_rule(g[ua, ub], imat)
 
 # Metric
 grr = sqrt(1+c**2)*(a+b*x**2)
@@ -35,10 +33,8 @@ gmat = mkMatrix([
 assert do_det(gmat) == 1
 
 # Define the affine connections
-gf.mk_subst(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la))/2)
-gf.mk_subst(G[ud, lb, lc], g[ud,ua]*G[la, lb, lc])
-
-gf.mk_subst(Ric[la, lb])
+gf.add_substitution_rule(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
+gf.add_substitution_rule(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
 
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
 
@@ -49,7 +45,7 @@ fun.add_eqn(Ric[li, lj],
 fun.bake()
 
 fun = gf.create_function("MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
-fun.add_eqn(g[li,lj],gmat)
+fun.add_eqn(g[li, lj], gmat)
 fun.bake()
 
 fun = gf.create_function("RicZero", ScheduleBin.Analysis, schedule_after=["setGL"])
@@ -65,8 +61,10 @@ check_zero = ScheduleBlock(
     after=[Identifier('RicZero')]
 )
 
-CppCarpetXWizard(gf,
-    CppCarpetXGenerator(gf,
+CppCarpetXWizard(
+    gf,
+    CppCarpetXGenerator(
+        gf,
         interior_sync_mode=InteriorSyncMode.MixedRhs,
         extra_schedule_blocks=[check_zero]
     )

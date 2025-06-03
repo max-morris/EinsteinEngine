@@ -23,8 +23,8 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFun
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
 
-__all__ = ["D", "div", "to_num", "mk_subst_type", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
-           "set_dimension", "get_dimension", "lookup_pair", "mksymbol_for_tensor_xyz", "mkPair",
+__all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
+           "set_dimension", "get_dimension", "lookup_pair", "subst_tensor", "subst_tensor_xyz", "mkPair",
            "stencil","DD","DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
@@ -958,7 +958,7 @@ def _mksymbol_for_tensor(sym: Indexed, *args: Idx) -> Expr:
     return mkSymbol(newstr)
 
 
-def mksymbol_for_tensor(sym: Indexed) -> Expr:
+def subst_tensor(sym: Indexed, *idxs: int) -> Expr:
     """
     Define a symbol for a tensor using standard NRPy+ rules.
     For an upper index put a U, for a lower index put a D.
@@ -998,7 +998,7 @@ def _mksymbol_for_tensor_xyz(sym: Indexed, *args: Idx) -> str:
     return newstr
 
 
-def mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
+def subst_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
     """
     Define a symbol for a tensor using standard Cactus rules.
     Don't distinguish up/down indices. Use suffixes based on
@@ -1019,38 +1019,40 @@ def mksymbol_for_tensor_xyz(sym: Indexed, *idxs: int) -> Symbol:
         return mkSymbol(_mksymbol_for_tensor_xyz(sym))
 
 
-mk_subst_type = Callable[[Indexed, VarArg(int)], Expr]
+BaseIndexedSubstFnType = Callable[[Indexed, VarArg(int)], Expr]
+IndexedSubstFnType = (
+        Callable[[Indexed, int], Expr] |
+        Callable[[Indexed, int, int], Expr] |
+        Callable[[Indexed, int, int, int], Expr] |
+        BaseIndexedSubstFnType
+)
+MkSubstType = IndexedSubstFnType | Expr | ImmutableDenseMatrix | MatrixBase
 
-
-def mk_subst_default(out: Indexed, *inds: int) -> Expr:
-    return mksymbol_for_tensor(out)
-
-param_default_type = Union[float, int, str, bool]
-param_values_type = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
-min_max_type = Union[Tuple[float, float], Tuple[int, int]]
-
+ParamDefaultType = Union[float, int, str, bool]
+ParamValuesType = Optional[Union[Tuple[float, float], Tuple[int, int], Tuple[bool, bool], str, Set[str]]]
+MinMaxType = Union[Tuple[float, float], Tuple[int, int]]
 
 class Param:
-    def __init__(self, name: str, default: param_default_type, desc: str, values: param_values_type) -> None:
+    def __init__(self, name: str, default: ParamDefaultType, desc: str, values: ParamValuesType) -> None:
         self.name = name
         self.values = values
         self.desc = desc
         self.default = default
 
-    def get_min_max(self) -> min_max_type:
+    def get_min_max(self) -> MinMaxType:
         ty = self.get_type()
         if ty == int:
             if self.values is not None:
-                return cast(min_max_type, self.values)
+                return cast(MinMaxType, self.values)
             return (-2 ** 31, 2 ** 31 - 1)
         elif ty == float:
             if self.values is not None:
-                return cast(min_max_type, self.values)
+                return cast(MinMaxType, self.values)
             return (sys.float_info.min, sys.float_info.max)
         else:
             assert False
 
-    def get_values(self) -> param_values_type:
+    def get_values(self) -> ParamValuesType:
         if self.values is not None:
             return self.values
         ty = self.get_type()
@@ -1539,8 +1541,10 @@ class ThornFunction:
 
 
 class ThornDef:
+    _xyz_subst_thorns: list[str] = ["ADMBaseX", "TmunuBaseX", "HydroBaseX"]
+
     def __init__(self, arr: str, name: str, run_simplify: bool = True) -> None:
-        self.fun_args:Dict[str,int] = dict()
+        self.fun_args: Dict[str,int] = dict()
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
         self.apply_div: Applier = ApplyDiv()
@@ -1601,7 +1605,7 @@ class ThornDef:
         self.thorn_functions[name] = tf
         return tf
 
-    def add_param(self, name: str, default: param_default_type, desc: str, values: param_values_type = None) -> Symbol:
+    def add_param(self, name: str, default: ParamDefaultType, desc: str, values: ParamValuesType = None) -> Symbol:
         self.params[name] = Param(name, default, desc, values)
         return mkSymbol(name)
 
@@ -1810,6 +1814,7 @@ class ThornDef:
         group_name: str
         symmetries: List[Tuple[Idx, Idx]]
         anti_symmetries: List[Tuple[Idx, Idx]]
+        substitution_rule: MkSubstType | None
 
     def get_state(self) -> List[IndexedBase]:
         return [self.gfs[k] for k in self.rhs]
@@ -1857,6 +1862,12 @@ class ThornDef:
 
             for a_sym in anti_symmetries:
                 self._add_sym(indexed_symbol, *a_sym, sgn=-1)
+
+        if indexed_symbol is not None:
+            default_subst = subst_tensor_xyz if from_thorn in self._xyz_subst_thorns else subst_tensor
+
+            if (substitution_rule := kwargs.get('substitution_rule', default_subst)) is not None:
+                self.add_substitution_rule(indexed_symbol, substitution_rule)
 
         return the_symbol
 
@@ -1918,25 +1929,25 @@ class ThornDef:
         return OrderedSet(self.params)
 
     @multimethod
-    def mk_subst(self, indexed: Indexed, f: Callable[[Indexed, int, int], Expr]) -> None:
+    def add_substitution_rule(self, indexed: Indexed, f: Callable[[Indexed, int, int], Expr]) -> None:
         def f2(ix: Indexed, *n:int)->Expr:
             return f(ix, n[0], n[1])
-        self.mk_subst(indexed, f2)
+        self.add_substitution_rule(indexed, f2)
 
-    @mk_subst.register
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Callable[[Indexed, int], Expr]) -> None:
         def f2(ix: Indexed, *n:int)->Expr:
             return f(ix, n[0])
-        self.mk_subst(indexed, f2)
+        self.add_substitution_rule(indexed, f2)
 
-    @mk_subst.register
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Callable[[Indexed, int, int, int], Expr]) -> None:
         def f2(ix: Indexed, *n:int)->Expr:
             return f(ix, n[0], n[1], n[2])
-        self.mk_subst(indexed, f2)
+        self.add_substitution_rule(indexed, f2)
 
-    @mk_subst.register
-    def _(self, indexed: Indexed, f: mk_subst_type = mk_subst_default) -> None:
+    @add_substitution_rule.register
+    def _(self, indexed: Indexed, f: BaseIndexedSubstFnType = subst_tensor) -> None:
         indices: List[Idx]
         iter_var = indexed
         iter_syms = self.find_symmetries(indexed)
@@ -1968,7 +1979,7 @@ class ThornDef:
             print(colorize(subj, "red"), colorize("->", "magenta"), colorize(subval, "cyan"))
             self.subs[subj] = subval_
 
-    @mk_subst.register
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Expr) -> None:
         indices: List[Idx]
         iter_var = indexed
@@ -1988,15 +1999,15 @@ class ThornDef:
             print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
         return None
 
-    @mk_subst.register
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: ImmutableDenseMatrix) -> None:
-        self.mk_subst_matrix(indexed, f)
+        self._mk_subst_matrix(indexed, f)
 
-    @mk_subst.register
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: MatrixBase) -> None:
-        self.mk_subst_matrix(indexed, f)
+        self._mk_subst_matrix(indexed, f)
 
-    def mk_subst_matrix(self, indexed: Indexed, f: MatrixBase)->None:
+    def _mk_subst_matrix(self, indexed: Indexed, f: MatrixBase)->None:
         indices: List[Idx]
         iter_var = indexed
         iter_syms = self.find_symmetries(indexed)
@@ -2157,7 +2168,7 @@ if __name__ == "__main__":
     b = gf.decl("b", [])
     c = gf.decl("c", [])
     k = gf.decl("k", [la])
-    gf.mk_subst(k[la])
+    gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, do_sympify(dimension))
     foofunc.add_eqn(b, a + do_sympify(2))
