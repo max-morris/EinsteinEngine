@@ -292,9 +292,9 @@ class EqnList:
         return result
             
     def order_builder(self, complete:Dict[Symbol, int], cno:int)->None:
-        provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
-        requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
-        self.requires = dict()
+        provides : Dict[Symbol,Set[Symbol]] = OrderedDict() # vals require key
+        requires : Dict[Symbol,Set[Symbol]] = OrderedDict() # key requires vals
+        self.requires = OrderedDict()
         # Thus for
         #   u_t = v
         #   v_t = div(u,la,lb) g[ua,ub]
@@ -302,11 +302,11 @@ class EqnList:
         # requires = {u_t:{v}, v_t:{u}}
         for k in self.eqns:
             if k not in requires:
-                requires[k] = set()
-                self.requires[k] = set()
+                requires[k] = OrderedSet()
+                self.requires[k] = OrderedSet()
             for v in free_symbols(self.eqns[k]):
                 if v not in provides:
-                    provides[v] = set()
+                    provides[v] = OrderedSet()
                 provides[v].add(k)
                 requires[k].add(v)
                 self.requires[k].add(v)
@@ -343,7 +343,7 @@ class EqnList:
     def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
         needed: Set[Symbol] = OrderedSet()
-        complete: Dict[Symbol, int] = dict()
+        complete: Dict[Symbol, int] = OrderedDict()
         self.order = list()
 
         read: Set[Symbol] = OrderedSet()
