@@ -292,7 +292,7 @@ analysis_group = ScheduleBlock(
 fun_bssn_enforce_pt1 = pybssn.create_function(
     "bssn_enforce_pt1",
     ScheduleBin.PostStep,
-    schedule_after=["state_sync"],
+    schedule_after=["StateSync"],
     schedule_before=["bssn_enforce_pt2"]
 )
 
