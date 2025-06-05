@@ -15,11 +15,11 @@ if __name__ == "__main__":
 
     def flat_metric(_: Indexed, i: int, j: int) -> Expr:
         if i == 2 or j == 2:
-            return do_sympify(0)
+            return sympify(0)
         elif i == j:
-            return do_sympify(1)
+            return sympify(1)
         else:
-            return do_sympify(0)
+            return sympify(0)
 
 
     # Create a set of grid functions
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     # Again for wave_init
     fun = gf.create_function("newwave_init", ScheduleBin.Init)
     fun.add_eqn(v, sin(kx * x) * sin(ky * y))
-    fun.add_eqn(u, do_sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
+    fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
     print('*** ThornFunction wave_init:')
     fun.bake()
     fun.dump()

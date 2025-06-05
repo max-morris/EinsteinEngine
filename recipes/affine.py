@@ -1,6 +1,6 @@
 if __name__ == '__main__':
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, do_inv, do_sympify
+    from EmitCactus.dsl.sympywrap import mkMatrix, inv, sympify
     from EmitCactus.emit.ccl.interface.interface_visitor import InterfaceVisitor
     from EmitCactus.emit.ccl.param.param_visitor import ParamVisitor
     from EmitCactus.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 
     gmat = gf.get_matrix(g[la, lb])
-    imat = do_inv(gmat)
+    imat = inv(gmat)
     gf.add_substitution_rule(g[ua, ub], imat)
     gf.add_substitution_rule(D(g[la, lb], lc))  # D(g[l0,l1],l2) -> gDD01_dD2
     gf.add_substitution_rule(D(g[ua, ub], lc))

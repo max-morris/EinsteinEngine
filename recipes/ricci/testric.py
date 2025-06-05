@@ -18,19 +18,19 @@ G = gf.decl("Affine", [ua, lb, lc], symmetries=[(lb, lc)], substitution_rule=Non
 
 gmat = gf.get_matrix(g[la,lb])
 print(gmat)
-imat = do_simplify(do_inv(gmat)*do_det(gmat)) 
+imat = simplify(inv(gmat)*det(gmat)) 
 gf.add_substitution_rule(g[ua, ub], imat)
 
 # Metric
 grr = sqrt(1+c**2)*(a+b*x**2)
 gqq = sqrt(1+c**2)/(a+b*x**2)
-gpp = do_sympify(1)
-Z = do_sympify(0)
+gpp = sympify(1)
+Z = sympify(0)
 gmat = mkMatrix([
 [grr,   c,   Z],
 [  c, gqq,   Z],
 [  Z,   Z, gpp]])
-assert do_det(gmat) == 1
+assert det(gmat) == 1
 
 # Define the affine connections
 gf.add_substitution_rule(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)

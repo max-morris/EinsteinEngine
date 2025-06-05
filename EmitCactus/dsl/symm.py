@@ -51,7 +51,7 @@ class Sym(Applier):
             if s1[0] != s2[0]:
                 if s1[1:] == s2[1:] and sgn < 0:
                     self.modified = True
-                    return do_sympify(0)
+                    return sympify(0)
                 continue
             if s1 > s2:
                 self.modified = True
@@ -59,7 +59,7 @@ class Sym(Applier):
                 retsgn *= sgn
             elif s1 == s2 and sgn < 0:
                 self.modified = True
-                return do_sympify(0)
+                return sympify(0)
         ret : Expr
         if retsgn == 1:
             ret = expr.base.__getitem__(tuple(args))

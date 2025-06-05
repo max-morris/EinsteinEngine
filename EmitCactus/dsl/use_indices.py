@@ -29,8 +29,8 @@ __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
-one = do_sympify(1)
-zero = do_sympify(0)
+one = sympify(1)
+zero = sympify(0)
 
 lookup_pair:Dict[Idx,Idx] = dict()
 
@@ -270,14 +270,14 @@ class IndexSubsVisitor:
 
     @multimethod
     def visit(self, expr: sy.Add) -> Expr:
-        r = do_sympify(0)
+        r = sympify(0)
         for a in expr.args:
             r += self.visit(a)
         return r
 
     @visit.register
     def _(self, expr: sy.Mul) -> Expr:
-        r = do_sympify(1)
+        r = sympify(1)
         for a in expr.args:
             r *= self.visit(a)
         return r
@@ -617,7 +617,7 @@ dmv2 = DivMakerVisitor(D)
 
 def assert_eq(a: Expr ,b: Expr)->None:
     assert a is not None
-    r =  do_simplify(a - b)
+    r =  simplify(a - b)
     assert r == 0, f"{a} minus {b} !=0, instead {r}"
 
 def do_div(expr: Basic)->Expr:
@@ -1206,7 +1206,7 @@ class ApplyDivN(Applier):
                 
         elif expr.is_Function and hasattr(expr, "name") and expr.name in ["div", "D"]:
             new_expr = list()
-            dxt = do_sympify(1)
+            dxt = sympify(1)
             if len(expr.args) == 2:
                 coefs = self.fd_matrix.col(1)
                 if expr.args[1] == l0:
@@ -1272,7 +1272,7 @@ class ApplyDivN(Applier):
 
             if len(new_expr) > 0:
                 new_expr = sorted(new_expr, key=sort_exprs)
-                self.val = do_sympify(0)
+                self.val = sympify(0)
                 i = 0
                 while i < len(new_expr):
                     if i + 1 < len(new_expr) and abs(new_expr[i][0]) == abs(new_expr[i + 1][0]):
@@ -1993,7 +1993,7 @@ class ThornDef:
             assert isinstance(out, Indexed)
             arr_inds = tuple([to_num(x) for x in out.indices])
             if self.run_simplify:
-                self.subs[out] = do_simplify(self.do_subs(f, idxsubs=indrep))
+                self.subs[out] = simplify(self.do_subs(f, idxsubs=indrep))
             else:
                 self.subs[out] = self.do_subs(f, idxsubs=indrep)
             print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
@@ -2020,7 +2020,7 @@ class ThornDef:
             arr_inds = tuple([to_num(x) for x in out.indices])
             if self.run_simplify:
                 narray = len(arr_inds)
-                res = do_simplify(set_matrix[arr_inds[0:2]])
+                res = simplify(set_matrix[arr_inds[0:2]])
                 if narray >= 3:
                     res = self.do_subs(res, idxsubs=indrep)
                 self.subs[out] = res
@@ -2103,7 +2103,7 @@ if __name__ == "__main__":
             print(iie)
             it = IndexTracker()
             expr = fail_expr
-        zero_expr = do_simplify(expr - result_expr)
+        zero_expr = simplify(expr - result_expr)
         if zero_expr == 0:
             result_color : Literal['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']
             if result_expr == fail_expr:
@@ -2171,8 +2171,8 @@ if __name__ == "__main__":
     k = gf.decl("k", [la])
     gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
-    foofunc.add_eqn(a, do_sympify(dimension))
-    foofunc.add_eqn(b, a + do_sympify(2))
+    foofunc.add_eqn(a, sympify(dimension))
+    foofunc.add_eqn(b, a + sympify(2))
     
     # Test of custom derivative operation mdiv
     mdiv = gf.mk_stencil("mdiv", la, (stencil(la)-stencil(0))*DDI(la))

@@ -1,6 +1,6 @@
 if __name__ == "__main__":
     from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import do_sympify, mkMatrix
+    from EmitCactus.dsl.sympywrap import mkMatrix
     from EmitCactus.emit.ccl.schedule.schedule_tree import AtOrIn, GroupOrFunction, ScheduleBlock
     from EmitCactus.emit.tree import Identifier, String
     from EmitCactus.generators.wizards import CppCarpetXWizard
