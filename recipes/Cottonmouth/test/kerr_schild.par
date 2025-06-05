@@ -1,10 +1,11 @@
 ActiveThorns = "
   ADMBaseX
   CarpetX
+  CottonmouthBSSNOK
+  CottonmouthTestBSSNOK
+  CottonmouthKerrSchildID
   IOUtil
-  KerrSchildID
   ODESolvers
-  TmunuBaseX
 "
 
 # Driver
@@ -17,7 +18,7 @@ CarpetX::out_metadata            = no
 
 # Run Termination
 Cactus::terminate   = "iteration"
-Cactus::cctk_itlast = 0
+Cactus::cctk_itlast = 1
 
 # Grid setup
 CarpetX::blocking_factor_x = 1
@@ -58,13 +59,19 @@ ADMBaseX::initial_shift   = "none"
 ADMBaseX::initial_dtlapse = "none"
 ADMBaseX::initial_dtshift = "none"
 
-KerrSchildID::mass = 1.0 / 4.0
-KerrSchildID::spin = KerrSchildID::mass / 4.0
+CottonmouthKerrSchildID::mass = 1.0 / 4.0
+CottonmouthKerrSchildID::spin = CottonmouthKerrSchildID::mass / 4.0
 
 # Time Integration
 ODESolvers::verbose = yes
 CarpetX::dtfac      = 0.25
 ODESolvers::method  = "RK4"
+
+# Spacetime evolution
+CottonmouthBSSNOK::eta_B                  = 1.0
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
+CottonmouthBSSNOK::dissipation_epsilon    = 0.2
 
 # Output
 CarpetX::out_norm_omit_unstable = no
@@ -76,8 +83,13 @@ IO::out_every  = 1
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  ADMBaseX::metric
-  ADMBaseX::curv
-  ADMBaseX::lapse
-  ADMBaseX::shift
+  CottonmouthBSSNOK::gt
+  CottonmouthBSSNOK::w
+  CottonmouthBSSNOK::At
+  CottonmouthBSSNOK::trK
+  CottonmouthBSSNOK::ConfConnect
+  CottonmouthBSSNOK::evo_lapse
+  CottonmouthBSSNOK::evo_shift
+  CottonmouthBSSNOK::shift_B
+  CottonmouthTestBSSNOK::HamConsTest
 "
