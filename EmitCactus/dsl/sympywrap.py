@@ -1,6 +1,5 @@
 from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
-from sympy import Expr
-from sympy import Expr
+from sympy import Expr, Matrix
 cbrt : Callable[[Expr],Expr]
 sqrt : Callable[[Expr],Expr]
 log  : Callable[[Expr],Expr]
@@ -10,9 +9,13 @@ sin  : Callable[[Expr],Expr]
 tan  : Callable[[Expr],Expr]
 Pow  : Callable[[Expr,Expr],Expr]
 diff : Callable[[Expr,Expr],Expr]
+simplify : Callable[[Expr],Expr]
+det : Callable[[Matrix],Expr]
+sympify : Callable[[Expr|int|float],Expr]
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
-    Function, Matrix, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
-    exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, diff as diff_
+    Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
+    exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, diff as diff_, \
+    simplify as simplify_, det as det_, sympify as sympify_
 sqrt = sqrt_
 cbrt = cbrt_
 log = log_
@@ -22,6 +25,10 @@ cos = cos_
 sin = sin_
 tan = tan_
 diff = diff_
+simplify = simplify_
+det = det_
+sympify = sympify_
+
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
@@ -32,7 +39,7 @@ from EmitCactus.util import OrderedSet
 from multimethod import multimethod
 
 __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
-    "do_inv","do_det","do_sympify","do_simplify","cse","mkIdx","mkSymbol",
+    "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase",
     "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
     "do_match"]
@@ -49,20 +56,10 @@ IndexType = Union[Idx, Mul]
 
 cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 
-def do_inv(e:Matrix)->Matrix:
+def inv(e:Matrix)->Matrix:
     return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
 
-def do_det(e:Matrix)->Symbol:
-    return cast(Symbol, e.det()) # type: ignore[no-untyped-call]
-
-def do_sympify(e:Union[int,float,Expr])->Expr:
-    return cast(Expr, sympify(e)) # type: ignore[no-untyped-call]
-
-def do_simplify(e:Union[int,Expr])->Expr:
-    return cast(Expr, simplify(e)) # type: ignore[no-untyped-call]
-
-def cse(arg: List[Expr]) -> cse_return:
-    return cast(cse_return, cse_(arg))  # type: ignore[no-untyped-call]
+cse : Callable[[List[Expr]],cse_return] = cse_
 
 
 def mkIdx(name: str) -> Idx:
@@ -75,7 +72,7 @@ def mkSymbol(name: str) -> Symbol:
 def mkWild(name: str, exclude:List[Any]=list(), properties:List[Any]=list()) -> Wild:
     return Wild(name, exclude=exclude, properties=properties)  # type: ignore[no-untyped-call]
 
-symar = List[List[Expr | int]]
+symar = List[List[Expr | int | float]]
 def mkMatrix(array: symar) -> Matrix:
     return Matrix(array)  # type: ignore[no-untyped-call]
 
@@ -124,9 +121,9 @@ def do_subs(sym: Expr, *tables: do_subs_table_type) -> Expr:
     return result
 
 def mat_trans(mat:Matrix, tr:Callable[[Expr],Expr])->Matrix:
-    table : List[List[Expr|int]] = list()
+    table : List[List[Expr|int|float]] = list()
     for i in range(mat.rows):
-        row : List[Expr|int] = list()
+        row : List[Expr|int|float] = list()
         for j in range(mat.cols):
             row += [tr(mat[i,j])]
         table += [row]

@@ -75,31 +75,31 @@ if __name__ == "__main__":
     ###
     t, x, y, z = pybssn_linear_wave_id.mk_coords(with_time=True)
 
-    pi = do_sympify(3.141592653589793)
+    pi = sympify(3.141592653589793)
     H = amplitude * sin((2 * pi * (x - t)) / wavelength)
 
     # \alpha
-    lapse = do_sympify(1)
+    lapse = sympify(1)
 
     # \beta^{i}
-    shift_x = do_sympify(0)
-    shift_y = do_sympify(0)
-    shift_z = do_sympify(0)
+    shift_x = sympify(0)
+    shift_y = sympify(0)
+    shift_z = sympify(0)
 
     # h_{ij}
-    hxx = do_sympify(1)
-    hxy = do_sympify(0)
-    hxz = do_sympify(0)
+    hxx = sympify(1)
+    hxy = sympify(0)
+    hxz = sympify(0)
     hyy = 1 + H
-    hyz = do_sympify(0)
+    hyz = sympify(0)
     hzz = 1 - H
 
     # K_{ij}
-    Kxx = do_sympify(0)
-    Kxy = do_sympify(0)
-    Kxz = do_sympify(0)
+    Kxx = sympify(0)
+    Kxy = sympify(0)
+    Kxz = sympify(0)
     Kyy = -Rational(1, 2) * diff(H, t)
-    Kyz = do_sympify(0)
+    Kyz = sympify(0)
     Kzz = Rational(1, 2) * diff(H, t)
 
     # Matrices

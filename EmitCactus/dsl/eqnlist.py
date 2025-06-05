@@ -698,8 +698,8 @@ if __name__ == "__main__":
         el.default_read_write_spec = IntentRegion.Interior
         # el.add_func(div, True)
         el.add_input(a)
-        el.add_eqn(c, do_sympify(3))
-        el.add_eqn(b, 2 * c + do_sympify(8))
+        el.add_eqn(c, sympify(3))
+        el.add_eqn(b, 2 * c + sympify(8))
         el.add_eqn(f, div(a) + c)
         el.add_eqn(d, b + c + f)
         el.add_output(c)

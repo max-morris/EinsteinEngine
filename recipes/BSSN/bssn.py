@@ -200,13 +200,13 @@ cdphi2 = pybssn.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 # Substitution rules
 ###
 g_mat = pybssn.get_matrix(g[la, lb])
-g_imat = do_inv(g_mat)
-detg = do_det(g_mat)
+g_imat = inv(g_mat)
+detg = det(g_mat)
 pybssn.add_substitution_rule(g[ua, ub], g_imat)
 
 gt_mat = pybssn.get_matrix(gt[la, lb])
-detgt = do_det(gt_mat)
-gt_imat = do_inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
+detgt = det(gt_mat)
+gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
 pybssn.add_substitution_rule(gt[ua, ub], gt_imat)
 
 pybssn.add_substitution_rule(At[ua, ub])

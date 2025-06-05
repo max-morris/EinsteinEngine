@@ -1,6 +1,6 @@
 from typing import Union
 from sympy import Expr, Add, Mul, Symbol, Idx, Rational, Integer
-from EmitCactus.dsl.sympywrap import do_sympify as sympify, do_simplify as simplify, mkSymbol, mkIdx
+from EmitCactus.dsl.sympywrap import sympify, simplify, mkSymbol, mkIdx
 
 from multimethod import multimethod
 zero = sympify(0)
