@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Build and Run
 if [ "${THORNLIST}" = "" ]
