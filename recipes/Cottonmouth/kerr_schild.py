@@ -5,7 +5,7 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    cottonmouth_kerr_schilld_id = ThornDef(
+    cottonmouth_kerr_schild_id = ThornDef(
         "Cottonmouth",
         "CottonmouthKerrSchildID"
     )
@@ -13,13 +13,13 @@ if __name__ == "__main__":
     ###
     # Thorn parameters
     ###
-    mass = cottonmouth_kerr_schilld_id.add_param(
+    mass = cottonmouth_kerr_schild_id.add_param(
         "mass",
         default=1.0,
         desc="Black hole mass"
     )
 
-    spin = cottonmouth_kerr_schilld_id.add_param(
+    spin = cottonmouth_kerr_schild_id.add_param(
         "spin",
         default=1.0,
         desc="Black hole spin parameter"
@@ -29,33 +29,33 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = cottonmouth_kerr_schilld_id.decl(
+    g = cottonmouth_kerr_schild_id.decl(
         "g",
         [li, lj],
         symmetries=[(li, lj)],
         from_thorn="ADMBaseX"
     )
 
-    k = cottonmouth_kerr_schilld_id.decl(
+    k = cottonmouth_kerr_schild_id.decl(
         "k",
         [li, lj],
         symmetries=[(li, lj)],
         from_thorn="ADMBaseX"
     )
 
-    alp = cottonmouth_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
+    alp = cottonmouth_kerr_schild_id.decl("alp", [], from_thorn="ADMBaseX")
 
-    beta = cottonmouth_kerr_schilld_id.decl(
+    beta = cottonmouth_kerr_schild_id.decl(
         "beta", [ua], from_thorn="ADMBaseX")
 
     # First derivatives
-    dtalp = cottonmouth_kerr_schilld_id.decl(
+    dtalp = cottonmouth_kerr_schild_id.decl(
         "dtalp", [], from_thorn="ADMBaseX")
 
-    dtbeta = cottonmouth_kerr_schilld_id.decl(
+    dtbeta = cottonmouth_kerr_schild_id.decl(
         "dtbeta", [ua], from_thorn="ADMBaseX")
 
-    dtk = cottonmouth_kerr_schilld_id.decl(
+    dtk = cottonmouth_kerr_schild_id.decl(
         "dtk",
         [la, lb],
         symmetries=[(la, lb)],
@@ -63,10 +63,10 @@ if __name__ == "__main__":
     )
 
     # Second derivatives
-    dt2alp = cottonmouth_kerr_schilld_id.decl(
+    dt2alp = cottonmouth_kerr_schild_id.decl(
         "dt2alp", [], from_thorn="ADMBaseX")
 
-    dt2beta = cottonmouth_kerr_schilld_id.decl(
+    dt2beta = cottonmouth_kerr_schild_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # Base quantities
     # See https://arxiv.org/pdf/gr-qc/0002076 eqs (10)-(14)
     ###
-    t, x, y, z = cottonmouth_kerr_schilld_id.mk_coords(with_time=True)
+    t, x, y, z = cottonmouth_kerr_schild_id.mk_coords(with_time=True)
 
     # Radius
     r2 = Rational(1, 2) * (x**2 + y**2 + z**2 - spin**2) + sqrt(
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     ###
     # Write initial data
     ###
-    fun_fill_id = cottonmouth_kerr_schilld_id.create_function(
+    fun_fill_id = cottonmouth_kerr_schild_id.create_function(
         "cottonmouth_kerr_schild_fill_id",
         adm_id_group
     )
@@ -227,9 +227,9 @@ if __name__ == "__main__":
     # Thorn creation
     ###
     CppCarpetXWizard(
-        cottonmouth_kerr_schilld_id,
+        cottonmouth_kerr_schild_id,
         CppCarpetXGenerator(
-            cottonmouth_kerr_schilld_id,
+            cottonmouth_kerr_schild_id,
             interior_sync_mode=InteriorSyncMode.HandsOff,
             extra_schedule_blocks=[adm_id_group]
         )
