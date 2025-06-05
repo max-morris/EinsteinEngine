@@ -5,73 +5,89 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    pybssn_kerr_schilld_id = ThornDef("PyBSSN", "KerrSchildID")
+    cottonmouth_kerr_schilld_id = ThornDef(
+        "Cottonmouth",
+        "CottonmouthKerrSchildID"
+    )
 
     ###
     # Thorn parameters
     ###
-    mass = pybssn_kerr_schilld_id.add_param(
+    mass = cottonmouth_kerr_schilld_id.add_param(
         "mass",
         default=1.0,
         desc="Black hole mass"
     )
 
-    spin = pybssn_kerr_schilld_id.add_param(
+    spin = cottonmouth_kerr_schilld_id.add_param(
         "spin",
         default=1.0,
-        desc="Black hole angular momentum"
+        desc="Black hole spin parameter"
     )
 
     ###
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_kerr_schilld_id.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_substitution_rule(g[li, lj], subst_tensor_xyz)
+    g = cottonmouth_kerr_schilld_id.decl(
+        "g",
+        [li, lj],
+        symmetries=[(li, lj)],
+        from_thorn="ADMBaseX"
+    )
 
-    k = pybssn_kerr_schilld_id.decl("k", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_substitution_rule(k[li, lj], subst_tensor_xyz)
+    k = cottonmouth_kerr_schilld_id.decl(
+        "k",
+        [li, lj],
+        symmetries=[(li, lj)],
+        from_thorn="ADMBaseX"
+    )
 
-    alp = pybssn_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
+    alp = cottonmouth_kerr_schilld_id.decl("alp", [], from_thorn="ADMBaseX")
 
-    beta = pybssn_kerr_schilld_id.decl("beta", [ua], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_substitution_rule(beta[ua], subst_tensor_xyz)
+    beta = cottonmouth_kerr_schilld_id.decl(
+        "beta", [ua], from_thorn="ADMBaseX")
 
     # First derivatives
-    dtalp = pybssn_kerr_schilld_id.decl("dtalp", [], from_thorn="ADMBaseX")
+    dtalp = cottonmouth_kerr_schilld_id.decl(
+        "dtalp", [], from_thorn="ADMBaseX")
 
-    dtbeta = pybssn_kerr_schilld_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_substitution_rule(dtbeta[ua], subst_tensor_xyz)
+    dtbeta = cottonmouth_kerr_schilld_id.decl(
+        "dtbeta", [ua], from_thorn="ADMBaseX")
 
-    dtk = pybssn_kerr_schilld_id.decl("dtk", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-    pybssn_kerr_schilld_id.add_substitution_rule(dtk[la, lb], subst_tensor_xyz)
+    dtk = cottonmouth_kerr_schilld_id.decl(
+        "dtk",
+        [la, lb],
+        symmetries=[(la, lb)],
+        from_thorn="ADMBaseX"
+    )
 
     # Second derivatives
-    dt2alp = pybssn_kerr_schilld_id.decl("dt2alp", [], from_thorn="ADMBaseX")
+    dt2alp = cottonmouth_kerr_schilld_id.decl(
+        "dt2alp", [], from_thorn="ADMBaseX")
 
-    dt2beta = pybssn_kerr_schilld_id.decl(
+    dt2beta = cottonmouth_kerr_schilld_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
     )
-    pybssn_kerr_schilld_id.add_substitution_rule(dt2beta[ua], subst_tensor_xyz)
 
     ###
     # Groups
     ###
     adm_id_group = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
-        name=Identifier("LinearWaveID"),
+        name=Identifier("Cottonmouth_KerrSchildID"),
         at_or_in=AtOrIn.In,
         schedule_bin=Identifier("ADMBaseX_InitialData"),
-        description=String("Initialize ADM variables with Linear Wave data"),
+        description=String("Initialize ADM variables with Kerr-Schild data"),
     )
 
     ###
     # Base quantities
     # See https://arxiv.org/pdf/gr-qc/0002076 eqs (10)-(14)
     ###
-    t, x, y, z = pybssn_kerr_schilld_id.mk_coords(with_time=True)
+    t, x, y, z = cottonmouth_kerr_schilld_id.mk_coords(with_time=True)
 
     # Radius
     r2 = Rational(1, 2) * (x**2 + y**2 + z**2 - spin**2) + sqrt(
@@ -188,8 +204,8 @@ if __name__ == "__main__":
     ###
     # Write initial data
     ###
-    fun_fill_id = pybssn_kerr_schilld_id.create_function(
-        "pybssn_kerr_schild_id_fill_id",
+    fun_fill_id = cottonmouth_kerr_schilld_id.create_function(
+        "cottonmouth_kerr_schild_fill_id",
         adm_id_group
     )
 
@@ -211,9 +227,9 @@ if __name__ == "__main__":
     # Thorn creation
     ###
     CppCarpetXWizard(
-        pybssn_kerr_schilld_id,
+        cottonmouth_kerr_schilld_id,
         CppCarpetXGenerator(
-            pybssn_kerr_schilld_id,
+            cottonmouth_kerr_schilld_id,
             interior_sync_mode=InteriorSyncMode.HandsOff,
             extra_schedule_blocks=[adm_id_group]
         )

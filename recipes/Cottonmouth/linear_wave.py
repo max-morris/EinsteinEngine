@@ -5,18 +5,21 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    pybssn_diagonal_linear_wave_id = ThornDef("PyBSSN", "DiagonalLinearWaveID")
+    cottonmouth_linear_wave_id = ThornDef(
+        "Cottonmouth",
+        "CottonmouthLinearWaveID"
+    )
 
     ###
     # Thorn parameters
     ###
-    amplitude = pybssn_diagonal_linear_wave_id.add_param(
+    amplitude = cottonmouth_linear_wave_id.add_param(
         "amplitude",
         default=1.0,
         desc="Linear wave amplitude"
     )
 
-    wavelength = pybssn_diagonal_linear_wave_id.add_param(
+    wavelength = cottonmouth_linear_wave_id.add_param(
         "wavelength",
         default=1.0,
         desc="Linear wave wavelength"
@@ -26,42 +29,71 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = pybssn_diagonal_linear_wave_id.decl("g", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(g[li, lj], subst_tensor_xyz)
+    g = cottonmouth_linear_wave_id.decl(
+        "g",
+        [li, lj],
+        symmetries=[(li, lj)],
+        from_thorn="ADMBaseX"
+    )
 
-    k = pybssn_diagonal_linear_wave_id.decl("k", [li, lj], symmetries=[(li, lj)], from_thorn="ADMBaseX")
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(k[li, lj], subst_tensor_xyz)
+    k = cottonmouth_linear_wave_id.decl(
+        "k",
+        [li, lj],
+        symmetries=[(li, lj)],
+        from_thorn="ADMBaseX"
+    )
 
-    alp = pybssn_diagonal_linear_wave_id.decl("alp", [], from_thorn="ADMBaseX")
+    alp = cottonmouth_linear_wave_id.decl(
+        "alp",
+        [],
+        from_thorn="ADMBaseX"
+    )
 
-    beta = pybssn_diagonal_linear_wave_id.decl("beta", [ua], from_thorn="ADMBaseX")
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(beta[ua], subst_tensor_xyz)
+    beta = cottonmouth_linear_wave_id.decl(
+        "beta",
+        [ua],
+        from_thorn="ADMBaseX"
+    )
 
     # First derivatives
-    dtalp = pybssn_diagonal_linear_wave_id.decl("dtalp", [], from_thorn="ADMBaseX")
+    dtalp = cottonmouth_linear_wave_id.decl(
+        "dtalp",
+        [],
+        from_thorn="ADMBaseX"
+    )
 
-    dtbeta = pybssn_diagonal_linear_wave_id.decl("dtbeta", [ua], from_thorn="ADMBaseX")
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(dtbeta[ua], subst_tensor_xyz)
+    dtbeta = cottonmouth_linear_wave_id.decl(
+        "dtbeta",
+        [ua],
+        from_thorn="ADMBaseX"
+    )
 
-    dtk = pybssn_diagonal_linear_wave_id.decl("dtk", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(dtk[la, lb], subst_tensor_xyz)
+    dtk = cottonmouth_linear_wave_id.decl(
+        "dtk",
+        [la, lb],
+        symmetries=[(la, lb)],
+        from_thorn="ADMBaseX"
+    )
 
     # Second derivatives
-    dt2alp = pybssn_diagonal_linear_wave_id.decl("dt2alp", [], from_thorn="ADMBaseX")
+    dt2alp = cottonmouth_linear_wave_id.decl(
+        "dt2alp",
+        [],
+        from_thorn="ADMBaseX"
+    )
 
-    dt2beta = pybssn_diagonal_linear_wave_id.decl(
+    dt2beta = cottonmouth_linear_wave_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
     )
-    pybssn_diagonal_linear_wave_id.add_substitution_rule(dt2beta[ua], subst_tensor_xyz)
 
     ###
     # Groups
     ###
     adm_id_group = ScheduleBlock(
         group_or_function=GroupOrFunction.Group,
-        name=Identifier("LinearWaveID"),
+        name=Identifier("Cottonmouth_LinearWaveID"),
         at_or_in=AtOrIn.In,
         schedule_bin=Identifier("ADMBaseX_InitialData"),
         description=String("Initialize ADM variables with Linear Wave data"),
@@ -73,12 +105,10 @@ if __name__ == "__main__":
     #   https://arxiv.org/abs/gr-qc/0305023
     #   https://arxiv.org/abs/0709.3559
     ###
-    t, x, y, z = pybssn_diagonal_linear_wave_id.mk_coords(with_time=True)
+    t, x, y, z = cottonmouth_linear_wave_id.mk_coords(with_time=True)
 
     pi = sympify(3.141592653589793)
-    two = sympify(2)
-    H = amplitude * sin((2 * pi * (x - y - t * sqrt(two))) /
-                        (wavelength * sqrt(two)))
+    H = amplitude * sin((2 * pi * (x - t)) / wavelength)
 
     # \alpha
     lapse = sympify(1)
@@ -149,8 +179,8 @@ if __name__ == "__main__":
     ###
     # Write initial data
     ###
-    fun_fill_id = pybssn_diagonal_linear_wave_id.create_function(
-        "pybssn_diagonal_linear_wave_id_fill_id",
+    fun_fill_id = cottonmouth_linear_wave_id.create_function(
+        "cottonmouth_linear_wave_fill_id",
         adm_id_group
     )
 
@@ -172,9 +202,9 @@ if __name__ == "__main__":
     # Thorn creation
     ###
     CppCarpetXWizard(
-        pybssn_diagonal_linear_wave_id,
+        cottonmouth_linear_wave_id,
         CppCarpetXGenerator(
-            pybssn_diagonal_linear_wave_id,
+            cottonmouth_linear_wave_id,
             interior_sync_mode=InteriorSyncMode.HandsOff,
             extra_schedule_blocks=[adm_id_group]
         )

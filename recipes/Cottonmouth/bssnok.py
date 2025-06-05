@@ -4,7 +4,7 @@ from sympy import Rational
 ###
 # Thorn definitions
 ###
-pybssn = ThornDef("PyBSSN", "BSSN")
+cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 
 ###
 # Code generation options
@@ -21,7 +21,7 @@ gen_opts = {
 ###
 
 # Fith order Kreiss-Oliger disspation stencil
-div_diss = pybssn.mk_stencil(
+div_diss = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la,
     Rational(1, 64) * DDI(la) * (
@@ -38,30 +38,30 @@ div_diss = pybssn.mk_stencil(
 ###
 # Extra math functions
 ###
-max = pybssn.declfun("max", args=2, is_stencil=False)
+max = cottonmouth_bssnok.declfun("max", args=2, is_stencil=False)
 
 ###
 # Thorn parameters
 ###
-eta_B = pybssn.add_param(
+eta_B = cottonmouth_bssnok.add_param(
     "eta_b",
     default=1.0,
     desc="Mass dependent damping coefficient for the hyperbolic gamma driver shift"
 )
 
-conformal_factor_floor = pybssn.add_param(
+conformal_factor_floor = cottonmouth_bssnok.add_param(
     "conformal_factor_floor",
     default=1.0e-10,
     desc="The conformal factor W will never be smaller than this value"
 )
 
-evolved_lapse_floor = pybssn.add_param(
+evolved_lapse_floor = cottonmouth_bssnok.add_param(
     "evolved_lapse_floor",
     default=1.0e-10,
     desc="The evolved lapse will never be smaller than this value"
 )
 
-dissipation_epsilon = pybssn.add_param(
+dissipation_epsilon = cottonmouth_bssnok.add_param(
     "dissipation_epsilon",
     default=0.2,
     desc="The ammount of dissipation to add. Should be in the [0, 1/3[ range"
@@ -79,33 +79,62 @@ parity_sym2ten = parities(+1,+1,+1,  -1,-1,+1,  -1,+1,-1,  +1,+1,+1,  +1,-1,-1, 
 ###
 # ADMBaseX vars.
 ###
-g = pybssn.decl("g", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-k = pybssn.decl("k", [la, lb], symmetries=[(la, lb)], from_thorn="ADMBaseX")
-alp = pybssn.decl("alp", [], from_thorn="ADMBaseX")
-beta = pybssn.decl("beta", [ua], from_thorn="ADMBaseX")
-dtbeta = pybssn.decl("dtbeta", [ua], from_thorn="ADMBaseX")
+g = cottonmouth_bssnok.decl(
+    "g",
+    [la, lb],
+    symmetries=[(la, lb)],
+    from_thorn="ADMBaseX"
+)
+
+k = cottonmouth_bssnok.decl(
+    "k",
+    [la, lb],
+    symmetries=[(la, lb)],
+    from_thorn="ADMBaseX"
+)
+
+alp = cottonmouth_bssnok.decl("alp", [], from_thorn="ADMBaseX")
+
+beta = cottonmouth_bssnok.decl("beta", [ua], from_thorn="ADMBaseX")
+
+dtbeta = cottonmouth_bssnok.decl("dtbeta", [ua], from_thorn="ADMBaseX")
 
 ###
 # Evolved Gauge Vars.
 ###
-evo_lapse_rhs = pybssn.decl("evo_lapse_rhs", [], parity=parity_scalar)
-evo_lapse = pybssn.decl(
+evo_lapse_rhs = cottonmouth_bssnok.decl(
+    "evo_lapse_rhs",
+    [],
+    parity=parity_scalar
+)
+
+evo_lapse = cottonmouth_bssnok.decl(
     "evo_lapse",
     [],
     rhs=evo_lapse_rhs,
     parity=parity_scalar
 )
 
-evo_shift_rhs = pybssn.decl("evo_shift_rhs", [ua], parity=parity_vector)
-evo_shift = pybssn.decl(
+evo_shift_rhs = cottonmouth_bssnok.decl(
+    "evo_shift_rhs",
+    [ua],
+    parity=parity_vector
+)
+
+evo_shift = cottonmouth_bssnok.decl(
     "evo_shift",
     [ua],
     rhs=evo_shift_rhs,
     parity=parity_vector
 )
 
-shift_B_rhs = pybssn.decl("shift_B_rhs", [ua], parity=parity_vector)
-shift_B = pybssn.decl(
+shift_B_rhs = cottonmouth_bssnok.decl(
+    "shift_B_rhs",
+    [ua],
+    parity=parity_vector
+)
+
+shift_B = cottonmouth_bssnok.decl(
     "shift_B",
     [ua],
     rhs=shift_B_rhs,
@@ -116,28 +145,53 @@ shift_B = pybssn.decl(
 # Evolved BSSN Vars.
 ###
 # w (conformal factor)
-w_rhs = pybssn.decl("w_rhs", [], parity=parity_scalar)
-w = pybssn.decl("w", [], rhs=w_rhs, parity=parity_scalar)
+w_rhs = cottonmouth_bssnok.decl("w_rhs", [], parity=parity_scalar)
+w = cottonmouth_bssnok.decl("w", [], rhs=w_rhs, parity=parity_scalar)
 
 # \tilde{\gamma_{a b}}
-gt_rhs = pybssn.decl("gt_rhs", [la, lb], symmetries=[(la, lb)], parity=parity_sym2ten)
-gt = pybssn.decl("gt", [la, lb], symmetries=[(la, lb)], rhs=gt_rhs, parity=parity_sym2ten)
+gt_rhs = cottonmouth_bssnok.decl(
+    "gt_rhs",
+    [la, lb],
+    symmetries=[(la, lb)],
+    parity=parity_sym2ten
+)
+
+gt = cottonmouth_bssnok.decl(
+    "gt",
+    [la, lb],
+    symmetries=[(la, lb)],
+    rhs=gt_rhs,
+    parity=parity_sym2ten
+)
 
 # \tilde{A}_{a b}
-At_rhs = pybssn.decl("At_rhs", [la, lb], symmetries=[(la, lb)], parity=parity_sym2ten)
-At = pybssn.decl("At", [la, lb], symmetries=[(la, lb)], rhs=At_rhs, parity=parity_sym2ten)
+At_rhs = cottonmouth_bssnok.decl(
+    "At_rhs",
+    [la, lb],
+    symmetries=[(la, lb)],
+    parity=parity_sym2ten
+)
+
+At = cottonmouth_bssnok.decl(
+    "At",
+    [la, lb],
+    symmetries=[(la, lb)],
+    rhs=At_rhs,
+    parity=parity_sym2ten
+)
 
 # K (trace of Extrinsic Curvature)
-trK_rhs = pybssn.decl("trK_rhs", [], parity=parity_scalar)
-trK = pybssn.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
+trK_rhs = cottonmouth_bssnok.decl("trK_rhs", [], parity=parity_scalar)
+trK = cottonmouth_bssnok.decl("trK", [], rhs=trK_rhs, parity=parity_scalar)
 
 # \tilde{\Gamma}^a
-ConfConnect_rhs = pybssn.decl(
+ConfConnect_rhs = cottonmouth_bssnok.decl(
     "ConfConnect_rhs",
     [ua],
     parity=parity_vector
 )
-ConfConnect = pybssn.decl(
+
+ConfConnect = cottonmouth_bssnok.decl(
     "ConfConnect",
     [ua],
     rhs=ConfConnect_rhs,
@@ -147,112 +201,130 @@ ConfConnect = pybssn.decl(
 ###
 # Monitored constraint Vars.
 ###
-HamCons = pybssn.decl("HamCons", [], parity=parity_scalar)
-MomCons = pybssn.decl("MomCons", [ua], parity=parity_vector)
-DeltaCons = pybssn.decl("DeltaCons", [ua], parity=parity_vector)
+HamCons = cottonmouth_bssnok.decl("HamCons", [], parity=parity_scalar)
+MomCons = cottonmouth_bssnok.decl("MomCons", [ua], parity=parity_vector)
+DeltaCons = cottonmouth_bssnok.decl("DeltaCons", [ua], parity=parity_vector)
 
 ###
 # Enforced Constraint Vars.
 ###
 # TODO: It would be good if this was not required.
-w_enforce = pybssn.decl("w_enforce", [], parity=parity_scalar)
+w_enforce = cottonmouth_bssnok.decl(
+    "w_enforce",
+    [],
+    parity=parity_scalar
+)
 
-evo_lapse_enforce = pybssn.decl(
-    "evo_lapse_enforce", [], parity=parity_scalar)
+evo_lapse_enforce = cottonmouth_bssnok.decl(
+    "evo_lapse_enforce",
+    [],
+    parity=parity_scalar
+)
 
-gt_enforce = pybssn.decl("gt_enforce", [li, lj], symmetries=[(li, lj)], parity=parity_sym2ten)
+gt_enforce = cottonmouth_bssnok.decl(
+    "gt_enforce",
+    [li, lj],
+    symmetries=[(li, lj)],
+    parity=parity_sym2ten
+)
 
-At_enforce = pybssn.decl("At_enforce", [li, lj], symmetries=[(li, lj)], parity=parity_sym2ten)
+At_enforce = cottonmouth_bssnok.decl(
+    "At_enforce",
+    [li, lj],
+    symmetries=[(li, lj)],
+    parity=parity_sym2ten
+)
 
 ###
 # Aux. Vars.
 ###
 # \tilde{\Gamma}_{abc}
-Gammat = pybssn.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
+Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 
 # Temporary storage for \partial_t \tilde{\Gamma}^{a}
 # This is required because this quantity is both written to ConfConnect_rhs
 # and read in the gamma driver shift evolution
-ConfConnect_rhs_tmp = pybssn.decl("ConfConnect_rhs_tmp", [ua])
+ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
 
 # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
-Delta = pybssn.decl("Delta", [ua])
+Delta = cottonmouth_bssnok.decl("Delta", [ua])
 
 # \tilde{R}_{a b}
-Rt = pybssn.decl("Rt", [la, lb], symmetries=[(la, lb)])
+Rt = cottonmouth_bssnok.decl("Rt", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{R}^{\phi}_{a b}
-RPhi = pybssn.decl("RPhi", [la, lb], symmetries=[(la, lb)])
+RPhi = cottonmouth_bssnok.decl("RPhi", [la, lb], symmetries=[(la, lb)])
 
 # R_{a b} = \tilde{R}_{a b} + R^\phi_{a b}
-R = pybssn.decl("R", [la, lb], symmetries=[(la, lb)])
+R = cottonmouth_bssnok.decl("R", [la, lb], symmetries=[(la, lb)])
 
 # -D_a D_b \alpha + \alpha R_{a b}
-Ats = pybssn.decl("Ats", [la, lb], symmetries=[(la, lb)])
+Ats = cottonmouth_bssnok.decl("Ats", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{D}_a \phi
-cdphi = pybssn.decl("cdphi", [la])
+cdphi = cottonmouth_bssnok.decl("cdphi", [la])
 
 # \tilde{D}_a \tilde{D}_b \phi
-cdphi2 = pybssn.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
+cdphi2 = cottonmouth_bssnok.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 
 ###
 # Substitution rules
 ###
-g_mat = pybssn.get_matrix(g[la, lb])
+g_mat = cottonmouth_bssnok.get_matrix(g[la, lb])
 g_imat = inv(g_mat)
 detg = det(g_mat)
-pybssn.add_substitution_rule(g[ua, ub], g_imat)
+cottonmouth_bssnok.add_substitution_rule(g[ua, ub], g_imat)
 
-gt_mat = pybssn.get_matrix(gt[la, lb])
+gt_mat = cottonmouth_bssnok.get_matrix(gt[la, lb])
 detgt = det(gt_mat)
 gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
-pybssn.add_substitution_rule(gt[ua, ub], gt_imat)
+cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 
-pybssn.add_substitution_rule(At[ua, ub])
-pybssn.add_substitution_rule(At[ua, lb])
+cottonmouth_bssnok.add_substitution_rule(At[ua, ub])
+cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
 
-pybssn.add_substitution_rule(Gammat[ua, lb, lc])
-pybssn.add_substitution_rule(Gammat[la, lb, uc])
+cottonmouth_bssnok.add_substitution_rule(Gammat[ua, lb, lc])
+cottonmouth_bssnok.add_substitution_rule(Gammat[la, lb, uc])
+
 ###
 # Aux. groups
 ###
 # Initialization
 initial_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
-    name=Identifier("BSSN_InitialGroup"),
+    name=Identifier("CottonmouthBSSNOK_InitialGroup"),
     at_or_in=AtOrIn.In,
     schedule_bin=Identifier("ODESolvers_Initial"),
     after=[Identifier("ADMBaseX_PostInitial")],
-    description=String("BSSN initialization routines")
+    description=String("BSSNOK initialization routines")
 )
 
 # RHS
 rhs_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
-    name=Identifier("BSSN_RHSGroup"),
+    name=Identifier("CottonmouthBSSNOK_RHSGroup"),
     at_or_in=AtOrIn.In,
     schedule_bin=Identifier("ODESolvers_RHS"),
-    description=String("BSSN equations RHS computation"),
+    description=String("BSSNOK equations RHS computation"),
 )
 
 # Analysis
 analysis_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
-    name=Identifier("BSSN_AnalysisGroup"),
+    name=Identifier("CottonmouthBSSNOK_AnalysisGroup"),
     at_or_in=AtOrIn.At,
     schedule_bin=Identifier("analysis"),
-    description=String("BSSN analysis routones"),
+    description=String("BSSNOK analysis routines"),
 )
 
 ###
 # Enforce algebraic constraints
 ###
-fun_bssn_enforce_pt1 = pybssn.create_function(
-    "bssn_enforce_pt1",
+fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_enforce_pt1",
     ScheduleBin.PostStep,
     schedule_after=["StateSync"],
-    schedule_before=["bssn_enforce_pt2"]
+    schedule_before=["cottonmouth_bssnok_enforce_pt2"]
 )
 
 # Enforce \det(\tilde{\gamma}) = 1
@@ -281,11 +353,11 @@ fun_bssn_enforce_pt1.add_eqn(
 
 fun_bssn_enforce_pt1.bake(**gen_opts)
 
-fun_bssn_enforce_pt2 = pybssn.create_function(
-    "bssn_enforce_pt2",
+fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_enforce_pt2",
     ScheduleBin.PostStep,
-    schedule_after=["fun_bssn_enforce_pt1"],
-    schedule_before=["bssn2adm"]
+    schedule_after=["cottonmouth_bssnok_enforce_pt1"],
+    schedule_before=["cottonmouth_bssnok_bssn2adm"]
 )
 
 fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])
@@ -298,8 +370,8 @@ fun_bssn_enforce_pt2.bake(**gen_opts)
 ###
 # Convert ADM to BSSN variables
 ###
-fun_adm2bssn = pybssn.create_function(
-    "adm2bssn",
+fun_adm2bssn = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_adm2bssn",
     initial_group
 )
 
@@ -344,10 +416,10 @@ fun_adm2bssn.bake(**gen_opts)
 ###
 # Convert BSSN to ADM variables
 ###
-fun_bssn2adm = pybssn.create_function(
-    "bssn2adm",
+fun_bssn2adm = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_bssn2adm",
     ScheduleBin.PostStep,
-    schedule_after=["bssn_enforce_pt2"]
+    schedule_after=["cottonmouth_bssnok_enforce_pt2"]
 )
 
 fun_bssn2adm.add_eqn(g[li, lj], (1/(w**2)) * gt[li, lj])
@@ -368,8 +440,8 @@ fun_bssn2adm.bake(**gen_opts)
 ###
 # Compute non enforced constraints
 ###
-fun_bssn_cons = pybssn.create_function(
-    "bssn_cons",
+fun_bssn_cons = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_constraints",
     analysis_group
 )
 
@@ -467,8 +539,8 @@ fun_bssn_cons.bake(**gen_opts)
 # using an "upwind" stencil which is shifted by one point in
 # the direction of the shift, and of the same order
 ###
-fun_bssn_rhs = pybssn.create_function(
-    "rhs",
+fun_bssn_rhs = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_rhs",
     rhs_group
 )
 
@@ -482,8 +554,10 @@ fun_bssn_rhs.add_eqn(
 
 fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
 fun_bssn_rhs.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
-fun_bssn_rhs.add_eqn(Delta[ua], gt[ub, uc] *
-                     gt[ua, ud] * Gammat[ld, lb, lc])
+fun_bssn_rhs.add_eqn(
+    Delta[ua],
+    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
+)
 
 fun_bssn_rhs.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
 fun_bssn_rhs.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
@@ -690,9 +764,9 @@ fun_bssn_rhs.bake(**gen_opts)
 # Thorn creation
 ###
 CppCarpetXWizard(
-    pybssn,
+    cottonmouth_bssnok,
     CppCarpetXGenerator(
-        pybssn,
+        cottonmouth_bssnok,
         # TODO: Custom RHS group not ignored
         interior_sync_mode=InteriorSyncMode.MixedRhs,
         extra_schedule_blocks=[
