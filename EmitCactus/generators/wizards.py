@@ -104,6 +104,11 @@ PROVIDES {self.thorn_def.name}_gen
             with open(generate_py_fname, "w") as fd:
                 fd.write(generate_py)
 
+        gitignore_filename = os.path.join(self.base_dir, ".gitignore")
+        if not os.path.exists(gitignore_filename):
+            with open(gitignore_filename, "w") as fd:
+                fd.write("*")
+
 
 class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
     def __init__(self, thorn_def: ThornDef, generator: Optional[CppCarpetXGenerator] = None):
