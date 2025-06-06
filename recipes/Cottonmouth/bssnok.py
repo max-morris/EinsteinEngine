@@ -236,6 +236,27 @@ At_enforce = cottonmouth_bssnok.decl(
 )
 
 ###
+# Ricci tensor.
+# We single out the Ricci tensor and compute it on its own function in order
+# to increase efficiency
+###
+
+# \tilde{R}_{a b}
+Rt = cottonmouth_bssnok.decl("Rt", [la, lb], symmetries=[(la, lb)])
+
+# \tilde{R}^{\phi}_{a b}
+RPhi = cottonmouth_bssnok.decl("RPhi", [la, lb], symmetries=[(la, lb)])
+
+# R_{a b} = \tilde{R}_{a b} + R^\phi_{a b}
+R = cottonmouth_bssnok.decl(
+    "R",
+    [la, lb],
+    symmetries=[(la, lb)],
+    parity=parity_sym2ten
+)
+
+
+###
 # Aux. Vars.
 ###
 # \tilde{\Gamma}_{abc}
@@ -248,15 +269,6 @@ ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
 
 # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
 Delta = cottonmouth_bssnok.decl("Delta", [ua])
-
-# \tilde{R}_{a b}
-Rt = cottonmouth_bssnok.decl("Rt", [la, lb], symmetries=[(la, lb)])
-
-# \tilde{R}^{\phi}_{a b}
-RPhi = cottonmouth_bssnok.decl("RPhi", [la, lb], symmetries=[(la, lb)])
-
-# R_{a b} = \tilde{R}_{a b} + R^\phi_{a b}
-R = cottonmouth_bssnok.decl("R", [la, lb], symmetries=[(la, lb)])
 
 # -D_a D_b \alpha + \alpha R_{a b}
 Ats = cottonmouth_bssnok.decl("Ats", [la, lb], symmetries=[(la, lb)])
@@ -306,6 +318,25 @@ rhs_group = ScheduleBlock(
     at_or_in=AtOrIn.In,
     schedule_bin=Identifier("ODESolvers_RHS"),
     description=String("BSSNOK equations RHS computation"),
+)
+
+# Ricci tensor
+ricci_group_rhs = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
+    at_or_in=AtOrIn.In,
+    schedule_bin=Identifier("ODESolvers_RHS"),
+    before=[Identifier("CottonmouthBSSNOK_RHSGroup")],
+    description=String("BSSNOK Ricci tensor computation"),
+)
+
+ricci_group_analysis = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
+    at_or_in=AtOrIn.At,
+    schedule_bin=Identifier("analysis"),
+    before=[Identifier("CottonmouthBSSNOK_AnalysisGroup")],
+    description=String("BSSNOK Ricci tensor computation"),
 )
 
 # Analysis
@@ -438,6 +469,69 @@ fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 fun_bssn2adm.bake(**gen_opts)
 
 ###
+# Compute the Ricci tensor
+###
+fun_bssn_ricci = cottonmouth_bssnok.create_function(
+    "cottonmouth_bssnok_compute_ricci",
+    ricci_group_analysis
+)
+
+# Aux. equations
+fun_bssn_ricci.add_eqn(
+    Gammat[lc, la, lb],
+    Rational(1, 2) * (
+        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
+    )
+)
+
+fun_bssn_ricci.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
+fun_bssn_ricci.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
+fun_bssn_ricci.add_eqn(
+    Delta[ua],
+    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
+)
+
+fun_bssn_ricci.add_eqn(
+    cdphi[la],
+    -Rational(1, 2) * (1 / w) * D(w, la)
+)
+
+fun_bssn_ricci.add_eqn(
+    cdphi2[la, lb],
+    -Rational(1, 2) * (1 / w) * (
+        D(w, la, lb)
+        - Gammat[uc, la, lb] * D(w, lc)
+    )
+    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+)
+
+fun_bssn_ricci.add_eqn(
+    Rt[la, lb],
+    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
+    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+    + (
+        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+    )
+)
+
+fun_bssn_ricci.add_eqn(
+    RPhi[la, lb],
+    - 2 * cdphi2[lb, la]
+    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
+    + 4 * cdphi[la] * cdphi[lb]
+    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+)
+
+fun_bssn_ricci.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
+
+fun_bssn_ricci.bake(**gen_opts)
+
+###
 # Compute non enforced constraints
 ###
 fun_bssn_cons = cottonmouth_bssnok.create_function(
@@ -454,7 +548,6 @@ fun_bssn_cons.add_eqn(
 )
 
 fun_bssn_cons.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_cons.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
 fun_bssn_cons.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
@@ -467,39 +560,6 @@ fun_bssn_cons.add_eqn(
     cdphi[la],
     -Rational(1, 2) * (1 / w) * D(w, la)
 )
-
-fun_bssn_cons.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
-
-fun_bssn_cons.add_eqn(
-    Rt[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
-)
-
-fun_bssn_cons.add_eqn(
-    RPhi[la, lb],
-    - 2 * cdphi2[lb, la]
-    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
-    + 4 * cdphi[la] * cdphi[lb]
-    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
-)
-
-fun_bssn_cons.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
 # Hamiltonian constraint
 fun_bssn_cons.add_eqn(
@@ -553,7 +613,6 @@ fun_bssn_rhs.add_eqn(
 )
 
 fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_rhs.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
 fun_bssn_rhs.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
@@ -566,39 +625,6 @@ fun_bssn_rhs.add_eqn(
     cdphi[la],
     -Rational(1, 2) * (1 / w) * D(w, la)
 )
-
-fun_bssn_rhs.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
-
-fun_bssn_rhs.add_eqn(
-    Rt[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
-)
-
-fun_bssn_rhs.add_eqn(
-    RPhi[la, lb],
-    - 2 * cdphi2[lb, la]
-    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
-    + 4 * cdphi[la] * cdphi[lb]
-    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
-)
-
-fun_bssn_rhs.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
@@ -772,7 +798,9 @@ CppCarpetXWizard(
         extra_schedule_blocks=[
             initial_group,
             rhs_group,
-            analysis_group
+            analysis_group,
+            ricci_group_rhs,
+            ricci_group_analysis,
         ]
     )
 ).generate_thorn()
