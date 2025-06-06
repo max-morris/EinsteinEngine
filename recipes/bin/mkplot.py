@@ -51,35 +51,36 @@ def get_xy_coords(xxx:Any, x0:num, x1:num)->Tuple[num, num]:
     xcoord, ycoord = np.meshgrid(xvals, yvals)
     return xcoord, ycoord
 
-def usage():
-    print("./mkplot.py sim_dir variable frame")
-    exit(2)
+if __name__ == "__main__":
+    def usage():
+        print("./mkplot.py sim_dir variable frame")
+        exit(2)
 
-try:
-    datadir = sys.argv[1]
-except IndexError as ie:
-    usage()
+    try:
+        datadir = sys.argv[1]
+    except IndexError as ie:
+        usage()
 
-try:
-    frame_number = int(sys.argv[3])
-except IndexError as ie:
-    print("Frame number defaulting to 1")
-    frame_number = 1
+    try:
+        frame_number = int(sys.argv[3])
+    except IndexError as ie:
+        print("Frame number defaulting to 1")
+        frame_number = 1
 
-sim = SimDir(datadir)
-print(sim)
+    sim = SimDir(datadir)
+    print(sim)
 
-try:
-    variable = sys.argv[2]
-except IndexError as ie:
-    usage()
+    try:
+        variable = sys.argv[2]
+    except IndexError as ie:
+        usage()
 
-sim_data, sim_time = get_xyz_data(variable, frame_number)
-slice_z, x0, x1 = get_slice_z(sim_data)
-xcoord, ycoord = get_xy_coords(slice_z, x0, x1)
+    sim_data, sim_time = get_xyz_data(variable, frame_number)
+    slice_z, x0, x1 = get_slice_z(sim_data)
+    xcoord, ycoord = get_xy_coords(slice_z, x0, x1)
 
-plt.pcolormesh(xcoord, ycoord, slice_z)
-plt.title(f"{variable} at time %.5g" % sim_time)
-fname = variable + ("%04d.png" % frame_number)
-print("Output filename:", fname)
-plt.savefig(fname)
+    plt.pcolormesh(xcoord, ycoord, slice_z)
+    plt.title(f"{variable} at time %.5g" % sim_time)
+    fname = variable + ("%04d.png" % frame_number)
+    print("Output filename:", fname)
+    plt.savefig(fname)
