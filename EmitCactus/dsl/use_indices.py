@@ -22,6 +22,7 @@ from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, S
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
 from EmitCactus.util import OrderedSet, ScheduleBinEnum
+from EmitCactus.dsl.madd import mk_madd
 
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
@@ -1392,7 +1393,9 @@ class ThornFunction:
         print(f"*** {self.name} ***")
 
         if do_madd:
-            self.madd()
+            #self.madd()
+            # The new way to madd
+            self.eqn_list.eqns = mk_madd(self.eqn_list.eqns)
         if do_cse:
             self.cse()
 
