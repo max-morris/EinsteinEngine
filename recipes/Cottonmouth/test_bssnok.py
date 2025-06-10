@@ -23,7 +23,7 @@ if __name__ == "__main__":
     ###
     # Thorn functions
     ###
-    tanh = cottonmouth_test_bssnok.declfun("tanh", args=1, is_stencil=False)
+    tanh = cottonmouth_test_bssnok.decl_fun("tanh", args=1, is_stencil=False)
 
     ###
     # Transform hamiltonian constraint
