@@ -11,7 +11,7 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 ###
 gen_opts = {
     "do_cse": True,
-    "do_madd": False,
+    "do_madd": True,
     "do_recycle_temporaries": False,
     "do_split_output_eqns": True
 }
