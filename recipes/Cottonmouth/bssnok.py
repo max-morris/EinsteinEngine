@@ -38,7 +38,7 @@ div_diss = cottonmouth_bssnok.mk_stencil(
 ###
 # Extra math functions
 ###
-max = cottonmouth_bssnok.declfun("max", args=2, is_stencil=False)
+max = cottonmouth_bssnok.decl_fun("max", args=2, is_stencil=False)
 
 ###
 # Thorn parameters
