@@ -26,10 +26,10 @@ def maddify(add:Add)->Expr:
         curr = add.args[i]
         if isinstance(prev, Mul) and not avoid(arg2 := get_mul(prev)):
             arg1 = prev.args[0]
-            new_args[-1] = madd(maddify(arg1), maddify(arg2), maddify(curr))
+            new_args[-1] = madd(arg1, arg2, curr)
         elif isinstance(curr, Mul) and not avoid(arg2 := get_mul(curr)):
             arg1 = curr.args[0]
-            new_args[-1] = madd(maddify(arg1), maddify(arg2), maddify(prev))
+            new_args[-1] = madd(arg1, arg2, prev)
         else:
             new_args.append(curr)
     if len(new_args) == 1:
