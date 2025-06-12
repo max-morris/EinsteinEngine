@@ -1392,12 +1392,12 @@ class ThornFunction:
             raise Exception("bake should not be called more than once")
         print(f"*** {self.name} ***")
 
+        if do_cse:
+            self.cse()
         if do_madd:
             #self.madd()
             # The new way to madd
             self.eqn_list.eqns = mk_madd(self.eqn_list.eqns)
-        if do_cse:
-            self.cse()
 
         self.eqn_bake()
 
