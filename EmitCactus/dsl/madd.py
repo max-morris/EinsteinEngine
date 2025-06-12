@@ -21,15 +21,21 @@ def avoid(arg : Expr) -> bool:
 def maddify(add:Add)->Expr:
     new_args:List[Expr] = list()
     new_args.append(add.args[0])
+    did_madd = False
     for i in range(1,len(add.args)):
         prev = new_args[-1]
         curr = add.args[i]
+        if did_madd:
+            new_args.append(curr)
+            continue
         if isinstance(prev, Mul) and not avoid(arg2 := get_mul(prev)):
             arg1 = prev.args[0]
-            new_args[-1] = madd(arg1, arg2, curr)
+            new_args[-1] = madd(maddify(arg1), maddify(arg2), curr)
+            did_madd = True
         elif isinstance(curr, Mul) and not avoid(arg2 := get_mul(curr)):
             arg1 = curr.args[0]
-            new_args[-1] = madd(arg1, arg2, prev)
+            new_args[-1] = madd(maddify(arg1), maddify(arg2), prev)
+            did_madd = True
         else:
             new_args.append(curr)
     if len(new_args) == 1:
