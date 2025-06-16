@@ -1377,7 +1377,7 @@ class ThornFunction:
 
     def bake(self, *,
              do_cse: bool = True,
-             do_madd: bool = False,
+             do_madd: bool|int = False, #  todo: might want to tweak this interface
              do_recycle_temporaries: bool = True,
              do_split_output_eqns: bool = True) -> None:
         """
@@ -1394,10 +1394,12 @@ class ThornFunction:
 
         if do_cse:
             self.cse()
-        if do_madd:
-            Maddifier(self.eqn_list).maddify_in_place()
 
         self.eqn_bake()
+
+        if do_madd is not False:
+            recency_threshold: Optional[int] = None if do_madd is True else do_madd
+            Maddifier(self.eqn_list, recency_threshold=recency_threshold).maddify_in_place()
 
         if do_split_output_eqns:
             self.split_output_eqns()
