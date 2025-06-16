@@ -130,14 +130,14 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: FunctionCall) -> str:
         fn_name = self.visit(n.name)
-        fn_args = ",".join(visit_each(self, n.args))
+        fn_args = ", ".join(visit_each(self, n.args))
         if fn_name == "noop":
             return f'({fn_args})'
 
         if len(n.template_args) == 0:
             return f'{fn_name}({fn_args})'
 
-        template_args = ",".join(visit_each(self, n.template_args))
+        template_args = ", ".join(visit_each(self, n.template_args))
 
         return f'{fn_name}<{template_args}>({fn_args})'
 
