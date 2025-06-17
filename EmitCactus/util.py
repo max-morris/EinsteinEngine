@@ -13,27 +13,30 @@ def get_class_name(x: Any) -> str:
     return name
 
 
-T = TypeVar('T')
-K = TypeVar('K')
-V = TypeVar('V')
-
-
-def try_get(d: Any, x: Any) -> Optional[T]:
+def try_get[T](d: Any, x: Any) -> Optional[T]:
     return d[x] if x in d else None
 
 
-def incr_and_get(d: dict[K, int], k: K) -> int:
+def incr_and_get[K](d: dict[K, int], k: K) -> int:
     v = d[k] = d.get(k, 0) + 1
     return v
 
 
-def get_or_compute(d: dict[K, V], k: K, f: Callable[[K], V]) -> V:
+def get_or_compute[K, V](d: dict[K, V], k: K, f: Callable[[K], V]) -> V:
     if k in d:
         return d[k]
     else:
         v = f(k)
         d[k] = v
         return v
+
+
+def consolidate[K, V](recipient: dict[K, V], donor: dict[K, V], f: Callable[[V, V], V]) -> None:
+    for k, donor_v in donor.items():
+        if k in recipient:
+            recipient[k] = f(recipient[k], donor_v)
+        else:
+            recipient[k] = donor_v
 
 
 def indent(s: str, spaces: int = 4) -> str:

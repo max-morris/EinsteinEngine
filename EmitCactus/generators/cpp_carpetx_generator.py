@@ -18,7 +18,7 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine
 from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, SympyExpr, \
     ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda
+    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
 from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
@@ -92,8 +92,8 @@ class CppCarpetXGenerator(CactusGenerator):
             writes: list[Intent] = list()
             syncs: set[Identifier] = OrderedSet()
 
-            for var, spec in fn.eqn_list.read_decls.items():
-                if var in fn.eqn_list.inputs and (var_name := str(var)) not in self.vars_to_ignore:
+            for var, spec in fn.eqn_complex.read_decls.items():
+                if var in fn.eqn_complex.inputs and (var_name := str(var)) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
 
                     reads.append(Intent(
@@ -101,8 +101,8 @@ class CppCarpetXGenerator(CactusGenerator):
                         region=spec
                     ))
 
-            for var, spec in fn.eqn_list.write_decls.items():
-                if var in fn.eqn_list.outputs and (var_name := str(var)) not in self.vars_to_ignore:
+            for var, spec in fn.eqn_complex.write_decls.items():
+                if var in fn.eqn_complex.outputs and (var_name := str(var)) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
                     qualified_var_id = Identifier(qualified_var_name)
 
@@ -255,7 +255,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     param_range = IntParamRange(IntParamDescWildcard(), String(''))
                 else:
                     assert type(py_param_range) is tuple[int, int]
-                    lo_i, hi_i = typing.cast(tuple[int, int], py_param_range)
+                    lo_i, hi_i = py_param_range
                     param_range = IntParamRange(IntParamDescRange(
                         IntParamOpenLowerBound(Integer(lo_i)),
                         IntParamOpenUpperBound(Integer(hi_i))
@@ -270,7 +270,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     param_range = RealParamRange(RealParamDescWildcard(), String(''))
                 else:
                     assert type(py_param_range) is tuple[float, float]
-                    lo_f, hi_f = typing.cast(tuple[float, float], py_param_range)
+                    lo_f, hi_f = py_param_range
                     param_range = RealParamRange(RealParamDescRange(
                         RealParamOpenLowerBound(Float(lo_f)),
                         RealParamOpenUpperBound(Float(hi_f))
@@ -330,7 +330,7 @@ class CppCarpetXGenerator(CactusGenerator):
         declared_layouts: set[Centering] = set()
         var_centerings: dict[str, Centering] = dict()
 
-        used_var_names = [str(v) for v in thorn_fn.eqn_list.variables]
+        used_var_names = [str(v) for v in thorn_fn.eqn_complex.variables]
 
         # This loop builds the centering decls for each used var
         for var_name in self.var_names:
@@ -381,7 +381,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # Figure out which centering to pass to grid.loop_int_device<...>
         # All of this function's outputs need to have the same centering. If they do, use that centering.
-        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqn_list.outputs if str(var) in self.var_names}
+        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqn_complex.outputs if str(var) in self.var_names}
 
         if None in output_centerings or len(output_centerings) == 0:
             raise GeneratorException(f"All output vars must have a centering: {thorn_fn.name} {output_centerings}")
@@ -393,20 +393,20 @@ class CppCarpetXGenerator(CactusGenerator):
         output_centering: Centering
         [output_centering] = output_centerings
 
-        output_regions = {spec for var, spec in thorn_fn.eqn_list.write_decls.items() if str(var) in self.var_names}
+        output_regions = {spec for var, spec in thorn_fn.eqn_complex.write_decls.items() if str(var) in self.var_names}
 
         if None in output_regions or len(output_regions) == 0:
             raise GeneratorException(f"All output vars must have a write region.")
 
         if len(output_regions) > 1:
             raise GeneratorException(
-                f"Output vars for '{which_fn}' have mixed write regions: {list(thorn_fn.eqn_list.write_decls.items())}"
+                f"Output vars for '{which_fn}' have mixed write regions: {list(thorn_fn.eqn_complex.write_decls.items())}"
             )
 
         output_region: IntentRegion
         [output_region] = output_regions
 
-        input_var_strs = [str(i) for i in thorn_fn.eqn_list.inputs]
+        input_var_strs = [str(i) for i in thorn_fn.eqn_complex.inputs]
 
         # x, y, and z are special, but x is extra special
         xyz_decls = [
@@ -442,61 +442,91 @@ class CppCarpetXGenerator(CactusGenerator):
             for n, s in enumerate(['DXI', 'DYI', 'DZI'])
         ]
 
-        stencil_limit_checks = []
-        stencil_limits = thorn_fn.eqn_list.stencil_limits()
-        for i in range(3):
-            if stencil_limits[i] != 0:
-                stencil_limit_checks.append(VerbatimExpr(Verbatim(f'CCTK_ASSERT(cctk_nghostzones[{i}] >= {stencil_limits[i]});')))
-
-        eqn_list = thorn_fn.eqn_list
-        reassigned_lhses: Set[int] = set()
-
-        def do_recycle_temporaries(lhs: sy.Symbol, rhs: sy.Expr, i: int) -> Tuple[sy.Symbol, sy.Expr]:
-            active_replacements: List[TemporaryReplacement] = (
-                sorted(filter(lambda r: r.begin_eqn <= i <= r.end_eqn, eqn_list.temporary_replacements),
-                       key=lambda r: r.begin_eqn,
-                       reverse=True)
+        stencil_limits = thorn_fn.eqn_complex.stencil_limits
+        stencil_limit_checks = [
+            ExprStmt(
+                FunctionCall(
+                    Identifier('CCTK_ASSERT'),
+                    [
+                        BinOpExpr(
+                            VerbatimExpr(Verbatim(f'cctk_nghostzones[{i}]')),
+                            BinOp.Gte,
+                            IntLiteralExpr(stencil_limits[i])
+                        )
+                    ],
+                    []
+                )
             )
+        for i in range(3) if stencil_limits[i] != 0]
 
-            current_line_replacement = typing.cast(Optional[TemporaryReplacement],
-                                                   next(filter(lambda r: r.begin_eqn == i, active_replacements), None))
+        carpetx_loops: list[CarpetXGridLoopCall] = list()
+        for eqn_list in thorn_fn.eqn_complex.eqn_lists:
+            reassigned_lhses: Set[int] = set()
 
-            for replacement in active_replacements:
-                rhs = rhs.replace(replacement.old, replacement.new)  # type: ignore[no-untyped-call]
+            def do_recycle_temporaries(lhs: sy.Symbol, rhs: sy.Expr, i: int) -> Tuple[sy.Symbol, sy.Expr]:
+                active_replacements: List[TemporaryReplacement] = (
+                    sorted(filter(lambda r: r.begin_eqn <= i <= r.end_eqn, eqn_list.temporary_replacements),
+                           key=lambda r: r.begin_eqn,
+                           reverse=True)
+                )
 
-            if current_line_replacement:
-                assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"
-                lhs = current_line_replacement.new
-                reassigned_lhses.add(i)
+                current_line_replacement = typing.cast(Optional[TemporaryReplacement],
+                                                       next(filter(lambda r: r.begin_eqn == i, active_replacements), None))
 
-            return lhs, rhs
+                for replacement in active_replacements:
+                    rhs = rhs.replace(replacement.old, replacement.new)  # type: ignore[no-untyped-call]
 
-        # Sort the equations, perform temp-var replacements if needed, then convert each RHS to our tree type.
-        eqns = [(lhs, SympyExpr(rhs)) for lhs, rhs in [do_recycle_temporaries(lhs, rhs, i) for i, (lhs, rhs) in
-                                                       enumerate(sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])))]]
+                if current_line_replacement:
+                    assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"
+                    lhs = current_line_replacement.new
+                    reassigned_lhses.add(i)
+
+                return lhs, rhs
+
+            # Sort the equations, perform temp-var replacements if needed, then convert each RHS to our tree type.
+            eqns = [(lhs, SympyExpr(rhs)) for lhs, rhs in [do_recycle_temporaries(lhs, rhs, i) for i, (lhs, rhs) in
+                                                           enumerate(sorted(eqn_list.eqns.items(),
+                                                                            key=lambda kv: eqn_list.order.index(kv[0])))]]
+
+            carpetx_loops.append(
+                CarpetXGridLoopCall(
+                    output_centering,
+                    output_region,
+                    CarpetXGridLoopLambda(
+                        preceding=xyz_decls,
+                        equations=eqns,
+                        succeeding=[],
+                        temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in eqn_list.temporaries],
+                        reassigned_lhses=reassigned_lhses
+                    )
+                )
+            )
 
         # Build the function decl and its body.
         nodes.append(
             ThornFunctionDecl(
                 Identifier(fn_name),
-                [DeclareCarpetXArgs(Identifier(fn_name)),
-                 DeclareCarpetParams(),
-                 UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
-                 ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
-                 *layout_decls,
-                 *di_decls,
-                 *stencil_limit_checks,
-                 CarpetXGridLoopCall(
-                     output_centering,
-                     output_region,
-                     CarpetXGridLoopLambda(
-                         preceding=xyz_decls,
-                         equations=eqns,
-                         succeeding=[],
-                         temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries],
-                         reassigned_lhses=reassigned_lhses
-                     ),
-                 )]
+                [
+                    DeclareCarpetXArgs(Identifier(fn_name)),
+                    DeclareCarpetParams(),
+                    UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
+                    ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    *layout_decls,
+                    *di_decls,
+                    *stencil_limit_checks,
+                    *carpetx_loops
+                    #CarpetXGridLoopCall(
+                    #    output_centering,
+                    #    output_region,
+                    #    CarpetXGridLoopLambda(
+                    #        preceding=xyz_decls,
+                    #        equations=eqns,
+                    #        succeeding=[],
+                    #        temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries],
+                    #        reassigned_lhses=reassigned_lhses
+                    #    ),
+                    #)
+                ]
             )
         )
 

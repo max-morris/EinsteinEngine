@@ -7,7 +7,9 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import symbols, Basic, IndexedBase, Expr, Symbol, Integer
 from sympy.core.function import UndefinedFunction as UFunc, Function
 from typing import cast, Dict, List, Tuple, Optional, Set
-from EmitCactus.util import OrderedSet, incr_and_get
+
+from EmitCactus.dsl.util import require_baked
+from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
@@ -60,10 +62,136 @@ class TemporaryReplacement:
     end_eqn: int
 
 
+class EqnComplex:
+    eqn_lists: list['EqnList']
+    is_stencil: dict[UFunc, bool]
+    been_baked: bool
+    _tile_temporaries: set[Symbol]
+
+    def __init__(self, is_stencil: Dict[UFunc, bool]) -> None:
+        self.is_stencil = is_stencil
+        self.eqn_lists = [EqnList(is_stencil)]
+        self.been_baked = False
+        self._tile_temporaries = OrderedSet()
+
+    def new_eqn_list(self) -> 'EqnList':
+        self.get_active_eqn_list().bake()
+
+        new_list = EqnList(self.is_stencil)
+
+        for prev_list in self.eqn_lists:
+            assert prev_list.been_baked
+            new_list.temporaries |= prev_list.temporaries
+
+        self.eqn_lists.append(new_list)
+        return new_list
+
+    def bake(self) -> None:
+        if self.been_baked:
+            raise DslException("Can't bake an EqnComplex that has already been baked.")
+        self.been_baked = True
+
+        for eqn_list in self.eqn_lists[:-1]:
+            assert eqn_list.been_baked
+
+        self.get_active_eqn_list().bake()
+
+    def get_active_eqn_list(self) -> 'EqnList':
+        return self.eqn_lists[-1]
+
+    def do_madd(self) -> None:
+        for eqn_list in self.eqn_lists:
+            eqn_list.madd()
+
+    def do_cse(self) -> None:
+        for eqn_list in self.eqn_lists:
+            eqn_list.cse()
+
+    def dump(self) -> None:
+        for idx, eqn_list in enumerate(self.eqn_lists):
+            print(f'=== Loop {idx} ===')
+            eqn_list.dump()
+            print()
+
+    def recycle_temporaries(self) -> None:
+        # todo: If we make tile temps ineligible for recycling, we can keep the lifetime calculations per-EqnList
+        raise NotImplementedError("recycle_temporaries not yet implemented in EqnComplex")
+
+    def split_output_eqns(self) -> None:
+        for eqn_list in self.eqn_lists:
+            eqn_list.split_output_eqns()
+
+    @property
+    @require_baked(msg="Can't get tile_temporaries before baking the EqnComplex.")
+    def tile_temporaries(self) -> set[Symbol]:
+        return self._tile_temporaries
+
+    @cached_property
+    @require_baked(msg="Can't get inputs before baking the EqnComplex.")
+    def inputs(self) -> set[Symbol]:
+        ret: set[Symbol] = OrderedSet()
+        for eqn_list in self.eqn_lists:
+            ret |= eqn_list.inputs
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get outputs before baking the EqnComplex.")
+    def outputs(self) -> set[Symbol]:
+        ret: set[Symbol] = OrderedSet()
+        for eqn_list in self.eqn_lists:
+            ret |= eqn_list.outputs
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get temporaries before baking the EqnComplex.")
+    def temporaries(self) -> set[Symbol]:
+        ret: set[Symbol] = OrderedSet()
+        for eqn_list in self.eqn_lists:
+            ret |= eqn_list.temporaries
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get read_decls before baking the EqnComplex.")
+    def read_decls(self) -> dict[Symbol, IntentRegion]:
+        ret: dict[Symbol, IntentRegion] = OrderedDict()
+        for eqn_list in self.eqn_lists:
+            consolidate(ret, eqn_list.read_decls, lambda r1, r2: r1.consolidate(r2))
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get write_decls before baking the EqnComplex.")
+    def write_decls(self) -> dict[Symbol, IntentRegion]:
+        ret: dict[Symbol, IntentRegion] = OrderedDict()
+        for eqn_list in self.eqn_lists:
+            consolidate(ret, eqn_list.write_decls, lambda r1, r2: r1.consolidate(r2))
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get variables before baking the EqnComplex.")
+    def variables(self) -> set[Symbol]:
+        ret: set[Symbol] = OrderedSet()
+        for eqn_list in self.eqn_lists:
+            ret |= eqn_list.variables
+        return ret
+
+    @cached_property
+    @require_baked(msg="Can't get stencil_limits before baking the EqnComplex.")
+    def stencil_limits(self) -> tuple[int, int, int]:
+        result = [0, 0, 0]
+
+        for eqn_list in self.eqn_lists:
+            for eqn_rhs in eqn_list.eqns.values():
+                # noinspection PyProtectedMember
+                eqn_list._stencil_limits(result, eqn_rhs)
+
+        return result[0], result[1], result[2]
+
+
+
 class EqnList:
     """
-    This class models a generic list of equations. As such, it knows nothing about the rest of NRPy+.
-    Ultimately, the information in this class will be used to generate a loop to be output by NRPy+.
+    This class models a generic list of equations. As such, it knows nothing about the rest of EmitCactus.
+    Ultimately, the information in this class will be used to generate a loop to be output by EmitCactus.
     All it knows are the following things:
     (1) params - These are quantities that are generated outside the loop.
     (2) inputs - These are quantities which are read by equations but never written by them.
@@ -81,20 +209,20 @@ class EqnList:
         self.params: Set[Symbol] = OrderedSet()
         self.inputs: Set[Symbol] = OrderedSet()
         self.outputs: Set[Symbol] = OrderedSet()
-        self.temps: Set[Symbol] = OrderedSet()
         self.order: List[Symbol] = list()
         self.sublists: List[List[Symbol]] = list()
         self.verbose = True
-        self.read_decls: Dict[Symbol, IntentRegion] = dict()
-        self.write_decls: Dict[Symbol, IntentRegion] = dict()
+        self.read_decls: Dict[Symbol, IntentRegion] = OrderedDict()
+        self.write_decls: Dict[Symbol, IntentRegion] = OrderedDict()
         # TODO: need a better default
-        self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  #Interior
+        self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  # Interior
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.temporaries: Set[Symbol] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
         self.split_lhs_prime_count: Dict[Symbol, int] = dict()
-        self.provides : Dict[Symbol,Set[Symbol]] = dict() # vals require key
-        self.requires : Dict[Symbol,Set[Symbol]] = dict() # key requires vals
+        self.provides: Dict[Symbol, Set[Symbol]] = dict()  # vals require key
+        self.requires: Dict[Symbol, Set[Symbol]] = dict()  # key requires vals
+        self.been_baked: bool = False
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -114,24 +242,26 @@ class EqnList:
     @multimethod
     def add_input(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
-        #assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
+        # assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
         if lhs in self.outputs:
-            self.temps.add(lhs)
+            self.temporaries.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         assert isinstance(lhs, Symbol)
         self.inputs.add(lhs)
+
     @add_input.register
     def _(self, lhs: IndexedBase) -> None:
         self.add_input(lhs.args[0])
+
     @add_input.register
     def _(self, lhs: Basic) -> None:
         raise DslException("bad input")
 
     def add_output(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
-        #assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
+        # assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
         if lhs in self.inputs:
-            self.temps.add(lhs)
+            self.temporaries.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.outputs.add(lhs)
 
@@ -204,7 +334,7 @@ class EqnList:
                 get_or_compute(temp_writes, lhs, lambda _: OrderedSet()).add(eqn_i)
 
             if len(temps_read := free_symbols(rhs).intersection(self.temporaries)) > 0:
-                temp_var : Symbol
+                temp_var: Symbol
                 for temp_var in temps_read:
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
@@ -239,7 +369,8 @@ class EqnList:
             if not (assigned_here := cast(TemporaryLifetime, next(filter(is_assigned_here, lifetimes), None))):
                 continue
 
-            stale_temporaries: List[TemporaryLifetime] = sorted(filter(is_stale, lifetimes), key=lambda lt: lt.final_read)
+            stale_temporaries: List[TemporaryLifetime] = sorted(filter(is_stale, lifetimes),
+                                                                key=lambda lt: lt.final_read)
 
             if len(stale_temporaries) == 0:
                 continue
@@ -271,29 +402,29 @@ class EqnList:
         for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
             print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
 
-    def uses_dict(self)->Dict[Symbol,int]:
-        uses : Dict[Symbol,int] = dict()
-        for k,v in self.eqns.items():
+    def uses_dict(self) -> Dict[Symbol, int]:
+        uses: Dict[Symbol, int] = dict()
+        for k, v in self.eqns.items():
             for k2 in free_symbols(v):
-                old = uses.get(k2,0)
+                old = uses.get(k2, 0)
                 uses[k2] = old + 1
         return uses
 
-    def apply_order(self, k:Symbol, provides:Dict[Symbol,Set[Symbol]], requires:Dict[Symbol,Set[Symbol]])->List[Symbol]:
+    def apply_order(self, k: Symbol, provides: Dict[Symbol, Set[Symbol]], requires: Dict[Symbol, Set[Symbol]]) -> List[Symbol]:
         result = list()
         if k not in self.params and k not in self.inputs:
             self.order.append(k)
-        for v in provides.get(k,set()):
+        for v in provides.get(k, set()):
             req = requires[v]
             if k in req:
                 req.remove(k)
             if len(req) == 0:
                 result.append(v)
         return result
-            
-    def order_builder(self, complete:Dict[Symbol, int], cno:int)->None:
-        provides : Dict[Symbol,Set[Symbol]] = OrderedDict() # vals require key
-        requires : Dict[Symbol,Set[Symbol]] = OrderedDict() # key requires vals
+
+    def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
+        provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
+        requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
         self.requires = OrderedDict()
         # Thus for
         #   u_t = v
@@ -313,7 +444,7 @@ class EqnList:
         self.order = list()
         self.sublists = list()
         result = list()
-        for k,v2 in requires.items():
+        for k, v2 in requires.items():
             if len(v2) == 0:
                 result += self.apply_order(k, provides, requires)
                 complete[k] = cno
@@ -333,15 +464,18 @@ class EqnList:
             if len(new_result) > 0:
                 self.sublists.append(new_result)
             result = new_result
-        for k,v2 in requires.items():
+        for k, v2 in requires.items():
             for vv in v2:
                 if vv not in self.params:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
 
-
     def bake(self) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
+        if self.been_baked:
+            raise DslException("Can't bake an EqnList that has already been baked.")
+        self.been_baked = True
+
         needed: Set[Symbol] = OrderedSet()
         complete: Dict[Symbol, int] = OrderedDict()
         self.order = list()
@@ -355,19 +489,18 @@ class EqnList:
         self.lhs: Symbol
 
         # TODO: Automatically assign temps?
-        for temp in self.temps:
+        for temp in self.temporaries:
             if temp in self.outputs:
                 self.outputs.remove(temp)
             if temp in self.inputs:
                 self.inputs.remove(temp)
-                
 
         def ftrace(sym: Symbol) -> bool:
             if sym.is_Function:
                 # The noop function should be treated
                 # mathematically as parenthesis
                 if str(sym.func) == "noop":
-                    sym.args[0].replace(ftrace, noop) # type: ignore[no-untyped-call]
+                    sym.args[0].replace(ftrace, noop)  # type: ignore[no-untyped-call]
                 elif self.is_stencil.get(sym.func, False):
                     for arg in sym.args:
                         if arg.is_Number:
@@ -421,7 +554,7 @@ class EqnList:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
             if k not in read:
                 for kk in self.eqns:
-                    print(">>",kk,"=",self.eqns[kk])
+                    print(">>", kk, "=", self.eqns[kk])
             assert k in read, f"Symbol '{k}' is in inputs, but it is never read. {read}"
             assert k not in written, f"Symbol '{k}' is in inputs, but it is assigned to."
 
@@ -445,7 +578,7 @@ class EqnList:
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
             assert k in written, f"Temporary variable '{k}' is never written"
-            #assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
+            # assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
             assert k not in self.inputs, f"Temporary variable '{k}' in inputs"
 
         for k in read:
@@ -533,22 +666,26 @@ class EqnList:
             assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
 
         class FindBad:
-            def __init__(self,outer:EqnList)->None:
+            def __init__(self, outer: EqnList) -> None:
                 self.outer = outer
                 self.msg: Optional[str] = None
-            def m(self, expr:Expr)->bool:
+
+            def m(self, expr: Expr) -> bool:
                 if expr.is_Function:
                     if self.outer.is_stencil.get(expr.func, False):
                         for arg in expr.args:
                             if arg in self.outer.temporaries:
                                 self.msg = f"Temporary passed to stencil: call='{expr}' arg='{arg}'"
-                            break # only check the first arg
+                            break  # only check the first arg
                 return False
-            def exc(self)->None:
+
+            def exc(self) -> None:
                 if self.msg is not None:
                     raise Exception(self.msg)
-            def r(self, expr:Expr)->Expr:
+
+            def r(self, expr: Expr) -> Expr:
                 return expr
+
         fb = FindBad(self)
         for eqn in self.eqns.items():
             do_replace(eqn[1], fb.m, fb.r)
@@ -574,30 +711,34 @@ class EqnList:
 
     def uncse(self) -> None:
         print("Call UnCSE")
+
         class UndoCSE:
-            def __init__(self, outer:EqnList)->None:
+            def __init__(self, outer: EqnList) -> None:
                 self.outer = outer
-                self.value:Optional[Expr] = None
-            def m(self, expr:Expr)->bool:
+                self.value: Optional[Expr] = None
+
+            def m(self, expr: Expr) -> bool:
                 self.value = None
-                if expr.is_Function and self.outer.is_stencil.get(expr.func, False) and len(expr.args)>0:
+                if expr.is_Function and self.outer.is_stencil.get(expr.func, False) and len(expr.args) > 0:
                     arg = expr.args[0]
                     assert arg is not None
                     while arg in self.outer.temporaries:
                         assert arg is not None
                         assert isinstance(arg, Symbol)
-                        print("UNDO:",arg,'->',end=' ')
+                        print("UNDO:", arg, '->', end=' ')
                         arg = self.outer.eqns[arg]
                         print(arg)
                         args_list = list(expr.args)
                         args_list[0] = arg
                         args = tuple(args_list)
                         self.value = expr.func(*args)
-                        print("UNDO:",expr,"->",self.value)
+                        print("UNDO:", expr, "->", self.value)
                 return self.value is not None
-            def r(self, expr:Expr)->Expr:
+
+            def r(self, expr: Expr) -> Expr:
                 assert self.value is not None
                 return self.value
+
         undo = UndoCSE(self)
         for eqn in self.eqns.items():
             self.eqns[eqn[0]] = do_replace(eqn[1], undo.m, undo.r)
@@ -610,25 +751,29 @@ class EqnList:
         p2 = mkWild("p2", exclude=[0])
 
         class make_madd:
-            def __init__(self)->None:
-                self.value:Optional[Expr] = None
-            def m(self, expr:Expr)->bool:
+            def __init__(self) -> None:
+                self.value: Optional[Expr] = None
+
+            def m(self, expr: Expr) -> bool:
                 self.value = None
-                g = do_match(expr, p0*p1+p2)
+                g = do_match(expr, p0 * p1 + p2)
                 if g:
                     q0, q1, q2 = g[p0], g[p1], g[p2]
                     self.value = muladd(self.repl(q0), self.repl(q1), self.repl(q2))
                 return self.value is not None
-            def r(self, expr:Expr)->Expr:
+
+            def r(self, expr: Expr) -> Expr:
                 assert self.value is not None
                 return self.value
-            def repl(self, expr:Expr)->Expr:
+
+            def repl(self, expr: Expr) -> Expr:
                 for iter in range(20):
                     nexpr = do_replace(expr, self.m, self.r)
                     if nexpr == expr:
                         return nexpr
                     expr = nexpr
                 return expr
+
         mm = make_madd()
         for k, v in self.eqns.items():
             self.eqns[k] = mm.repl(v)
@@ -655,29 +800,29 @@ class EqnList:
             self.eqns[k] = m
         self.uncse()
 
-    def stencil_limits(self)->typing.Tuple[int,int,int]:
-        result = [0,0,0]
+    def stencil_limits(self) -> typing.Tuple[int, int, int]:
+        result = [0, 0, 0]
         for eqn in self.eqns.values():
-            self.stencil_limits_(result, eqn)
-        return (result[0], result[1], result[2])
+            self._stencil_limits(result, eqn)
+        return result[0], result[1], result[2]
 
-    def stencil_limits_(self, result:List[int], expr:Expr) -> None:
+    def _stencil_limits(self, result: List[int], expr: Expr) -> None:
         for arg in expr.args:
             if str(type(arg)) == "stencil":
                 for i in range(3):
-                    ivar = arg.args[i+1]
+                    ivar = arg.args[i + 1]
                     assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
                     result[i] = max(result[i], abs(int(ivar)))
             else:
                 if isinstance(arg, Expr):
-                    self.stencil_limits_(result, arg)
+                    self._stencil_limits(result, arg)
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
             print(" ", colorize(k, "cyan"), "=", self.eqns[k])
 
-    def depends_on(self, a:Symbol, b:Symbol) -> bool:
+    def depends_on(self, a: Symbol, b: Symbol) -> bool:
         """
         Dependency checker. Assumes no cycles.
         """
@@ -721,8 +866,8 @@ if __name__ == "__main__":
         # el.add_func(div, False)
         el.bake()
         assert el.read_decls[a] == IntentRegion.Everywhere
-        #assert el.write_decls[d] == IntentRegion.Everywhere
-        #assert el.write_decls[c] == IntentRegion.Everywhere
+        # assert el.write_decls[d] == IntentRegion.Everywhere
+        # assert el.write_decls[c] == IntentRegion.Everywhere
     finally:
         print("Test zero passed")
         print()
