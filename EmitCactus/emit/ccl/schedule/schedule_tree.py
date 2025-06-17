@@ -43,6 +43,9 @@ class IntentRegion(ReprEnum):
     Boundary = auto(), 'Boundary'
     Everywhere = auto(), 'Everywhere'
 
+    def consolidate(self, other: 'IntentRegion') -> 'IntentRegion':
+        return self if self is other else IntentRegion.Everywhere
+
 
 @dataclass
 class Intent(ScheduleNode):

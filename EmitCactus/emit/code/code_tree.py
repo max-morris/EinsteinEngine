@@ -50,6 +50,15 @@ class BinOp(ReprEnum):
     Mul = auto(), "*"
     Pow = auto(), "^"
     Div = auto(), "/"
+    Mod = auto(), "%"
+    And = auto(), "&&"
+    Or = auto(), "||"
+    Eq = auto(), "=="
+    Neq = auto(), "!="
+    Lt = auto(), "<"
+    Lte = auto(), "<="
+    Gt = auto(), ">"
+    Gte = auto(), ">="
 
 
 @dataclass
