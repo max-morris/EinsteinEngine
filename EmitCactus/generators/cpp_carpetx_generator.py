@@ -1,11 +1,10 @@
-import typing
-from typing import Optional, List, Set, Tuple, Collection
+from dataclasses import dataclass
+from typing import Optional, List, Collection
 
 import sympy as sy
-from typing_extensions import Unpack
+from typing_extensions import Unpack, OrderedDict
 
 from EmitCactus.dsl.carpetx import ExplicitSyncBatch
-from EmitCactus.dsl.eqnlist import TemporaryReplacement
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
     VariableSection
@@ -16,14 +15,21 @@ from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, 
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, Intent, \
     GroupOrFunction, AtOrIn, StorageSection, ScheduleSection, IntentRegion
 from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
-    ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, SympyExpr, \
-    ThornFunctionDecl, DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr
+    ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
+    DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
+    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr
+from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
 from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
+from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EmitCactus.util import OrderedSet
 
+
+@dataclass(frozen=True)
+class _TileTempCenteringData:
+    temps_by_centering: dict[Centering, set[sy.Symbol]]
+    temps_to_centering: dict[sy.Symbol, Centering]
 
 class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
@@ -379,33 +385,6 @@ class CppCarpetXGenerator(CactusGenerator):
 
             layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
 
-        # Figure out which centering to pass to grid.loop_int_device<...>
-        # All of this function's outputs need to have the same centering. If they do, use that centering.
-        output_centerings = {var_centerings[str(var)] for var in thorn_fn.eqn_complex.outputs if str(var) in self.var_names}
-
-        if None in output_centerings or len(output_centerings) == 0:
-            raise GeneratorException(f"All output vars must have a centering: {thorn_fn.name} {output_centerings}")
-
-        if len(output_centerings) > 1:
-            raise GeneratorException(f"Output vars have mixed centerings")
-
-        # Got the centering.
-        output_centering: Centering
-        [output_centering] = output_centerings
-
-        output_regions = {spec for var, spec in thorn_fn.eqn_complex.write_decls.items() if str(var) in self.var_names}
-
-        if None in output_regions or len(output_regions) == 0:
-            raise GeneratorException(f"All output vars must have a write region.")
-
-        if len(output_regions) > 1:
-            raise GeneratorException(
-                f"Output vars for '{which_fn}' have mixed write regions: {list(thorn_fn.eqn_complex.write_decls.items())}"
-            )
-
-        output_region: IntentRegion
-        [output_region] = output_regions
-
         input_var_strs = [str(i) for i in thorn_fn.eqn_complex.inputs]
 
         # x, y, and z are special, but x is extra special
@@ -459,34 +438,31 @@ class CppCarpetXGenerator(CactusGenerator):
             )
         for i in range(3) if stencil_limits[i] != 0]
 
+        loop_to_output_centering = [
+            self._get_output_centering_for_loop(thorn_fn, loop_idx, eqn_list.outputs, var_centerings)
+            for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
+        ]
+
+        loop_to_output_region = [
+            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls)
+            for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
+        ]
+
+        tile_temp_centerings = self._get_tile_temp_centerings(loop_to_output_centering, thorn_fn)
+        tile_temps_by_centering, tile_temps_to_centering = tile_temp_centerings.temps_by_centering, tile_temp_centerings.temps_to_centering
+
+        tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
+        
+        sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering)
+
         carpetx_loops: list[CarpetXGridLoopCall] = list()
-        for eqn_list in thorn_fn.eqn_complex.eqn_lists:
-            reassigned_lhses: Set[int] = set()
+        for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
+            output_centering = loop_to_output_centering[loop_idx]
+            output_region = loop_to_output_region[loop_idx]
 
-            def do_recycle_temporaries(lhs: sy.Symbol, rhs: sy.Expr, i: int) -> Tuple[sy.Symbol, sy.Expr]:
-                active_replacements: List[TemporaryReplacement] = (
-                    sorted(filter(lambda r: r.begin_eqn <= i <= r.end_eqn, eqn_list.temporary_replacements),
-                           key=lambda r: r.begin_eqn,
-                           reverse=True)
-                )
+            subst_result = substitute_recycled_temporaries(eqn_list)
 
-                current_line_replacement = typing.cast(Optional[TemporaryReplacement],
-                                                       next(filter(lambda r: r.begin_eqn == i, active_replacements), None))
-
-                for replacement in active_replacements:
-                    rhs = rhs.replace(replacement.old, replacement.new)  # type: ignore[no-untyped-call]
-
-                if current_line_replacement:
-                    assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"
-                    lhs = current_line_replacement.new
-                    reassigned_lhses.add(i)
-
-                return lhs, rhs
-
-            # Sort the equations, perform temp-var replacements if needed, then convert each RHS to our tree type.
-            eqns = [(lhs, SympyExpr(rhs)) for lhs, rhs in [do_recycle_temporaries(lhs, rhs, i) for i, (lhs, rhs) in
-                                                           enumerate(sorted(eqn_list.eqns.items(),
-                                                                            key=lambda kv: eqn_list.order.index(kv[0])))]]
+            eqns: list[tuple[sy.Symbol, Expr]] = [(lhs, sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
 
             carpetx_loops.append(
                 CarpetXGridLoopCall(
@@ -497,7 +473,7 @@ class CppCarpetXGenerator(CactusGenerator):
                         equations=eqns,
                         succeeding=[],
                         temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in eqn_list.temporaries],
-                        reassigned_lhses=reassigned_lhses
+                        reassigned_lhses=subst_result.substituted_lhs_idxes
                     )
                 )
             )
@@ -514,23 +490,167 @@ class CppCarpetXGenerator(CactusGenerator):
                     *layout_decls,
                     *di_decls,
                     *stencil_limit_checks,
+                    *tile_temp_setup,
                     *carpetx_loops
-                    #CarpetXGridLoopCall(
-                    #    output_centering,
-                    #    output_region,
-                    #    CarpetXGridLoopLambda(
-                    #        preceding=xyz_decls,
-                    #        equations=eqns,
-                    #        succeeding=[],
-                    #        temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in thorn_fn.eqn_list.temporaries],
-                    #        reassigned_lhses=reassigned_lhses
-                    #    ),
-                    #)
                 ]
             )
         )
 
         return CodeRoot(nodes)
+
+    @staticmethod
+    def _get_tile_temp_centerings(loop_to_output_centering: list[Centering], thorn_fn: ThornFunction) -> _TileTempCenteringData:
+        tile_temps_by_centering: dict[Centering, set[sy.Symbol]] = OrderedDict()
+        tile_temps_to_centering: dict[sy.Symbol, Centering] = OrderedDict()
+
+        for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
+            loop_centering = loop_to_output_centering[loop_idx]
+
+            for tile_temp in eqn_list.uninitialized_tile_temporaries:
+                tile_temps_by_centering.setdefault(loop_centering, set()).add(tile_temp)
+                tile_temps_to_centering[tile_temp] = loop_centering
+
+            for tile_temp in eqn_list.preinitialized_tile_temporaries:
+                assert tile_temp in tile_temps_to_centering
+                if tile_temps_to_centering[tile_temp] != loop_centering:
+                    raise GeneratorException(
+                        f"All loops accessing tile temporary '{tile_temp}' must have the same centering."
+                        f"  Declared with centering: {tile_temps_to_centering[tile_temp]}"
+                        f"  Read in loop {loop_idx} with centering: {loop_centering.string_repr}"
+                    )
+
+        return _TileTempCenteringData(temps_by_centering=tile_temps_by_centering, temps_to_centering=tile_temps_to_centering)
+
+    def _mk_sympy_visitor(self, tile_temps_to_centering: dict[sy.Symbol, Centering]) -> SympyExprVisitor:
+        stencil_fn_names = [str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil]
+        tile_temp_names = [str(sym) for sym in tile_temps_to_centering.keys()]
+
+        def name_subst_fn(name: str, in_stencil_args: bool) -> str:
+            if not in_stencil_args and (name in self.var_names or name in tile_temp_names):
+                return f'access({name})'
+            return name
+
+        sympy_visitor = SympyExprVisitor(
+            stencil_fns=stencil_fn_names,
+            substitution_fn=name_subst_fn
+        )
+        return sympy_visitor
+
+    @staticmethod
+    def _generate_tile_temp_setup(tile_temps_by_centering: dict[Centering, set[sy.Symbol]]) -> list[CodeElem]:
+        tile_temp_setup: list[CodeElem] = list()
+        
+        for centering, temps in tile_temps_by_centering.items():
+            tile_temp_setup.append(
+                ConstAssignDecl(
+                    Identifier('int'),
+                    Identifier(f'nTileTemps_{centering.string_repr}'),
+                    IntLiteralExpr(len(temps))
+                )
+            )
+
+            tile_temp_setup.append(
+                ConstConstructDecl(
+                    Identifier('GF3D5vector<CCTK_REAL>'),
+                    Identifier(f'tileTemps_{centering.string_repr}'),
+                    [
+                        IdExpr(Identifier(f'{centering.string_repr}_layout')),
+                        IdExpr(Identifier(f'nTileTemps_{centering.string_repr}'))
+                    ]
+                )
+            )
+
+            tile_temp_setup.append(
+                MutableAssignDecl(
+                    Identifier('int'),
+                    Identifier(f'idxTileTemp_{centering.string_repr}'),
+                    IntLiteralExpr(0)
+                )
+            )
+
+            tile_temp_setup.append(
+                ConstAssignDecl(
+                    Identifier('auto'),
+                    Identifier(f'mkTileTemp_{centering.string_repr}'),
+                    VerbatimExpr(Verbatim(
+                        f'[&]() {{ return GF3D5<CCTK_REAL>(tileTemps_{centering.string_repr}(idxTileTemp_{centering.string_repr}++)); }}'
+                    ))
+                )
+            )
+
+            for temp in sorted(temps, key=lambda sym: str(sym)):
+                tile_temp_setup.append(
+                    ConstConstructDecl(
+                        Identifier('GF3D5<CCTK_REAL>'),
+                        Identifier(str(temp)),
+                        [
+                            FunctionCall(
+                                Identifier(f'mkTileTemp_{centering.string_repr}'),
+                                [],
+                                []
+                            )
+                        ]
+                    )
+                )
+
+                tile_temp_setup.append(
+                    Verbatim(f'#define {str(temp)}_layout {centering.string_repr}_layout')
+                )
+
+        return tile_temp_setup
+
+    def _get_output_region_for_loop(self,
+                                    thorn_fn: ThornFunction,
+                                    loop_idx: int,
+                                    write_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
+
+        """
+        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs.
+        All of this loop's outputs need to have the same write region.
+        """
+
+        output_regions = {
+            spec for var, spec in write_decls.items()
+            if str(var) in self.var_names
+        }
+
+        if None in output_regions or len(output_regions) == 0:
+            raise GeneratorException(f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a write region.")
+
+        if len(output_regions) > 1:
+            raise GeneratorException(
+                f"Output vars for '{thorn_fn.name}@{loop_idx}' have mixed write regions: {list(write_decls.items())}"
+            )
+
+        [output_region] = output_regions
+        return output_region
+
+    def _get_output_centering_for_loop(self,
+                                       thorn_fn: ThornFunction,
+                                       loop_idx: int,
+                                       output_vars: set[sy.Symbol],
+                                       var_centerings: dict[str, Centering]) -> Centering:
+        """
+        Figure out which centering to pass to grid.loop_int_device<...>
+        All of this loop's outputs need to have the same centering.
+        """
+
+        output_centerings = {
+            var_centerings[var_name] for var_name in [str(var) for var in output_vars]
+            if var_name in self.var_names
+        }
+
+        if None in output_centerings or len(output_centerings) == 0:
+            raise GeneratorException(
+                f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a centering: {output_centerings}")
+
+        if len(output_centerings) > 1:
+            raise GeneratorException(
+                f"Output vars for '{thorn_fn.name}@{loop_idx}' have mixed centerings: {output_centerings}")
+
+        [output_centering] = output_centerings
+        return output_centering
+
 
     def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch) -> CodeRoot:
         return CodeRoot([
