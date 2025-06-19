@@ -15,7 +15,7 @@ from sympy import Integer, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic,
 
 from EmitCactus.dsl.coef import coef
 from EmitCactus.dsl.dsl_exception import DslException
-from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ
+from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
@@ -1215,7 +1215,7 @@ class ThornFunction:
         self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
-        self.eqn_list: EqnList = EqnList(thorn_def.is_stencil)
+        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil)
         self.been_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
@@ -1223,17 +1223,21 @@ class ThornFunction:
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
 
+    @property
+    def _eqn_list(self) -> EqnList:
+        return self.eqn_complex.get_active_eqn_list()
+
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
         if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
-            self.eqn_list.add_output(lhs2)
+            self._eqn_list.add_output(lhs2)
         for item in free_symbols(rhs2):
             if str(item) in self.thorn_def.gfs:
                 if str(item) not in self.thorn_def.temp:
-                    self.eqn_list.add_input(item)
+                    self._eqn_list.add_input(item)
             elif str(item) in self.thorn_def.params:
                 assert item.is_Symbol
-                self.eqn_list.add_param(item)
+                self._eqn_list.add_param(item)
         divs = self.thorn_def.apply_div
 
         class FindBad:
@@ -1264,12 +1268,15 @@ class ThornFunction:
             print(self.thorn_def.subs)
             raise Exception(fb.msg)
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
-        self.eqn_list.add_eqn(lhs2, rhs2)
+        self._eqn_list.add_eqn(lhs2, rhs2)
         print(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.thorn_def.defn)
         return it.free
+
+    def split_loop(self) -> None:
+        self.eqn_complex.new_eqn_list()
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
@@ -1357,22 +1364,22 @@ class ThornFunction:
         assert count > 0
 
     def madd(self) -> None:
-        self.eqn_list.madd()
+        self.eqn_complex.do_madd()
 
     def cse(self) -> None:
-        self.eqn_list.cse()
+        self.eqn_complex.do_cse()
 
     def dump(self) -> None:
-        self.eqn_list.dump()
+        self.eqn_complex.dump()
 
     def eqn_bake(self) -> None:
-        self.eqn_list.bake()
+        self.eqn_complex.bake()
 
     def recycle_temporaries(self) -> None:
-        self.eqn_list.recycle_temporaries()
+        self.eqn_complex.recycle_temporaries()
 
     def split_output_eqns(self) -> None:
-        self.eqn_list.split_output_eqns()
+        self.eqn_complex.split_output_eqns()
 
     def bake(self, *,
              do_cse: bool = True,
@@ -1388,7 +1395,7 @@ class ThornFunction:
         :return:
         """
         if self.been_baked:
-            raise Exception("bake should not be called more than once")
+            raise DslException("bake should not be called more than once")
         print(f"*** {self.name} ***")
 
         if do_madd:
@@ -1408,9 +1415,9 @@ class ThornFunction:
 
     def show_tensortypes(self) -> None:
         keys: Set[str] = OrderedSet()
-        for k1 in self.eqn_list.inputs:
+        for k1 in self.eqn_complex.inputs:
             keys.add(str(k1))
-        for k2 in self.eqn_list.outputs:
+        for k2 in self.eqn_complex.outputs:
             keys.add(str(k2))
         for k in keys:
             group, indices, members = self.get_tensortype(k)

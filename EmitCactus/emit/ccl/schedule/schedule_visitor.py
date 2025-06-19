@@ -60,7 +60,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
     @visit.register
     def _(self, n: ScheduleBlock) -> str:
-        s = 'SCHEDULE '
+        s: str = 'SCHEDULE '
 
         if n.group_or_function is GroupOrFunction.Group:
             s += 'GROUP '

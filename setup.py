@@ -10,7 +10,7 @@ setup(
     license='MIT',
     packages=find_packages(include='EmitCactus.*'),
     install_requires=[
-        'mypy==1.10.0',
+        'mypy==1.16.1',
         'nrpy==2.0.18',
         'sympy==1.12.1',
         'multimethod>=1.10',
