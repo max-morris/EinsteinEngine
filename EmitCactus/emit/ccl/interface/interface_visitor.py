@@ -50,6 +50,8 @@ class InterfaceVisitor(Visitor[InterfaceNode]):
             sorted_inherits = sorted(n.inherits, key=lambda x: repr(x))
             s += f'\ninherits: {",".join(visit_each(self, sorted_inherits))}'
 
+        s += '\nUSES INCLUDE HEADER: timer.hxx'
+
         if len(n.friends) != 0:
             s += f'\nfriend: {",".join(visit_each(self, n.friends))}'
 

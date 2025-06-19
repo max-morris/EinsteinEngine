@@ -84,3 +84,15 @@ CarpetX::out_tsv_vars = " WaveEqn::u ZeroTest::ZeroVal "
 # You can experiment with these values
 #WaveEqn::kx = $pi/10.0
 #WaveEqn::ky = $pi/10.0
+
+ActiveThorns = "TimerReport"
+
+
+# Timer output
+TimerReport::out_every                  = 100
+TimerReport::out_filename               = "TimerReport"
+TimerReport::n_top_timers               = 200
+TImerReport::output_all_timers          = yes
+TimerReport::output_all_timers_readable = yes
+TimerReport::output_all_timers_together = yes
+TimerReport::output_schedule_timers     = yes

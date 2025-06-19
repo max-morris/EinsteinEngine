@@ -33,7 +33,7 @@ class CppCarpetXGenerator(CactusGenerator):
     boilerplate_includes: List[Identifier] = [Identifier(s) for s in
                                               ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
                                                "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
-                                               "cmath", "tuple"]]
+                                               "cmath", "tuple", "timer.hxx" ]]
     boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
     boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
@@ -448,6 +448,11 @@ class CppCarpetXGenerator(CactusGenerator):
             if stencil_limits[i] != 0:
                 stencil_limit_checks.append(VerbatimExpr(Verbatim(f'CCTK_ASSERT(cctk_nghostzones[{i}] >= {stencil_limits[i]});')))
 
+        timers = [
+            VerbatimExpr(Verbatim(f'static CarpetX::Timer timer("{thorn_fn.thorn_def.arrangement}::{thorn_fn.thorn_def.name}");')),
+            VerbatimExpr(Verbatim(f'CarpetX::Interval interval(timer);'))
+        ]
+
         eqn_list = thorn_fn.eqn_list
         reassigned_lhses: Set[int] = set()
 
@@ -486,6 +491,7 @@ class CppCarpetXGenerator(CactusGenerator):
                  *layout_decls,
                  *di_decls,
                  *stencil_limit_checks,
+                 *timers,
                  CarpetXGridLoopCall(
                      output_centering,
                      output_region,

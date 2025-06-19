@@ -50,12 +50,14 @@ gf.add_substitution_rule(g[ui, uj], flat_metric)
 
 t, x, y, z = gf.mk_coords(with_time=True)
 
+do_madd=False
+
 # Add the equations we want to evolve.
 evo = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 evo.add_eqn(v_t, u)
 evo.add_eqn(u_t, spd ** 2 * g[ui, uj] * D(v, li, lj))  # ==> u_t = spd^2 * (d^2_x + d^2_y) v
 print('*** ThornFunction wave_evo:')
-evo.bake()
+evo.bake(do_madd=do_madd)
 
 # Dump
 evo.dump()
@@ -72,16 +74,16 @@ ufun = vfun.diff(t)
 init = gf.create_function("newwave_init", ScheduleBin.Init)
 init.add_eqn(u,  ufun)
 init.add_eqn(v,  vfun)
-init.bake()
+init.bake(do_madd=do_madd)
 
 refine = gf.create_function("refine", ScheduleBin.EstimateError)
 regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetXRegrid')
 refine.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
-refine.bake()
+refine.bake(do_madd=do_madd)
 
 wave_zero = gf.create_function("WaveZero", ScheduleBin.Analysis)
 wave_zero.add_eqn(ZeroVal, u - ufun)
-wave_zero.bake()
+wave_zero.bake(do_madd=do_madd)
 
 wave_zero.dump()
 
