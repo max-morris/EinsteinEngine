@@ -144,6 +144,13 @@ class ConstAssignDecl(Decl):
 
 
 @dataclass
+class MutableAssignDecl(Decl):
+    type: Identifier
+    lhs: Identifier
+    rhs: Expr
+
+
+@dataclass
 class ConstExprAssignDecl(Decl):
     type: Identifier
     lhs: Identifier
@@ -206,7 +213,7 @@ class StandardizedFunctionCall(Expr):
 @dataclass
 class CarpetXGridLoopLambda(Expr):
     preceding: Collection[CodeElem]
-    equations: List[Tuple[sy.Symbol, SympyExpr]]
+    equations: List[Tuple[sy.Symbol, Expr]]
     succeeding: Collection[CodeElem]
     temporaries: Collection[str]
     reassigned_lhses: Collection[int]

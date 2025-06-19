@@ -1275,6 +1275,9 @@ class ThornFunction:
         it = check_indices(expr, self.thorn_def.defn)
         return it.free
 
+    def split_loop(self) -> None:
+        self.eqn_complex.new_eqn_list()
+
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
         check_indices(rhs, self.thorn_def.defn)

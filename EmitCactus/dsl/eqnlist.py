@@ -2,21 +2,19 @@ import typing
 from collections import OrderedDict
 from dataclasses import dataclass
 from functools import cached_property
-
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import symbols, Basic, IndexedBase, Expr, Symbol, Integer
-from sympy.core.function import UndefinedFunction as UFunc, Function
+from itertools import chain
 from typing import cast, Dict, List, Tuple, Optional, Set
 
-from EmitCactus.dsl.util import require_baked
-from EmitCactus.util import OrderedSet, incr_and_get, consolidate
-
-from EmitCactus.dsl.sympywrap import *
-from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
-from EmitCactus.util import get_or_compute, ProgressBar
-from EmitCactus.dsl.dsl_exception import DslException
-
 from multimethod import multimethod
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from sympy import Basic, IndexedBase, Expr, Symbol, Integer
+
+from EmitCactus.dsl.dsl_exception import DslException
+from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.util import require_baked
+from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
+from EmitCactus.util import OrderedSet, incr_and_get, consolidate
+from EmitCactus.util import get_or_compute
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -70,19 +68,12 @@ class EqnComplex:
 
     def __init__(self, is_stencil: Dict[UFunc, bool]) -> None:
         self.is_stencil = is_stencil
-        self.eqn_lists = [EqnList(is_stencil)]
+        self.eqn_lists = [EqnList(self, is_stencil)]
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
 
     def new_eqn_list(self) -> 'EqnList':
-        self.get_active_eqn_list().bake()
-
-        new_list = EqnList(self.is_stencil)
-
-        for prev_list in self.eqn_lists:
-            assert prev_list.been_baked
-            new_list.temporaries |= prev_list.temporaries
-
+        new_list = EqnList(self, self.is_stencil)
         self.eqn_lists.append(new_list)
         return new_list
 
@@ -91,10 +82,8 @@ class EqnComplex:
             raise DslException("Can't bake an EqnComplex that has already been baked.")
         self.been_baked = True
 
-        for eqn_list in self.eqn_lists[:-1]:
-            assert eqn_list.been_baked
-
-        self.get_active_eqn_list().bake()
+        for eqn_list in self.eqn_lists:
+            eqn_list.bake()
 
     def get_active_eqn_list(self) -> 'EqnList':
         return self.eqn_lists[-1]
@@ -104,8 +93,86 @@ class EqnComplex:
             eqn_list.madd()
 
     def do_cse(self) -> None:
-        for eqn_list in self.eqn_lists:
-            eqn_list.cse()
+        old_shape: list[int] = list()
+        old_lhses: list[Symbol] = list()
+        old_rhses: list[Expr] = list()
+
+        for el in self.eqn_lists:
+            old_shape.append(0)
+            for lhs, rhs in el.eqns.items():
+                old_lhses.append(lhs)
+                old_rhses.append(rhs)
+                old_shape[-1] += 1
+
+        substitutions_list: list[tuple[Symbol, Expr]]
+        new_rhses: list[Expr]
+        substitutions_list, new_rhses = cse(old_rhses)
+
+        substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
+        substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
+
+        new_temp_reads: dict[Symbol, set[int]] = {sym: set() for sym in substitutions.keys()}
+        new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
+
+
+        # We need to figure out exactly which loops use which temporaries.
+        # By doing this, we can determine which temporaries need to be promoted to tile temporaries and which loop each
+        #  temporary should be computed in.
+        # We will also populate the temporary-related bookkeeping fields on EqnList and EqnComplex.
+
+        global_eqn_idx = 0
+        for el_idx, el_shape in enumerate(old_shape):
+            eqn_list = self.eqn_lists[el_idx]
+            el_new_free_symbols: set[Symbol] = set(chain(*[free_symbols(rhs) for rhs in new_rhses[global_eqn_idx:global_eqn_idx + el_shape]]))
+            new_temps = el_new_free_symbols.intersection(substitutions.keys())
+
+            for new_temp, temp_rhs in [(new_temp, substitutions[new_temp]) for new_temp in new_temps]:
+                assert new_temp not in eqn_list.inputs
+                assert new_temp not in eqn_list.params
+                assert new_temp not in eqn_list.outputs
+                assert new_temp not in eqn_list.eqns
+
+                new_temp_reads[new_temp].add(el_idx)
+
+                # Temps might be substituted for expressions which contain other temps.
+                # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
+                def drill(lhs: Symbol, rhs: Expr) -> None:
+                    temp_dependencies = free_symbols(rhs).intersection(substitutions.keys())
+                    assert lhs not in temp_dependencies
+                    for td in temp_dependencies:
+                        new_temp_dependencies[lhs].add(td)
+                        drill(td, substitutions[td])
+
+                drill(new_temp, temp_rhs)
+
+            for lhs in old_lhses[global_eqn_idx:global_eqn_idx + el_shape]:
+                assert lhs in eqn_list.eqns
+                eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
+                global_eqn_idx += 1
+
+            eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
+
+        for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
+                                                  key=lambda kv: substitutions_order[kv[0]],
+                                                  reverse=True):
+            el_idx = min(new_temp_reads[new_temp])
+            for td in temp_dependencies:
+                new_temp_reads[td].add(el_idx)
+
+        for new_temp, el_list in new_temp_reads.items():
+            if (seen_count := len(el_list)) == 0:
+                continue
+
+            primary_el = self.eqn_lists[primary_idx := min(el_list)]
+            primary_el.add_eqn(new_temp, substitutions[new_temp])
+
+            if seen_count == 1:
+                primary_el.temporaries.add(new_temp)
+            else:
+                self._tile_temporaries.add(new_temp)
+                primary_el.uninitialized_tile_temporaries.add(new_temp)
+                for eqn_list in [self.eqn_lists[el_idx] for el_idx in el_list if el_idx != primary_idx]:
+                    eqn_list.preinitialized_tile_temporaries.add(new_temp)
 
     def dump(self) -> None:
         for idx, eqn_list in enumerate(self.eqn_lists):
@@ -114,8 +181,8 @@ class EqnComplex:
             print()
 
     def recycle_temporaries(self) -> None:
-        # todo: If we make tile temps ineligible for recycling, we can keep the lifetime calculations per-EqnList
-        raise NotImplementedError("recycle_temporaries not yet implemented in EqnComplex")
+        for eqn_list in self.eqn_lists:
+            eqn_list.recycle_temporaries()
 
     def split_output_eqns(self) -> None:
         for eqn_list in self.eqn_lists:
@@ -124,6 +191,7 @@ class EqnComplex:
     @property
     @require_baked(msg="Can't get tile_temporaries before baking the EqnComplex.")
     def tile_temporaries(self) -> set[Symbol]:
+        assert hasattr(self, '_tile_temporaries')
         return self._tile_temporaries
 
     @cached_property
@@ -204,7 +272,7 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self, is_stencil: Dict[UFunc, bool]) -> None:
+    def __init__(self, parent: EqnComplex, is_stencil: Dict[UFunc, bool]) -> None:
         self.eqns: Dict[Symbol, Expr] = dict()
         self.params: Set[Symbol] = OrderedSet()
         self.inputs: Set[Symbol] = OrderedSet()
@@ -218,11 +286,14 @@ class EqnList:
         self.default_read_write_spec: IntentRegion = IntentRegion.Everywhere  # Interior
         self.is_stencil: Dict[UFunc, bool] = is_stencil
         self.temporaries: Set[Symbol] = OrderedSet()
+        self.uninitialized_tile_temporaries: Set[Symbol] = OrderedSet()
+        self.preinitialized_tile_temporaries: Set[Symbol] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
         self.split_lhs_prime_count: Dict[Symbol, int] = dict()
         self.provides: Dict[Symbol, Set[Symbol]] = dict()  # vals require key
         self.requires: Dict[Symbol, Set[Symbol]] = dict()  # key requires vals
         self.been_baked: bool = False
+        self.parent = parent
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -231,8 +302,14 @@ class EqnList:
         self.add_param(DZI)
 
     @cached_property
+    @require_baked(msg="Can't get variables before baking the EqnList.")
     def variables(self) -> Set[Symbol]:
         return self.inputs | self.outputs | self.temporaries
+
+    @cached_property
+    @require_baked(msg="Can't get sorted_eqns before baking the EqnList.")
+    def sorted_eqns(self) -> list[tuple[Symbol, Expr]]:
+        return sorted(self.eqns.items(), key=lambda kv: self.order.index(kv[0]))
 
     def add_param(self, lhs: Symbol) -> None:
         assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
@@ -327,20 +404,22 @@ class EqnList:
         temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()
         temp_writes: Dict[Symbol, OrderedSet[int]] = OrderedDict()
 
+        local_temporaries = self.temporaries - self.parent.tile_temporaries
+
         for lhs, rhs in self.eqns.items():
             eqn_i = self.order.index(lhs)
 
-            if lhs in self.temporaries:
+            if lhs in local_temporaries:
                 get_or_compute(temp_writes, lhs, lambda _: OrderedSet()).add(eqn_i)
 
-            if len(temps_read := free_symbols(rhs).intersection(self.temporaries)) > 0:
+            if len(temps_read := free_symbols(rhs).intersection(local_temporaries)) > 0:
                 temp_var: Symbol
                 for temp_var in temps_read:
                     get_or_compute(temp_reads, temp_var, lambda _: OrderedSet()).add(eqn_i)
 
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
-        for temp_var in self.temporaries:
+        for temp_var in local_temporaries:
             print(f'Temporary {temp_var}:')
             assert len(temp_writes[temp_var]) == 1
 
@@ -412,7 +491,7 @@ class EqnList:
 
     def apply_order(self, k: Symbol, provides: Dict[Symbol, Set[Symbol]], requires: Dict[Symbol, Set[Symbol]]) -> List[Symbol]:
         result = list()
-        if k not in self.params and k not in self.inputs:
+        if k not in self.params and k not in self.inputs and k not in self.preinitialized_tile_temporaries:
             self.order.append(k)
         for v in provides.get(k, set()):
             req = requires[v]
@@ -454,6 +533,9 @@ class EqnList:
         for k in self.params:
             result += self.apply_order(k, provides, requires)
             complete[k] = cno
+        for k in self.preinitialized_tile_temporaries:
+            result += self.apply_order(k, provides, requires)
+            complete[k] = cno
         self.sublists.append(result)
         while len(result) > 0:
             cno += 1
@@ -466,7 +548,7 @@ class EqnList:
             result = new_result
         for k, v2 in requires.items():
             for vv in v2:
-                if vv not in self.params:
+                if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
 
@@ -488,7 +570,6 @@ class EqnList:
 
         self.lhs: Symbol
 
-        # TODO: Automatically assign temps?
         for temp in self.temporaries:
             if temp in self.outputs:
                 self.outputs.remove(temp)
@@ -525,11 +606,6 @@ class EqnList:
             rhs = self.eqns[lhs]
             rhs.replace(ftrace, noop)  # type: ignore[no-untyped-call]
 
-        for arg in self.inputs:
-            assert isinstance(arg, Symbol), f"{arg}, type={type(arg)}"
-            if arg not in self.read_decls:
-                self.read_decls[arg] = self.default_read_write_spec
-
         for lhs in self.eqns:
             assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
             rhs = self.eqns[lhs]
@@ -552,11 +628,16 @@ class EqnList:
 
         for k in self.inputs:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
+            # With loop splitting, it can arise that an input symbol ends up in the RHS of a tile temp assigned
+            #  in the previous loop, so we can just quietly fix the inconsistency.
             if k not in read:
-                for kk in self.eqns:
-                    print(">>", kk, "=", self.eqns[kk])
-            assert k in read, f"Symbol '{k}' is in inputs, but it is never read. {read}"
+                self.inputs.remove(k)
             assert k not in written, f"Symbol '{k}' is in inputs, but it is assigned to."
+
+        for arg in self.inputs:
+            assert isinstance(arg, Symbol), f"{arg}, type={type(arg)}"
+            if arg not in self.read_decls:
+                self.read_decls[arg] = self.default_read_write_spec
 
         for k in self.outputs:
             assert isinstance(k, Symbol)
@@ -564,16 +645,18 @@ class EqnList:
 
         for k in written:
             assert isinstance(k, Symbol)
-            if k not in self.outputs:
+            if k not in self.outputs and k not in self.uninitialized_tile_temporaries and k not in self.preinitialized_tile_temporaries:
                 self.temporaries.add(k)
 
         for k in read:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
-            if k not in self.inputs and k not in self.params:
+            if k not in self.inputs and k not in self.params and k not in self.uninitialized_tile_temporaries  and k not in self.preinitialized_tile_temporaries:
                 self.temporaries.add(k)
 
         if self.verbose:
             print(colorize("Temps:", "green"), self.temporaries)
+            print(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
+            print(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
 
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
@@ -778,28 +861,6 @@ class EqnList:
         for k, v in self.eqns.items():
             self.eqns[k] = mm.repl(v)
 
-    def cse(self) -> None:
-        """ Invoke Sympy's CSE method, but ensure that the order of the resulting assignments is correct. """
-        print("Call CSE")
-        indexes: List[Symbol] = list()
-        old_eqns: List[Expr] = list()
-        for k in self.eqns:
-            indexes.append(k)
-            old_eqns.append(self.eqns[k])
-        new_eqns, mod_eqns = cse(old_eqns)
-        for eqn in new_eqns:
-            self.temporaries.add(eqn[0])
-        e: Tuple[Symbol, Expr]
-        for e in new_eqns:
-            assert e[0] not in self.inputs and e[0] not in self.params and e[0] not in self.eqns
-            self.add_eqn(e[0], e[1])
-        for i in range(len(indexes)):
-            k = indexes[i]
-            v = old_eqns[i]
-            m = mod_eqns[i]
-            self.eqns[k] = m
-        self.uncse()
-
     def stencil_limits(self) -> typing.Tuple[int, int, int]:
         result = [0, 0, 0]
         for eqn in self.eqns.values():
@@ -832,96 +893,3 @@ class EqnList:
             else:
                 return self.depends_on(a, c)
         return False
-
-
-if __name__ == "__main__":
-    a, b, c, d, e, f, g, q, r = symbols("a b c d e f g q r")
-    try:
-        div = mkFunction("div")
-        dmap: Dict[UFunc, bool] = {div: True}
-        el = EqnList(dmap)
-        el.default_read_write_spec = IntentRegion.Interior
-        # el.add_func(div, True)
-        el.add_input(a)
-        el.add_eqn(c, sympify(3))
-        el.add_eqn(b, 2 * c + sympify(8))
-        el.add_eqn(f, div(a) + c)
-        el.add_eqn(d, b + c + f)
-        el.add_output(c)
-        el.add_output(d)
-
-        el.bake()
-        assert el.read_decls[a] == IntentRegion.Everywhere
-        assert el.write_decls[d] == IntentRegion.Interior
-        assert el.write_decls[c] == IntentRegion.Interior
-
-        el.default_read_write_spec = IntentRegion.Everywhere
-        # el.add_func(div, True)
-        el.bake()
-        assert el.read_decls[a] == IntentRegion.Everywhere
-        assert el.write_decls[d] == IntentRegion.Interior
-        assert el.write_decls[c] == IntentRegion.Interior
-
-        el.default_read_write_spec = IntentRegion.Everywhere
-        # el.add_func(div, False)
-        el.bake()
-        assert el.read_decls[a] == IntentRegion.Everywhere
-        # assert el.write_decls[d] == IntentRegion.Everywhere
-        # assert el.write_decls[c] == IntentRegion.Everywhere
-    finally:
-        print("Test zero passed")
-        print()
-
-    try:
-        el = EqnList(dict())
-        el.add_eqn(r, q)  # cycle
-        el.add_eqn(q, r)  # cycle
-        el.add_eqn(a, r)
-        el.add_output(a)
-        el.bake()
-    except DslException as ae:
-        assert "Unsatisfied" in str(ae)
-        print("Test one passed")
-        print()
-
-    try:
-        el = EqnList(dict())
-        el.add_input(a)
-        el.add_input(f)
-        el.add_input(b)
-        el.add_output(d)
-        el.add_eqn(c, g + f + a ** 3 + q)
-        el.add_eqn(e, a ** 2)
-        el.add_eqn(g, e)
-        el.add_eqn(d, c * b + a ** 3)
-        el.bake()
-    except AssertionError as ae:
-        assert "'q' is never written" in str(ae)
-        print("Test two passed")
-        print()
-
-    try:
-        el = EqnList(dict())
-        el.add_input(a)
-        el.add_input(f)
-        el.add_output(d)
-        el.add_eqn(a, f + 2)
-        el.add_eqn(d, a)
-        el.bake()
-    except AssertionError as ae:
-        assert "Symbol 'a' is in inputs, but it is assigned to." in str(ae)
-        print("Test three passed")
-        print()
-
-    try:
-        el = EqnList(dict())
-        el.add_input(a)
-        el.add_input(f)
-        el.add_output(d)
-        el.add_output(e)
-        el.add_eqn(d, a + f)
-        el.bake()
-    except AssertionError as ae:
-        assert "Symbol 'e' is in outputs, but it is never written" in str(ae)
-        print("Test four passed")
-        print()

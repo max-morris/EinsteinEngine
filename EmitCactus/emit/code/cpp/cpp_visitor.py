@@ -8,7 +8,7 @@ from EmitCactus.emit.code.code_tree import CodeNode, StandardizedFunctionCallTyp
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
     StandardizedFunctionCall, CarpetXGridLoopCall, CarpetXGridLoopLambda, ThornFunctionDecl, CodeRoot, IncludeDirective, \
     UsingNamespace, Using, UsingAlias, DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, ConstAssignDecl, \
-    ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr
+    ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
 from EmitCactus.emit.visitor import Visitor, visit_each
@@ -32,10 +32,10 @@ class CppVisitor(Visitor[CodeNode]):
 
         stencil_fns = [str(fn) for fn, fn_is_stencil in generator.thorn_def.is_stencil.items() if fn_is_stencil]
 
-        def substitution_fn(f: str, in_stencil_args: bool) -> str:
-            if not in_stencil_args and f in self.generator.var_names:
-                return f'access({f})'
-            return f
+        def substitution_fn(name: str, in_stencil_args: bool) -> str:
+            if not in_stencil_args and name in self.generator.var_names:
+                return f'access({name})'
+            return name
 
         self.sympy_visitor = SympyExprVisitor(
             stencil_fns=stencil_fns,
@@ -240,6 +240,10 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: ConstAssignDecl) -> str:
         return f'const {self.visit(n.type)} {self.visit(n.lhs)} = {self.visit(n.rhs)};'
+
+    @visit.register
+    def _(self, n: MutableAssignDecl) -> str:
+        return f'{self.visit(n.type)} {self.visit(n.lhs)} = {self.visit(n.rhs)};'
 
     @visit.register
     def _(self, n: ConstExprAssignDecl) -> str:

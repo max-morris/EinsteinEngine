@@ -1,5 +1,5 @@
 import typing
-from typing import Callable, List, Optional
+from typing import List, Optional
 
 # noinspection PyUnresolvedReferences
 import sympy as sy
@@ -8,14 +8,15 @@ from multimethod import multimethod
 from EmitCactus.emit.code.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, FunctionCall, \
     StandardizedFunctionCallType, StandardizedFunctionCall, IntLiteralExpr, FloatLiteralExpr
 from EmitCactus.emit.tree import Identifier
+from EmitCactus.generators.util import SympyNameSubstitutionFn
 
 
 class SympyExprVisitor:
-    substitution_fn: Callable[[str, bool], str]
+    substitution_fn: SympyNameSubstitutionFn
     visiting_stencil_fn_args: bool
     stencil_fns: List[str]
 
-    def __init__(self, *, stencil_fns: Optional[List[str]] = None, substitution_fn: Optional[Callable[[str, bool], str]] = None):
+    def __init__(self, *, stencil_fns: Optional[List[str]] = None, substitution_fn: Optional[SympyNameSubstitutionFn] = None):
         self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
         self.stencil_fns = stencil_fns if stencil_fns is not None else list()
         self.visiting_stencil_fn_args = False
