@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # Test of custom derivative operation mdiv
     mdiv = gf.mk_stencil("mdiv", la, (stencil(la) - stencil(0)) * DDI(la))
     foofunc.add_eqn(k[la], mdiv(a ** 5 * b, la))
-    kd0eqn = foofunc.eqn_list.eqns.get(mkSymbol("kD0"), None)
+    kd0eqn = foofunc._eqn_list.eqns.get(mkSymbol("kD0"), None)
     assert kd0eqn == 5 * DXI * (-stencil(a, 0, 0, 0) + stencil(a, 1, 0, 0)) * a ** 4 * b + DXI * (
             -stencil(b, 0, 0, 0) + stencil(b, 1, 0, 0)) * a ** 5
 
@@ -131,8 +131,8 @@ if __name__ == "__main__":
     fmax = gf.decl_fun("fmax", 2)
     foofunc.add_eqn(c, fmax(a, b))
     foofunc.bake()
-    assert foofunc.eqn_list.depends_on(getsym(c), getsym(a))
-    assert foofunc.eqn_list.depends_on(getsym(c), getsym(b))
+    assert foofunc._eqn_list.depends_on(getsym(c), getsym(a))
+    assert foofunc._eqn_list.depends_on(getsym(c), getsym(b))
 
 if __name__ == "__main__":
     foo = mkIndexedBase("foo", (1,))
