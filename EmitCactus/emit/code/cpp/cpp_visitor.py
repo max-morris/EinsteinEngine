@@ -30,7 +30,7 @@ class CppVisitor(Visitor[CodeNode]):
     def __init__(self, generator: CactusGenerator) -> None:
         self.generator = generator
 
-        stencil_fns = [str(fn) for fn, fn_is_stencil in generator.thorn_def.is_stencil.items() if fn_is_stencil]
+        stencil_fns = {str(fn) for fn, fn_is_stencil in generator.thorn_def.is_stencil.items() if fn_is_stencil}
 
         def substitution_fn(name: str, in_stencil_args: bool) -> str:
             if not in_stencil_args and name in self.generator.var_names:

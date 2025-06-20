@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
-
+from time import time
 from types import TracebackType
-from time import time, sleep
+from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
 
 
 def get_class_name(x: Any) -> str:
