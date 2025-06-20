@@ -6,6 +6,7 @@ import sys
 from enum import auto, Enum
 from typing import *
 
+from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
@@ -1308,6 +1309,8 @@ class ThornFunction:
         return it.free
 
     def split_loop(self) -> None:
+        if self.been_baked:
+            raise DslException("Cannot split loop because the EqnComplex has already been baked.")
         self.eqn_complex.new_eqn_list()
 
     @multimethod
@@ -1443,13 +1446,17 @@ class ThornFunction:
         options = self._mk_default_thorn_function_bake_options()
         options.update(kwargs)
 
+        # Doing a first pass of complexity analysis for CSE
+        for eqn_list in self.eqn_complex.eqn_lists:
+            eqn_list._run_preliminary_complexity_analysis()
+
         if options['do_madd']:
             self.madd()
 
         if (cse_mode := options['cse_mode']) is not CseMode.Off:
             self.cse(cse_mode)
 
-        self.eqn_bake()
+        self.eqn_bake()  # eqn_bake will re-run the complexity analysis for the final time
 
         if options['do_split_output_eqns']:
             self.split_output_eqns()
