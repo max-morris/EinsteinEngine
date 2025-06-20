@@ -14,11 +14,11 @@ from EmitCactus.generators.util import SympyNameSubstitutionFn
 class SympyExprVisitor:
     substitution_fn: SympyNameSubstitutionFn
     visiting_stencil_fn_args: bool
-    stencil_fns: List[str]
+    stencil_fns: set[str]
 
-    def __init__(self, *, stencil_fns: Optional[List[str]] = None, substitution_fn: Optional[SympyNameSubstitutionFn] = None):
+    def __init__(self, *, stencil_fns: Optional[set[str]] = None, substitution_fn: Optional[SympyNameSubstitutionFn] = None):
         self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
-        self.stencil_fns = stencil_fns if stencil_fns is not None else list()
+        self.stencil_fns = stencil_fns if stencil_fns is not None else set()
         self.visiting_stencil_fn_args = False
 
     @multimethod
