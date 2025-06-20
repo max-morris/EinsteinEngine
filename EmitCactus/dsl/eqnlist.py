@@ -91,8 +91,12 @@ class EqnComplex:
     def do_madd(self) -> None:
         for eqn_list in self.eqn_lists:
             eqn_list.madd()
+            
+    def do_local_cse(self):
+        for el in self.eqn_lists:
+            el.local_cse()
 
-    def do_cse(self) -> None:
+    def do_global_cse(self, *, do_tile_temps: bool) -> None:
         old_shape: list[int] = list()
         old_lhses: list[Symbol] = list()
         old_rhses: list[Expr] = list()
@@ -107,7 +111,7 @@ class EqnComplex:
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
         substitutions_list, new_rhses = cse(old_rhses)
-
+        
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
 
@@ -116,8 +120,8 @@ class EqnComplex:
 
 
         # We need to figure out exactly which loops use which temporaries.
-        # By doing this, we can determine which temporaries need to be promoted to tile temporaries and which loop each
-        #  temporary should be computed in.
+        # By doing this, we can determine which temporaries need to be promoted to tile temporaries and/or which loop(s)
+        #  each temporary should be computed in.
         # We will also populate the temporary-related bookkeeping fields on EqnList and EqnComplex.
 
         global_eqn_idx = 0
@@ -152,27 +156,41 @@ class EqnComplex:
 
             eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
-        for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
-                                                  key=lambda kv: substitutions_order[kv[0]],
-                                                  reverse=True):
-            el_idx = min(new_temp_reads[new_temp])
-            for td in temp_dependencies:
-                new_temp_reads[td].add(el_idx)
+        if do_tile_temps:
+            for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
+                                                      key=lambda kv: substitutions_order[kv[0]],
+                                                      reverse=True):
+                el_idx = min(new_temp_reads[new_temp])
+                for td in temp_dependencies:
+                    new_temp_reads[td].add(el_idx)
 
-        for new_temp, el_list in new_temp_reads.items():
-            if (seen_count := len(el_list)) == 0:
-                continue
+            for new_temp, el_list in new_temp_reads.items():
+                if (seen_count := len(el_list)) == 0:
+                    continue
 
-            primary_el = self.eqn_lists[primary_idx := min(el_list)]
-            primary_el.add_eqn(new_temp, substitutions[new_temp])
+                primary_el = self.eqn_lists[primary_idx := min(el_list)]
+                primary_el.add_eqn(new_temp, substitutions[new_temp])
 
-            if seen_count == 1:
-                primary_el.temporaries.add(new_temp)
-            else:
-                self._tile_temporaries.add(new_temp)
-                primary_el.uninitialized_tile_temporaries.add(new_temp)
-                for eqn_list in [self.eqn_lists[el_idx] for el_idx in el_list if el_idx != primary_idx]:
-                    eqn_list.preinitialized_tile_temporaries.add(new_temp)
+                if seen_count == 1:
+                    primary_el.temporaries.add(new_temp)
+                else:
+                    self._tile_temporaries.add(new_temp)
+                    primary_el.uninitialized_tile_temporaries.add(new_temp)
+                    for eqn_list in [self.eqn_lists[el_idx] for el_idx in el_list if el_idx != primary_idx]:
+                        eqn_list.preinitialized_tile_temporaries.add(new_temp)
+        else:  # Recompute temps in each loop
+            for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
+                                                      key=lambda kv: substitutions_order[kv[0]],
+                                                      reverse=True):
+                for el_idx in new_temp_reads[new_temp]:
+                    for td in temp_dependencies:
+                        new_temp_reads[td].add(el_idx)
+
+            for new_temp, el_list in new_temp_reads.items():
+                for el_idx in el_list:
+                    el = self.eqn_lists[el_idx]
+                    el.add_eqn(new_temp, substitutions[new_temp])
+                    el.temporaries.add(new_temp)
 
     def dump(self) -> None:
         for idx, eqn_list in enumerate(self.eqn_lists):
@@ -480,6 +498,31 @@ class EqnList:
         print("*** Dumping temporary lifetimes ***")
         for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
             print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
+            
+    def local_cse(self) -> None:
+        old_lhses: list[Symbol] = list()
+        old_rhses: list[Expr] = list()
+        
+        for lhs, rhs in self.eqns.items():
+            old_lhses.append(lhs)
+            old_rhses.append(rhs)
+        
+        substitutions_list: list[tuple[Symbol, Expr]]
+        new_rhses: list[Expr]
+        substitutions_list, new_rhses = cse(old_rhses)
+
+        for new_temp, temp_rhs in substitutions_list:
+            assert new_temp not in self.inputs
+            assert new_temp not in self.params
+            assert new_temp not in self.outputs
+            assert new_temp not in self.eqns
+
+            self.add_eqn(new_temp, temp_rhs)
+            
+        for idx, lhs in enumerate(old_lhses):
+            self.eqns[lhs] = new_rhses[idx]
+        
+        self.uncse()
 
     def uses_dict(self) -> Dict[Symbol, int]:
         uses: Dict[Symbol, int] = dict()

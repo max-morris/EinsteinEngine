@@ -3,7 +3,7 @@ Use the Sympy Indexed type for relativity expressions.
 """
 import re
 import sys
-from enum import auto
+from enum import auto, Enum
 from typing import *
 
 from multimethod import multimethod
@@ -1199,6 +1199,38 @@ class ScheduleBin(ScheduleBinEnum):
 
 ScheduleTarget = ScheduleBin | ScheduleBlock
 
+class CseMode(Enum):
+    Off = auto()
+    """
+    Don't perform CSE.
+    """
+
+    LocalOnly = auto()
+    """
+    Perform CSE over each individual loop, independently from the others.
+    """
+
+    GlobalRecompute = auto()
+    """
+    Perform CSE over all the loops in the function.
+    Each temporary will be computed once per loop which depends on it.
+    This option does not produce tile temporaries.
+    """
+
+    GlobalTileTemps = auto()
+    """
+    Perform CSE over all the loops in the function.
+    Each temporary will be computed only once in the entire function.
+    If multiple loops depend on the same temporary, it will be promoted to a tile temporary which all loops can access.
+    """
+    
+
+class ThornFunctionBakeOptions(TypedDict, total=False):
+    cse_mode: CseMode
+    do_madd: bool
+    do_recycle_temporaries: bool
+    do_split_output_eqns: bool
+
 
 class ThornFunction:
     """
@@ -1366,8 +1398,13 @@ class ThornFunction:
     def madd(self) -> None:
         self.eqn_complex.do_madd()
 
-    def cse(self) -> None:
-        self.eqn_complex.do_cse()
+    def cse(self, mode: CseMode) -> None:
+        assert mode is not CseMode.Off
+
+        if mode is CseMode.LocalOnly:
+            self.eqn_complex.do_local_cse()
+        else:
+            self.eqn_complex.do_global_cse(do_tile_temps=mode is CseMode.GlobalTileTemps)
 
     def dump(self) -> None:
         self.eqn_complex.dump()
@@ -1381,34 +1418,43 @@ class ThornFunction:
     def split_output_eqns(self) -> None:
         self.eqn_complex.split_output_eqns()
 
-    def bake(self, *,
-             do_cse: bool = True,
-             do_madd: bool = False,
-             do_recycle_temporaries: bool = True,
-             do_split_output_eqns: bool = True) -> None:
+    @staticmethod
+    def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
+        return {
+            'cse_mode': CseMode.GlobalTileTemps,
+            'do_madd': False,
+            'do_recycle_temporaries': True,
+            'do_split_output_eqns': True
+        }
+
+    # noinspection PyIncorrectDocstring
+    def bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
         """
         Finalize this function in preparation to be passed to a generator.
-        :param do_cse: If true, perform SymPy's common subexpression elimination.
-        :param do_madd: If true, attempt to generate fused multiply-add function calls where appropriate.
-        :param do_recycle_temporaries: If true, attempt to conserve register use by recycling temporary variables.
-        :param do_split_output_eqns: If true, split apart equations whose LHSes are output variables.
-        :return:
+        :param cse_mode: How to perform CSE. Defaults to `GlobalTileTemps`.
+        :param do_madd: If true, attempt to generate fused multiply-add function calls where appropriate. Defaults to False.
+        :param do_recycle_temporaries: If true, attempt to conserve register use by recycling temporary variables. Defaults to True.
+        :param do_split_output_eqns: If true, split apart equations whose LHSes are output variables. Defaults to True.
         """
         if self.been_baked:
             raise DslException("bake should not be called more than once")
         print(f"*** {self.name} ***")
 
-        if do_madd:
+        options = self._mk_default_thorn_function_bake_options()
+        options.update(kwargs)
+
+        if options['do_madd']:
             self.madd()
-        if do_cse:
-            self.cse()
+
+        if (cse_mode := options['cse_mode']) is not CseMode.Off:
+            self.cse(cse_mode)
 
         self.eqn_bake()
 
-        if do_split_output_eqns:
+        if options['do_split_output_eqns']:
             self.split_output_eqns()
 
-        if do_recycle_temporaries:
+        if options['do_recycle_temporaries']:
             self.recycle_temporaries()
 
         self.been_baked = True
