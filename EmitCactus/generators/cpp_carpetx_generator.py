@@ -117,14 +117,22 @@ class CppCarpetXGenerator(CactusGenerator):
                         region=spec
                     ))
 
-                    if spec is IntentRegion.Interior and (
-                            self.options['interior_sync_mode'] is InteriorSyncMode.Always
-                            or (self.options['interior_sync_mode'] is not InteriorSyncMode.HandsOff
-                                and var not in self.thorn_def.rhs.values())
-                    ):
-                        # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
-                        # assert var_name in self.thorn_def.var2base
-                        syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
+                    if spec is IntentRegion.Interior and self.options['interior_sync_mode'] is not InteriorSyncMode.HandsOff:
+                        sync_this_var = self.options['interior_sync_mode'] is InteriorSyncMode.Always
+                        if not sync_this_var:
+                            rhses = self.thorn_def.rhs.values()
+                            rhs_names = [str(sym) for sym in rhses]
+
+                            # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
+                            # assert var_name in self.thorn_def.var2base
+                            if var_name in self.thorn_def.var2base:
+                                if self.thorn_def.var2base[var_name] not in rhs_names:
+                                    sync_this_var = True
+                            elif var not in rhses:
+                                    sync_this_var = True
+
+                        if sync_this_var:
+                            syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
