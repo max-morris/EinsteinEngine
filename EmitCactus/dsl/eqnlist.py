@@ -11,9 +11,10 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy
 from EmitCactus.dsl.util import require_baked
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
-from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor
+from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
 from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 from EmitCactus.util import get_or_compute
 
@@ -89,6 +90,12 @@ class EqnComplex:
     def get_active_eqn_list(self) -> 'EqnList':
         return self.eqn_lists[-1]
 
+    def _grid_variables(self) -> set[Symbol]:
+        gv: set[Symbol] = set()
+        for eqn_list in self.eqn_lists:
+            gv |= eqn_list._grid_variables()
+        return gv
+
     def do_madd(self) -> None:
         for eqn_list in self.eqn_lists:
             eqn_list.madd()
@@ -97,7 +104,7 @@ class EqnComplex:
         for el in self.eqn_lists:
             el.local_cse()
 
-    def do_global_cse(self, *, do_tile_temps: bool) -> None:
+    def do_global_cse(self, *, tile_temp_promotion_strategy: TileTemporaryPromotionStrategy) -> None:
         old_shape: list[int] = list()
         old_lhses: list[Symbol] = list()
         old_rhses: list[Expr] = list()
@@ -115,6 +122,10 @@ class EqnComplex:
         
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
+
+        grid_vars = self._grid_variables()
+        substitutions_complexities = calculate_complexities(substitutions, is_grid_variable=lambda s: s in grid_vars)
+        should_promote = tile_temp_promotion_strategy(substitutions_complexities)
 
         new_temp_reads: dict[Symbol, set[int]] = {sym: set() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
@@ -157,15 +168,20 @@ class EqnComplex:
 
             eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
-        if do_tile_temps:
-            for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
-                                                      key=lambda kv: substitutions_order[kv[0]],
-                                                      reverse=True):
+        for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
+                                                  key=lambda kv: substitutions_order[kv[0]],
+                                                  reverse=True):
+            if should_promote(new_temp):
                 el_idx = min(new_temp_reads[new_temp])
                 for td in temp_dependencies:
                     new_temp_reads[td].add(el_idx)
+            else:
+                for el_idx in new_temp_reads[new_temp]:
+                    for td in temp_dependencies:
+                        new_temp_reads[td].add(el_idx)
 
-            for new_temp, el_list in new_temp_reads.items():
+        for new_temp, el_list in new_temp_reads.items():
+            if should_promote(new_temp):
                 if (seen_count := len(el_list)) == 0:
                     continue
 
@@ -179,15 +195,7 @@ class EqnComplex:
                     primary_el.uninitialized_tile_temporaries.add(new_temp)
                     for eqn_list in [self.eqn_lists[el_idx] for el_idx in el_list if el_idx != primary_idx]:
                         eqn_list.preinitialized_tile_temporaries.add(new_temp)
-        else:  # Recompute temps in each loop
-            for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
-                                                      key=lambda kv: substitutions_order[kv[0]],
-                                                      reverse=True):
-                for el_idx in new_temp_reads[new_temp]:
-                    for td in temp_dependencies:
-                        new_temp_reads[td].add(el_idx)
-
-            for new_temp, el_list in new_temp_reads.items():
+            else:
                 for el_idx in el_list:
                     el = self.eqn_lists[el_idx]
                     el.add_eqn(new_temp, substitutions[new_temp])

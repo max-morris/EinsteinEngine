@@ -74,6 +74,6 @@ if __name__ == "__main__":
     regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetX')
     #fun.add_eqn(regrid_error, 2*v*v)
     fun.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
-    fun.bake(do_cse=False)
+    fun.bake(cse_mode=CseMode.Off)
 
     CppCarpetXWizard(gf).generate_thorn()
