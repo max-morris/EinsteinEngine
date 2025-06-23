@@ -13,6 +13,10 @@ class IsGridVariableFn(Protocol):
 def calculate_complexity(expr: sy.Basic, *, is_grid_variable: IsGridVariableFn) -> int:
     return cast(int, SympyComplexityVisitor(is_grid_variable).complexity(expr))
 
+def calculate_complexities(eqns: dict[sy.Symbol, sy.Expr], *, is_grid_variable: IsGridVariableFn) -> dict[sy.Symbol, int]:
+    visitor = SympyComplexityVisitor(is_grid_variable)
+    return {lhs: visitor.complexity(rhs) for lhs, rhs in eqns.items()}
+
 
 class SympyComplexityVisitor:
     is_grid_variable: IsGridVariableFn

@@ -6,7 +6,6 @@ import sys
 from enum import auto, Enum
 from typing import *
 
-from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
@@ -19,6 +18,7 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy, promote_all
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
@@ -1206,28 +1206,26 @@ class CseMode(Enum):
     Don't perform CSE.
     """
 
-    LocalOnly = auto()
+    Local = auto()
     """
     Perform CSE over each individual loop, independently from the others.
     """
 
-    GlobalRecompute = auto()
+    Global = auto()
     """
     Perform CSE over all the loops in the function.
-    Each temporary will be computed once per loop which depends on it.
-    This option does not produce tile temporaries.
-    """
-
-    GlobalTileTemps = auto()
-    """
-    Perform CSE over all the loops in the function.
-    Each temporary will be computed only once in the entire function.
-    If multiple loops depend on the same temporary, it will be promoted to a tile temporary which all loops can access.
+    This will usually cause loops to have mutual dependencies.
+    There are two strategies for handling such temporaries:
+        1) **Promote** the temporary to a tile temporary. This avoids repeating work, but involves expensive memory access.
+        2) **Recompute** the temporary in every loop which depends on it.
+    The strategy can be fine-tuned on a per-temporary basis by setting the `temporary_promotion_strategy` argument.
+    By default, when this mode is used, all temporaries will be promoted (`promote_all` strategy).
     """
     
 
 class ThornFunctionBakeOptions(TypedDict, total=False):
     cse_mode: CseMode
+    temporary_promotion_strategy: TileTemporaryPromotionStrategy
     do_madd: bool
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
@@ -1401,13 +1399,13 @@ class ThornFunction:
     def madd(self) -> None:
         self.eqn_complex.do_madd()
 
-    def cse(self, mode: CseMode) -> None:
+    def cse(self, mode: CseMode, tile_temp_promotion_strategy: TileTemporaryPromotionStrategy) -> None:
         assert mode is not CseMode.Off
 
-        if mode is CseMode.LocalOnly:
+        if mode is CseMode.Local:
             self.eqn_complex.do_local_cse()
         else:
-            self.eqn_complex.do_global_cse(do_tile_temps=mode is CseMode.GlobalTileTemps)
+            self.eqn_complex.do_global_cse(tile_temp_promotion_strategy=tile_temp_promotion_strategy)
 
     def dump(self) -> None:
         self.eqn_complex.dump()
@@ -1424,7 +1422,8 @@ class ThornFunction:
     @staticmethod
     def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
         return {
-            'cse_mode': CseMode.GlobalTileTemps,
+            'cse_mode': CseMode.Global,
+            'temporary_promotion_strategy': promote_all(),
             'do_madd': False,
             'do_recycle_temporaries': True,
             'do_split_output_eqns': True
@@ -1454,7 +1453,7 @@ class ThornFunction:
             self.madd()
 
         if (cse_mode := options['cse_mode']) is not CseMode.Off:
-            self.cse(cse_mode)
+            self.cse(cse_mode, options['temporary_promotion_strategy'])
 
         self.eqn_bake()  # eqn_bake will re-run the complexity analysis for the final time
 
