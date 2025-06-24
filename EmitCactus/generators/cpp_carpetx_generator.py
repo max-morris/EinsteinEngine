@@ -449,7 +449,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 stencil_limit_checks.append(VerbatimExpr(Verbatim(f'CCTK_ASSERT(cctk_nghostzones[{i}] >= {stencil_limits[i]});')))
 
         timers = [
-            VerbatimExpr(Verbatim(f'static CarpetX::Timer timer("{thorn_fn.thorn_def.arrangement}::{thorn_fn.thorn_def.name}");')),
+            VerbatimExpr(Verbatim(f'static CarpetX::Timer timer("{thorn_fn.thorn_def.arrangement}::{thorn_fn.thorn_def.name}::{thorn_fn.name}");')),
             VerbatimExpr(Verbatim(f'CarpetX::Interval interval(timer);'))
         ]
 

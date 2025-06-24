@@ -50,7 +50,7 @@ gf.add_substitution_rule(g[ui, uj], flat_metric)
 
 t, x, y, z = gf.mk_coords(with_time=True)
 
-do_madd=False
+do_madd=True
 
 # Add the equations we want to evolve.
 evo = gf.create_function("newwave_evo", ScheduleBin.Evolve)
@@ -84,6 +84,19 @@ refine.bake(do_madd=do_madd)
 wave_zero = gf.create_function("WaveZero", ScheduleBin.Analysis)
 wave_zero.add_eqn(ZeroVal, u - ufun)
 wave_zero.bake(do_madd=do_madd)
+
+simple = gf.create_function("Simple", ScheduleBin.Analysis)
+va = gf.decl("va",[])
+vb = gf.decl("vb",[])
+vc = gf.decl("vc",[])
+vr = gf.decl("vr",[])
+vr2 = gf.decl("vr2",[])
+simple.add_eqn(va, sympify(4))
+simple.add_eqn(vb, sympify(2))
+simple.add_eqn(vc, sympify(3))
+simple.add_eqn(vr, va * vb + vc)
+simple.add_eqn(vr2, va * vr + va)
+simple.bake(do_madd=False)
 
 wave_zero.dump()
 
