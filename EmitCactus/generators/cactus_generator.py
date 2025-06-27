@@ -63,11 +63,11 @@ class CactusGenerator(ABC):
             self.options['interior_sync_mode'] = InteriorSyncMode.Always
 
         for tf in self.thorn_def.thorn_functions.values():
-            for iv in tf.eqn_list.inputs:
+            for iv in tf.eqn_complex.inputs:
                 var_name = str(iv)
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
-            for ov in tf.eqn_list.outputs:
+            for ov in tf.eqn_complex.outputs:
                 var_name = str(ov)
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
