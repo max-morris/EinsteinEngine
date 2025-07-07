@@ -10,7 +10,7 @@ from .dsl.use_indices import parities
 
 from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, subst_tensor_xyz, mk_pair, \
-       stencil,DD,DDI,\
+       noop,stencil,DD,DDI,\
        ui, uj, uk, ua, ub, uc, ud, u0, u1, u2, u3, u4, u5, \
        li, lj, lk, la, lb, lc, ld, l0, l1, l2, l3, l4, l5
 from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
@@ -31,7 +31,7 @@ __all__ = [
     "sin", "cos",
     "D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
     "set_dimension", "get_dimension", "lookup_pair", "subst_tensor_xyz", "mk_pair",
-    "stencil","DD","DDI",
+    "noop","stencil","DD","DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
     "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5",
     "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",

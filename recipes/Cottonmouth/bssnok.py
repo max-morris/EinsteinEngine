@@ -25,13 +25,10 @@ div_diss = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la,
     Rational(1, 64) * DDI(la) * (
-        stencil(-3*la)
-        - 6.0 * stencil(-2*la)
-        + 15.0 * stencil(-la)
-        - 20.0 * stencil(0) +
-        15.0 * stencil(la)
-        - 6.0 * stencil(2*la)
-        + stencil(3*la)
+        noop(stencil(-3*la) + stencil(3*la))
+        - 6.0 * noop(stencil(-2*la) + stencil(2*la))
+        + 15.0 * noop(stencil(-la) + stencil(la))
+        - 20.0 * stencil(0)
     )
 )
 
