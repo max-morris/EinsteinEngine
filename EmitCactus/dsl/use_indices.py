@@ -599,6 +599,8 @@ class DivMakerVisitor:
                 f = -sin(r) * self.visit(r, idx)
             elif name == "exp":
                 f = exp(r) * self.visit(r, idx)
+            elif name == "log":
+                f = (1/r) * self.visit(r, idx)
             elif len(expr.args) == 1:
                 fd = mkFunction(name+"'")
                 f = fd(r) * self.visit(r, idx)
