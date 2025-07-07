@@ -26,7 +26,7 @@ from EmitCactus.util import OrderedSet, ScheduleBinEnum
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "subst_tensor", "subst_tensor_xyz", "mk_pair",
-           "stencil", "DD", "DDI",
+           "noop", "stencil", "DD", "DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
@@ -1607,7 +1607,7 @@ class ThornDef:
             elif expr.func == DD:
                 if len(expr.args) != 1:
                     raise DslException(expr)
-                arg = mk_sten(idx, idx0, expr.args[0])
+                arg = mk_sten(idx_map, expr.args[0])
                 if arg == l0:
                     return DX
                 elif arg == l1:
@@ -1626,6 +1626,9 @@ class ThornDef:
                 elif arg == l2:
                     return DZI
                 assert False
+            elif expr.func == noop:
+                arg = mk_sten(idx_map, expr.args[0])
+                return noop(arg)
             else:
                 raise DslException("Bad Func")
 
@@ -1699,7 +1702,7 @@ class ThornDef:
                     result = mk_sten({idx1: idx10, idx2: idx20}, expr)
                     self.funs2[(func, idx10, idx20)] = result
 
-        return mkFunction(func_name)
+        return func
 
     class DeclOptionalArgs(TypedDict, total=False):
         centering: Centering
