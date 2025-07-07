@@ -3,7 +3,7 @@ from .emit.tree import Identifier, String, Centering
 from .generators.cpp_carpetx_generator import CppCarpetXGenerator
 from .dsl.carpetx import ExplicitSyncBatch
 from .generators.cactus_generator import InteriorSyncMode
-from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan
+from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cosh, sinh, tanh, sech, csch, coth
 from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from .generators.wizards import CppCarpetXWizard
 from .dsl.use_indices import parities
@@ -29,6 +29,7 @@ __all__ = [
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos",
+    "sinh", "cosh", "tanh", "sech", "csch", "coth",
     "D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
     "set_dimension", "get_dimension", "lookup_pair", "subst_tensor_xyz", "mk_pair",
     "noop","stencil","DD","DDI",

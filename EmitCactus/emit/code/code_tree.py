@@ -197,6 +197,12 @@ class FunctionCall(Expr):
 
 
 class StandardizedFunctionCallType(ReprEnum):
+    Sinh = auto(), 'sinh'
+    Cosh = auto(), 'cosh'
+    Tanh = auto(), 'tanh'
+    Coth = auto(), 'coth'
+    Sech = auto(), 'sech'
+    Csch = auto(), 'csch'
     Sin = auto(), 'sin'
     Cos = auto(), 'cos'
     Exp = auto(), 'exp'
