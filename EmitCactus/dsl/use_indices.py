@@ -440,6 +440,7 @@ from sympy import sin, cos
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
+t = mkSymbol("t")
 no_idx = mkIdx("no_idx")
 dummy = mkSymbol("_dummy_")
 
@@ -503,7 +504,7 @@ class DivMakerVisitor:
         if idx == l0:
             if expr == x:
                 return one
-            elif expr in [y, z]:
+            elif expr in [y, z, t]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -511,7 +512,7 @@ class DivMakerVisitor:
         elif idx == l1:
             if expr == y:
                 return one
-            elif expr in [x, z]:
+            elif expr in [x, z, t]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -519,7 +520,7 @@ class DivMakerVisitor:
         elif idx == l2:
             if expr == z:
                 return one
-            elif expr in [x, y]:
+            elif expr in [x, y, t]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -598,8 +599,11 @@ class DivMakerVisitor:
                 f = -sin(r) * self.visit(r, idx)
             elif name == "exp":
                 f = exp(r) * self.visit(r, idx)
+            elif len(expr.args) == 1:
+                fd = mkFunction(name+"'")
+                f = fd(r) * self.visit(r, idx)
             else:
-                raise Exception("unknown func")
+                raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
             assert isinstance(f, Expr)
             return f
 
@@ -1875,6 +1879,16 @@ class ThornDef:
         self.add_substitution_rule(indexed, f2)
 
     @add_substitution_rule.register
+    def _(self, indexed: Indexed, f: List[Expr]) -> None:
+        if len(indexed.args) != 2:
+            raise DslException(f"The expression: {indexed} needs to have a single index")
+        def f2(ix: Indexed, *n: int) -> Expr:
+            vv=f[to_num(n[0])]
+            return sympify(vv)
+
+        self.add_substitution_rule(indexed, f2)
+
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Callable[[Indexed, int, int, int], Expr]) -> None:
         def f2(ix: Indexed, *n: int) -> Expr:
             return f(ix, n[0], n[1], n[2])
@@ -1895,13 +1909,13 @@ class ThornDef:
             sub_val_ = f(indexed_sym, *idxs)
 
             if sub_val_.is_Number:
-                pass
+                self.subs[indexed_sym] = sub_val_
             elif sub_val_.is_Function:
-                pass
+                self.subs[indexed_sym] = sub_val_
             else:
                 sub_val = str(sub_val_)
                 out_str = str(indexed_sym.base)
-                assert isinstance(sub_val_, Symbol)
+                assert isinstance(sub_val_, Expr), f"{sub_val_}"
                 self.gfs[sub_val] = mkIndexedBase(sub_val, tuple())
                 self.centering[sub_val] = self.centering[out_str]
                 self.var2base[sub_val] = out_str

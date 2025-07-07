@@ -7,6 +7,7 @@ from EmitCactus.dsl.eqnlist import DXI
 from EmitCactus.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, dimension, zero, \
     do_div, x, one, y
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from EmitCactus.dsl.dsl_exception import DslException
 
 
 def assert_eq(a: Expr, b: Expr) -> None:
@@ -108,6 +109,13 @@ if __name__ == "__main__":
     b = gf.decl("b", [])
     c = gf.decl("c", [])
     k = gf.decl("k", [la])
+    kk = gf.decl("kk",[la,lb])
+    try:
+        gf.add_substitution_rule(kk[la, lb], [one, zero, zero])
+        assert False, "Substitution rule was invalid and no exception was thrown."
+    except DslException as de:
+        pass
+
     gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, sympify(dimension))
@@ -142,6 +150,8 @@ if __name__ == "__main__":
     gzz = mkSymbol("gzz")
     gyz = mkSymbol("gyz")
     gxz = mkSymbol("gxz")
+    f = mkFunction("f")
+    fp = mkFunction("f'")
 
     expr1 = div(gxx ** 2, l0, l0)
     expr2 = 2 * div(gxx, l0) ** 2 + 2 * gxx * div(gxx, l0, l0)
@@ -207,3 +217,8 @@ if __name__ == "__main__":
     expr2 = -(1 + cos(x)) / (x + sin(x)) ** 2
     assert_eq(do_div(div(expr1, l0)), expr2)
     assert_eq(do_div(div(sqrt(x), l0)), 1 / sqrt(x) / 2)
+    assert_eq(do_div(D(f(x),l0)), fp(x))
+    assert_eq(do_div(D(f(x**2+y),l0)), 2*x*fp(x**2+y))
+    assert_eq(do_div(D(f(x**2+y),l1)), fp(x**2+y))
+    assert_eq(do_div(D(f(x**2+y),l2)), 0)
+    assert_eq(do_div(D(f(x + f(x)),l0)), fp(x+f(x))*(1+fp(x)))
