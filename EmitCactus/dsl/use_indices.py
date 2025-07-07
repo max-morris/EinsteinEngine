@@ -435,7 +435,7 @@ up_indices = u0, u1, u2, u3, u4, u5
 down_indices = l0, l1, l2, l3, l4, l5
 
 ### dmv
-from sympy import sin, cos
+from .sympywrap import *
 
 x = mkSymbol("x")
 y = mkSymbol("y")
@@ -601,6 +601,18 @@ class DivMakerVisitor:
                 f = exp(r) * self.visit(r, idx)
             elif name == "log":
                 f = (1/r) * self.visit(r, idx)
+            elif name == "cosh":
+                f = sinh(r) * self.visit(r, idx)
+            elif name == "sinh":
+                f = cosh(r) * self.visit(r, idx)
+            elif name == "tanh":
+                f = sech(r)**2 * self.visit(r, idx)
+            elif name == "coth":
+                f = -csch(r)**2 * self.visit(r, idx)
+            elif name == "sech":
+                f = -sech(r) * tanh(x) * self.visit(r, idx)
+            elif name == "csch":
+                f = -csch(r) * coth(x) * self.visit(r, idx)
             elif len(expr.args) == 1:
                 fd = mkFunction(name+"'")
                 f = fd(r) * self.visit(r, idx)
@@ -1634,7 +1646,8 @@ class ThornDef:
                 assert False
             elif expr.func == noop:
                 arg = mk_sten(idx_map, expr.args[0])
-                return noop(arg)
+                retv : Expr = noop(arg)
+                return retv
             else:
                 raise DslException("Bad Func")
 
