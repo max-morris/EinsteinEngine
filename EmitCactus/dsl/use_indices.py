@@ -504,7 +504,7 @@ class DivMakerVisitor:
         if idx == l0:
             if expr == x:
                 return one
-            elif expr in [y, z, t]:
+            elif expr in [y, z]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -512,7 +512,7 @@ class DivMakerVisitor:
         elif idx == l1:
             if expr == y:
                 return one
-            elif expr in [x, z, t]:
+            elif expr in [x, z]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -520,7 +520,7 @@ class DivMakerVisitor:
         elif idx == l2:
             if expr == z:
                 return one
-            elif expr in [x, y, t]:
+            elif expr in [x, y]:
                 return zero
             elif expr in self.params:
                 return zero
@@ -597,6 +597,14 @@ class DivMakerVisitor:
                 f = cos(r) * self.visit(r, idx)
             elif name == "cos":
                 f = -sin(r) * self.visit(r, idx)
+            elif name == "tan":
+                f = sec(r)**2 * self.visit(r, idx)
+            elif name == "cot":
+                f = -csc(r)**2 * self.visit(r, idx)
+            elif name == "sec":
+                f = sec(r)*tan(r) * self.visit(r, idx)
+            elif name == "csc":
+                f = -csc(r)*cot(r) * self.visit(r, idx)
             elif name == "exp":
                 f = exp(r) * self.visit(r, idx)
             elif name == "log":
@@ -1894,16 +1902,6 @@ class ThornDef:
         self.add_substitution_rule(indexed, f2)
 
     @add_substitution_rule.register
-    def _(self, indexed: Indexed, f: List[Expr]) -> None:
-        if len(indexed.args) != 2:
-            raise DslException(f"The expression: {indexed} needs to have a single index")
-        def f2(ix: Indexed, *n: int) -> Expr:
-            vv=f[to_num(n[0])]
-            return sympify(vv)
-
-        self.add_substitution_rule(indexed, f2)
-
-    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Callable[[Indexed, int, int, int], Expr]) -> None:
         def f2(ix: Indexed, *n: int) -> Expr:
             return f(ix, n[0], n[1], n[2])
@@ -1924,13 +1922,13 @@ class ThornDef:
             sub_val_ = f(indexed_sym, *idxs)
 
             if sub_val_.is_Number:
-                self.subs[indexed_sym] = sub_val_
+                pass
             elif sub_val_.is_Function:
-                self.subs[indexed_sym] = sub_val_
+                pass
             else:
                 sub_val = str(sub_val_)
                 out_str = str(indexed_sym.base)
-                assert isinstance(sub_val_, Expr), f"{sub_val_}"
+                assert isinstance(sub_val_, Symbol)
                 self.gfs[sub_val] = mkIndexedBase(sub_val, tuple())
                 self.centering[sub_val] = self.centering[out_str]
                 self.var2base[sub_val] = out_str
