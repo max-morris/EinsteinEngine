@@ -77,6 +77,14 @@ class SympyExprVisitor:
             fn_type = StandardizedFunctionCallType.Sin
         elif isinstance(expr, sy.cos):
             fn_type = StandardizedFunctionCallType.Cos
+        elif isinstance(expr, sy.tan):
+            fn_type = StandardizedFunctionCallType.Tan
+        elif isinstance(expr, sy.cot):
+            fn_type = StandardizedFunctionCallType.Cot
+        elif isinstance(expr, sy.sec):
+            fn_type = StandardizedFunctionCallType.Sec
+        elif isinstance(expr, sy.csc):
+            fn_type = StandardizedFunctionCallType.Csc
         elif isinstance(expr, sy.sinh):
             fn_type = StandardizedFunctionCallType.Sinh
         elif isinstance(expr, sy.cosh):

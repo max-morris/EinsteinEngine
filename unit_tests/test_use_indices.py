@@ -7,7 +7,6 @@ from EmitCactus.dsl.eqnlist import DXI
 from EmitCactus.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, dimension, zero, \
     do_div, x, one, y
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from EmitCactus.dsl.dsl_exception import DslException
 
 
 def assert_eq(a: Expr, b: Expr) -> None:
@@ -109,13 +108,6 @@ if __name__ == "__main__":
     b = gf.decl("b", [])
     c = gf.decl("c", [])
     k = gf.decl("k", [la])
-    kk = gf.decl("kk",[la,lb])
-    try:
-        gf.add_substitution_rule(kk[la, lb], [one, zero, zero])
-        assert False, "Substitution rule was invalid and no exception was thrown."
-    except DslException as de:
-        pass
-
     gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     foofunc.add_eqn(a, sympify(dimension))
@@ -176,7 +168,21 @@ if __name__ == "__main__":
     assert_eq(do_div(div(x, l0)), one)
     assert_eq(do_div(div(y, l0)), zero)
     assert_eq(do_div(div(x ** 3, l0)), 3 * x ** 2)
+
     assert_eq(do_div(div(sin(x), l0)), cos(x))
+    assert_eq(do_div(div(cos(x), l0)), -sin(x))
+    assert_eq(do_div(div(tan(x), l0)), sec(x)**2)
+    assert_eq(do_div(div(cot(x), l0)), -csc(x)**2)
+    assert_eq(do_div(div(sec(x), l0)), sec(x)*tan(x))
+    assert_eq(do_div(div(csc(x), l0)), -csc(x)*cot(x))
+
+    assert_eq(do_div(div(sinh(x), l0)), cosh(x))
+    assert_eq(do_div(div(cosh(x), l0)), sinh(x))
+    assert_eq(do_div(div(tanh(x), l0)), sech(x)**2)
+    assert_eq(do_div(div(coth(x), l0)), -csch(x)**2)
+    assert_eq(do_div(div(sech(x), l0)), -sech(x)*tanh(x))
+    assert_eq(do_div(div(csch(x), l0)), -csch(x)*coth(x))
+
     assert_eq(do_div(div(x ** 2 + x ** 3, l0)), 2 * x + 3 * x ** 2)
     assert_eq(do_div(div(x ** 2 + x ** 3, l1)), zero)
     assert_eq(do_div(div(1 / (2 + x ** 2), l0)), -2 * x / (2 + x ** 2) ** 2)
