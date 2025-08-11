@@ -33,6 +33,7 @@ class CppVisitor(Visitor[CodeNode]):
         StandardizedFunctionCallType.Coth: 'coth',
         StandardizedFunctionCallType.Sech: 'sech',
         StandardizedFunctionCallType.Csch: 'csch',
+        StandardizedFunctionCallType.Erf: 'erf',
         StandardizedFunctionCallType.Exp: 'exp',
         StandardizedFunctionCallType.Log: 'log'
     }

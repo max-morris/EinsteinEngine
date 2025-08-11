@@ -183,6 +183,8 @@ if __name__ == "__main__":
     assert_eq(do_div(div(sech(x), l0)), -sech(x)*tanh(x))
     assert_eq(do_div(div(csch(x), l0)), -csch(x)*coth(x))
 
+    assert_eq(do_div(div(erf(x), l0)), 2*exp(-x**2)/sqrt(pi))
+
     assert_eq(do_div(div(x ** 2 + x ** 3, l0)), 2 * x + 3 * x ** 2)
     assert_eq(do_div(div(x ** 2 + x ** 3, l1)), zero)
     assert_eq(do_div(div(1 / (2 + x ** 2), l0)), -2 * x / (2 + x ** 2) ** 2)
