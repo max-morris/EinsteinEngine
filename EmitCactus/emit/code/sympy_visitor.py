@@ -99,6 +99,8 @@ class SympyExprVisitor:
             fn_type = StandardizedFunctionCallType.Csch
         elif isinstance(expr, sy.exp):
             fn_type = StandardizedFunctionCallType.Exp
+        elif isinstance(expr, sy.erf):
+            fn_type = StandardizedFunctionCallType.Erf
         elif isinstance(expr, sy.log):
             fn_type = StandardizedFunctionCallType.Log
         else:

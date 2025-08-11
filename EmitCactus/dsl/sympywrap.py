@@ -16,6 +16,7 @@ tanh  : Callable[[Expr],Expr]
 sech  : Callable[[Expr],Expr]
 csch  : Callable[[Expr],Expr]
 coth  : Callable[[Expr],Expr]
+erf  : Callable[[Expr],Expr]
 Pow  : Callable[[Expr,Expr],Expr]
 diff : Callable[[Expr,Expr],Expr]
 simplify : Callable[[Expr],Expr]
@@ -24,9 +25,10 @@ sympify : Callable[[Expr|int|float],Expr]
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
     Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
     exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, cot as cot_, \
-    sec as sec_, csc as csc_, diff as diff_, \
+    sec as sec_, csc as csc_, diff as diff_, pi,\
     simplify as simplify_, det as det_, sympify as sympify_
-from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, sech as sech_, csch as csch_, coth as coth_
+from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
+    sech as sech_, csch as csch_, coth as coth_
 sqrt = sqrt_
 cbrt = cbrt_
 log = log_
@@ -45,6 +47,7 @@ coth = coth_
 sech = sech_
 csch = csch_
 diff = diff_
+erf = erf_
 simplify = simplify_
 det = det_
 sympify = sympify_
@@ -60,6 +63,7 @@ from multimethod import multimethod
 
 __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",
+    "erf", "pi",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase",
     "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",

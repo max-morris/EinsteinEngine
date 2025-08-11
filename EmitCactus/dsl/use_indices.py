@@ -621,6 +621,8 @@ class DivMakerVisitor:
                 f = -sech(r) * tanh(x) * self.visit(r, idx)
             elif name == "csch":
                 f = -csch(r) * coth(x) * self.visit(r, idx)
+            elif name == "erf":
+                f = 2*exp(-r**2)/sqrt(pi) * self.visit(r, idx)
             elif len(expr.args) == 1:
                 fd = mkFunction(name+"'")
                 f = fd(r) * self.visit(r, idx)

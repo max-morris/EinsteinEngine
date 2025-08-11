@@ -210,6 +210,7 @@ class StandardizedFunctionCallType(ReprEnum):
     Sec = auto(), 'sec'
     Csc = auto(), 'csc'
     Exp = auto(), 'exp'
+    Erf = auto(), 'erf'
     Log = auto(), 'log'
     # todo: There are definitely more of these
 
