@@ -10,8 +10,8 @@ from EmitCactus.emit.code.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, 
 from EmitCactus.emit.tree import Identifier
 from EmitCactus.generators.util import SympyNameSubstitutionFn
 
-one = IntLiteralExpr(1)
-zero = IntLiteralExpr(0)
+one = Identifier("v_one")
+zero = Identifier("v_zero")
 
 class SympyExprVisitor:
     substitution_fn: SympyNameSubstitutionFn
