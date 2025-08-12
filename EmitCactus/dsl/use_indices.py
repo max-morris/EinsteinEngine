@@ -616,6 +616,8 @@ class DivMakerVisitor:
             elif len(expr.args) == 1:
                 fd = mkFunction(name+"'")
                 f = fd(r) * self.visit(r, idx)
+            elif name == "step":
+                f = zero
             else:
                 raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
             assert isinstance(f, Expr)

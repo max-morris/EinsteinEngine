@@ -10,6 +10,8 @@ from EmitCactus.emit.code.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, 
 from EmitCactus.emit.tree import Identifier
 from EmitCactus.generators.util import SympyNameSubstitutionFn
 
+one = IntLiteralExpr(1)
+zero = IntLiteralExpr(0)
 
 class SympyExprVisitor:
     substitution_fn: SympyNameSubstitutionFn
@@ -82,9 +84,12 @@ class SympyExprVisitor:
 
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
             assert hasattr(expr.func, 'name')
+            arg_list = [self.visit(a) for a in expr.args]
+            if expr.func.name == "step":
+                self.visiting_stencil_fn_args = False
+                return FunctionCall(Identifier("if_else"), [BinOpExpr(arg_list[0],BinOp.Gt,zero), one, zero], [])
             if expr.func.name in self.stencil_fns:
                 self.visiting_stencil_fn_args = True
-            arg_list = [self.visit(a) for a in expr.args]
             self.visiting_stencil_fn_args = False
             return FunctionCall(Identifier(expr.func.name), arg_list, [])
 
