@@ -19,6 +19,7 @@ from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
     free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols
 from sympy import Expr, Idx, Matrix, Indexed, Symbol
 
+step = mkFunction("step")
 
 __all__ = [
     "Identifier", "String", "Centering",
@@ -26,7 +27,7 @@ __all__ = [
     "cbrt", "sqrt", "mkMatrix", "log",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch",
-    "parities",
+    "parities", "step",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
     "sinh", "cosh", "tanh", "sech", "csch", "coth",
