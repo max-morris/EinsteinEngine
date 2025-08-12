@@ -446,6 +446,11 @@ class CppCarpetXGenerator(CactusGenerator):
             )
         for i in range(3) if stencil_limits[i] != 0]
 
+        one_and_zero = [
+           ConstAssignDecl(Identifier("vreal"), Identifier("v_one"), IntLiteralExpr(1)),
+           ConstAssignDecl(Identifier("vreal"), Identifier("v_zero"), IntLiteralExpr(0))
+        ]
+
         loop_to_output_centering = [
             self._get_output_centering_for_loop(thorn_fn, loop_idx, eqn_list.outputs, var_centerings)
             for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
@@ -498,6 +503,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     *layout_decls,
                     *di_decls,
                     *stencil_limit_checks,
+                    *one_and_zero,
                     *tile_temp_setup,
                     *carpetx_loops
                 ]
