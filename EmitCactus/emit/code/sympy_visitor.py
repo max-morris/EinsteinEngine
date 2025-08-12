@@ -86,10 +86,12 @@ class SympyExprVisitor:
             assert hasattr(expr.func, 'name')
             arg_list = [self.visit(a) for a in expr.args]
             if expr.func.name == "step":
+                arg_list = [self.visit(a) for a in expr.args]
                 self.visiting_stencil_fn_args = False
                 return FunctionCall(Identifier("if_else"), [BinOpExpr(arg_list[0],BinOp.Gt,zero), one, zero], [])
             if expr.func.name in self.stencil_fns:
                 self.visiting_stencil_fn_args = True
+            arg_list = [self.visit(a) for a in expr.args]
             self.visiting_stencil_fn_args = False
             return FunctionCall(Identifier(expr.func.name), arg_list, [])
 
