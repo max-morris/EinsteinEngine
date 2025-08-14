@@ -141,7 +141,7 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: IfElseExpr) -> str:
         # return f'({self.visit(n.cond)} ? {self.visit(n.then)} : {self.visit(n.else_)})'
-        return f'if_then({self.visit(n.cond)}, {self.visit(n.then)}, {self.visit(n.else_)})'
+        return f'if_else({self.visit(n.cond)}, {self.visit(n.then)}, {self.visit(n.else_)})'
 
     @visit.register
     def _(self, n: FunctionCall) -> str:
