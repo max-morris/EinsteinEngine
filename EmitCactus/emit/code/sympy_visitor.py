@@ -16,6 +16,24 @@ class SympyExprVisitor:
     visiting_stencil_fn_args: bool
     stencil_fns: List[str]
 
+    standard_fns: dict[sy.Function, StandardizedFunctionCallType] = {
+        sy.sin: StandardizedFunctionCallType.Sin,
+        sy.cos: StandardizedFunctionCallType.Cos,
+        sy.tan: StandardizedFunctionCallType.Tan,
+        sy.cot: StandardizedFunctionCallType.Cot,
+        sy.sec: StandardizedFunctionCallType.Sec,
+        sy.csc: StandardizedFunctionCallType.Csc,
+        sy.sinh: StandardizedFunctionCallType.Sinh,
+        sy.cosh: StandardizedFunctionCallType.Cosh,
+        sy.tanh: StandardizedFunctionCallType.Tanh,
+        sy.coth: StandardizedFunctionCallType.Coth,
+        sy.sech: StandardizedFunctionCallType.Sech,
+        sy.csch: StandardizedFunctionCallType.Csch,
+        sy.exp: StandardizedFunctionCallType.Exp,
+        sy.erf: StandardizedFunctionCallType.Erf,
+        sy.log: StandardizedFunctionCallType.Log
+    }
+
     def __init__(self, *, stencil_fns: Optional[List[str]] = None, substitution_fn: Optional[SympyNameSubstitutionFn] = None):
         self.substitution_fn = substitution_fn if substitution_fn is not None else lambda s, _: s
         self.stencil_fns = stencil_fns if stencil_fns is not None else list()
@@ -73,38 +91,10 @@ class SympyExprVisitor:
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
         fn_type: StandardizedFunctionCallType
 
-        if isinstance(expr, sy.sin):
-            fn_type = StandardizedFunctionCallType.Sin
-        elif isinstance(expr, sy.cos):
-            fn_type = StandardizedFunctionCallType.Cos
-        elif isinstance(expr, sy.tan):
-            fn_type = StandardizedFunctionCallType.Tan
-        elif isinstance(expr, sy.cot):
-            fn_type = StandardizedFunctionCallType.Cot
-        elif isinstance(expr, sy.sec):
-            fn_type = StandardizedFunctionCallType.Sec
-        elif isinstance(expr, sy.csc):
-            fn_type = StandardizedFunctionCallType.Csc
-        elif isinstance(expr, sy.sinh):
-            fn_type = StandardizedFunctionCallType.Sinh
-        elif isinstance(expr, sy.cosh):
-            fn_type = StandardizedFunctionCallType.Cosh
-        elif isinstance(expr, sy.tanh):
-            fn_type = StandardizedFunctionCallType.Tanh
-        elif isinstance(expr, sy.coth):
-            fn_type = StandardizedFunctionCallType.Coth
-        elif isinstance(expr, sy.sech):
-            fn_type = StandardizedFunctionCallType.Sech
-        elif isinstance(expr, sy.csch):
-            fn_type = StandardizedFunctionCallType.Csch
-        elif isinstance(expr, sy.exp):
-            fn_type = StandardizedFunctionCallType.Exp
-        elif isinstance(expr, sy.erf):
-            fn_type = StandardizedFunctionCallType.Erf
-        elif isinstance(expr, sy.log):
-            fn_type = StandardizedFunctionCallType.Log
+        if expr.func in self.standard_fns:
+            fn_type = self.standard_fns[expr.func]
         else:
-            raise NotImplementedError(f"visit({type(expr)}) not implemented in SympyExprVisitor")
+            raise NotImplementedError(f"visit({expr.func}) not implemented in SympyExprVisitor")
 
         arg_list = [self.visit(a) for a in expr.args]
         return StandardizedFunctionCall(fn_type, arg_list)
