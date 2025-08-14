@@ -81,6 +81,13 @@ class NArityOpExpr(Expr):
 
 
 @dataclass
+class IfElseExpr(Expr):
+    cond: Expr
+    then: Expr
+    else_: Expr
+
+
+@dataclass
 class SympyExpr(Expr):
     expr: sy.Expr
 
