@@ -435,11 +435,12 @@ up_indices = u0, u1, u2, u3, u4, u5
 down_indices = l0, l1, l2, l3, l4, l5
 
 ### dmv
-from sympy import sin, cos
+from .sympywrap import *
 
 x = mkSymbol("x")
 y = mkSymbol("y")
 z = mkSymbol("z")
+t = mkSymbol("t")
 no_idx = mkIdx("no_idx")
 dummy = mkSymbol("_dummy_")
 
@@ -465,6 +466,24 @@ class DivMakerVisitor:
     @multimethod
     def visit(self, expr: sy.Basic, idx: sy.Idx) -> Expr:
         raise Exception(str(expr) + " " + str(type(expr)))
+
+    standard_fn_divs: dict[sy.Function, Callable[['DivMakerVisitor', sy.Expr, sy.Idx], sy.Expr]] = {
+        sy.sin: lambda self, r, idx: cos(r) * self.visit(r, idx),
+        sy.cos: lambda self, r, idx: -sin(r) * self.visit(r, idx),
+        sy.tan: lambda self, r, idx: sec(r) ** 2 * self.visit(r, idx),
+        sy.cot: lambda self, r, idx: -csc(r) ** 2 * self.visit(r, idx),
+        sy.sec: lambda self, r, idx: sec(r) * tan(r) * self.visit(r, idx),
+        sy.csc: lambda self, r, idx: -csc(r) * cot(r) * self.visit(r, idx),
+        sy.exp: lambda self, r, idx: exp(r) * self.visit(r, idx),
+        sy.log: lambda self, r, idx: (1 / r) * self.visit(r, idx),
+        sy.cosh: lambda self, r, idx: sinh(r) * self.visit(r, idx),
+        sy.sinh: lambda self, r, idx: cosh(r) * self.visit(r, idx),
+        sy.tanh: lambda self, r, idx: sech(r) ** 2 * self.visit(r, idx),
+        sy.coth: lambda self, r, idx: -csch(r) ** 2 * self.visit(r, idx),
+        sy.sech: lambda self, r, idx: -sech(r) * tanh(x) * self.visit(r, idx),
+        sy.csch: lambda self, r, idx: -csch(r) * coth(x) * self.visit(r, idx),
+        sy.erf: lambda self, r, idx: 2 * exp(-r ** 2) / sqrt(pi) * self.visit(r, idx)
+    }
 
     @visit.register
     def _(self, expr: sy.Add, idx: sy.Idx) -> Expr:
@@ -592,14 +611,13 @@ class DivMakerVisitor:
         elif idx is no_idx:
             return expr
         else:
-            if name == "sin":
-                f = cos(r) * self.visit(r, idx)
-            elif name == "cos":
-                f = -sin(r) * self.visit(r, idx)
-            elif name == "exp":
-                f = exp(r) * self.visit(r, idx)
+            if expr.func in self.standard_fn_divs:
+                f = self.standard_fn_divs[expr.func](self, r, idx)
+            elif len(expr.args) == 1:
+                fd = mkFunction(name+"'")
+                f = fd(r) * self.visit(r, idx)
             else:
-                raise Exception("unknown func")
+                raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
             assert isinstance(f, Expr)
             return f
 
@@ -1628,7 +1646,8 @@ class ThornDef:
                 assert False
             elif expr.func == noop:
                 arg = mk_sten(idx_map, expr.args[0])
-                return noop(arg)
+                retv : Expr = noop(arg)
+                return retv
             else:
                 raise DslException("Bad Func")
 

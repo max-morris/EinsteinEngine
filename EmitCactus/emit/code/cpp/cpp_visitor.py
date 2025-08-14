@@ -23,6 +23,17 @@ class CppVisitor(Visitor[CodeNode]):
     standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
         StandardizedFunctionCallType.Sin: 'sin',
         StandardizedFunctionCallType.Cos: 'cos',
+        StandardizedFunctionCallType.Tan: 'tan',
+        StandardizedFunctionCallType.Cot: 'cot',
+        StandardizedFunctionCallType.Sec: 'sec',
+        StandardizedFunctionCallType.Csc: 'csc',
+        StandardizedFunctionCallType.Sinh: 'sinh',
+        StandardizedFunctionCallType.Cosh: 'cosh',
+        StandardizedFunctionCallType.Tanh: 'tanh',
+        StandardizedFunctionCallType.Coth: 'coth',
+        StandardizedFunctionCallType.Sech: 'sech',
+        StandardizedFunctionCallType.Csch: 'csch',
+        StandardizedFunctionCallType.Erf: 'erf',
         StandardizedFunctionCallType.Exp: 'exp',
         StandardizedFunctionCallType.Log: 'log'
     }

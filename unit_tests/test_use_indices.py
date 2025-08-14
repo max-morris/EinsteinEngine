@@ -142,6 +142,8 @@ if __name__ == "__main__":
     gzz = mkSymbol("gzz")
     gyz = mkSymbol("gyz")
     gxz = mkSymbol("gxz")
+    f = mkFunction("f")
+    fp = mkFunction("f'")
 
     expr1 = div(gxx ** 2, l0, l0)
     expr2 = 2 * div(gxx, l0) ** 2 + 2 * gxx * div(gxx, l0, l0)
@@ -166,7 +168,23 @@ if __name__ == "__main__":
     assert_eq(do_div(div(x, l0)), one)
     assert_eq(do_div(div(y, l0)), zero)
     assert_eq(do_div(div(x ** 3, l0)), 3 * x ** 2)
+
     assert_eq(do_div(div(sin(x), l0)), cos(x))
+    assert_eq(do_div(div(cos(x), l0)), -sin(x))
+    assert_eq(do_div(div(tan(x), l0)), sec(x)**2)
+    assert_eq(do_div(div(cot(x), l0)), -csc(x)**2)
+    assert_eq(do_div(div(sec(x), l0)), sec(x)*tan(x))
+    assert_eq(do_div(div(csc(x), l0)), -csc(x)*cot(x))
+
+    assert_eq(do_div(div(sinh(x), l0)), cosh(x))
+    assert_eq(do_div(div(cosh(x), l0)), sinh(x))
+    assert_eq(do_div(div(tanh(x), l0)), sech(x)**2)
+    assert_eq(do_div(div(coth(x), l0)), -csch(x)**2)
+    assert_eq(do_div(div(sech(x), l0)), -sech(x)*tanh(x))
+    assert_eq(do_div(div(csch(x), l0)), -csch(x)*coth(x))
+
+    assert_eq(do_div(div(erf(x), l0)), 2*exp(-x**2)/sqrt(pi))
+
     assert_eq(do_div(div(x ** 2 + x ** 3, l0)), 2 * x + 3 * x ** 2)
     assert_eq(do_div(div(x ** 2 + x ** 3, l1)), zero)
     assert_eq(do_div(div(1 / (2 + x ** 2), l0)), -2 * x / (2 + x ** 2) ** 2)
@@ -207,3 +225,8 @@ if __name__ == "__main__":
     expr2 = -(1 + cos(x)) / (x + sin(x)) ** 2
     assert_eq(do_div(div(expr1, l0)), expr2)
     assert_eq(do_div(div(sqrt(x), l0)), 1 / sqrt(x) / 2)
+    assert_eq(do_div(D(f(x),l0)), fp(x))
+    assert_eq(do_div(D(f(x**2+y),l0)), 2*x*fp(x**2+y))
+    assert_eq(do_div(D(f(x**2+y),l1)), fp(x**2+y))
+    assert_eq(do_div(D(f(x**2+y),l2)), 0)
+    assert_eq(do_div(D(f(x + f(x)),l0)), fp(x+f(x))*(1+fp(x)))
