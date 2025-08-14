@@ -16,10 +16,8 @@ from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Pa
 from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
     inv,det,sympify,simplify,cse,mkIdx,mkSymbol,\
     mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
-    free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols
+    free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols,h_step
 from sympy import Expr, Idx, Matrix, Indexed, Symbol
-
-step = mkFunction("step")
 
 __all__ = [
     "Identifier", "String", "Centering",
@@ -27,7 +25,7 @@ __all__ = [
     "cbrt", "sqrt", "mkMatrix", "log",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch",
-    "parities", "step",
+    "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
     "sinh", "cosh", "tanh", "sech", "csch", "coth",
@@ -40,4 +38,4 @@ __all__ = [
     "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
-    "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols"]
+    "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols","h_step"]

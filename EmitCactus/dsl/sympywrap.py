@@ -1,5 +1,8 @@
 from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
-from sympy import Expr, Matrix
+
+import sympy.core.numbers
+from sympy import Expr, Matrix, Piecewise
+
 cbrt : Callable[[Expr],Expr]
 sqrt : Callable[[Expr],Expr]
 log  : Callable[[Expr],Expr]
@@ -67,7 +70,7 @@ __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase",
     "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
-    "do_match"]
+    "do_match", "h_step"]
 
 
 class Applier(ABC):
@@ -226,3 +229,10 @@ def free_symbols(expr: Expr) -> Set[Symbol]:
     rhs: Set[Symbol] = set()
     add_free_symbol(expr, rhs)
     return rhs
+
+
+# noinspection PyPep8Naming
+class h_step(Function):
+    @classmethod
+    def eval(cls, arg: Expr, pivot: Expr = sympy.S.Zero) -> Expr:
+        return Piecewise((0, arg <= pivot), (1, arg > pivot))  # type: ignore[no-untyped-call]

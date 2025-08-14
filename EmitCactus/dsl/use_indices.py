@@ -181,6 +181,10 @@ class IndexContractionVisitor:
         return self.contract(new_expr, it)
 
     @visit.register
+    def _(self, expr: sy.Piecewise) -> Tuple[Expr, IndexTracker]:
+        return expr, IndexTracker()  # FIXME: How do I implement this?
+
+    @visit.register
     def _(self, expr: sy.Symbol) -> Tuple[Expr, IndexTracker]:
         return expr, IndexTracker()
 
@@ -331,6 +335,10 @@ class IndexSubsVisitor:
         r = f(*args)
         assert isinstance(r, Expr)
         return r
+
+    @visit.register
+    def _(self, expr: sy.Piecewise) -> Expr:
+        return expr  # FIXME: How do I implement this?
 
     @visit.register
     def _(self, expr: sy.Pow) -> Expr:
@@ -568,7 +576,13 @@ class DivMakerVisitor:
 
     @visit.register
     def _(self, expr: sy.Idx, idx: sy.Idx) -> Expr:
-        raise Exception("Derivative of Index")
+        raise DslException("Derivative of Index")
+
+    @visit.register
+    def _(self, expr: sy.Piecewise, idx: sy.Idx) -> Expr:
+        if idx is no_idx:
+            return expr
+        return zero
 
     @visit.register
     def _(self, expr: sy.Indexed, idx: sy.Idx) -> Expr:
@@ -616,8 +630,6 @@ class DivMakerVisitor:
             elif len(expr.args) == 1:
                 fd = mkFunction(name+"'")
                 f = fd(r) * self.visit(r, idx)
-            elif name == "step":
-                f = zero
             else:
                 raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
             assert isinstance(f, Expr)

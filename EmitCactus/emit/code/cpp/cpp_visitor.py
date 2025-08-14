@@ -8,7 +8,7 @@ from EmitCactus.emit.code.code_tree import CodeNode, StandardizedFunctionCallTyp
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
     StandardizedFunctionCall, CarpetXGridLoopCall, CarpetXGridLoopLambda, ThornFunctionDecl, CodeRoot, IncludeDirective, \
     UsingNamespace, Using, UsingAlias, DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, ConstAssignDecl, \
-    ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl
+    ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl, IfElseExpr
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
 from EmitCactus.emit.visitor import Visitor, visit_each
@@ -137,6 +137,11 @@ class CppVisitor(Visitor[CodeNode]):
             st += f' {n.op.representation} {self.visit(a)}'
 
         return f'{st})'
+
+    @visit.register
+    def _(self, n: IfElseExpr) -> str:
+        # return f'({self.visit(n.cond)} ? {self.visit(n.then)} : {self.visit(n.else_)})'
+        return f'if_then({self.visit(n.cond)}, {self.visit(n.then)}, {self.visit(n.else_)})'
 
     @visit.register
     def _(self, n: FunctionCall) -> str:
