@@ -601,11 +601,16 @@ class DivMakerVisitor:
                 f = exp(r) * self.visit(r, idx)
             elif name == "log":
                 f = (1/r) * self.visit(r, idx)
-            elif len(expr.args) == 1:
-                fd = mkFunction(name+"'")
-                f = fd(r) * self.visit(r, idx)
+            #elif len(expr.args) == 1:
+            #    fd = mkFunction(name+"'")
+            #    f = fd(r) * self.visit(r, idx)
             else:
-                raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
+                f = zero
+                for indx in range(len(expr.args)):
+                    fd = mkFunction(name+f"_{indx}")
+                    f += fd(*expr.args) * self.visit(expr.args[indx], idx)
+            #else:
+            #    raise DslException(f"Derivative of {expr} is not handled by EmitCactus")
             assert isinstance(f, Expr)
             return f
 
@@ -1228,7 +1233,6 @@ class ThornFunction:
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
-
     @property
     def _eqn_list(self) -> EqnList:
         return self.eqn_complex.get_active_eqn_list()
@@ -1478,6 +1482,9 @@ class ThornDef:
         self.div_makers["D"] = DivMakerVisitor(D)
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
+
+    def expand(self, expr:Expr)->Expr:
+        return self.do_subs(expand_contracted_indices(expr, self.symmetries))
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
