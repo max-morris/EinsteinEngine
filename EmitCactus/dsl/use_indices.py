@@ -500,31 +500,62 @@ class DivMakerVisitor:
             return expr
         ####
         # TODO: generalize for other dimensions than 3
-        # assert get_dimension()==3
-        if idx == l0:
-            if expr == x:
-                return one
-            elif expr in [y, z, t]:
-                return zero
-            elif expr in self.params:
-                return zero
+        if dimension == 3:
+            if idx == l0:
+                if expr == x:
+                    return one
+                elif expr in [y, z, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
 
-        elif idx == l1:
-            if expr == y:
-                return one
-            elif expr in [x, z, t]:
-                return zero
-            elif expr in self.params:
-                return zero
+            elif idx == l1:
+                if expr == y:
+                    return one
+                elif expr in [x, z, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
 
-        elif idx == l2:
-            if expr == z:
-                return one
-            elif expr in [x, y, t]:
-                return zero
-            elif expr in self.params:
-                return zero
+            elif idx == l2:
+                if expr == z:
+                    return one
+                elif expr in [x, y, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
+        elif dimension == 4:
+            if idx == l0:
+                if expr == t:
+                    return one
+                elif expr in [x, y, z]:
+                    return zero
+                elif expr in self.params:
+                    return zero
 
+            if idx == l1:
+                if expr == x:
+                    return one
+                elif expr in [y, z, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
+
+            elif idx == l2:
+                if expr == y:
+                    return one
+                elif expr in [x, z, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
+
+            elif idx == l3:
+                if expr == z:
+                    return one
+                elif expr in [x, y, t]:
+                    return zero
+                elif expr in self.params:
+                    return zero
         else:
             raise Exception(f"Bad index passed to derivative: {expr}: idx={idx}")
 
@@ -1989,6 +2020,7 @@ class ThornDef:
 
     def do_subs(self, arg: Expr, idx_subs: Optional[Dict[Idx, Idx]] = None) -> Expr:
         if idx_subs is None:
+            print("Bailing here")
             idx_subs = dict()
         isub = IndexSubsVisitor(self.subs)
         arg1 = arg
@@ -1999,6 +2031,7 @@ class ThornDef:
 
             isub.idx_subs = idx_subs
             new_arg = isub.visit(new_arg)
+            # print("New Arg:", new_arg, self.subs.keys())
             new_arg = self.do_div(new_arg)
             if new_arg == arg1:
                 return new_arg
