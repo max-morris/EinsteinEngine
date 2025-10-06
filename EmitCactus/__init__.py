@@ -16,13 +16,14 @@ from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Pa
 from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
     inv,det,sympify,simplify,cse,mkIdx,mkSymbol,\
     mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
-    free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols,h_step
+    free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols,h_step,mkPiecewise
 from sympy import Expr, Idx, Matrix, Indexed, Symbol
+from sympy.core.relational import Relational
 
 __all__ = [
     "Identifier", "String", "Centering",
     "CppCarpetXGenerator", "InteriorSyncMode",
-    "cbrt", "sqrt", "mkMatrix", "log",
+    "cbrt", "sqrt", "mkMatrix", "mkPiecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch",
     "parities",

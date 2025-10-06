@@ -1,4 +1,4 @@
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Iterable
 
 import sympy.core.numbers
 from sympy import Expr, Matrix, Piecewise
@@ -68,7 +68,7 @@ __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",
     "erf", "pi",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
-    "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase",
+    "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkPiecewise",
     "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
     "do_match", "h_step"]
 
@@ -104,6 +104,8 @@ symar = List[List[Expr | int | float]]
 def mkMatrix(array: symar) -> Matrix:
     return Matrix(array)  # type: ignore[no-untyped-call]
 
+def mkPiecewise(*args: Tuple[Expr, Expr]) -> Piecewise:
+    return Piecewise(*args)  # type: ignore[no-untyped-call]
 
 def mkZeros(*tup: int) -> Matrix:
     res = zeros(*tup) # type: ignore[no-untyped-call]

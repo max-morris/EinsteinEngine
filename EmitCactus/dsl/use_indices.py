@@ -3,15 +3,18 @@ Use the Sympy Indexed type for relativity expressions.
 """
 import re
 import sys
+import typing
 from enum import auto
 from typing import *
 
+import sympy.logic.boolalg
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Integer, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, MatrixBase, exp, \
     ImmutableDenseMatrix, Expr
+from sympy.core.relational import Relational
 
 from EmitCactus.dsl.coef import coef
 from EmitCactus.dsl.dsl_exception import DslException
@@ -182,7 +185,46 @@ class IndexContractionVisitor:
 
     @visit.register
     def _(self, expr: sy.Piecewise) -> Tuple[Expr, IndexTracker]:
-        return expr, IndexTracker()  # FIXME: How do I implement this?
+        it = IndexTracker()
+        expr_args = typing.cast(Iterable[Tuple[Expr, Expr]], expr.args)
+        new_args: List[Tuple[Expr, Expr]] = list()
+
+        for (e, c) in expr_args:
+            if isinstance(e, Idx):
+                if not it.add(e):
+                    raise InvalidIndexError(repr(expr))
+                new_args.append((e, c))
+            else:
+                e_expr, e_it = self.visit(e)
+                c_expr, c_it = self.visit(c)
+                new_args.append((e_expr, c_expr))
+
+                for idx in e_it.all():
+                    it.add(idx)
+
+                for idx in c_it.all():
+                    it.add(idx)
+
+        ret = self.contract(expr.func(*new_args), it)
+
+        return ret
+
+    @visit.register
+    def _relational(self, expr: Relational) -> Tuple[Expr, IndexTracker]:
+        it = IndexTracker()
+        new_args: List[Expr] = list()
+        for a in expr.args:
+            if isinstance(a, Idx):
+                if not it.add(a):
+                    raise InvalidIndexError(repr(expr))
+                new_args.append(a)
+            else:
+                a_expr, a_it = self.visit(a)
+                new_args.append(a_expr)
+                for idx in a_it.all():
+                    it.add(idx)
+        ret = self.contract(expr.func(*new_args), it)
+        return ret
 
     @visit.register
     def _(self, expr: sy.Symbol) -> Tuple[Expr, IndexTracker]:
@@ -203,6 +245,14 @@ class IndexContractionVisitor:
     @visit.register
     def _(self, expr: sy.Idx) -> Tuple[Expr, IndexTracker]:
         return expr, IndexTracker()
+
+    @visit.register
+    def _(self, _expr: sympy.logic.boolalg.BooleanTrue) -> Tuple[Expr, IndexTracker]:
+        return sympify(True), IndexTracker()
+
+    @visit.register
+    def _(self, _expr: sympy.logic.boolalg.BooleanFalse) -> Tuple[Expr, IndexTracker]:
+        return sympify(False), IndexTracker()
 
     @visit.register
     def _(self, expr: sy.Indexed) -> Tuple[Expr, IndexTracker]:
@@ -338,7 +388,22 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Piecewise) -> Expr:
-        return expr  # FIXME: How do I implement this?
+        expr_args = typing.cast(Iterable[Tuple[Expr, Expr]], expr.args)
+        args = tuple([(self.visit(e), self.visit(c)) for (e, c) in expr_args])
+        return mkPiecewise(*args)
+
+    @visit.register
+    def _(self, expr: Relational) -> Expr:
+        expr_args = tuple([self.visit(a) for a in expr.args])
+        return typing.cast(Expr, expr.func(*expr_args))
+
+    @visit.register
+    def _(self, _expr: sympy.logic.boolalg.BooleanTrue) -> Expr:
+        return sympify(True)
+
+    @visit.register
+    def _(self, _expr: sympy.logic.boolalg.BooleanFalse) -> Expr:
+        return sympify(False)
 
     @visit.register
     def _(self, expr: sy.Pow) -> Expr:

@@ -137,7 +137,7 @@ class SympyExprVisitor:
         i_expr, i_cond = piecewise_args[i]
 
         if i_cond == sy.S.true:
-            return self.visit(i_expr)
+            return typing.cast(Expr, self.visit(i_expr))
 
         return IfElseExpr(
             self.visit(i_cond),
