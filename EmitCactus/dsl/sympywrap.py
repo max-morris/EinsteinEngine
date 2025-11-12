@@ -237,4 +237,6 @@ def free_symbols(expr: Expr) -> Set[Symbol]:
 class h_step(Function):
     @classmethod
     def eval(cls, arg: Expr, pivot: Expr = sympy.S.Zero) -> Expr:
-        return Piecewise((0, arg <= pivot), (1, arg > pivot))  # type: ignore[no-untyped-call]
+        # TODO: Nasty sympy.Float hack because CarpetX's if_else function has bad templating. A better solution would
+        #       be to check the datatype of `arg` somewhere (assuming it's a variable) and match that.
+        return Piecewise((sympy.Float(0), arg <= pivot), (sympy.Float(1), arg > pivot))  # type: ignore[no-untyped-call]
