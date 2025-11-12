@@ -75,7 +75,7 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: FloatLiteralExpr) -> str:
-        return f'{n.fl}'
+        return f'{n.fl:.1f}' if float(n.fl).is_integer() else f'{n.fl}'
 
     @visit.register
     def _(self, n: Verbatim) -> str:
