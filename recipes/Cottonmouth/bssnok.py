@@ -617,7 +617,7 @@ fun_bssn_cons.add_eqn(
     + 6 * At[ua, ub] * cdphi[lb]
     - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
     # Matter
-    - 8 * pi * S[la]
+    - 8 * pi * gt[ua, ub] * S[lb]
 )
 
 fun_bssn_cons.add_eqn(
@@ -856,3 +856,4 @@ CppCarpetXWizard(
 # [3] https://arxiv.org/abs/gr-qc/9810065
 # [4] https://arxiv.org/pdf/0910.3803
 # [5] https://arxiv.org/abs/gr-qc/0605030.
+# [6] https://arxiv.org/abs/1212.2901
