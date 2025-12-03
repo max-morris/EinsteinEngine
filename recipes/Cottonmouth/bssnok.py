@@ -97,6 +97,21 @@ beta = cottonmouth_bssnok.decl("beta", [ua], from_thorn="ADMBaseX")
 dtbeta = cottonmouth_bssnok.decl("dtbeta", [ua], from_thorn="ADMBaseX")
 
 ###
+# TmunuBaseX vars.
+###
+eTtt = cottonmouth_bssnok.decl("eTtt", [], from_thorn="TmunuBaseX")
+
+eTti = cottonmouth_bssnok.decl("eTti", [la], from_thorn="TmunuBaseX")
+
+
+eTij = cottonmouth_bssnok.decl(
+    "eTij",
+    [la, lb],
+    symmetries=[(la, lb)],
+    from_thorn="TmunuBaseX"
+)
+
+###
 # Evolved Gauge Vars.
 ###
 evo_lapse_rhs = cottonmouth_bssnok.decl(
@@ -276,6 +291,11 @@ cdphi = cottonmouth_bssnok.decl("cdphi", [la])
 # \tilde{D}_a \tilde{D}_b \phi
 cdphi2 = cottonmouth_bssnok.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 
+# Aux. matter variables\
+rho = cottonmouth_bssnok.decl("rho", [])
+S = cottonmouth_bssnok.decl("S", [la])
+trS = cottonmouth_bssnok.decl("trS", [])
+
 ###
 # Substitution rules
 ###
@@ -294,6 +314,24 @@ cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
 
 cottonmouth_bssnok.add_substitution_rule(Gammat[ua, lb, lc])
 cottonmouth_bssnok.add_substitution_rule(Gammat[la, lb, uc])
+
+cottonmouth_bssnok.add_substitution_rule(
+    rho,
+    1 / evo_lapse**2 * (
+        eTtt - 2 * evo_shift[ua] * eTti[la]
+        + evo_shift[ua] * evo_shift[ub] * eTij[la, lb]
+    ),
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    S[la],
+    -1/evo_lapse * (eTti[la] - evo_shift[ub] * eTij[la, lb])
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    trS,
+    w**2 * gt[ua, ub] * eTij[la, lb]
+)
 
 ###
 # Aux. groups
@@ -564,6 +602,8 @@ fun_bssn_cons.add_eqn(
     (w**2) * gt[ua, ub] * R[la, lb]
     - At[ua, lb] * At[ub, la]
     + Rational(2, 3) * (trK**2)
+    # Matter
+    - 16 * pi * rho
 )
 
 # Momentum constraint
@@ -576,6 +616,8 @@ fun_bssn_cons.add_eqn(
     )
     + 6 * At[ua, ub] * cdphi[lb]
     - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
+    # Matter
+    - 8 * pi * S[la]
 )
 
 fun_bssn_cons.add_eqn(
@@ -682,6 +724,10 @@ fun_bssn_rhs.add_eqn(
     + At[la, lc] * D(evo_shift[uc], lb)
     + At[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * At[la, lb] * D(evo_shift[uc], lc)
+    # Matter
+    - w**2 * evo_lapse * 8 * pi * (
+        eTij[la, lb] - Rational(1, 3) * gt[la, lb] * trS
+    )
     # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
     + evo_shift[uc] * D(At[la, lb], lc)
     # Dissipation:
@@ -705,6 +751,8 @@ fun_bssn_rhs.add_eqn(
         At[ua, lb] * At[ub, la]
         + Rational(1, 3) * (trK**2)
     )
+    # Matter
+    + 4 * pi * evo_lapse * (rho + trS)
     # TODO: Advection: + Upwind[beta[ua], trK, la]
     + evo_shift[ua] * D(trK, la)
     # Dissipation:
