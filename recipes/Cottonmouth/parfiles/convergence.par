@@ -8,6 +8,7 @@ $ncells = ($base_cells * $rho)
 
 ActiveThorns = "
   ADMBaseX
+  TmunuBaseX
   CarpetX
   CottonmouthBSSN
   CoordinatesX

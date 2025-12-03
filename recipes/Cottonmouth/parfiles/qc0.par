@@ -21,6 +21,7 @@ $ah_every           = $out_every
 
 ActiveThorns = "
   ADMBaseX
+  TmunuBaseX
   AEILocalInterp
   AHFinderDirect
   BoxInBox
