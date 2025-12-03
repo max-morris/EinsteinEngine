@@ -25,8 +25,7 @@ Pow  : Callable[[Expr,Expr],Expr]
 diff : Callable[[Expr,Expr],Expr]
 simplify : Callable[[Expr],Expr]
 det : Callable[[Matrix],Expr]
-sympify : Callable[[Expr|int|float],Expr]
-from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
+from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, Mul, Indexed, \
     Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
     exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, cot as cot_, \
     sec as sec_, csc as csc_, diff as diff_, atan as atan_, \
@@ -55,7 +54,7 @@ diff = diff_
 erf = erf_
 simplify = simplify_
 det = det_
-sympify = sympify_
+sympify : Callable[[Expr|int|float],Expr] = sympify_
 
 import re
 from abc import ABC, abstractmethod
@@ -66,7 +65,7 @@ from EmitCactus.util import OrderedSet
 
 from multimethod import multimethod
 
-pi = 4.0*atan(1.0)
+pi = 4.0*atan(sympify(1.0))
 
 __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",

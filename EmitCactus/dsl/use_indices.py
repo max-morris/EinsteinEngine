@@ -321,7 +321,7 @@ class IndexContractionVisitor:
 
 ### ind subs
 class IndexSubsVisitor:
-    def __init__(self, defn: Dict[Indexed, Expr]) -> None:
+    def __init__(self, defn: Dict[Indexed|IndexedBase, Expr]) -> None:
         self.defn = defn
         self.idx_subs: Dict[Idx, Idx] = dict()
 
@@ -362,6 +362,10 @@ class IndexSubsVisitor:
             return expr
         else:
             return res
+
+    @visit.register
+    def _(self, expr: sy.IndexedBase) -> Expr:
+        return self.defn.get(expr, expr)
 
     @visit.register
     def _(self, expr: sy.Indexed) -> Expr:
@@ -409,12 +413,8 @@ class IndexSubsVisitor:
     def _(self, expr: sy.Pow) -> Expr:
         return cast(Expr, sy.Pow(self.visit(expr.args[0]), self.visit(expr.args[1])))
 
-    @visit.register
-    def _(self, expr: sy.IndexedBase) -> Expr:
-        return expr
 
-
-def do_isub(expr: Expr, subs: Optional[Dict[Indexed, Expr]] = None, idx_subs: Optional[Dict[Idx, Idx]] = None) -> Expr:
+def do_isub(expr: Expr, subs: Optional[Dict[Indexed|IndexedBase, Expr]] = None, idx_subs: Optional[Dict[Idx, Idx]] = None) -> Expr:
     if subs is None:
         subs = dict()
     if idx_subs is None:
@@ -1545,7 +1545,7 @@ class ThornDef:
         self.symmetries = Sym()
         self.base2group: Dict[str, str] = dict()
         self.gfs: Dict[str, IndexedBase] = dict()
-        self.subs: Dict[Indexed, Expr] = dict()
+        self.subs: Dict[Indexed|IndexedBase, Expr] = dict()
         self.params: Dict[str, Param] = dict()
         self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
@@ -2012,7 +2012,9 @@ class ThornDef:
 
     @add_substitution_rule.register
     def _(self, indexedBase: IndexedBase, f: Expr) -> None:
-        self.subs[indexedBase] = simplify(self.do_subs(f, idx_subs={}))
+        rhs = simplify(self.do_subs(f, idx_subs={}))
+        self.subs[indexedBase] = rhs
+        print(colorize(indexedBase,"cyan"), colorize("->","green"), colorize(rhs,"yellow"))
 
     @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Expr) -> None:
