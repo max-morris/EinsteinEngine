@@ -315,13 +315,13 @@ cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
 cottonmouth_bssnok.add_substitution_rule(Gammat[ua, lb, lc])
 cottonmouth_bssnok.add_substitution_rule(Gammat[la, lb, uc])
 
-# cottonmouth_bssnok.add_substitution_rule(
-#     rho,
-#     1 / evo_lapse**2 * (
-#         eTtt - 2 * evo_shift[ua] * eTti[la]
-#         + evo_shift[ua] * evo_shift[ub] * eTij[la, lb]
-#     ),
-# )
+cottonmouth_bssnok.add_substitution_rule(
+    rho,
+    1 / evo_lapse**2 * (
+        eTtt - 2 * evo_shift[ua] * eTti[la]
+        + evo_shift[ua] * evo_shift[ub] * eTij[la, lb]
+    ),
+)
 
 cottonmouth_bssnok.add_substitution_rule(
     S[la],
