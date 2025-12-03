@@ -2011,6 +2011,10 @@ class ThornDef:
                 self.subs[indexed_sym] = sub_val_
 
     @add_substitution_rule.register
+    def _(self, indexedBase: IndexedBase, f: Expr) -> None:
+        self.subs[indexedBase] = simplify(self.do_subs(f, idx_subs={}))
+
+    @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Expr) -> None:
         indices: List[Idx]
         iter_var = indexed

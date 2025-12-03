@@ -320,7 +320,7 @@ cottonmouth_bssnok.add_substitution_rule(
     1 / evo_lapse**2 * (
         eTtt - 2 * evo_shift[ua] * eTti[la]
         + evo_shift[ua] * evo_shift[ub] * eTij[la, lb]
-    ),
+    )
 )
 
 cottonmouth_bssnok.add_substitution_rule(

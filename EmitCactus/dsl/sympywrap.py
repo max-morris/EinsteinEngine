@@ -10,6 +10,7 @@ exp  : Callable[[Expr],Expr]
 cos  : Callable[[Expr],Expr]
 sin  : Callable[[Expr],Expr]
 tan  : Callable[[Expr],Expr]
+atan  : Callable[[Expr],Expr]
 cot  : Callable[[Expr],Expr]
 sec  : Callable[[Expr],Expr]
 csc  : Callable[[Expr],Expr]
@@ -28,7 +29,7 @@ sympify : Callable[[Expr|int|float],Expr]
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, sympify, Mul, Indexed, \
     Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
     exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, cot as cot_, \
-    sec as sec_, csc as csc_, diff as diff_, pi,\
+    sec as sec_, csc as csc_, diff as diff_, atan as atan_, \
     simplify as simplify_, det as det_, sympify as sympify_
 from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
     sech as sech_, csch as csch_, coth as coth_
@@ -40,6 +41,7 @@ Pow = Pow_
 cos = cos_
 sin = sin_
 tan = tan_
+atan = atan_
 cot = cot_
 sec = sec_
 csc = csc_
@@ -64,9 +66,11 @@ from EmitCactus.util import OrderedSet
 
 from multimethod import multimethod
 
+pi = 4.0*atan(1.0)
+
 __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",
-    "erf", "pi",
+    "erf", "pi","atan",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkPiecewise",
     "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
