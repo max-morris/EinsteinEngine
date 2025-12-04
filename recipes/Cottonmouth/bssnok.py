@@ -336,6 +336,7 @@ cottonmouth_bssnok.add_substitution_rule(
 ###
 # Aux. groups
 ###
+
 # Initialization
 initial_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
@@ -374,6 +375,16 @@ ricci_group_analysis = ScheduleBlock(
     description=String("BSSNOK Ricci tensor computation"),
 )
 
+# Post-step
+post_step_group = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_PostStepGroup"),
+    at_or_in=AtOrIn.In,
+    schedule_bin=Identifier("ODESolvers_PostStep"),
+    before=[Identifier("ADMBaseX_SetADMVars")],
+    description=String("BSSNOK post-step routines")
+)
+
 # Analysis
 analysis_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
@@ -388,7 +399,7 @@ analysis_group = ScheduleBlock(
 ###
 fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt1",
-    ScheduleBin.PostStep,
+    post_step_group,
     schedule_after=["StateSync"],
     schedule_before=["cottonmouth_bssnok_enforce_pt2"]
 )
@@ -421,7 +432,7 @@ fun_bssn_enforce_pt1.bake(**gen_opts)
 
 fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
-    ScheduleBin.PostStep,
+    post_step_group,
     schedule_after=["cottonmouth_bssnok_enforce_pt1"],
     schedule_before=["cottonmouth_bssnok_bssn2adm"]
 )
@@ -484,7 +495,7 @@ fun_adm2bssn.bake(**gen_opts)
 ###
 fun_bssn2adm = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_bssn2adm",
-    ScheduleBin.PostStep,
+    post_step_group,
     schedule_after=["cottonmouth_bssnok_enforce_pt2"]
 )
 
@@ -839,14 +850,20 @@ CppCarpetXWizard(
     CppCarpetXGenerator(
         cottonmouth_bssnok,
         # TODO: Custom RHS group not ignored
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
         extra_schedule_blocks=[
             initial_group,
             rhs_group,
             analysis_group,
             ricci_group_rhs,
+            post_step_group,
             ricci_group_analysis,
-        ]
+        ],
+        explicit_syncs=[ExplicitSyncBatch(
+            vars=cottonmouth_bssnok.get_state(),
+            schedule_target=post_step_group,
+            name="StateSync"
+        )]
     )
 ).generate_thorn()
 
