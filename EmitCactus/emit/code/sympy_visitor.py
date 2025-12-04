@@ -178,6 +178,10 @@ class SympyExprVisitor:
         return FloatLiteralExpr(expr.n()) # type: ignore[no-untyped-call]
 
     @visit.register
+    def _(self, expr: sy.core.numbers.Pi) -> Expr:
+        return FloatLiteralExpr(expr.n())  # type: ignore[no-untyped-call]
+
+    @visit.register
     def _(self, expr: sy.core.numbers.Rational) -> Expr:
         # Cast to floats to avoid floor division in e.g. C++
         return BinOpExpr(FloatLiteralExpr(float(expr.p)), BinOp.Div, FloatLiteralExpr(float(expr.q)))

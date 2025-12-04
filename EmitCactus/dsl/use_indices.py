@@ -227,6 +227,10 @@ class IndexContractionVisitor:
         return ret
 
     @visit.register
+    def _(self, expr: sy.core.numbers.Pi) -> Tuple[Expr, IndexTracker]:
+        return expr, IndexTracker()
+
+    @visit.register
     def _(self, expr: sy.Symbol) -> Tuple[Expr, IndexTracker]:
         return expr, IndexTracker()
 
@@ -353,6 +357,10 @@ class IndexSubsVisitor:
 
     @visit.register
     def _(self, expr: sy.Float) -> Expr:
+        return expr
+
+    @visit.register
+    def _(self, expr: sy.core.numbers.Pi) -> Expr:
         return expr
 
     @visit.register
@@ -623,6 +631,12 @@ class DivMakerVisitor:
 
     @visit.register
     def _(self, expr: sy.Integer, idx: sy.Idx) -> Expr:
+        if idx is no_idx:
+            return expr
+        return zero
+
+    @visit.register
+    def _(self, expr: sy.core.numbers.Pi, idx: sy.Idx) -> Expr:
         if idx is no_idx:
             return expr
         return zero

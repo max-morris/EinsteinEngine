@@ -29,7 +29,7 @@ from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, Mul, Indexed
     Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
     exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, cot as cot_, \
     sec as sec_, csc as csc_, diff as diff_, atan as atan_, \
-    simplify as simplify_, det as det_, sympify as sympify_
+    simplify as simplify_, det as det_, sympify as sympify_, pi
 from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
     sech as sech_, csch as csch_, coth as coth_
 sqrt = sqrt_
@@ -64,8 +64,6 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.util import OrderedSet
 
 from multimethod import multimethod
-
-pi = 4.0*atan(sympify(1.0))
 
 __all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
     "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",
