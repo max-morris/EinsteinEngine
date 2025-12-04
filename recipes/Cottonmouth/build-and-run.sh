@@ -57,9 +57,10 @@ PAR_FILE1="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/kerr_schild_id.par"
 PAR_FILE2="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/kerr_schild.par"
 PAR_FILE3="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave.par"
 PAR_FILE4="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0.par"
+PAR_FILE5="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV.par"
 TEST_NAME=bssn_test
 
-perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3" "$PAR_FILE4"
+perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3" "$PAR_FILE4" "$PAR_FILE5"
 
 CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
 ./simfactory/bin/sim build bssn -j$(($CPUS / 4)) --thornlist bssn.th |& tee make.out
