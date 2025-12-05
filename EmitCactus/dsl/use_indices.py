@@ -1590,14 +1590,19 @@ class ThornDef:
         LocalElIdx = NewType("LocalElIdx", int)
 
         tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
-        old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict({tf: list() for tf in tf_names})
-        old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict({tf: list() for tf in tf_names})
-        old_tf_rhses: OrderedDict[TfName, list[Expr]] = OrderedDict({tf: list() for tf in tf_names})
+        old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
+        old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict()
+        old_tf_rhses: OrderedDict[TfName, list[Expr]] = OrderedDict()
 
-        for tf_name, tf in [(TfName(name), tf) for name, tf in self.thorn_functions.items()]:
+        for tf_name in tf_names:
+            old_tf_shapes[tf_name] = list()
+            old_tf_lhses[tf_name] = list()
+            old_tf_rhses[tf_name] = list()
+
+        for tf_name, tf in sorted([(TfName(name), tf) for name, tf in self.thorn_functions.items()], key=lambda kv: tf_names.index(kv[0])):
             for eqn_list in tf.eqn_complex.eqn_lists:
                 old_tf_shapes[tf_name].append(len(eqn_list.eqns))
-                for lhs, rhs in eqn_list.eqns.items():
+                for lhs, rhs in sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])):
                     old_tf_lhses[tf_name].append(lhs)
                     old_tf_rhses[tf_name].append(rhs)
 
@@ -1700,7 +1705,8 @@ class ThornDef:
                         eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # Multiple functions are reading this temp, so it will be a global temp
                 synthetic_fn = self.create_function(f'synthetic_compute_{new_temp}', ScheduleBin.Evolve)  # todo: schedule?
-                synthetic_fn.add_eqn(new_temp, substitutions[new_temp])  # todo: why doesn't this work?
+                synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
+                synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 global_temps.add(new_temp)
 
 
