@@ -428,8 +428,6 @@ fun_bssn_enforce_pt1.add_eqn(
     max(evo_lapse, evolved_lapse_floor)
 )
 
-fun_bssn_enforce_pt1.bake(**gen_opts)
-
 fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
     post_step_group,
@@ -442,7 +440,6 @@ fun_bssn_enforce_pt2.add_eqn(At[li, lj], At_enforce[li, lj])
 fun_bssn_enforce_pt2.add_eqn(w, w_enforce)
 fun_bssn_enforce_pt2.add_eqn(evo_lapse, evo_lapse_enforce)
 
-fun_bssn_enforce_pt2.bake(**gen_opts)
 
 ###
 # Convert ADM to BSSN variables
@@ -488,7 +485,6 @@ fun_adm2bssn.add_eqn(
     )
 )
 
-fun_adm2bssn.bake(**gen_opts)
 
 ###
 # Convert BSSN to ADM variables
@@ -512,7 +508,6 @@ fun_bssn2adm.add_eqn(
 fun_bssn2adm.add_eqn(alp, evo_lapse)
 fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 
-fun_bssn2adm.bake(**gen_opts)
 
 ###
 # Compute the Ricci tensor
@@ -575,7 +570,6 @@ fun_bssn_ricci.add_eqn(
 
 fun_bssn_ricci.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
-fun_bssn_ricci.bake(**gen_opts)
 
 ###
 # Compute non enforced constraints
@@ -635,8 +629,6 @@ fun_bssn_cons.add_eqn(
     DeltaCons[ua],
     ConfConnect[ua] - Delta[ua]
 )
-
-fun_bssn_cons.bake(**gen_opts)
 
 ###
 # BSSN Evolution equations
@@ -840,9 +832,20 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
+
+
+
+
 fun_bssn_rhs.bake(**gen_opts)
+fun_bssn_enforce_pt1.bake(**gen_opts)
+fun_bssn_enforce_pt2.bake(**gen_opts)
+fun_adm2bssn.bake(**gen_opts)
+fun_bssn2adm.bake(**gen_opts)
+fun_bssn_ricci.bake(**gen_opts)
+fun_bssn_cons.bake(**gen_opts)
 
 cottonmouth_bssnok.do_global_cse()
+
 
 ###
 # Thorn creation
