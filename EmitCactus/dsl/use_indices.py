@@ -5,6 +5,7 @@ import re
 import sys
 import typing
 from enum import auto
+from itertools import chain
 from typing import *
 
 import sympy.logic.boolalg
@@ -24,7 +25,7 @@ from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering
-from EmitCactus.util import OrderedSet, ScheduleBinEnum
+from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute
 
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
@@ -1511,8 +1512,8 @@ class ThornFunction:
 
         if do_madd:
             self.madd()
-        if do_cse:
-            self.cse()
+        #if do_cse:
+        #    self.cse()
 
         self.eqn_bake()
 
@@ -1583,6 +1584,125 @@ class ThornDef:
         self.div_makers["D"] = DivMakerVisitor(D)
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
+
+    def do_global_cse(self) -> None:
+        TfName = NewType("TfName", str)
+        LocalElIdx = NewType("LocalElIdx", int)
+
+        tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
+        old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict({tf: list() for tf in tf_names})
+        old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict({tf: list() for tf in tf_names})
+        old_tf_rhses: OrderedDict[TfName, list[Expr]] = OrderedDict({tf: list() for tf in tf_names})
+
+        for tf_name, tf in [(TfName(name), tf) for name, tf in self.thorn_functions.items()]:
+            for eqn_list in tf.eqn_complex.eqn_lists:
+                old_tf_shapes[tf_name].append(len(eqn_list.eqns))
+                for lhs, rhs in eqn_list.eqns.items():
+                    old_tf_lhses[tf_name].append(lhs)
+                    old_tf_rhses[tf_name].append(rhs)
+
+        substitutions_list: list[tuple[Symbol, Expr]]
+        new_rhses: list[Expr]
+        substitutions_list, new_rhses = cse(list(chain(*old_tf_rhses.values())))
+
+        substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
+        substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
+
+        new_temp_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
+        new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
+        new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
+
+        global_temps: set[Symbol] = set()
+        #tile_temps: dict[TfName, set[Symbol]] = {tf_name: set() for tf_name in tf_names}
+
+        global_eqn_idx = 0
+        for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
+            tf_name = TfName(tf.name)
+
+            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
+                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
+                el_new_free_symbols: set[Symbol] = set(chain(*[free_symbols(rhs) for rhs in new_rhses[global_eqn_idx:global_eqn_idx + el_shape]]))
+                new_temps = el_new_free_symbols.intersection(substitutions.keys())
+
+                for new_temp, temp_rhs in [(new_temp, substitutions[new_temp]) for new_temp in new_temps]:
+                    assert new_temp not in eqn_list.inputs
+                    assert new_temp not in eqn_list.params
+                    assert new_temp not in eqn_list.outputs
+                    assert new_temp not in eqn_list.eqns
+
+                    get_or_compute(new_temp_reads[new_temp], tf_name, lambda _: set()).add(LocalElIdx(el_idx))
+
+                    # Temps might be substituted for expressions which contain other temps.
+                    # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
+                    def drill(lhs: Symbol, rhs: Expr) -> None:
+                        temp_dependencies = free_symbols(rhs).intersection(substitutions.keys())
+                        assert lhs not in temp_dependencies
+                        for td in temp_dependencies:
+                            new_temp_dependencies[lhs].add(td)
+                            drill(td, substitutions[td])
+
+                    drill(new_temp, temp_rhs)
+
+                for lhs in old_tf_lhses[tf_name]:
+                    assert lhs in eqn_list.eqns
+                    eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
+                    global_eqn_idx += 1
+
+                #global_eqn_idx += el_shape
+
+                eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
+
+        for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
+                                                  key=lambda kv: substitutions_order[kv[0]],
+                                                  reverse=True):
+            for tf_name, local_idxes in new_temp_reads[new_temp].items():
+                earliest_local_read = min(local_idxes)
+                if tf_name in new_temp_transitive_reads[new_temp]:
+                    earliest_local_read = min(earliest_local_read, min(new_temp_transitive_reads[new_temp][tf_name]))
+
+                for td in temp_dependencies:
+                    get_or_compute(new_temp_transitive_reads[td], tf_name, lambda _: set()).add(earliest_local_read)
+
+
+        for new_temp, new_rhs in substitutions.items():
+            n_tfs_reading_pure = len(new_temp_reads[new_temp].keys())
+            n_tfs_reading_transitive = len(new_temp_transitive_reads[new_temp].keys())
+            n_tfs_reading = n_tfs_reading_pure + n_tfs_reading_transitive
+            if n_tfs_reading == 0:
+                continue
+            elif n_tfs_reading == 1 or (
+                    n_tfs_reading_pure == 1
+                    and n_tfs_reading_transitive == 1
+                    and list(new_temp_reads[new_temp].keys())[0] == list(new_temp_transitive_reads[new_temp].keys())[0]
+            ):  # Only 1 function is reading this temp, so it will be a local temp or tile temp
+                if n_tfs_reading_pure != 0:
+                    tf_name = list(new_temp_reads[new_temp].keys())[0]
+                else:
+                    tf_name = list(new_temp_transitive_reads[new_temp].keys())[0]
+
+                els_reading_pure = new_temp_reads[new_temp].get(tf_name, set())
+                els_reading_transitive = new_temp_transitive_reads[new_temp].get(tf_name, set())
+                els_reading = els_reading_pure.union(els_reading_transitive)
+
+                if (seen_count := len(els_reading_pure) + len(els_reading_transitive)) == 0:
+                    assert False, f"Temp {seen_count} is seen 0 times but read by {tf_name}"
+
+                ec = self.thorn_functions[tf_name].eqn_complex
+                primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+                primary_el.add_eqn(new_temp, substitutions[new_temp])
+
+                if seen_count == 1:
+                    primary_el.temporaries.add(new_temp)
+                else:
+                    ec._tile_temporaries.add(new_temp)
+                    primary_el.uninitialized_tile_temporaries.add(new_temp)
+                    for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
+                        eqn_list.uninitialized_tile_temporaries.add(new_temp)
+            else:  # Multiple functions are reading this temp, so it will be a global temp
+                synthetic_fn = self.create_function(f'synthetic_compute_{new_temp}', ScheduleBin.Evolve)  # todo: schedule?
+                synthetic_fn.add_eqn(new_temp, substitutions[new_temp])  # todo: why doesn't this work?
+                global_temps.add(new_temp)
+
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)

@@ -842,6 +842,8 @@ fun_bssn_rhs.add_eqn(
 
 fun_bssn_rhs.bake(**gen_opts)
 
+cottonmouth_bssnok.do_global_cse()
+
 ###
 # Thorn creation
 ###
