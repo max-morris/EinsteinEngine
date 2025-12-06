@@ -1617,7 +1617,7 @@ class ThornDef:
         new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
 
-        global_temps: set[Symbol] = set()
+        global_temps: dict[Symbol, ThornFunction] = dict()
         #tile_temps: dict[TfName, set[Symbol]] = {tf_name: set() for tf_name in tf_names}
 
         global_eqn_idx = 0
@@ -1705,9 +1705,24 @@ class ThornDef:
                         eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # Multiple functions are reading this temp, so it will be a global temp
                 synthetic_fn = self.create_function(f'synthetic_compute_{new_temp}', ScheduleBin.Evolve)  # todo: schedule?
-                synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
+                #synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
+                synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
+                synthetic_fn._eqn_list.add_output(new_temp)
+
+                def add_deps(temp: Symbol) -> None:
+                    inputs = free_symbols(substitutions[temp]) - new_temps
+                    #for i in inputs:
+                        #synthetic_fn._eqn_list.add_input(i)
+
+                    for td in new_temp_dependencies[temp]:
+                        if td not in synthetic_fn._eqn_list.eqns:
+                            synthetic_fn._add_eqn2(td, substitutions[td])
+                        add_deps(td)
+
+                add_deps(new_temp)
+
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
-                global_temps.add(new_temp)
+                global_temps[new_temp] = synthetic_fn
 
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
