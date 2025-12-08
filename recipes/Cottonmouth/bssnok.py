@@ -10,7 +10,7 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 # Code generation options
 ###
 gen_opts = {
-    "do_cse": True,
+    "do_cse": False,
     "do_madd": False,
     "do_recycle_temporaries": False,
     "do_split_output_eqns": True
