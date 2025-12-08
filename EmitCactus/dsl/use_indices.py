@@ -1706,6 +1706,7 @@ class ThornDef:
             else:  # Multiple functions are reading this temp, so it will be a global temp
                 synthetic_fn = self.create_function(f'synthetic_compute_{new_temp}', ScheduleBin.Evolve)  # todo: schedule?
                 #synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
+                self._add_symbol(new_temp, Centering.VVV)  # todo: centering
                 synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
                 synthetic_fn._eqn_list.add_output(new_temp)
 
@@ -1723,6 +1724,12 @@ class ThornDef:
 
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 global_temps[new_temp] = synthetic_fn
+
+        for tf in self.thorn_functions.values():
+            for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
+                eqn_list.bake(force_rebake=True)
+                print(f'*** Rebaking {tf.name} loop {idx} after do_global_cse ***')
+                eqn_list.dump()
 
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
@@ -2053,6 +2060,14 @@ class ThornDef:
                 self.add_substitution_rule(indexed_symbol, substitution_rule)
 
         return the_symbol
+
+    def _add_symbol(self, the_symbol: Symbol, centering: Centering) -> None:
+        basename = str(the_symbol)
+
+        self.gfs[basename] = IndexedBase(the_symbol)
+        self.defn[basename] = (basename, list())
+        self.centering[basename] = centering
+        self.base2group[basename] = basename
 
     def find_indices(self, foo: Basic) -> List[Idx]:
         ret: List[Idx] = list()

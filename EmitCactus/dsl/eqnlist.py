@@ -552,9 +552,9 @@ class EqnList:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
 
-    def bake(self) -> None:
+    def bake(self, *, force_rebake=False) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
-        if self.been_baked:
+        if self.been_baked and not force_rebake:
             raise DslException("Can't bake an EqnList that has already been baked.")
         self.been_baked = True
 
