@@ -1727,8 +1727,8 @@ class ThornDef:
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
-                eqn_list.bake(force_rebake=True)
                 print(f'*** Rebaking {tf.name} loop {idx} after do_global_cse ***')
+                eqn_list.bake(force_rebake=True)
                 eqn_list.dump()
 
 
