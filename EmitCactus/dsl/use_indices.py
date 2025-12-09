@@ -1709,6 +1709,8 @@ class ThornDef:
                 self._add_symbol(new_temp, Centering.VVV)  # todo: centering
                 synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
                 synthetic_fn._eqn_list.add_output(new_temp)
+                #new_ib = self.decl(str(new_temp), [])
+                #synthetic_fn.add_eqn(new_ib, substitutions[new_temp])
 
                 def add_deps(temp: Symbol) -> None:
                     inputs = free_symbols(substitutions[temp]) - new_temps
@@ -2025,6 +2027,7 @@ class ThornDef:
         else:
             indexed_symbol = None
 
+        assert basename not in self.gfs
         self.gfs[basename] = the_symbol
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
@@ -2064,7 +2067,8 @@ class ThornDef:
     def _add_symbol(self, the_symbol: Symbol, centering: Centering) -> None:
         basename = str(the_symbol)
 
-        self.gfs[basename] = IndexedBase(the_symbol)
+        assert basename not in self.gfs
+        self.gfs[basename] = mkIndexedBase(the_symbol, shape=())
         self.defn[basename] = (basename, list())
         self.centering[basename] = centering
         self.base2group[basename] = basename

@@ -22,6 +22,8 @@ f2.add_eqn(o2, a + b)
 f1.bake(**opts)
 f2.bake(**opts)
 
+print(">"*50)
+
 thorn.do_global_cse()
 
 CppCarpetXWizard(
