@@ -1,0 +1,3 @@
+ActiveThorns = "Abcd CarpetX"
+
+Cactus::presync_mode = "mixed-error"

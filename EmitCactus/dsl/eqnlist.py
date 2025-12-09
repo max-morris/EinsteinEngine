@@ -319,6 +319,7 @@ class EqnList:
     @multimethod
     def add_input(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
+        return
         assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
         if lhs in self.outputs:
             self.temporaries.add(lhs)
@@ -337,6 +338,7 @@ class EqnList:
     def add_output(self, lhs: Symbol) -> None:
         # TODO: Automatically assign temps?
         # assert lhs not in self.inputs, f"The symbol '{lhs}' is already in outputs"
+        return
         if lhs in self.inputs:
             self.temporaries.add(lhs)
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
@@ -561,12 +563,20 @@ class EqnList:
         # Bake now regenerates inputs and outputs but not parameters
         self.inputs.clear()
         self.outputs.clear()
+        self.temporaries.clear()
         for lhs, rhs in self.eqns.items():
             assert lhs not in self.params, f"Symbol '{lhs}' is a parameter, but we are assigning to it."
             self.outputs.add(lhs)
             for symb in rhs.free_symbols:
                 if symb not in self.params:
                     self.inputs.add(symb)
+
+        for lhs in self.outputs:
+            if lhs in self.inputs:
+                self.temporaries.add(lhs)
+        for lhs in self.temporaries:
+            self.inputs.remove(lhs)
+            self.outputs.remove(lhs)
 
         needed: Set[Symbol] = OrderedSet()
         complete: Dict[Symbol, int] = OrderedDict()
