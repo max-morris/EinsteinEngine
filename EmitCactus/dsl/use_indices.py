@@ -1341,13 +1341,8 @@ class ThornFunction:
 
     def _add_eqn2(self, lhs2: Symbol, rhs2: Expr) -> None:
         rhs2 = self.thorn_def.do_subs(expand_contracted_indices(rhs2, self.thorn_def.symmetries))
-        if str(lhs2) in self.thorn_def.gfs and str(lhs2) not in self.thorn_def.temp:
-            self._eqn_list.add_output(lhs2)
         for item in free_symbols(rhs2):
-            if str(item) in self.thorn_def.gfs:
-                if str(item) not in self.thorn_def.temp:
-                    self._eqn_list.add_input(item)
-            elif str(item) in self.thorn_def.params:
+            if str(item) in self.thorn_def.params:
                 assert item.is_Symbol
                 self._eqn_list.add_param(item)
         divs = self.thorn_def.apply_div
@@ -1708,14 +1703,9 @@ class ThornDef:
                 #synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
                 self._add_symbol(new_temp, Centering.VVV)  # todo: centering
                 synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
-                synthetic_fn._eqn_list.add_output(new_temp)
-                #new_ib = self.decl(str(new_temp), [])
-                #synthetic_fn.add_eqn(new_ib, substitutions[new_temp])
 
                 def add_deps(temp: Symbol) -> None:
                     inputs = free_symbols(substitutions[temp]) - new_temps
-                    #for i in inputs:
-                        #synthetic_fn._eqn_list.add_input(i)
 
                     for td in new_temp_dependencies[temp]:
                         if td not in synthetic_fn._eqn_list.eqns:
