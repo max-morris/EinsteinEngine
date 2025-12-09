@@ -4,6 +4,7 @@ Use the Sympy Indexed type for relativity expressions.
 import re
 import sys
 import typing
+from collections import defaultdict
 from enum import auto
 from itertools import chain
 from typing import *
@@ -24,7 +25,7 @@ from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
-from EmitCactus.emit.tree import Centering
+from EmitCactus.emit.tree import Centering, Identifier
 from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute
 
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
@@ -1612,9 +1613,6 @@ class ThornDef:
         new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
 
-        global_temps: dict[Symbol, ThornFunction] = dict()
-        #tile_temps: dict[TfName, set[Symbol]] = {tf_name: set() for tf_name in tf_names}
-
         global_eqn_idx = 0
         for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
             tf_name = TfName(tf.name)
@@ -1699,23 +1697,52 @@ class ThornDef:
                     for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
                         eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # Multiple functions are reading this temp, so it will be a global temp
-                synthetic_fn = self.create_function(f'synthetic_compute_{new_temp}', ScheduleBin.Evolve)  # todo: schedule?
-                #synthetic_fn._eqn_list.add_eqn(new_temp, substitutions[new_temp])
                 self._add_symbol(new_temp, Centering.VVV)  # todo: centering
-                synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
 
-                def add_deps(temp: Symbol) -> None:
-                    inputs = free_symbols(substitutions[temp]) - new_temps
+                fn_dedup = 0
+                def mk_synthetic_fn(schedule_target: ScheduleTarget, schedule_before: Collection[str]):
+                    nonlocal fn_dedup
+                    synthetic_fn = self.create_function(
+                        f'synthetic_compute_{new_temp}_{fn_dedup}',
+                        schedule_target,
+                        schedule_before=schedule_before
+                    )
+                    fn_dedup += 1
+                    synthetic_fn._add_eqn2(new_temp, substitutions[new_temp])
 
-                    for td in new_temp_dependencies[temp]:
-                        if td not in synthetic_fn._eqn_list.eqns:
-                            synthetic_fn._add_eqn2(td, substitutions[td])
-                        add_deps(td)
+                    def add_deps(temp: Symbol) -> None:
+                        for td in new_temp_dependencies[temp]:
+                            if td not in synthetic_fn._eqn_list.eqns:
+                                synthetic_fn._add_eqn2(td, substitutions[td])
+                            add_deps(td)
 
-                add_deps(new_temp)
+                    add_deps(new_temp)
 
-                synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
-                global_temps[new_temp] = synthetic_fn
+                    synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+
+                tf_names_reading = set(new_temp_reads[new_temp].keys()).union(set(new_temp_transitive_reads[new_temp].keys()))
+                tfs_reading = {tf for name, tf in self.thorn_functions.items() if name in tf_names_reading}
+
+                schedule_blocks: dict[Identifier, ScheduleBlock] = dict()
+                schedule_bin_targets: dict[ScheduleBin, set[ThornFunction]] = defaultdict(set)
+                schedule_block_targets: dict[Identifier, set[ThornFunction]] = defaultdict(set)
+
+                for tf in tfs_reading:
+                    if isinstance(tf.schedule_target, ScheduleBlock):
+                        name = tf.schedule_target.name
+                        if name in schedule_blocks:
+                            assert schedule_blocks[name] == tf.schedule_target
+                        schedule_blocks[name] = tf.schedule_target
+                        schedule_block_targets[name].add(tf)
+                    else:
+                        schedule_bin_targets[tf.schedule_target].add(tf)
+
+                for bin, tfs in schedule_bin_targets.items():
+                    mk_synthetic_fn(bin, [tf.name for tf in tfs])
+
+                for block, tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets.items()]:
+                    mk_synthetic_fn(block, [tf.name for tf in tfs])
+
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
