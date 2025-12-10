@@ -129,7 +129,7 @@ class CppCarpetXGenerator(CactusGenerator):
                                 if self.thorn_def.var2base[var_name] not in rhs_names:
                                     sync_this_var = True
                             elif var not in rhses:
-                                    sync_this_var = True
+                                sync_this_var = True
 
                         if sync_this_var:
                             syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
