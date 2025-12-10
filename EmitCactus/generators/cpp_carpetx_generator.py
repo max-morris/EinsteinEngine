@@ -478,7 +478,7 @@ class CppCarpetXGenerator(CactusGenerator):
             eqns: list[tuple[sy.Symbol, Expr]] = [(lhs, sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
             temporaries = [
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
-                if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries) and not self._var_is_locally_declared(str(lhs))
+                if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries) and str(lhs) not in self.var_names
             ]
 
             carpetx_loops.append(
