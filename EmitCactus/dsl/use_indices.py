@@ -1690,7 +1690,7 @@ class ThornDef:
                 temp_singular_reads[new_temp] = self.thorn_functions[tf_name]
                 temp_singular_els_reading[new_temp] = els_reading
 
-                if (seen_count := len(els_reading_pure) + len(els_reading_transitive)) == 0:
+                if (seen_count := len(els_reading)) == 0:
                     assert False, f"Temp {seen_count} is seen 0 times but read by {tf_name}"
 
                 if seen_count == 1:
