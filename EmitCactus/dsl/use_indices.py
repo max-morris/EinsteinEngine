@@ -1615,6 +1615,7 @@ class ThornDef:
         new_temp_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
+        new_temp_dependents: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
 
         temp_rhs_occurrences: dict[Symbol, int] = defaultdict(int)
         for rhs in new_rhses:
@@ -1650,6 +1651,7 @@ class ThornDef:
                         assert lhs not in temp_dependencies
                         for td in temp_dependencies:
                             new_temp_dependencies[lhs].add(td)
+                            new_temp_dependents[td].add(lhs)
                             drill(td, substitutions[td])
 
                     drill(new_temp, temp_rhs)
@@ -1712,11 +1714,19 @@ class ThornDef:
                 temp_kinds[new_temp] = TempKind.Global
 
         # If a temporary is read by a synthetic function AND appears elsewhere, it should be promoted to a global
-        for new_temp in {t for t, k in temp_kinds.items() if k == TempKind.Global}:
-            for td in new_temp_dependencies[new_temp]:
-                if temp_rhs_occurrences[td] > 1:
-                    temp_kinds[td] = TempKind.Global
+        checked_deps: set[Symbol] = set()
+        def propagate_globalness(temp: Symbol):
+            if temp in checked_deps:
+                return
+            eligible = temp_rhs_occurrences[temp] > 1
+            for td in new_temp_dependents[temp]:
+                propagate_globalness(td)
+                if eligible and temp_kinds[td] == TempKind.Global:
+                    temp_kinds[temp] = TempKind.Global
+            checked_deps.add(temp)
 
+        for new_temp in substitutions.keys():
+            propagate_globalness(new_temp)
 
         for new_temp, new_rhs in substitutions.items():
             if new_temp not in temp_kinds:
