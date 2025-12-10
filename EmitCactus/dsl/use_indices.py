@@ -1580,6 +1580,7 @@ class ThornDef:
         self.set_derivative_stencil(5)
         self.div_makers["div"] = DivMakerVisitor(div)
         self.div_makers["D"] = DivMakerVisitor(D)
+        self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
 
@@ -1741,6 +1742,7 @@ class ThornDef:
                     eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # TempKind.Global
                 self._add_symbol(new_temp, Centering.VVV)  # todo: centering
+                self.global_temporaries.add(new_temp)
 
                 fn_dedup = 0
                 def mk_synthetic_fn(schedule_target: ScheduleTarget, schedule_before: Collection[str]):
