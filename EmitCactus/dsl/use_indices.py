@@ -1615,6 +1615,16 @@ class ThornDef:
         new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
 
+        temp_rhs_occurrences: dict[Symbol, int] = defaultdict(int)
+        for rhs in new_rhses:
+            for temp in free_symbols(rhs).intersection(substitutions.keys()):
+                temp_rhs_occurrences[temp] += 1
+
+        for rhs in substitutions.values():
+            for temp in free_symbols(rhs).intersection(substitutions.keys()):
+                temp_rhs_occurrences[temp] += 1
+
+
         global_eqn_idx = 0
         for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
             tf_name = TfName(tf.name)
@@ -1699,6 +1709,12 @@ class ThornDef:
                     temp_kinds[new_temp] = TempKind.Tile
             else:
                 temp_kinds[new_temp] = TempKind.Global
+
+        # If a temporary is read by a synthetic function AND appears elsewhere, it should be promoted to a global
+        for new_temp in {t for t, k in temp_kinds.items() if k == TempKind.Global}:
+            for td in new_temp_dependencies[new_temp]:
+                if temp_rhs_occurrences[td] > 1:
+                    temp_kinds[td] = TempKind.Global
 
 
         for new_temp, new_rhs in substitutions.items():
