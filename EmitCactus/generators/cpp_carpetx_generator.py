@@ -402,7 +402,7 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         if 'x' in input_var_strs:
-            xyz_decls = [
+            xyz_decls.append(
                 ConstAssignDecl(
                     Identifier('vreal'),
                     Identifier('x'),
@@ -415,13 +415,17 @@ class CppCarpetXGenerator(CactusGenerator):
                             IdExpr(Identifier('p.dx'))
                         )
                     )
-                ),
+                )
+            )
+
+        if 't' in input_var_strs:
+            xyz_decls.append(
                 ConstAssignDecl(
                     Identifier('vreal'),
                     Identifier('t'),
                     IdExpr(Identifier('cctk_time'))
                 )
-            ] + xyz_decls
+            )
 
         # DXI, DYI, DZI decls
         di_decls = [
