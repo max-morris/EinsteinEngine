@@ -91,7 +91,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             ]))
 
-        for fn_name, fn in self.thorn_def.thorn_functions.items():
+        for fn_name, fn in sorted(self.thorn_def.thorn_functions.items()):
             schedule_bin, at_or_in = self._resolve_schedule_target(fn.schedule_target)
 
             reads: list[Intent] = list()
