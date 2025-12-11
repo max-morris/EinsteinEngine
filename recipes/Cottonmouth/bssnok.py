@@ -309,8 +309,8 @@ detgt = det(gt_mat)
 gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
 cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 
-cottonmouth_bssnok.add_substitution_rule(At[ua, ub])
-cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
+cottonmouth_bssnok.add_substitution_rule(At[ua, ub], gt[ub, uc] * At[ua, lc])
+cottonmouth_bssnok.add_substitution_rule(At[ua, lb], gt[ua, uc] * At[lc, lb])
 
 cottonmouth_bssnok.add_substitution_rule(
     Gammat[lc, la, lb],
@@ -590,9 +590,6 @@ fun_bssn_cons.add_eqn(
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
 )
 
-fun_bssn_cons.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
-fun_bssn_cons.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
-
 fun_bssn_cons.add_eqn(
     cdphi[la],
     -Rational(1, 2) * (1 / w) * D(w, la)
@@ -648,9 +645,6 @@ fun_bssn_rhs.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
 )
-
-fun_bssn_rhs.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
-fun_bssn_rhs.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
 
 fun_bssn_rhs.add_eqn(
     cdphi[la],
