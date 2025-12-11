@@ -1776,6 +1776,18 @@ class ThornDef:
 
                     synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
 
+                    if schedule_target != ScheduleBin.Init:
+                        schedule_before = None
+
+                    init_fn = self.create_function(
+                        f'synthetic_init_{new_temp}',
+                        ScheduleBin.Init,
+                        schedule_before=schedule_before
+                    )
+
+                    init_fn._add_eqn2(new_temp, sympify(0))
+                    init_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+
                 tf_names_reading = set(new_temp_reads[new_temp].keys()).union(set(new_temp_transitive_reads[new_temp].keys()))
                 tfs_reading = {tf for name, tf in self.thorn_functions.items() if name in tf_names_reading}
 
