@@ -157,7 +157,7 @@ class CppCarpetXGenerator(CactusGenerator):
             new_explicit_syncs.append(
                 ExplicitSyncBatch(
                     vars=self.thorn_def.get_state(),
-                    schedule_target=ScheduleBin.PostStep,
+                    schedule_target=self.options.get('interior_sync_schedule_target', ScheduleBin.PostStep),
                     name="StateSync"
                 )
             )
