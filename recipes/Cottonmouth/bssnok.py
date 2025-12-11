@@ -292,8 +292,22 @@ cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 cottonmouth_bssnok.add_substitution_rule(At[ua, ub])
 cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
 
-cottonmouth_bssnok.add_substitution_rule(Gammat[ua, lb, lc])
-cottonmouth_bssnok.add_substitution_rule(Gammat[la, lb, uc])
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[ua, lb, lc],
+    gt[ua, ud] * Gammat[ld, lb, lc]
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[la, lb, uc],
+    gt[uc, ud] * Gammat[la, lb, ld]
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[lc, la, lb],
+    Rational(1, 2) * (
+        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
+    )
+)
 
 ###
 # Aux. groups
@@ -475,15 +489,6 @@ fun_bssn_ricci = cottonmouth_bssnok.create_function(
 
 # Aux. equations
 fun_bssn_ricci.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_ricci.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_ricci.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
-fun_bssn_ricci.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
 )
@@ -537,14 +542,6 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
 )
 
 # Aux. equations
-fun_bssn_cons.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_cons.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
 fun_bssn_cons.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
@@ -602,14 +599,6 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 )
 
 # Aux. equations
-fun_bssn_rhs.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
 fun_bssn_rhs.add_eqn(
     Delta[ua],
     gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
