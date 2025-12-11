@@ -154,14 +154,22 @@ class CppCarpetXGenerator(CactusGenerator):
 
         if self.options['interior_sync_mode'] is InteriorSyncMode.MixedRhs:
             new_explicit_syncs: List[ExplicitSyncBatch] = list(self.options.get('explicit_syncs', list()))
+            sync_target = self.options.get('interior_sync_schedule_target', ScheduleBin.PostStep)
+            sync_target_id, _ = self._resolve_schedule_target(sync_target)
+
             new_explicit_syncs.append(
                 ExplicitSyncBatch(
                     vars=self.thorn_def.get_state(),
-                    schedule_target=self.options.get('interior_sync_schedule_target', ScheduleBin.PostStep),
+                    schedule_target=sync_target,
                     name="StateSync"
                 )
             )
             self.options['explicit_syncs'] = new_explicit_syncs
+
+            # Ensure that StateSync is the first fn in its schedule target to run
+            for schedule_block in [b for b in schedule_blocks if b.schedule_bin == sync_target_id]:
+                schedule_block.after.append(Identifier("StateSync"))
+
 
         if (sync_batch_items := self.options.get('explicit_syncs', None)) is not None:
             for sync_batch in sync_batch_items:
