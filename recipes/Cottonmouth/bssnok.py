@@ -835,7 +835,8 @@ CppCarpetXWizard(
     CppCarpetXGenerator(
         cottonmouth_bssnok,
         # TODO: Custom RHS group not ignored
-        interior_sync_mode=InteriorSyncMode.IgnoreRhs,
+        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
             rhs_group,
@@ -843,12 +844,7 @@ CppCarpetXWizard(
             ricci_group_rhs,
             post_step_group,
             ricci_group_analysis,
-        ],
-        explicit_syncs=[ExplicitSyncBatch(
-            vars=cottonmouth_bssnok.get_state(),
-            schedule_target=post_step_group,
-            name="StateSync"
-        )]
+        ]
     )
 ).generate_thorn()
 
