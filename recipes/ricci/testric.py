@@ -1,5 +1,12 @@
 from EmitCactus import *
 
+gen_opts = {
+    "do_cse": False,
+    "do_madd": False,
+    "do_recycle_temporaries": False,
+    "do_split_output_eqns": True
+}
+
 # Create a set of grid functions
 gf = ThornDef("TestEmitCactus", "Ricci")
 gf.set_derivative_stencil(5)
@@ -42,15 +49,17 @@ fun.add_eqn(Ric[li, lj],
              D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
              G[ua, la, lb] * G[ub, li, lj] - G[ua, li, lb] * G[ub, la, lj])
 
-fun.bake()
+fun.bake(**gen_opts)
 
 fun = gf.create_function("MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
 fun.add_eqn(g[li, lj], gmat)
-fun.bake()
+fun.bake(**gen_opts)
 
 fun = gf.create_function("RicZero", ScheduleBin.Analysis, schedule_after=["setGL"])
 fun.add_eqn(ZeroVal, Ric[l0,l0]-b*(a*c**2 + a - 3*b*c**2*x**2 - 3*b*x**2)/(a**2 + 2*a*b*x**2 + b**2*x**4))
-fun.bake()
+fun.bake(**gen_opts)
+
+gf.do_global_cse()
 
 check_zero = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
