@@ -1671,10 +1671,10 @@ class ThornDef:
         for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
                                                   key=lambda kv: substitutions_order[kv[0]],
                                                   reverse=True):
-            for tf_name, local_idxes in new_temp_reads[new_temp].items():
+            for tf_name in set(chain(new_temp_reads[new_temp].keys(), new_temp_transitive_reads[new_temp].keys())):
+                local_idxes = new_temp_reads[new_temp].get(tf_name, set()) | new_temp_transitive_reads[new_temp].get(tf_name, set())
+                assert len(local_idxes) > 0
                 earliest_local_read = min(local_idxes)
-                if tf_name in new_temp_transitive_reads[new_temp]:
-                    earliest_local_read = min(earliest_local_read, min(new_temp_transitive_reads[new_temp][tf_name]))
 
                 for td in temp_dependencies:
                     get_or_compute(new_temp_transitive_reads[td], tf_name, lambda _: set()).add(earliest_local_read)
