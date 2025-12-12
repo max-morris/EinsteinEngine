@@ -1724,7 +1724,7 @@ class ThornDef:
             eligible = temp_rhs_occurrences[temp] > 1
             for td in new_temp_dependents[temp]:
                 propagate_globalness(td)
-                if eligible and temp_kinds[td] == TempKind.Global:
+                if eligible and temp_kinds.get(td, None) == TempKind.Global:
                     temp_kinds[temp] = TempKind.Global
             checked_deps.add(temp)
 
