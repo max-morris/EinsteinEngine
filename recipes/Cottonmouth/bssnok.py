@@ -309,8 +309,8 @@ detgt = det(gt_mat)
 gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
 cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 
-cottonmouth_bssnok.add_substitution_rule(At[ua, ub], gt[ub, uc] * At[ua, lc])
 cottonmouth_bssnok.add_substitution_rule(At[ua, lb], gt[ua, uc] * At[lc, lb])
+cottonmouth_bssnok.add_substitution_rule(At[ua, ub], gt[ub, uc] * At[ua, lc])
 
 cottonmouth_bssnok.add_substitution_rule(
     Gammat[lc, la, lb],
