@@ -168,7 +168,10 @@ class CppCarpetXGenerator(CactusGenerator):
 
             # Ensure that StateSync is the first fn in its schedule target to run
             for schedule_block in [b for b in schedule_blocks if b.schedule_bin == sync_target_id]:
-                schedule_block.after.append(Identifier("StateSync"))
+                if schedule_block.after is None:
+                    schedule_block.after = [Identifier("StateSync")]
+                else:
+                    schedule_block.after.append(Identifier("StateSync"))
 
 
         if (sync_batch_items := self.options.get('explicit_syncs', None)) is not None:

@@ -1718,7 +1718,7 @@ class ThornDef:
 
         # If a temporary is read by a synthetic function AND appears elsewhere, it should be promoted to a global
         checked_deps: set[Symbol] = set()
-        def propagate_globalness(temp: Symbol):
+        def propagate_globalness(temp: Symbol) -> None:
             if temp in checked_deps:
                 return
             eligible = temp_rhs_occurrences[temp] > 1
@@ -2172,7 +2172,7 @@ class ThornDef:
         basename = str(the_symbol)
 
         assert basename not in self.gfs
-        self.gfs[basename] = mkIndexedBase(the_symbol, shape=())
+        self.gfs[basename] = mkIndexedBase(basename, shape=())
         self.defn[basename] = (basename, list())
         self.centering[basename] = centering
         self.base2group[basename] = basename
