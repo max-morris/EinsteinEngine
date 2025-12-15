@@ -26,13 +26,13 @@ then
     exit 4
 fi
 EMIT_CACTUS_DIR="$PWD"
-echo "python3 recipies/waveeqn/waveeqn.py"
+echo "python3 recipies/non_flat_waveeqn/non_flat_waveeqn.py"
 set -e
-python3 recipes/waveeqn/waveeqn.py
+python3 recipes/non_flat_waveeqn/non_flat_waveeqn.py
 set +e
-if [ ! -r "./TestEmitCactus/WaveEqn/interface.ccl" ]
+if [ ! -r "./TestEmitCactus/NonFlatWaveEqn/interface.ccl" ]
 then
-    echo "Cannot find './TestEmitCactus/WaveEqn/interface.ccl" >&2
+    echo "Cannot find './TestEmitCactus/NonFlatWaveEqn/interface.ccl" >&2
     exit 5
 fi
 ln -s "$PWD/TestEmitCactus" "$CACTUS_DIR/arrangements/TestEmitCactus" 2>/dev/null
@@ -49,24 +49,22 @@ then
     exit 7
 fi
 cd "$CACTUS_DIR"
-cat "$THORNLIST" > .pre_waveeqn.th
-echo TestEmitCactus/WaveEqn >> .pre_waveeqn.th
-echo TestEmitCactus/ZeroTest >> .pre_waveeqn.th
+cat "$THORNLIST" > .pre_non_flat_waveeqn.th
+echo TestEmitCactus/NonFlatWaveEqn >> .pre_non_flat_waveeqn.th
+echo TestEmitCactus/ZeroTest >> .pre_non_flat_waveeqn.th
 
 set -e
 
-perl ./utils/Scripts/MakeThornList -o waveeqn.th --master .pre_waveeqn.th "$EMIT_CACTUS_DIR/recipes/waveeqn/waveeqn.par"
+perl ./utils/Scripts/MakeThornList -o non_flat_waveeqn.th --master .pre_non_flat_waveeqn.th "$EMIT_CACTUS_DIR/recipes/non_flat_waveeqn/non_flat_waveeqn.par"
 CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
-#perl -p -i -e 's{ExternalLibraries/openPMD}{# ExternalLibraries/openPMD}' waveeqn.th
-#perl -p -i -e 's{ExternalLibraries/ADIOS2}{# ExternalLibraries/ADIOS2}' waveeqn.th
-./simfactory/bin/sim build waveeqn -j$(($CPUS / 4)) --thornlist waveeqn.th |& tee make.out
-rm -fr ~/simulations/waveeqn
-./simfactory/bin/sim create-run waveeqn --config waveeqn --parfile "$EMIT_CACTUS_DIR/recipes/waveeqn/waveeqn.par" --procs 2 --ppn-used 2 --num-thread 1 |& tee run.out
+./simfactory/bin/sim build non_flat_waveeqn -j$(($CPUS / 4)) --thornlist non_flat_waveeqn.th |& tee make.out
+rm -fr ~/simulations/non_flat_waveeqn
+./simfactory/bin/sim create-run non_flat_waveeqn --config non_flat_waveeqn --parfile "$EMIT_CACTUS_DIR/recipes/non_flat_waveeqn/non_flat_waveeqn.par" --procs 2 --ppn-used 2 --num-thread 1 |& tee run.out
 
 set +e
 
-OUTFILE=$(./simfactory/bin/sim get-output-dir waveeqn)/waveeqn.out
-ERRFILE=$(./simfactory/bin/sim get-output-dir waveeqn)/waveeqn.err
+OUTFILE=$(./simfactory/bin/sim get-output-dir non_flat_waveeqn)/non_flat_waveeqn.out
+ERRFILE=$(./simfactory/bin/sim get-output-dir non_flat_waveeqn)/non_flat_waveeqn.err
 ############
 echo "OUTPUT FILE IS: ${OUTFILE}"
 echo "ERROR FILE IS: ${ERRFILE}"
@@ -91,7 +89,7 @@ fi
 ############
 N=$(grep '::ZERO TEST RAN' ${OUTFILE}|wc -l)
 echo "ZERO TESTS THAT RAN: ${N}"
-EXPECTED=642
+EXPECTED=1578
 if [ "$N" != "${EXPECTED}" ]
 then
     echo "ZERO TEST FAILURE: Expected ${EXPECTED}, got ${N}"
