@@ -1731,6 +1731,36 @@ class ThornDef:
         for new_temp in substitutions.keys():
             propagate_globalness(new_temp)
 
+        checked_deps.clear()
+        def compute_centerings(temp: Symbol) -> None:
+            if temp in checked_deps:
+                return
+
+            checked_deps.add(temp)
+
+            for td in new_temp_dependencies[temp]:
+                compute_centerings(td)
+
+            centerings = {
+                c for c in {
+                    self.centering.get(self.var2base.get(str(sym)) or str(sym)) for sym in free_symbols(substitutions[temp])
+                } if c is not None
+            }
+
+            if len(centerings) == 0:
+                #raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings")
+                #todo: Cases where a temp has no grid functions in its RHS might require us to check its dependents
+                print(f"Warning: Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings. Defaulting to VVV.")
+                centerings = {Centering.VVV}
+            elif len(centerings) > 1:
+                raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; its dependencies have conflicting centerings {centerings}")
+
+            assert len(centerings) == 1
+            self.centering[str(temp)] = centerings.pop()
+
+        for new_temp in substitutions.keys():
+            compute_centerings(new_temp)
+
         schedule_blocks: dict[Identifier, ScheduleBlock] = dict()
         schedule_bin_targets: dict[Symbol, dict[ScheduleBin, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
         schedule_block_targets: dict[Symbol, dict[Identifier, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
@@ -1758,7 +1788,7 @@ class ThornDef:
                 for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
                     eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # TempKind.Global
-                self._add_symbol(new_temp, Centering.VVV)  # todo: centering
+                self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
                 self.global_temporaries.add(new_temp)
 
                 tf_names_reading = set(new_temp_reads[new_temp].keys()).union(set(new_temp_transitive_reads[new_temp].keys()))
