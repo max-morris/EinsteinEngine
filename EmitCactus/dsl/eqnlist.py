@@ -554,7 +554,7 @@ class EqnList:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
 
-    def bake(self, *, force_rebake=False) -> None:
+    def bake(self, *, force_rebake: bool = False) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
         if self.been_baked and not force_rebake:
             raise DslException("Can't bake an EqnList that has already been baked.")
@@ -569,6 +569,7 @@ class EqnList:
             self.outputs.add(lhs)
             for symb in rhs.free_symbols:
                 if symb not in self.params:
+                    assert isinstance(symb, Symbol), f"{symb} should be an instance of Symbol, but type={type(symb)}"
                     self.inputs.add(symb)
 
         for lhs in self.outputs:
