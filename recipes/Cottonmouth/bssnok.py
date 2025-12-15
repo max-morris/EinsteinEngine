@@ -12,7 +12,7 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 gen_opts = {
     "do_cse": True,
     "do_madd": False,
-    "do_recycle_temporaries": False,
+    "do_recycle_temporaries": True,
     "do_split_output_eqns": True
 }
 
@@ -267,6 +267,18 @@ R = cottonmouth_bssnok.decl(
     parity=parity_sym2ten
 )
 
+###
+# Matter terms.
+###
+
+#  n^a n^b T_{ab}
+rho = cottonmouth_bssnok.decl("rho", [])
+
+# -p^a_i n^b T_{ab}, where p^a_i = \delta^a_i + n^a n_i
+S = cottonmouth_bssnok.decl("S", [la])
+
+# \gamma^{ij} T_{ij}
+trS = cottonmouth_bssnok.decl("trS", [])
 
 ###
 # Aux. Vars.
@@ -291,14 +303,10 @@ cdphi = cottonmouth_bssnok.decl("cdphi", [la])
 # \tilde{D}_a \tilde{D}_b \phi
 cdphi2 = cottonmouth_bssnok.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 
-# Aux. matter variables\
-rho = cottonmouth_bssnok.decl("rho", [])
-S = cottonmouth_bssnok.decl("S", [la])
-trS = cottonmouth_bssnok.decl("trS", [])
-
 ###
 # Substitution rules
 ###
+# Conformal metric and its inverse
 g_mat = cottonmouth_bssnok.get_matrix(g[la, lb])
 g_imat = inv(g_mat)
 detg = det(g_mat)
@@ -309,12 +317,38 @@ detgt = det(gt_mat)
 gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
 cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 
-cottonmouth_bssnok.add_substitution_rule(At[ua, ub])
-cottonmouth_bssnok.add_substitution_rule(At[ua, lb])
+# At
+cottonmouth_bssnok.add_substitution_rule(At[ua, lb], gt[ua, uc] * At[lc, lb])
+cottonmouth_bssnok.add_substitution_rule(At[ua, ub], gt[ub, uc] * At[ua, lc])
 
-cottonmouth_bssnok.add_substitution_rule(Gammat[ua, lb, lc])
-cottonmouth_bssnok.add_substitution_rule(Gammat[la, lb, uc])
+# Gammat (Conformal connection)
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[lc, la, lb],
+    Rational(1, 2) * (
+        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
+    )
+)
 
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc]
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld]
+)
+
+cottonmouth_bssnok.add_substitution_rule(
+    Delta[ua],
+    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
+)
+
+# Phi derivatives w.r.t the conformal metric
+cottonmouth_bssnok.add_substitution_rule(
+    cdphi[la],
+    -Rational(1, 2) * (1 / w) * D(w, la)
+)
+
+# Matter
 cottonmouth_bssnok.add_substitution_rule(
     rho,
     1 / evo_lapse**2 * (
@@ -524,25 +558,6 @@ fun_bssn_ricci = cottonmouth_bssnok.create_function(
 
 # Aux. equations
 fun_bssn_ricci.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_ricci.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_ricci.add_eqn(Gammat[la, lb, uc], gt[uc, ud] * Gammat[la, lb, ld])
-fun_bssn_ricci.add_eqn(
-    Delta[ua],
-    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
-)
-
-fun_bssn_ricci.add_eqn(
-    cdphi[la],
-    -Rational(1, 2) * (1 / w) * D(w, la)
-)
-
-fun_bssn_ricci.add_eqn(
     cdphi2[la, lb],
     -Rational(1, 2) * (1 / w) * (
         D(w, la, lb)
@@ -573,6 +588,7 @@ fun_bssn_ricci.add_eqn(
     - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
 )
 
+# Ricci tensor
 fun_bssn_ricci.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
 fun_bssn_ricci.bake(**gen_opts)
@@ -583,28 +599,6 @@ fun_bssn_ricci.bake(**gen_opts)
 fun_bssn_cons = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_constraints",
     analysis_group
-)
-
-# Aux. equations
-fun_bssn_cons.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_cons.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_cons.add_eqn(
-    Delta[ua],
-    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
-)
-
-fun_bssn_cons.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
-fun_bssn_cons.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
-
-fun_bssn_cons.add_eqn(
-    cdphi[la],
-    -Rational(1, 2) * (1 / w) * D(w, la)
 )
 
 # Hamiltonian constraint
@@ -628,7 +622,7 @@ fun_bssn_cons.add_eqn(
     + 6 * At[ua, ub] * cdphi[lb]
     - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
     # Matter
-    - 8 * pi * gt[ua, ub] * S[lb]
+    - 8 * pi * w**2 * gt[ua, ub] * S[lb]
 )
 
 fun_bssn_cons.add_eqn(
@@ -655,27 +649,6 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 )
 
 # Aux. equations
-fun_bssn_rhs.add_eqn(
-    Gammat[lc, la, lb],
-    Rational(1, 2) * (
-        D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-    )
-)
-
-fun_bssn_rhs.add_eqn(Gammat[ua, lb, lc], gt[ua, ud] * Gammat[ld, lb, lc])
-fun_bssn_rhs.add_eqn(
-    Delta[ua],
-    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
-)
-
-fun_bssn_rhs.add_eqn(At[ua, lb], gt[ua, uc] * At[lc, lb])
-fun_bssn_rhs.add_eqn(At[ua, ub], gt[ub, uc] * At[ua, lc])
-
-fun_bssn_rhs.add_eqn(
-    cdphi[la],
-    -Rational(1, 2) * (1 / w) * D(w, la)
-)
-
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
     (
@@ -786,6 +759,8 @@ fun_bssn_rhs.add_eqn(
     + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
     - Delta[ub] * D(evo_shift[ua], lb)
     + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
+    # Matter
+    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
     # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
     + evo_shift[ub] * D(ConfConnect[ua], lb)
     # Dissipation:
@@ -849,7 +824,6 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        # TODO: Custom RHS group not ignored
         interior_sync_mode=InteriorSyncMode.IgnoreRhs,
         extra_schedule_blocks=[
             initial_group,
