@@ -834,11 +834,6 @@ CppCarpetXWizard(
             post_step_group,
             ricci_group_analysis,
         ],
-        explicit_syncs=[ExplicitSyncBatch(
-            vars=cottonmouth_bssnok.get_state(),
-            schedule_target=post_step_group,
-            name="StateSync"
-        )]
     )
 ).generate_thorn()
 
