@@ -114,7 +114,7 @@ class CppVisitor(Visitor[CodeNode]):
         if n.op is BinOp.Pow:
             if isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer == 2:
                 return f'pow2({lhs})'
-            elif isinstance(n.rhs, IntLiteralExpr):
+            elif isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer > 0:
                 return f'pown({lhs}, {rhs})'
             elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=2.0)):
                 return f'sqrt({lhs})'
