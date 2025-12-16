@@ -1,4 +1,76 @@
+from enum import Enum
 
+
+class EvolutionThorn(Enum):
+    CANUDAX = 0,
+    COTTONMOUTH = 1,
+    Z4C = 2,
+
+
+USED_EVOLUTION_THORN = EvolutionThorn.COTTONMOUTH
+
+if USED_EVOLUTION_THORN == EvolutionThorn.CANUDAX:
+    evolution_thorn_name = "CanudaX_BSSNMoL"
+    evolution_thorn_settings = r"""
+CanudaX_BSSNMoL::calculate_constraints              = yes
+CanudaX_BSSNMoL::calculate_constraints_every        = 256
+CanudaX_BSSNMoL::slicing_condition                  = "1+log"
+CanudaX_BSSNMoL::kappa_alpha                        = 2.0
+CanudaX_BSSNMoL::impose_conf_fac_floor_at_initial   = yes
+CanudaX_BSSNMoL::conf_fac_floor                     = 1.0d-04
+CanudaX_BSSNMoL::h_amp                              = 1.0
+CanudaX_BSSNMoL::sigma                              = 30
+CanudaX_BSSNMoL::precollapsed_lapse                 = yes
+CanudaX_BSSNMoL::zeta_alpha                         = 1
+CanudaX_BSSNMoL::zeta_beta                          = 1
+CanudaX_BSSNMoL::eta_beta                           = 1
+CanudaX_BSSNMoL::beta_Gamma                         = 0.75
+CanudaX_BSSNMoL::chi_gamma                          = 0.667
+CanudaX_BSSNMoL::beta_Alp                           = 1
+CanudaX_BSSNMoL::eta_transition                     = no
+CanudaX_BSSNMoL::moving_eta_transition              = no
+CanudaX_BSSNMoL::eta_beta_dynamic                   = no
+CanudaX_BSSNMoL::eps_r                              = 1e-5
+CanudaX_BSSNMoL::reset_dethh                        = yes
+CanudaX_BSSNMoL::make_aa_tracefree                  = yes
+CanudaX_BSSNMoL::stress_energy_state                = yes
+CanudaX_BSSNMoL::derivs_order                       = 4
+CanudaX_BSSNMoL::use_advection_stencils             = yes
+CanudaX_BSSNMoL::add_KO_dissipation                 = yes
+CanudaX_BSSNMoL::diss_eps                           = 0.15
+CanudaX_BSSNMoL::diss_order                         = 5
+CanudaX_BSSNMoL::use_local_error_estimate           = no
+CanudaX_BSSNMoL::boundary_conditions                = "radiative"
+"""
+    evolution_thorn_hc_var = "CanudaX_BSSNMoL::ham"
+    evolution_thorn_mc_var = "CanudaX_BSSNMoL::mom"
+
+elif USED_EVOLUTION_THORN == EvolutionThorn.COTTONMOUTH:
+    evolution_thorn_name = "CottonmouthBSSNOK"
+    evolution_thorn_settings = r"""
+CottonmouthBSSNOK::eta_b                  = 1.0
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-6
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-8
+CottonmouthBSSNOK::dissipation_epsilon    = 0.32
+"""
+    evolution_thorn_hc_var = "CottonmouthBSSNOK::HamCons"
+    evolution_thorn_mc_var = "CottonmouthBSSNOK::MomCons"
+
+elif USED_EVOLUTION_THORN == EvolutionThorn.Z4C:
+    evolution_thorn_name = "Z4c"
+    evolution_thorn_settings = r"""
+Z4c::calc_ADM_vars = yes
+Z4c::calc_ADMRHS_vars = no
+Z4c::calc_constraints = yes
+Z4c::chi_floor = 1.0e-6
+Z4c::alphaG_floor = 1.0e-8
+Z4c::epsdiss = 0.32
+Z4c::boundary_conditions = "NewRadX"
+"""
+    evolution_thorn_name = "Z4c::HC"
+    evolution_thorn_settings = "Z4c::MtC"
+
+template = rf"""
 ###############################
 # Simple test of magnetised TOV neutron star
 # Same neutron star as the gallery example
@@ -17,7 +89,7 @@ ActiveThorns = "
     TmunuBaseX
     AsterX
     AsterSeeds
-    CottonmouthBSSNOK
+    {evolution_thorn_name}
     AsterMasks
     TOVSolverX
     SystemTopology
@@ -86,12 +158,7 @@ ADMBaseX::initial_lapse                      = "tov"
 ADMBaseX::initial_shift                      = "tov"
 ADMBaseX::initial_dtlapse                    = "zero"
 ADMBaseX::initial_dtshift                    = "zero"
-
-CottonmouthBSSNOK::eta_b                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-6
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-8
-CottonmouthBSSNOK::dissipation_epsilon    = 0.32
-
+{evolution_thorn_settings}
 # Hydro
 TOVSolverX::TOV_Rho_Central[0] = 1.28e-3
 TOVSolverX::TOV_Gamma          = 2.0
@@ -145,8 +212,8 @@ CarpetX::out_norm_every         = 32
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
   HydroBaseX::rho
-  CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
+  {evolution_thorn_hc_var}
+  {evolution_thorn_mc_var}
 "
 
 CarpetX::out_silo_vars = "
@@ -161,8 +228,8 @@ CarpetX::out_silo_vars = "
     TmunuBaseX::eTtt
     TmunuBaseX::eTti
     TmunuBaseX::eTij
-    CottonmouthBSSNOK::HamCons
-    CottonmouthBSSNOK::MomCons
+    {evolution_thorn_hc_var}
+    {evolution_thorn_mc_var}
 "
 
 CarpetX::out_tsv = no
@@ -177,3 +244,7 @@ IO::checkpoint_on_terminate         = yes
 IO::recover                         = "autoprobe"
 CarpetX::checkpoint_method          = "openpmd"
 CarpetX::recover_method             = "openpmd"
+"""
+
+with open("mag_TOV.par", "w") as file:
+    file.write(template)
