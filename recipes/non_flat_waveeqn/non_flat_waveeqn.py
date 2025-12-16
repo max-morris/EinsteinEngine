@@ -234,6 +234,8 @@ zero_test_group = ScheduleBlock(
     after=[Identifier("RicZero")]
 )
 
+nfweq.do_global_cse()
+
 ###
 # Generate
 ###
