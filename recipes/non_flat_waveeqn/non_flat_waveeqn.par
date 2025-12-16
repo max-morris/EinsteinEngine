@@ -81,7 +81,7 @@ CarpetX::dtfac = $cfl
 IO::out_dir = $parfile
 IO::out_every = $out_every_it
 
-CarpetX::out_openpmd_vars = "
+CarpetX::out_silo_vars = "
   NonFlatWaveEqn::u
   NonFlatWaveEqn::rho
   NonFlatWaveEqn::v
