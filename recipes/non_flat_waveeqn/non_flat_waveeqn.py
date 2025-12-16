@@ -172,7 +172,7 @@ nfweq_init.add_eqn(
     diff(id_func, z)
 )
 
-nfweq_init.bake()
+nfweq_init.bake(do_recycle_temporaries=False)
 
 ###
 # RHS Equations
@@ -209,7 +209,7 @@ nfweq_rhs.add_eqn(
     D(rho, la)
 )
 
-nfweq_rhs.bake()
+nfweq_rhs.bake(do_recycle_temporaries=False)
 
 ###
 # Analysis
