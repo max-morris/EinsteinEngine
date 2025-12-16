@@ -43,7 +43,7 @@ ActiveThorns = "
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = no
-CarpetX::poison_undefined_values = no
+CarpetX::poison_undefined_values = yes
 
 # Run Termination
 Cactus::terminate       = "any"

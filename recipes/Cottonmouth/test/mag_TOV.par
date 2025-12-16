@@ -1,3 +1,4 @@
+
 ###############################
 # Simple test of magnetised TOV neutron star
 # Same neutron star as the gallery example
@@ -17,42 +18,37 @@ ActiveThorns = "
     AsterX
     AsterSeeds
     CottonmouthBSSNOK
-#    Z4c
     AsterMasks
+    TOVSolverX
 "
 
-$nlevels	= 2
-$ncells 	=  24
+CarpetX::verbose    = yes
+ODESolvers::verbose = yes
 
-CarpetX::verbose = no
 Cactus::presync_mode = "mixed-error"
 CarpetX::poison_undefined_values = no
 
-# Finest grid spacing is 0.15625 
-# To have a symmetric grid along 0, we have odd number of points (257) 
-# along each direction going from -20.078125 to +20.078125 for the finest level
+CarpetX::xmin = -12.0
+CarpetX::ymin = -12.0
+CarpetX::zmin = -12.0
 
-CarpetX::xmin = -12
-CarpetX::ymin = -12
-CarpetX::zmin = -12
+CarpetX::xmax = 12.0
+CarpetX::ymax = 12.0
+CarpetX::zmax = 12.0
 
-CarpetX::xmax = 12
-CarpetX::ymax = 12
-CarpetX::zmax = 12
+CarpetX::ncells_x = 24
+CarpetX::ncells_y = 24
+CarpetX::ncells_z = 24
 
-CarpetX::ncells_x = $ncells
-CarpetX::ncells_y = $ncells
-CarpetX::ncells_z = $ncells
-
-CarpetX::boundary_x =  "neumann"
-CarpetX::boundary_y =  "neumann"
-CarpetX::boundary_z =  "neumann"
+CarpetX::boundary_x       =  "neumann"
+CarpetX::boundary_y       =  "neumann"
+CarpetX::boundary_z       =  "neumann"
 CarpetX::boundary_upper_x =  "neumann"
 CarpetX::boundary_upper_y =  "neumann"
 CarpetX::boundary_upper_z =  "neumann"
 
-CarpetX::max_num_levels = $nlevels
-CarpetX::regrid_every = 128000
+CarpetX::max_num_levels = 2
+CarpetX::regrid_every   = 128000
 CarpetX::regrid_error_threshold = 0.9
 
 CarpetX::prolongation_type = "ddf"
@@ -64,97 +60,80 @@ CarpetX::blocking_factor_y = 1
 CarpetX::blocking_factor_z = 1
 
 BoxInBox::num_regions = 1
-# Region 1
 BoxInBox::shape_1 = "cube"
-BoxInBox::num_levels_1 = $nlevels 
+BoxInBox::num_levels_1 = 2
 BoxInBox::radius_1 = [ -1.0, 3 ]
 
-
-#ADMBaseX::set_adm_variables_during_evolution = "yes"
-ADMBaseX::initial_data       = "tov"
-ADMBaseX::initial_lapse      = "tov"
-ADMBaseX::initial_shift      = "tov"
-ADMBaseX::initial_dtlapse    = "zero"
-ADMBaseX::initial_dtshift    = "zero"
+ADMBaseX::initial_data    = "tov"
+ADMBaseX::initial_lapse   = "tov"
+ADMBaseX::initial_shift   = "tov"
+ADMBaseX::initial_dtlapse = "zero"
+ADMBaseX::initial_dtshift = "zero"
 
 CottonmouthBSSNOK::eta_b                  = 1.0
 CottonmouthBSSNOK::conformal_factor_floor = 1.0e-6
 CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-8
 CottonmouthBSSNOK::dissipation_epsilon    = 0.32
 
-#Z4c::calc_ADM_vars = yes                  # for Weyl
-#Z4c::calc_ADMRHS_vars = no  #yes               # for Weyl
-#Z4c::calc_constraints = yes
-#Z4c::chi_floor = 1.0e-6
-#Z4c::alphaG_floor = 1.0e-8
-#Z4c::epsdiss = 0.32
-#Z4c::boundary_conditions = "NewRadX"
-
-ActiveThorns = "TOVSolverX"
 TOVSolverX::TOV_Rho_Central[0] = 1.28e-3
 TOVSolverX::TOV_Gamma          = 2.0
 TOVSolverX::TOV_K              = 100.0
 TOVSolverX::TOV_Cowling = no
 
-
-AsterSeeds::test_type = "3DTest"
-AsterSeeds::test_case = "magTOV"
+AsterSeeds::test_type     = "3DTest"
+AsterSeeds::test_case     = "magTOV"
 AsterSeeds::Afield_config = "internal dipole"
-AsterSeeds::Ab = 100.0
-AsterSeeds::press_cut = 0.04
-AsterSeeds::press_max = 1.638e-4
-AsterSeeds::Avec_kappa = 2.0
+AsterSeeds::Ab            = 100.0
+AsterSeeds::press_cut     = 0.04
+AsterSeeds::press_max     = 1.638e-4
+AsterSeeds::Avec_kappa    = 2.0
 
-#AsterSeeds::Afield_config = "external dipole"
-#AsterSeeds::B0 = 1e-7
-#AsterSeeds::r0 = 5.0
-
-AsterX::debug_mode = "no"
-AsterX::flux_type = "HLLE"
+AsterX::debug_mode             = "no"
+AsterX::flux_type              = "HLLE"
 AsterX::vector_potential_gauge = "generalized Lorentz"
-AsterX::lorenz_damp_fac = 12.8571428571429
-AsterX::local_spatial_order = 4
-AsterX::local_estimate_error = "no"
-AsterX::recon_type = "z_vec"
-AsterX::use_entropy_fix = "yes"
-AsterX::use_uct         = "yes"
+AsterX::lorenz_damp_fac        = 12.8571428571429
+AsterX::local_spatial_order    = 4
+AsterX::local_estimate_error   = "no"
+AsterX::recon_type             = "z_vec"
+AsterX::use_entropy_fix        = "yes"
+AsterX::use_uct                = "yes"
 
 ReconX::reconstruction_method = "PPM"
-ReconX::ppm_zone_flattening = "yes"
-ReconX::ppm_shock_detection = "no"
+ReconX::ppm_zone_flattening   = "yes"
+ReconX::ppm_shock_detection   = "no"
 
-Con2PrimFactory::c2p_prime = "Noble"
-Con2PrimFactory::c2p_second = "Palenzuela"
-Con2PrimFactory::c2p_tol = 1e-8
-Con2PrimFactory::max_iter = 100
-Con2PrimFactory::rho_abs_min = 1e-11
-Con2PrimFactory::atmo_tol = 1e-3
-Con2PrimFactory::unit_test = "yes"
-Con2PrimFactory::B_lim = 1e8
-Con2PrimFactory::vw_lim = 1e8
-Con2PrimFactory::Ye_lenient = "yes"
-Con2PrimFactory::use_z = "yes"
+Con2PrimFactory::c2p_prime        = "Noble"
+Con2PrimFactory::c2p_second       = "Palenzuela"
+Con2PrimFactory::c2p_tol          = 1e-8
+Con2PrimFactory::max_iter         = 100
+Con2PrimFactory::rho_abs_min      = 1e-11
+Con2PrimFactory::atmo_tol         = 1e-3
+Con2PrimFactory::unit_test        = "yes"
+Con2PrimFactory::B_lim            = 1e8
+Con2PrimFactory::vw_lim           = 1e8
+Con2PrimFactory::Ye_lenient       = "yes"
+Con2PrimFactory::use_z            = "yes"
 Con2PrimFactory::thermal_eos_atmo = "no"
 
 EOSX::evolution_eos = "IdealGas"
-EOSX::gl_gamma = 2.0
-EOSX::poly_gamma = 2.0
-EOSX::poly_k = 100
-EOSX::rho_max = 1e8
-EOSX::eps_max = 1e8
-EOSX::eps_min = 1e-9
+EOSX::gl_gamma      = 2.0
+EOSX::poly_gamma    = 2.0
+EOSX::poly_k        = 100
+EOSX::rho_max       = 1e8
+EOSX::eps_max       = 1e8
+EOSX::eps_min       = 1e-9
 
-Cactus::terminate = "iteration"
+Cactus::terminate   = "iteration"
 Cactus::cctk_itlast = 100
-#Cactus::cctk_final_time = 200
-ODESolvers::method = "RK4"
+ODESolvers::method  = "RK4"
 
-IO::out_dir = $parfile
-IO::out_every = 50
+IO::out_dir       = $parfile
+IO::out_every     = 50
 IO::parfile_write = no
 
-CarpetX::out_metadata = no
-CarpetX::out_norm_vars = " "
+CarpetX::out_metadata           = no
+CarpetX::out_performance        = no
+CarpetX::out_norm_vars          = ""
 CarpetX::out_norm_omit_unstable = yes
 
 CarpetX::out_tsv_vars = "
