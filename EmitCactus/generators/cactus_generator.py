@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from EmitCactus.dsl.use_indices import ThornDef
+from EmitCactus.dsl.use_indices import ThornDef, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
     TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot
@@ -43,6 +43,7 @@ class InteriorSyncMode(Enum):
 class CactusGeneratorOptions(TypedDict, total=False):
     extra_schedule_blocks: list[ScheduleBlock]
     interior_sync_mode: InteriorSyncMode
+    interior_sync_schedule_target: ScheduleTarget
 
 
 class CactusGenerator(ABC):
