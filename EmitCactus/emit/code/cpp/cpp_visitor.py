@@ -121,7 +121,7 @@ class CppVisitor(Visitor[CodeNode]):
             elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=3.0)):
                 return f'cbrt({lhs})'
             else:
-                return f'pow<vreal>({lhs}, {rhs})'
+                return f'pow(static_cast<vreal>({lhs}), {rhs})'
 
         return f'({lhs} {n.op.representation} {rhs})'
 
