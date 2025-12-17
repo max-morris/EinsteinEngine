@@ -1833,33 +1833,13 @@ class ThornDef:
                 return synthetic_fn
 
 
-            def mk_init_fn(schedule_before: Collection[str]) -> ThornFunction:
-                init_fn = self.create_function(
-                    f'synthetic_init_{new_temp}',
-                    ScheduleBin.Init,
-                    schedule_before=schedule_before
-                )
-
-                init_fn._add_eqn2(new_temp, sympify(0))
-                init_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
-                return init_fn
-
-
-            init_schedule_before: set[str] = set()
-
             for bin, tfs in schedule_bin_targets[new_temp].items():
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp]])))
-                fn = mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
-                if bin == ScheduleBin.Init:
-                    init_schedule_before.add(fn.name)
+                mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
 
             for block, tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp]])))
-                fn = mk_synthetic_fn(block, sorted([tf.name for tf in tfs]), schedule_after)
-                if block.schedule_bin == ScheduleBin.Init:
-                    init_schedule_before.add(fn.name)
-
-            mk_init_fn(init_schedule_before)
+                mk_synthetic_fn(block, sorted([tf.name for tf in tfs]), schedule_after)
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
