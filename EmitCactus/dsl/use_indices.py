@@ -7,6 +7,7 @@ import typing
 from collections import defaultdict
 from enum import auto
 from itertools import chain
+from enum import auto, Enum
 from typing import *
 
 import sympy.logic.boolalg
@@ -23,6 +24,7 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy, promote_all
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
@@ -1319,6 +1321,13 @@ def safe_name(schedule_target: ScheduleTarget) -> str:
     else:
         return schedule_target.generic_name
 
+
+class ThornFunctionBakeOptions(TypedDict, total=False):
+    do_cse: bool
+    do_madd: bool
+    do_recycle_temporaries: bool
+    do_split_output_eqns: bool
+
 class ThornFunction:
     """
     Represents a function within a Cactus thorn. Important member functions include `add_eqn` for specifying
@@ -1390,6 +1399,8 @@ class ThornFunction:
         return it.free
 
     def split_loop(self) -> None:
+        if self.been_baked:
+            raise DslException("Cannot split loop because the EqnComplex has already been baked.")
         self.eqn_complex.new_eqn_list()
 
     @multimethod
@@ -1495,11 +1506,16 @@ class ThornFunction:
     def split_output_eqns(self) -> None:
         self.eqn_complex.split_output_eqns()
 
-    def bake(self, *,
-             do_cse: bool = True,
-             do_madd: bool = False,
-             do_recycle_temporaries: bool = True,
-             do_split_output_eqns: bool = True) -> None:
+    @staticmethod
+    def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
+        return {
+            'do_cse': False,
+            'do_madd': False,
+            'do_recycle_temporaries': True,
+            'do_split_output_eqns': True
+        }
+
+    def bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
         """
         Finalize this function in preparation to be passed to a generator.
         :param do_cse: If true, perform SymPy's common subexpression elimination.
@@ -1512,17 +1528,24 @@ class ThornFunction:
             raise DslException("bake should not be called more than once")
         print(f"*** {self.name} ***")
 
-        if do_madd:
+        options = self._mk_default_thorn_function_bake_options()
+        options.update(kwargs)
+
+        # Doing a first pass of complexity analysis for CSE
+        for eqn_list in self.eqn_complex.eqn_lists:
+            eqn_list._run_preliminary_complexity_analysis()
+
+        if options['do_madd']:
             self.madd()
         #if do_cse:
         #    self.cse()
 
         self.eqn_bake()
 
-        if do_split_output_eqns:
+        if options['do_split_output_eqns']:
             self.split_output_eqns()
 
-        if do_recycle_temporaries:
+        if options['do_recycle_temporaries']:
             self.recycle_temporaries()
 
         self.been_baked = True

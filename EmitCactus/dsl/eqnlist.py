@@ -11,8 +11,10 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy
 from EmitCactus.dsl.util import require_baked
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
+from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
 from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 from EmitCactus.util import get_or_compute
 
@@ -87,6 +89,12 @@ class EqnComplex:
 
     def get_active_eqn_list(self) -> 'EqnList':
         return self.eqn_lists[-1]
+
+    def _grid_variables(self) -> set[Symbol]:
+        gv: set[Symbol] = set()
+        for eqn_list in self.eqn_lists:
+            gv |= eqn_list._grid_variables()
+        return gv
 
     def do_madd(self) -> None:
         for eqn_list in self.eqn_lists:
@@ -294,6 +302,7 @@ class EqnList:
         self.requires: Dict[Symbol, Set[Symbol]] = dict()  # key requires vals
         self.been_baked: bool = False
         self.parent = parent
+        self.complexity: dict[Symbol, int] = dict()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -310,6 +319,14 @@ class EqnList:
     @require_baked(msg="Can't get sorted_eqns before baking the EqnList.")
     def sorted_eqns(self) -> list[tuple[Symbol, Expr]]:
         return sorted(self.eqns.items(), key=lambda kv: self.order.index(kv[0]))
+
+    def _grid_variables(self) -> set[Symbol]:
+        return {s for s in (self.inputs | self.outputs) if str(s) not in {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}}
+
+    @cached_property
+    @require_baked(msg="Can't get grid_variables before baking the EqnList.")
+    def grid_variables(self) -> set[Symbol]:
+        return self._grid_variables()
 
     def add_param(self, lhs: Symbol) -> None:
         assert lhs not in self.outputs, f"The symbol '{lhs}' is already in outputs"
@@ -364,6 +381,7 @@ class EqnList:
         assert target_lhs in self.order
 
         self.eqns[new_lhs] = new_rhs
+        self._run_complexity_analysis(new_lhs)
         self.order.insert(self.order.index(target_lhs), new_lhs)
         self.temporaries.add(new_lhs)
 
@@ -394,6 +412,7 @@ class EqnList:
 
         new_rhs, subexpressions = self._split_sympy_expr(target_lhs, expr)
         self.eqns[target_lhs] = new_rhs
+        self._run_complexity_analysis(target_lhs)
 
         for sub_lhs, sub_rhs in subexpressions.items():
             self._prepend_split_subeqn(target_lhs, sub_lhs, sub_rhs)
@@ -553,6 +572,22 @@ class EqnList:
                 if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
+
+    def _run_preliminary_complexity_analysis(self) -> None:
+        grid_vars = self._grid_variables()
+        complexity_visitor = SympyComplexityVisitor(lambda s: s in grid_vars)
+        for lhs, rhs in self.eqns.items():
+            self.complexity[lhs] = complexity_visitor.complexity(rhs)
+
+    def _run_main_complexity_analysis(self) -> None:
+        complexity_visitor = SympyComplexityVisitor(lambda s: s in self.grid_variables)
+        for lhs, rhs in self.eqns.items():
+            self.complexity[lhs] = complexity_visitor.complexity(rhs)
+
+    def _run_complexity_analysis(self, *lhses: Symbol) -> None:
+        complexity_visitor = SympyComplexityVisitor(lambda s: s in self.grid_variables)
+        for lhs in lhses:
+            self.complexity[lhs] = complexity_visitor.complexity(self.eqns[lhs])
 
     def bake(self, *, force_rebake: bool = False) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
@@ -794,6 +829,13 @@ class EqnList:
         for eqn in self.eqns.items():
             do_replace(eqn[1], fb.m, fb.r)
             fb.exc()
+
+        self._run_main_complexity_analysis()
+
+        for lhs in self.eqns:
+            assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
+            rhs = self.eqns[lhs]
+            print(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs, " ", colorize(f"[complexity = {self.complexity[lhs]}]", "magenta"))
 
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
