@@ -23,7 +23,6 @@ class TempKind(Enum):
 
     def clamp(self, max_kind: 'TempKind', *, min_kind: 'TempKind|None' = None) -> 'TempKind':
         min_kind = min_kind or TempKind.Inline
-        print(f">>>> clamping {self} to {max_kind} and {min_kind}")
         return max(min(self, max_kind), min_kind)
 
     def __repr__(self) -> str:
