@@ -5,13 +5,20 @@ from typing import Protocol, Any, Callable
 from sympy import Symbol
 
 from EmitCactus.dsl.dsl_exception import DslException
+from EmitCactus.dsl.temp_kind import TempKind
 
 
-class TileTemporaryPromotionPredicate(Protocol):
+
+class TemporaryPromotionPredicate(Protocol):
+    """
+    A TemporaryPromotionPredicate is a function or callable object that takes a Symbol and returns a TempKind indicating
+    the "highest" level of temporary promotion allowed for that symbol, according to some TemporaryPromotionStrategy.
+    """
+
     def __init__(self, complexities: dict[Symbol, int], /, **kwargs: Any) -> None:
         ...
 
-    def __call__(self, temp_name: Symbol, /) -> bool:
+    def __call__(self, temp_name: Symbol, /) -> TempKind:
         ...
 
 
@@ -43,8 +50,11 @@ class PercentilePromotionPredicate:
         self.complexity_ordered_symbols = _get_complexity_ordered_symbols(complexities)
 
     @lru_cache
-    def __call__(self, temp_name: Symbol, /) -> bool:
-        return _find_symbol(self.complexity_ordered_symbols, temp_name, self.complexities[temp_name]) / len(self.complexity_ordered_symbols) >= self.percentile
+    def __call__(self, temp_name: Symbol, /) -> TempKind:
+        if _find_symbol(self.complexity_ordered_symbols, temp_name, self.complexities[temp_name]) / len(self.complexity_ordered_symbols) >= self.percentile:
+            return TempKind.Global
+        else:
+            return TempKind.Local
 
 
 class ThresholdPromotionPredicate:
@@ -57,8 +67,11 @@ class ThresholdPromotionPredicate:
         if self.threshold < 0:
             raise DslException(f"threshold must be at least 0, got {self.threshold}")
 
-    def __call__(self, temp_name: Symbol, /) -> bool:
-        return self.complexities[temp_name] >= self.threshold
+    def __call__(self, temp_name: Symbol, /) -> TempKind:
+        if self.complexities[temp_name] >= self.threshold:
+            return TempKind.Global
+        else:
+            return TempKind.Local
 
 
 class RankPromotionPredicate:
@@ -74,8 +87,11 @@ class RankPromotionPredicate:
         self.complexity_ordered_symbols = _get_complexity_ordered_symbols(complexities)
 
     @lru_cache
-    def __call__(self, temp_name: Symbol, /) -> bool:
-        return len(self.complexity_ordered_symbols) - _find_symbol(self.complexity_ordered_symbols, temp_name, self.complexities[temp_name]) <= self.max_promotions
+    def __call__(self, temp_name: Symbol, /) -> TempKind:
+        if len(self.complexity_ordered_symbols) - _find_symbol(self.complexity_ordered_symbols, temp_name, self.complexities[temp_name]) <= self.max_promotions:
+            return TempKind.Global
+        else:
+            return TempKind.Local
 
 
 class TruePromotionPredicate:
@@ -83,8 +99,8 @@ class TruePromotionPredicate:
         pass
 
     # noinspection PyMethodMayBeStatic
-    def __call__(self, _temp_name: Symbol, /) -> bool:
-        return True
+    def __call__(self, _temp_name: Symbol, /) -> TempKind:
+        return TempKind.Global
 
 
 class FalsePromotionPredicate:
@@ -92,28 +108,28 @@ class FalsePromotionPredicate:
         pass
 
     # noinspection PyMethodMayBeStatic
-    def __call__(self, _temp_name: Symbol, /) -> bool:
-        return False
+    def __call__(self, _temp_name: Symbol, /) -> TempKind:
+        return TempKind.Local
 
 
-TileTemporaryPromotionStrategy = Callable[[dict[Symbol, int]], TileTemporaryPromotionPredicate]
+TemporaryPromotionStrategy = Callable[[dict[Symbol, int]], TemporaryPromotionPredicate]
 
-class TileTemporaryPromotionStrategyFactory(Protocol):
-    def __call__(self, *args: Any, **kwargs: Any) -> TileTemporaryPromotionStrategy:
+class TemporaryPromotionStrategyFactory(Protocol):
+    def __call__(self, *args: Any, **kwargs: Any) -> TemporaryPromotionStrategy:
         ...
 
 
-def promote_all() -> TileTemporaryPromotionStrategy:
+def promote_all() -> TemporaryPromotionStrategy:
     return lambda cx: TruePromotionPredicate(cx)
 
-def promote_none() -> TileTemporaryPromotionStrategy:
+def promote_none() -> TemporaryPromotionStrategy:
     return lambda cx: FalsePromotionPredicate(cx)
 
-def promote_percentile(percentile: float) -> TileTemporaryPromotionStrategy:
+def promote_percentile(percentile: float) -> TemporaryPromotionStrategy:
     return lambda cx: PercentilePromotionPredicate(cx, percentile=percentile)
 
-def promote_threshold(threshold: int) -> TileTemporaryPromotionStrategy:
+def promote_threshold(threshold: int) -> TemporaryPromotionStrategy:
     return lambda cx: ThresholdPromotionPredicate(cx, threshold=threshold)
 
-def promote_rank(max_promotions: int) -> TileTemporaryPromotionStrategy:
+def promote_rank(max_promotions: int) -> TemporaryPromotionStrategy:
     return lambda cx: RankPromotionPredicate(cx, max_promotions=max_promotions)

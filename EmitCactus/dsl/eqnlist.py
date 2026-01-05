@@ -11,7 +11,6 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.sympywrap import *
-from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy
 from EmitCactus.dsl.util import require_baked
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
@@ -310,12 +309,14 @@ class EqnList:
         self.add_param(DYI)
         self.add_param(DZI)
 
-    @cached_property
+    #@cached_property
+    @property
     @require_baked(msg="Can't get variables before baking the EqnList.")
     def variables(self) -> Set[Symbol]:
         return self.inputs | self.outputs | self.temporaries
 
-    @cached_property
+    #@cached_property
+    @property
     @require_baked(msg="Can't get sorted_eqns before baking the EqnList.")
     def sorted_eqns(self) -> list[tuple[Symbol, Expr]]:
         return sorted(self.eqns.items(), key=lambda kv: self.order.index(kv[0]))
@@ -323,7 +324,8 @@ class EqnList:
     def _grid_variables(self) -> set[Symbol]:
         return {s for s in (self.inputs | self.outputs) if str(s) not in {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}}
 
-    @cached_property
+    #@cached_property
+    @property
     @require_baked(msg="Can't get grid_variables before baking the EqnList.")
     def grid_variables(self) -> set[Symbol]:
         return self._grid_variables()
@@ -580,12 +582,12 @@ class EqnList:
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_main_complexity_analysis(self) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self.grid_variables)
+        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
         for lhs, rhs in self.eqns.items():
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_complexity_analysis(self, *lhses: Symbol) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self.grid_variables)
+        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
         for lhs in lhses:
             self.complexity[lhs] = complexity_visitor.complexity(self.eqns[lhs])
 
