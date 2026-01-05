@@ -1,3 +1,4 @@
+import typing
 from dataclasses import dataclass
 from typing import Optional, List, Collection
 
@@ -481,7 +482,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
         
-        sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering)
+        sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering.keys())
 
         carpetx_loops: list[CarpetXGridLoopCall] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
@@ -554,9 +555,9 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return _TileTempCenteringData(temps_by_centering=tile_temps_by_centering, temps_to_centering=tile_temps_to_centering)
 
-    def _mk_sympy_visitor(self, tile_temps_to_centering: dict[sy.Symbol, Centering]) -> SympyExprVisitor:
-        stencil_fn_names = [str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil]
-        tile_temp_names = [str(sym) for sym in tile_temps_to_centering.keys()]
+    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol]) -> SympyExprVisitor:
+        stencil_fn_names = {str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil}
+        tile_temp_names = {str(sym) for sym in tile_temps}
 
         def name_subst_fn(name: str, in_stencil_args: bool) -> str:
             if not in_stencil_args and (name in self.var_names or name in tile_temp_names):

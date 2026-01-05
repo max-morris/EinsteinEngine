@@ -6,7 +6,8 @@ from .generators.cactus_generator import InteriorSyncMode
 from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cot, sec, csc, cosh, sinh, tanh, sech, csch, coth, erf, pi, atan
 from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from .generators.wizards import CppCarpetXWizard
-from .dsl.use_indices import parities
+from .dsl.use_indices import parities, ThornFunctionBakeOptions
+from .dsl.tile_temporary_promotion_predicate import *
 
 from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, subst_tensor_xyz, mk_pair, \
@@ -39,4 +40,5 @@ __all__ = [
     "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
-    "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols","h_step"]
+    "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
+    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold"]
