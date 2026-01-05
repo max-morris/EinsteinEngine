@@ -24,7 +24,7 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
-from EmitCactus.dsl.tile_temporary_promotion_predicate import TileTemporaryPromotionStrategy, promote_all
+from EmitCactus.dsl.temporary_promotion_predicate import TemporaryPromotionStrategy, promote_all
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
@@ -38,6 +38,7 @@ __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
 from .temp_kind import TempKind
+from ..generators.sympy_complexity import SympyComplexityVisitor
 
 one = sympify(1)
 zero = sympify(0)
@@ -1611,7 +1612,13 @@ class ThornDef:
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
 
-    def do_global_cse(self) -> None:
+    def _grid_variables(self) -> set[Symbol]:
+        gv: set[Symbol] = set()
+        for tf in self.thorn_functions.values():
+            gv |= tf.eqn_complex._grid_variables()
+        return gv
+
+    def do_global_cse(self, promotion_strategy: TemporaryPromotionStrategy = promote_all()) -> None:
         TfName = NewType("TfName", str)
         LocalElIdx = NewType("LocalElIdx", int)
 
@@ -1639,8 +1646,7 @@ class ThornDef:
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
 
-        new_temp_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
-        new_temp_transitive_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
+        new_temp_direct_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
         new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
         new_temp_dependents: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
 
@@ -1668,7 +1674,7 @@ class ThornDef:
                     assert new_temp not in eqn_list.outputs
                     assert new_temp not in eqn_list.eqns
 
-                    get_or_compute(new_temp_reads[new_temp], tf_name, lambda _: set()).add(LocalElIdx(el_idx))
+                    get_or_compute(new_temp_direct_reads[new_temp], tf_name, lambda _: set()).add(LocalElIdx(el_idx))
 
                     # Temps might be substituted for expressions which contain other temps.
                     # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
@@ -1691,70 +1697,59 @@ class ThornDef:
 
                 eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
-        for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
-                                                  key=lambda kv: substitutions_order[kv[0]],
-                                                  reverse=True):
-            for tf_name in set(chain(new_temp_reads[new_temp].keys(), new_temp_transitive_reads[new_temp].keys())):
-                local_idxes = new_temp_reads[new_temp].get(tf_name, set()) | new_temp_transitive_reads[new_temp].get(tf_name, set())
-                assert len(local_idxes) > 0
-                earliest_local_read = min(local_idxes)
-
-                for td in temp_dependencies:
-                    get_or_compute(new_temp_transitive_reads[td], tf_name, lambda _: set()).add(earliest_local_read)
-
         temp_kinds: dict[Symbol, TempKind] = dict()
-        temp_singular_reads: dict[Symbol, ThornFunction] = dict()
-        temp_singular_els_reading: dict[Symbol, set[LocalElIdx]] = dict()
+        tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
+        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
+
         for new_temp, new_rhs in substitutions.items():
-            n_tfs_reading_pure = len(new_temp_reads[new_temp].keys())
-            n_tfs_reading_transitive = len(new_temp_transitive_reads[new_temp].keys())
-            n_tfs_reading = n_tfs_reading_pure + n_tfs_reading_transitive
+            tf_names_reading_direct = set(new_temp_direct_reads[new_temp].keys())
 
-            if n_tfs_reading == 0:
-                continue
-            elif n_tfs_reading == 1 or (
-                    n_tfs_reading_pure == 1
-                    and n_tfs_reading_transitive == 1
-                    and list(new_temp_reads[new_temp].keys())[0] == list(new_temp_transitive_reads[new_temp].keys())[0]
-            ):  # Only 1 function is reading this temp, so it will be a local temp or tile temp.
-                if n_tfs_reading_pure != 0:
-                    tf_name = list(new_temp_reads[new_temp].keys())[0]
+            for tf_name in tf_names_reading_direct:
+                els_reading_direct = new_temp_direct_reads[new_temp].get(tf_name, set())
+                tfs_reading_direct[new_temp][self.thorn_functions[tf_name]] = els_reading_direct
+
+        complexities: dict[Symbol, int] = dict()
+        for tf in self.thorn_functions.values():
+            for eqn_list in tf.eqn_complex.eqn_lists:
+                complexities.update(eqn_list.complexity)
+
+        complexity_visitor = SympyComplexityVisitor(
+            lambda s: s in self._grid_variables() #or temp_kinds.get(s, None) == TempKind.Global
+        )
+        for new_temp, new_rhs in substitutions.items():
+            complexities[new_temp] = complexity_visitor.complexity(new_rhs)
+
+        promotion_predicate = promotion_strategy(complexities)
+
+        for new_temp, new_rhs in sorted(substitutions.items(),
+                                        key=lambda kv: substitutions_order[kv[0]],
+                                        reverse=True):
+            tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
+            n_synthetic_active_reads = 0
+
+            for td in new_temp_dependents[new_temp]:
+                if temp_kinds.get(td, None) == TempKind.Global:
+                    n_synthetic_active_reads += 1
                 else:
-                    tf_name = list(new_temp_transitive_reads[new_temp].keys())[0]
+                    for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
+                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
 
-                els_reading_pure = new_temp_reads[new_temp].get(tf_name, set())
-                els_reading_transitive = new_temp_transitive_reads[new_temp].get(tf_name, set())
-                els_reading = els_reading_pure.union(els_reading_transitive)
+            assert n_synthetic_active_reads + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
 
-                temp_singular_reads[new_temp] = self.thorn_functions[tf_name]
-                temp_singular_els_reading[new_temp] = els_reading
-
-                if (seen_count := len(els_reading)) == 0:
-                    assert False, f"Temp {seen_count} is seen 0 times but read by {tf_name}"
-
-                if seen_count == 1:
-                    temp_kinds[new_temp] = TempKind.Local
-                else:
-                    temp_kinds[new_temp] = TempKind.Tile
-            else:
+            if n_synthetic_active_reads + len(tfs_active_reads[new_temp]) > 1:
                 temp_kinds[new_temp] = TempKind.Global
+            elif n_synthetic_active_reads == 1:
+                temp_kinds[new_temp] = TempKind.Local
+            else:
+                assert len(tfs_active_reads[new_temp]) == 1
+                if len(list(tfs_active_reads[new_temp].values())[0]) > 1:
+                    temp_kinds[new_temp] = TempKind.Tile
+                else:
+                    temp_kinds[new_temp] = TempKind.Local
 
-        # If a temporary is read by a synthetic function AND appears elsewhere, it should be promoted to a global
+            temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
+
         checked_deps: set[Symbol] = set()
-        def propagate_globalness(temp: Symbol) -> None:
-            if temp in checked_deps:
-                return
-            eligible = temp_rhs_occurrences[temp] > 1
-            for td in new_temp_dependents[temp]:
-                propagate_globalness(td)
-                if eligible and temp_kinds.get(td, None) == TempKind.Global:
-                    temp_kinds[temp] = TempKind.Global
-            checked_deps.add(temp)
-
-        for new_temp in substitutions.keys():
-            propagate_globalness(new_temp)
-
-        checked_deps.clear()
         def compute_centerings(temp: Symbol) -> None:
             if temp in checked_deps:
                 return
@@ -1788,36 +1783,34 @@ class ThornDef:
         schedule_bin_targets: dict[Symbol, dict[ScheduleBin, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
         schedule_block_targets: dict[Symbol, dict[Identifier, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
 
+        for new_temp in substitutions.keys():
+            print(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+
         for new_temp, new_rhs in substitutions.items():
             if new_temp not in temp_kinds:
                 continue
             elif temp_kinds[new_temp] == TempKind.Local:
-                tf = temp_singular_reads[new_temp]
-                els_reading = temp_singular_els_reading[new_temp]
-                ec = tf.eqn_complex
-                primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    ec = tf.eqn_complex
+                    primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
 
-                primary_el.add_eqn(new_temp, substitutions[new_temp])
-                primary_el.temporaries.add(new_temp)
+                    primary_el.add_eqn(new_temp, substitutions[new_temp])
+                    primary_el.temporaries.add(new_temp)
             elif temp_kinds[new_temp] == TempKind.Tile:
-                tf = temp_singular_reads[new_temp]
-                els_reading = temp_singular_els_reading[new_temp]
-                ec = tf.eqn_complex
-                primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    ec = tf.eqn_complex
+                    primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
 
-                primary_el.add_eqn(new_temp, substitutions[new_temp])
-                ec._tile_temporaries.add(new_temp)
-                primary_el.uninitialized_tile_temporaries.add(new_temp)
-                for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
-                    eqn_list.uninitialized_tile_temporaries.add(new_temp)
+                    primary_el.add_eqn(new_temp, substitutions[new_temp])
+                    ec._tile_temporaries.add(new_temp)
+                    primary_el.uninitialized_tile_temporaries.add(new_temp)
+                    for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
+                        eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # TempKind.Global
                 self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
                 self.global_temporaries.add(new_temp)
 
-                tf_names_reading = set(new_temp_reads[new_temp].keys()).union(set(new_temp_transitive_reads[new_temp].keys()))
-                tfs_reading = {tf for name, tf in self.thorn_functions.items() if name in tf_names_reading}
-
-                for tf in tfs_reading:
+                for tf in tfs_active_reads[new_temp]:
                     if isinstance(tf.schedule_target, ScheduleBlock):
                         name = tf.schedule_target.name
                         if name in schedule_blocks:
@@ -1857,11 +1850,11 @@ class ThornDef:
 
 
             for bin, tfs in schedule_bin_targets[new_temp].items():
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp]])))
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
                 mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
 
             for block, tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp]])))
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
                 mk_synthetic_fn(block, sorted([tf.name for tf in tfs]), schedule_after)
 
         for tf in self.thorn_functions.values():
@@ -2201,7 +2194,7 @@ class ThornDef:
 
         return the_symbol
 
-    def _add_symbol(self, the_symbol: Symbol, centering: Centering) -> None:
+    def _add_symbol(self, the_symbol: Symbol, centering: Optional[Centering]) -> None:
         basename = str(the_symbol)
 
         assert basename not in self.gfs

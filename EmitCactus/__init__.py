@@ -7,7 +7,7 @@ from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cot, sec, c
 from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from .generators.wizards import CppCarpetXWizard
 from .dsl.use_indices import parities, ThornFunctionBakeOptions
-from .dsl.tile_temporary_promotion_predicate import *
+from .dsl.temporary_promotion_predicate import *
 
 from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, subst_tensor_xyz, mk_pair, \

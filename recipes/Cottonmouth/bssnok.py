@@ -816,7 +816,7 @@ fun_bssn2adm.bake(**gen_opts)
 fun_bssn_ricci.bake(**gen_opts)
 fun_bssn_cons.bake(**gen_opts)
 
-cottonmouth_bssnok.do_global_cse()
+cottonmouth_bssnok.do_global_cse(promote_all())
 
 
 ###
