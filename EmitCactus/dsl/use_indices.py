@@ -1700,6 +1700,7 @@ class ThornDef:
         temp_kinds: dict[Symbol, TempKind] = dict()
         tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
         tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
+        synthetic_global_dependents: dict[Symbol, set[Symbol]] = defaultdict(set)
 
         for new_temp, new_rhs in substitutions.items():
             tf_names_reading_direct = set(new_temp_direct_reads[new_temp].keys())
@@ -1725,20 +1726,21 @@ class ThornDef:
                                         key=lambda kv: substitutions_order[kv[0]],
                                         reverse=True):
             tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
-            n_synthetic_active_reads = 0
 
             for td in new_temp_dependents[new_temp]:
                 if temp_kinds.get(td, None) == TempKind.Global:
-                    n_synthetic_active_reads += 1
+                    synthetic_global_dependents[new_temp].add(td)
                 else:
+                    if len(synthetic_global_dependents[td]) > 0:
+                        synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
                     for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
                         get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
 
-            assert n_synthetic_active_reads + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
+            assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
 
-            if n_synthetic_active_reads + len(tfs_active_reads[new_temp]) > 1:
+            if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
                 temp_kinds[new_temp] = TempKind.Global
-            elif n_synthetic_active_reads == 1:
+            elif len(synthetic_global_dependents[new_temp]) == 1:
                 temp_kinds[new_temp] = TempKind.Local
             else:
                 assert len(tfs_active_reads[new_temp]) == 1
@@ -1747,6 +1749,7 @@ class ThornDef:
                 else:
                     temp_kinds[new_temp] = TempKind.Local
 
+            assert new_temp in temp_kinds
             temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
 
         checked_deps: set[Symbol] = set()
