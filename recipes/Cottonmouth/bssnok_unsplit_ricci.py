@@ -392,13 +392,6 @@ initial_group = ScheduleBlock(
 )
 
 # RHS
-rhs_group = ScheduleBlock(
-    group_or_function=GroupOrFunction.Group,
-    name=Identifier("CottonmouthBSSNOK_RHSGroup"),
-    at_or_in=AtOrIn.In,
-    schedule_bin=Identifier("ODESolvers_RHS"),
-    description=String("BSSNOK equations RHS computation"),
-)
 
 # Post-step
 post_step_group = ScheduleBlock(
@@ -408,15 +401,6 @@ post_step_group = ScheduleBlock(
     schedule_bin=Identifier("ODESolvers_PostStep"),
     before=[Identifier("ADMBaseX_SetADMVars")],
     description=String("BSSNOK post-step routines")
-)
-
-# Analysis
-analysis_group = ScheduleBlock(
-    group_or_function=GroupOrFunction.Group,
-    name=Identifier("CottonmouthBSSNOK_AnalysisGroup"),
-    at_or_in=AtOrIn.At,
-    schedule_bin=Identifier("analysis"),
-    description=String("BSSNOK analysis routines"),
 )
 
 ###
@@ -538,7 +522,7 @@ fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 ###
 fun_bssn_cons = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_constraints",
-    analysis_group
+    ScheduleBin.Analysis
 )
 
 fun_bssn_cons.add_eqn(
@@ -617,7 +601,7 @@ fun_bssn_cons.add_eqn(
 ###
 fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_rhs",
-    rhs_group
+    ScheduleBin.Evolve
 )
 
 # Aux. equations
@@ -844,8 +828,6 @@ CppCarpetXWizard(
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
-            rhs_group,
-            analysis_group,
             post_step_group,
         ]
     )
