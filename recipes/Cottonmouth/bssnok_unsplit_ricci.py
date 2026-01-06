@@ -9,7 +9,7 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 ###
 # Code generation options
 ###
-USE_GLOBAL_CSE = False
+USE_GLOBAL_CSE = True
 
 if not USE_GLOBAL_CSE:
     gen_opts = {
@@ -830,7 +830,7 @@ fun_bssn2adm.bake(**gen_opts)
 fun_bssn_cons.bake(**gen_opts)
 
 if USE_GLOBAL_CSE:
-    cottonmouth_bssnok.do_global_cse()
+    cottonmouth_bssnok.do_global_cse(promote_percentile(0.9))
 
 
 ###
