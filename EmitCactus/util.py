@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import Enum, auto
 from time import time
 from types import TracebackType
 from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
@@ -76,15 +76,32 @@ class CenteringEnum(Enum):
         return self.string_repr
 
 
+class ScheduleFrequency(Enum):
+    Once = auto()
+    EachStep = auto()
+    Inconsistent = auto()
+
+
 class ScheduleBinEnum(Enum):
     generic_name: str
     is_builtin: bool
+    schedule_frequency: ScheduleFrequency
+    relative_order: int
 
-    def __new__(cls, value: Any, generic_name: str, is_builtin: bool) -> ScheduleBinEnum:
+    def __new__(
+            cls,
+            value: Any,
+            generic_name: str,
+            is_builtin: bool,
+            schedule_frequency: ScheduleFrequency,
+            relative_order: int
+    ) -> ScheduleBinEnum:
         member = object.__new__(cls)
         member._value_ = value
         member.generic_name = generic_name
         member.is_builtin = is_builtin
+        member.schedule_frequency = schedule_frequency
+        member.relative_order = relative_order
         return member
 
     def __repr__(self) -> str:
