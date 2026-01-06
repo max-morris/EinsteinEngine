@@ -28,7 +28,7 @@ from EmitCactus.dsl.temporary_promotion_predicate import TemporaryPromotionStrat
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
-from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute
+from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency
 
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
@@ -1307,12 +1307,35 @@ z = mkSymbol("z")
 
 
 class ScheduleBin(ScheduleBinEnum):
-    Evolve = auto(), 'Evolve', False
-    Init = auto(), 'Init', True
-    Analysis = auto(), 'Analysis', True
-    EstimateError = auto(), 'EstimateError', False
-    DriverInit = auto(), 'ODESolvers_Initial', False
-    PostStep = auto(), 'ODESolvers_PostStep', False
+    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 2
+    Init = auto(), 'Init', True,  ScheduleFrequency.Once, 0
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 4
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 5
+    DriverInit = auto(), 'ODESolvers_Initial', False, ScheduleFrequency.Once, 1
+    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 3
+
+    @staticmethod
+    def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
+        ret: list['ScheduleBin'] = list()
+        freqs: set[ScheduleFrequency] = set()
+        bins = sorted(bins, key=lambda b: b.relative_order)
+
+        for bin in bins:
+            if bin.schedule_frequency == ScheduleFrequency.Inconsistent:
+                freqs.add(bin.schedule_frequency)
+                ret.append(bin)
+                print(f'Warning: A global temp is accessed by a thorn function in schedule bin {bin}, which has an inconsistent schedule frequency. The temporary will be recomputed, perhaps redundantly.')
+            elif len(freqs) > 0 and bin.schedule_frequency not in freqs:
+                freqs.add(bin.schedule_frequency)
+                ret.append(bin)
+                print(f'Warning: A global temp is accessed by thorn functions in schedule bins {freqs} with disparate schedule frequencies. The temporary will be recomputed, perhaps redundantly.')
+            elif len(freqs) == 0:
+                freqs.add(bin.schedule_frequency)
+                ret.append(bin)
+            else:
+                assert bin.schedule_frequency in freqs
+
+        return ret
 
 
 ScheduleTarget = ScheduleBin | ScheduleBlock
@@ -1852,9 +1875,15 @@ class ThornDef:
                 return synthetic_fn
 
 
-            for bin, tfs in schedule_bin_targets[new_temp].items():
+            for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
+                tfs = schedule_bin_targets[new_temp][bin]
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
                 mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
+
+            if len(schedule_block_targets) > 0:
+                print(f'Warning: Global temporary {new_temp} is accessed in at least one custom schedule block,'
+                      f' on which EmitCactus cannot perform schedule analysis. The temporary will be recomputed for each'
+                      f' custom block, perhaps redundantly.')
 
             for block, tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
