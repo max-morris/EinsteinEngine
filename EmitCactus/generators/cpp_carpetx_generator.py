@@ -211,6 +211,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if schedule_target is ScheduleBin.Init:
                 schedule_bin = Identifier('initial')
+            elif schedule_target is ScheduleBin.PostInit:
+                schedule_bin = Identifier('postinitial')
             elif schedule_target is ScheduleBin.Analysis:
                 schedule_bin = Identifier('analysis')
             elif schedule_target is ScheduleBin.EstimateError:

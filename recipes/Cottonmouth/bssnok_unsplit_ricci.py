@@ -391,8 +391,6 @@ initial_group = ScheduleBlock(
     description=String("BSSNOK initialization routines")
 )
 
-# RHS
-
 # Post-step
 post_step_group = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
