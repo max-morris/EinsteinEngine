@@ -1307,12 +1307,13 @@ z = mkSymbol("z")
 
 
 class ScheduleBin(ScheduleBinEnum):
-    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 2
     Init = auto(), 'Init', True,  ScheduleFrequency.Once, 0
-    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 4
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 5
     DriverInit = auto(), 'ODESolvers_Initial', False, ScheduleFrequency.Once, 1
-    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 3
+    PostInit = auto(), 'PostInit', True,  ScheduleFrequency.Once, 2
+    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 3
+    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 4
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 5
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 6
 
     @staticmethod
     def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
@@ -1325,6 +1326,9 @@ class ScheduleBin(ScheduleBinEnum):
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
                 print(f'Warning: A global temp is accessed by a thorn function in schedule bin {bin}, which has an inconsistent schedule frequency. The temporary will be recomputed, perhaps redundantly.')
+            elif bin is ScheduleBin.PostInit:  # Never elide PostInit targets. Needed for the timestep 0 PostInit hack.
+                freqs.add(bin.schedule_frequency)
+                ret.append(bin)
             elif len(freqs) > 0 and bin.schedule_frequency not in freqs:
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
@@ -1874,10 +1878,17 @@ class ThornDef:
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 return synthetic_fn
 
+            # Rancid hack: In CarpetX, Evolve DOES NOT run on step 0, while Analysis DOES. This breaks global temps
+            #  if they happen to be initialized in Evolve then read in Analysis. To get around this, we will use
+            #  PostInit to initialize any synthetic temps that are read in Analysis.
+            for dic in [dic for dic in schedule_bin_targets.values() if ScheduleBin.Analysis in dic]:
+                dic[ScheduleBin.PostInit].update(set())  # Just touch the set so defaultdict initializes it
 
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
                 tfs = schedule_bin_targets[new_temp][bin]
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
+                if bin is ScheduleBin.PostInit:
+                    schedule_after.append('ODESolvers_PostStep')  # Hack to ensure AMR and synchronization happen first
                 mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
 
             if len(schedule_block_targets) > 0:
