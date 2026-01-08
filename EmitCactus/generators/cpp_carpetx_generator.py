@@ -36,18 +36,49 @@ class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
 
 
 class CppCarpetXGenerator(CactusGenerator):
-    boilerplate_includes: List[Identifier] = [Identifier(s) for s in
-                                              ["cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
-                                               "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
-                                               "cmath", "tuple"]]
-    boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
-    boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
+    _boilerplate_includes: List[Identifier] = [
+        Identifier(s) for s in [
+            "cctk.h", "cctk_Arguments.h", "cctk_Parameters.h",
+            "loop_device.hxx", "simd.hxx", "defs.hxx", "vect.hxx",
+            "cmath", "tuple"
+        ]
+    ]
+
+    _boilerplate_quoted_includes: List[Identifier] = [
+        Identifier(s) for s in [
+            "../../../CarpetX/CarpetX/src/timer.hxx"
+        ]
+    ]
+
+    _boilerplate_nv_tools_include: str = """
+        #ifdef __CUDACC__
+        #include <nvtx3/nvToolsExt.h>
+        #endif
+    """.strip().replace('    ', '')
+
+    @staticmethod
+    def _boilerplate_nv_tools_init(fn_name: str) -> str:
+        return f"""
+            #ifdef __CUDACC__
+            const nvtxRangeId_t range = nvtxRangeStartA("{fn_name}");
+            #endif
+        """.strip().replace('    ', '')
+
+    @staticmethod
+    def _boilerplate_timer_init(fn_name: str) -> str:
+        return f"""
+            static CarpetX::Timer timer("{fn_name}");
+            CarpetX::Interval interval(timer);
+        """.strip().replace('    ', '')
+
+    _boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
+    _boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
     # TODO: We want to be able to
     #  specify a header file with these
     #  or alternate defs.
-    boilerplate_setup: str = "#define CARPETX_GF3D5"
-    boilerplate_div_macros: str = """
+    _boilerplate_setup: str = "#define CARPETX_GF3D5"
+    _boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
         #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
@@ -329,19 +360,24 @@ class CppCarpetXGenerator(CactusGenerator):
 
         assert thorn_fn.been_baked
 
-        nodes.append(Verbatim(self.boilerplate_setup))
+        nodes.append(Verbatim(self._boilerplate_setup))
 
         # Includes, usings...
-        for include in self.boilerplate_includes:
+        for include in self._boilerplate_includes:
             nodes.append(IncludeDirective(include))
 
-        # div{x,y,z} macros
-        nodes.append(Verbatim(self.boilerplate_div_macros))
+        for include in self._boilerplate_quoted_includes:
+            nodes.append(IncludeDirective(include, True))
 
-        for ns in self.boilerplate_namespace_usings:
+        nodes.append(Verbatim(self._boilerplate_nv_tools_include))
+
+        # div{x,y,z} macros
+        nodes.append(Verbatim(self._boilerplate_div_macros))
+
+        for ns in self._boilerplate_namespace_usings:
             nodes.append(UsingNamespace(ns))
 
-        nodes.append(Using(self.boilerplate_usings))
+        nodes.append(Using(self._boilerplate_usings))
 
         # Each variable needs to have a corresponding decl of the form
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
@@ -507,6 +543,8 @@ class CppCarpetXGenerator(CactusGenerator):
                     DeclareCarpetParams(),
                     UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
                     ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    Verbatim(self._boilerplate_nv_tools_init(fn_name)),
+                    Verbatim(self._boilerplate_timer_init(fn_name)),
                     *layout_decls,
                     *di_decls,
                     *stencil_limit_checks,
@@ -675,8 +713,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
     def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch) -> CodeRoot:
         return CodeRoot([
-            Verbatim(self.boilerplate_setup),
-            *[IncludeDirective(include) for include in self.boilerplate_includes],
+            Verbatim(self._boilerplate_setup),
+            *[IncludeDirective(include) for include in self._boilerplate_includes],
             ThornFunctionDecl(
                 Identifier(sync_batch.name),
                 []
