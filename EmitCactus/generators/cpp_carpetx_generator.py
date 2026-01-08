@@ -64,6 +64,12 @@ class CppCarpetXGenerator(CactusGenerator):
             #endif
         """.strip().replace('    ', '')
 
+    _boilerplate_nv_tools_destructor: str = """
+        #ifdef __CUDACC__
+        nvtxRangeEnd(range);
+        #endif
+    """.strip().replace('    ', '')
+
     @staticmethod
     def _boilerplate_timer_init(fn_name: str) -> str:
         return f"""
@@ -550,7 +556,8 @@ class CppCarpetXGenerator(CactusGenerator):
                     *stencil_limit_checks,
                     *one_and_zero,
                     *tile_temp_setup,
-                    *carpetx_loops
+                    *carpetx_loops,
+                    Verbatim(self._boilerplate_nv_tools_destructor)
                 ]
             )
         )
