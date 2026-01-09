@@ -24,7 +24,8 @@ from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
-from EmitCactus.dsl.temporary_promotion_predicate import TemporaryPromotionStrategy, promote_all
+from EmitCactus.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
+    TwoPassTemporaryPromotionStrategy, TemporaryPromotionStrategy, TemporaryPromotionPredicate
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
@@ -45,6 +46,9 @@ zero = sympify(0)
 
 lookup_pair: Dict[Idx, Idx] = dict()
 
+
+TfName = NewType("TfName", str)
+LocalElIdx = NewType("LocalElIdx", int)
 
 ###
 def mk_mk_subst(s: str) -> str:
@@ -1646,9 +1650,6 @@ class ThornDef:
         return gv
 
     def do_global_cse(self, promotion_strategy: TemporaryPromotionStrategy = promote_all()) -> None:
-        TfName = NewType("TfName", str)
-        LocalElIdx = NewType("LocalElIdx", int)
-
         tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
         old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
         old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict()
@@ -1724,10 +1725,7 @@ class ThornDef:
 
                 eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
-        temp_kinds: dict[Symbol, TempKind] = dict()
         tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
-        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
-        synthetic_global_dependents: dict[Symbol, set[Symbol]] = defaultdict(set)
 
         for new_temp, new_rhs in substitutions.items():
             tf_names_reading_direct = set(new_temp_direct_reads[new_temp].keys())
@@ -1747,37 +1745,37 @@ class ThornDef:
         for new_temp, new_rhs in substitutions.items():
             complexities[new_temp] = complexity_visitor.complexity(new_rhs)
 
-        promotion_predicate = promotion_strategy(complexities)
+        promotion_predicate: TemporaryPromotionPredicate
+        two_pass: bool
+        if isinstance(promotion_strategy, OnePassTemporaryPromotionStrategy):
+            promotion_predicate = promotion_strategy(complexities)
+            two_pass = False
+        elif isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy):
+            # noinspection PyUnnecessaryCast
+            promotion_predicate = cast(OnePassTemporaryPromotionStrategy, promote_all())(complexities)
+            two_pass = True
+        else:
+            raise DslException(f"Not a valid promotion strategy: {promotion_strategy}")
 
-        for new_temp, new_rhs in sorted(substitutions.items(),
-                                        key=lambda kv: substitutions_order[kv[0]],
-                                        reverse=True):
-            tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
+        temp_kinds, tfs_active_reads, synthetic_global_dependents = self._classify_temps(
+            new_temp_dependents,
+            promotion_predicate,
+            substitutions,
+            tfs_reading_direct,
+            substitutions_order
+        )
 
-            for td in new_temp_dependents[new_temp]:
-                if temp_kinds.get(td, None) == TempKind.Global:
-                    synthetic_global_dependents[new_temp].add(td)
-                else:
-                    if len(synthetic_global_dependents[td]) > 0:
-                        synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
-                    for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
-                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
+        if two_pass:
+            assert isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy)
+            promotion_predicate = promotion_strategy(complexities, temp_kinds)
 
-            assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
-
-            if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
-                temp_kinds[new_temp] = TempKind.Global
-            elif len(synthetic_global_dependents[new_temp]) == 1:
-                temp_kinds[new_temp] = TempKind.Local
-            else:
-                assert len(tfs_active_reads[new_temp]) == 1
-                if len(list(tfs_active_reads[new_temp].values())[0]) > 1:
-                    temp_kinds[new_temp] = TempKind.Tile
-                else:
-                    temp_kinds[new_temp] = TempKind.Local
-
-            assert new_temp in temp_kinds
-            temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
+            temp_kinds, tfs_active_reads, synthetic_global_dependents = self._classify_temps(
+                new_temp_dependents,
+                promotion_predicate,
+                substitutions,
+                tfs_reading_direct,
+                substitutions_order
+            )
 
         checked_deps: set[Symbol] = set()
         def compute_centerings(temp: Symbol) -> None:
@@ -1906,6 +1904,57 @@ class ThornDef:
                 eqn_list.bake(force_rebake=True)
                 eqn_list.dump()
 
+
+    class _ClassifyTempsResult(NamedTuple):
+        temp_kinds: dict[Symbol, TempKind]
+        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]]
+        synthetic_global_dependents: dict[Symbol, set[Symbol]]
+
+
+    @staticmethod
+    def _classify_temps(
+            new_temp_dependents: dict[Symbol, set[Symbol]],
+            promotion_predicate: TemporaryPromotionPredicate,
+            substitutions: dict[Symbol, Expr],
+            tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]],
+            substitutions_order: dict[Symbol, int]
+    ) -> _ClassifyTempsResult:
+        temp_kinds: dict[Symbol, TempKind] = dict()
+        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
+        synthetic_global_dependents: dict[Symbol, set[Symbol]] = defaultdict(set)
+
+        for new_temp, new_rhs in sorted(substitutions.items(),
+                                        key=lambda kv: substitutions_order[kv[0]],
+                                        reverse=True):
+            tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
+
+            for td in new_temp_dependents[new_temp]:
+                if temp_kinds.get(td, None) == TempKind.Global:
+                    synthetic_global_dependents[new_temp].add(td)
+                else:
+                    if len(synthetic_global_dependents[td]) > 0:
+                        synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
+                    for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
+                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
+
+            assert len(synthetic_global_dependents[new_temp]) + len(
+                tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
+
+            if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
+                temp_kinds[new_temp] = TempKind.Global
+            elif len(synthetic_global_dependents[new_temp]) == 1:
+                temp_kinds[new_temp] = TempKind.Local
+            else:
+                assert len(tfs_active_reads[new_temp]) == 1
+                if len(list(tfs_active_reads[new_temp].values())[0]) > 1:
+                    temp_kinds[new_temp] = TempKind.Tile
+                else:
+                    temp_kinds[new_temp] = TempKind.Local
+
+            assert new_temp in temp_kinds
+            temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
+
+        return ThornDef._ClassifyTempsResult(temp_kinds, tfs_active_reads, synthetic_global_dependents)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.defn)
