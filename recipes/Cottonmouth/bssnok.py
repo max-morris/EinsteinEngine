@@ -35,7 +35,7 @@ div_diss = cottonmouth_bssnok.mk_stencil(
 ###
 # Extra math functions
 ###
-max = cottonmouth_bssnok.decl_fun("max", args=2, is_stencil=False)
+def_max = cottonmouth_bssnok.decl_fun("max", args=2, is_stencil=False)
 
 ###
 # Thorn parameters
@@ -54,7 +54,7 @@ conformal_factor_floor = cottonmouth_bssnok.add_param(
 
 evolved_lapse_floor = cottonmouth_bssnok.add_param(
     "evolved_lapse_floor",
-    default=1.0e-10,
+    default=0.0,
     desc="The evolved lapse will never be smaller than this value"
 )
 
@@ -220,7 +220,7 @@ DeltaCons = cottonmouth_bssnok.decl("DeltaCons", [ua], parity=parity_vector)
 ###
 # Enforced Constraint Vars.
 ###
-# TODO: It would be good if this was not required.
+# TODO: It would be good if enforcing in two parts was not required.
 w_enforce = cottonmouth_bssnok.decl(
     "w_enforce",
     [],
@@ -292,6 +292,9 @@ Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
 
 # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
+# When \tilde{\Gamma}^{i} when it appears and its derivative are not needed,
+# the substitution \tilde{\Gamma}^{i} \rightarrow \tilde{gamma}^{ij} \tilde{\Gamma}^{i}_{jk} = \Delta^i
+# is made
 Delta = cottonmouth_bssnok.decl("Delta", [ua])
 
 # -D_a D_b \alpha + \alpha R_{a b}
@@ -306,15 +309,19 @@ cdphi2 = cottonmouth_bssnok.decl("cdphi2", [la, lb], symmetries=[(la, lb)])
 ###
 # Substitution rules
 ###
-# Conformal metric and its inverse
+# Physical metric and its inverse
 g_mat = cottonmouth_bssnok.get_matrix(g[la, lb])
 g_imat = inv(g_mat)
 detg = det(g_mat)
 cottonmouth_bssnok.add_substitution_rule(g[ua, ub], g_imat)
 
+# Conformal metric and its inverse
 gt_mat = cottonmouth_bssnok.get_matrix(gt[la, lb])
 detgt = det(gt_mat)
-gt_imat = inv(gt_mat) * detgt  # Use the fact that det(gt) = 1
+
+# Use the fact that det(gt) = 1 to simplify the inverse expression
+# Note that det(gt) = 1 is an *enforced* constraint
+gt_imat = inv(gt_mat) * detgt
 cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 
 # At
@@ -339,7 +346,7 @@ cottonmouth_bssnok.add_substitution_rule(
 
 cottonmouth_bssnok.add_substitution_rule(
     Delta[ua],
-    gt[ub, uc] * gt[ua, ud] * Gammat[ld, lb, lc]
+    gt[ub, uc] * Gammat[ua, lb, lc]
 )
 
 # Phi derivatives w.r.t the conformal metric
@@ -438,13 +445,13 @@ fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     schedule_before=["cottonmouth_bssnok_enforce_pt2"]
 )
 
-# Enforce \det(\tilde{\gamma}) = 1
+# Enforce \det(\tilde{\gamma}) = 1 (G)
 fun_bssn_enforce_pt1.add_eqn(
     gt_enforce[li, lj],
     gt[li, lj] / (cbrt(detgt))
 )
 
-# Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0
+# Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0 (A)
 fun_bssn_enforce_pt1.add_eqn(
     At_enforce[li, lj],
     At[li, lj] - Rational(1, 3) * gt[li, lj] * gt[ua, ub] * At[la, lb]
@@ -453,16 +460,15 @@ fun_bssn_enforce_pt1.add_eqn(
 # Enforce conformal factor floor
 fun_bssn_enforce_pt1.add_eqn(
     w_enforce,
-    max(w, conformal_factor_floor)
+    def_max(w, conformal_factor_floor)
 )
 
-# Enforce conformal factor floor
+# Enforce lapse floor
 fun_bssn_enforce_pt1.add_eqn(
     evo_lapse_enforce,
-    max(evo_lapse, evolved_lapse_floor)
+    def_max(evo_lapse, evolved_lapse_floor)
 )
 
-fun_bssn_enforce_pt1.bake(**gen_opts)
 
 fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
@@ -476,7 +482,6 @@ fun_bssn_enforce_pt2.add_eqn(At[li, lj], At_enforce[li, lj])
 fun_bssn_enforce_pt2.add_eqn(w, w_enforce)
 fun_bssn_enforce_pt2.add_eqn(evo_lapse, evo_lapse_enforce)
 
-fun_bssn_enforce_pt2.bake(**gen_opts)
 
 ###
 # Convert ADM to BSSN variables
@@ -522,7 +527,6 @@ fun_adm2bssn.add_eqn(
     )
 )
 
-fun_adm2bssn.bake(**gen_opts)
 
 ###
 # Convert BSSN to ADM variables
@@ -546,7 +550,6 @@ fun_bssn2adm.add_eqn(
 fun_bssn2adm.add_eqn(alp, evo_lapse)
 fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 
-fun_bssn2adm.bake(**gen_opts)
 
 ###
 # Compute the Ricci tensor
@@ -591,10 +594,9 @@ fun_bssn_ricci.add_eqn(
 # Ricci tensor
 fun_bssn_ricci.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
-fun_bssn_ricci.bake(**gen_opts)
 
 ###
-# Compute non enforced constraints
+# Compute monitored constraints
 ###
 fun_bssn_cons = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_constraints",
@@ -630,7 +632,6 @@ fun_bssn_cons.add_eqn(
     ConfConnect[ua] - Delta[ua]
 )
 
-fun_bssn_cons.bake(**gen_opts)
 
 ###
 # BSSN Evolution equations
@@ -709,8 +710,8 @@ fun_bssn_rhs.add_eqn(
     + At[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * At[la, lb] * D(evo_shift[uc], lc)
     # Matter
-    - w**2 * evo_lapse * 8 * pi * (
-        eTij[la, lb] - Rational(1, 3) * gt[la, lb] * trS
+    - 8 * pi * evo_lapse * (
+        w**2 * eTij[la, lb] - Rational(1, 3) * gt[la, lb] * trS
     )
     # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
     + evo_shift[uc] * D(At[la, lb], lc)
@@ -772,6 +773,10 @@ fun_bssn_rhs.add_eqn(
 )
 fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
 
+# Everyone likes to do gauge conditions their own way.
+# Information is often incoherent or inconsistent.
+# We will settle on Eqs. (25a) and (25b) of Ref. [4]
+
 # 1 + log lapse.
 fun_bssn_rhs.add_eqn(
     evo_lapse_rhs,
@@ -803,6 +808,7 @@ fun_bssn_rhs.add_eqn(
 fun_bssn_rhs.add_eqn(
     shift_B_rhs[ua],
     ConfConnect_rhs_tmp[ua]
+    # TODO: Advection
     - evo_shift[ub] * D(ConfConnect[ua], lb)
     - eta_B * shift_B[ua]
     # TODO: Advection
@@ -815,6 +821,15 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
+###
+# Bake the cake
+###
+fun_bssn_enforce_pt1.bake(**gen_opts)
+fun_bssn_enforce_pt2.bake(**gen_opts)
+fun_adm2bssn.bake(**gen_opts)
+fun_bssn2adm.bake(**gen_opts)
+fun_bssn_ricci.bake(**gen_opts)
+fun_bssn_cons.bake(**gen_opts)
 fun_bssn_rhs.bake(**gen_opts)
 
 ###
