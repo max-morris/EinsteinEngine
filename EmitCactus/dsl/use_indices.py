@@ -1891,9 +1891,17 @@ class ThornDef:
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 return synthetic_fn
 
+            def find_all_global_deps(temp: Symbol) -> set[Symbol]:
+                deps: set[Symbol] = set()
+                for td in new_temp_dependencies[temp]:
+                    if temp_kinds.get(td, None) == TempKind.Global:
+                        deps.add(td)
+                    deps.update(find_all_global_deps(td))
+                return deps
+
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
                 tfs = schedule_bin_targets[new_temp][bin]
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in find_all_global_deps(new_temp)])))
                 if bin is ScheduleBin.PostInit:
                     schedule_after.append('ODESolvers_PostStep')  # Hack to ensure AMR and synchronization happen first
                 mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
