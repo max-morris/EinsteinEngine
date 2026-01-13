@@ -1848,10 +1848,25 @@ class ThornDef:
                     else:
                         schedule_bin_targets[new_temp][tf.schedule_target].add(tf)
 
+        # Rancid hack: In CarpetX, Evolve DOES NOT run on step 0, while Analysis DOES. This breaks global temps
+        #  if they happen to be initialized in Evolve then read in Analysis. To get around this, we will use
+        #  PostInit to initialize any synthetic temps that are read in Analysis, plus their (global) dependencies.
         for new_temp in substitutions.keys():
             if temp_kinds.get(new_temp, None) != TempKind.Global:
                 continue
 
+            def post_init_hack(tmp: Symbol) -> None:
+                if temp_kinds.get(tmp, None) == TempKind.Global:
+                    schedule_bin_targets[tmp][ScheduleBin.PostInit].update(set())  # Just touch the set so defaultdict initializes it
+                for td in new_temp_dependencies[tmp]:
+                    post_init_hack(td)
+
+            if ScheduleBin.Analysis in schedule_bin_targets[new_temp]:
+                post_init_hack(new_temp)
+
+        for new_temp in substitutions.keys():
+            if temp_kinds.get(new_temp, None) != TempKind.Global:
+                continue
 
             def mk_synthetic_fn(schedule_target: ScheduleTarget,
                                 schedule_before: Collection[str],
@@ -1875,12 +1890,6 @@ class ThornDef:
 
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 return synthetic_fn
-
-            # Rancid hack: In CarpetX, Evolve DOES NOT run on step 0, while Analysis DOES. This breaks global temps
-            #  if they happen to be initialized in Evolve then read in Analysis. To get around this, we will use
-            #  PostInit to initialize any synthetic temps that are read in Analysis.
-            for dic in [dic for dic in schedule_bin_targets.values() if ScheduleBin.Analysis in dic]:
-                dic[ScheduleBin.PostInit].update(set())  # Just touch the set so defaultdict initializes it
 
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
                 tfs = schedule_bin_targets[new_temp][bin]
@@ -1937,8 +1946,7 @@ class ThornDef:
                     for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
                         get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
 
-            assert len(synthetic_global_dependents[new_temp]) + len(
-                tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
+            assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
 
             if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
                 temp_kinds[new_temp] = TempKind.Global
