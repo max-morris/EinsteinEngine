@@ -117,4 +117,6 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
     @visit.register
     def _(self, n: Intent) -> str:
+        if n.region is None:
+            return f'{self.visit(n.name)}'
         return f'{self.visit(n.name)}({n.region.representation})'

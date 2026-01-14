@@ -50,7 +50,7 @@ class IntentRegion(ReprEnum):
 @dataclass
 class Intent(ScheduleNode):
     name: Identifier
-    region: IntentRegion
+    region: Optional[IntentRegion]
 
 
 class ScheduleBlockOptionalArgs(TypedDict, total=False):

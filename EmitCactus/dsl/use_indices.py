@@ -1315,9 +1315,10 @@ class ScheduleBin(ScheduleBinEnum):
     DriverInit = auto(), 'ODESolvers_Initial', False, ScheduleFrequency.Once, 1
     PostInit = auto(), 'PostInit', True,  ScheduleFrequency.Once, 2
     Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 3
-    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 4
-    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 5
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 6
+    SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 4
+    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 5
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 6
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 7
 
     @staticmethod
     def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
@@ -1640,6 +1641,7 @@ class ThornDef:
         self.div_makers["div"] = DivMakerVisitor(div)
         self.div_makers["D"] = DivMakerVisitor(D)
         self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
+        self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
 
@@ -1889,6 +1891,7 @@ class ThornDef:
                 add_deps(new_temp)
 
                 synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+                self.synthetic_fns[schedule_target].add(synthetic_fn)
                 return synthetic_fn
 
             def find_all_global_deps(temp: Symbol) -> set[Symbol]:
