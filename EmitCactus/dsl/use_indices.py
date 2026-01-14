@@ -1316,12 +1316,17 @@ class ScheduleBin(ScheduleBinEnum):
     PostInit = auto(), 'PostInit', True,  ScheduleFrequency.Once, 2
     PostPostInit = auto(), 'PostPostInit', True,  ScheduleFrequency.Once, 3
     InitEvolve = auto(), 'InitEvolve', False,  ScheduleFrequency.Once, 3
-    InitAnalysis = auto(), 'InitAnalysis', False,  ScheduleFrequency.Once, 3
+    InitAnalysis = auto(), 'InitAnalysis', False,  ScheduleFrequency.Once, 4
     Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 6
     SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 7
     PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 8
     Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 9
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 9
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 10
+
+    def is_colocated(self, other: 'ScheduleBin') -> bool:
+        return self == other or (
+                (s := sorted([self, other], key=lambda b: b.relative_order))[0] is ScheduleBin.Evolve and s[1] is ScheduleBin.SpecialEvolve
+        )
 
     @staticmethod
     def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
@@ -1918,20 +1923,20 @@ class ThornDef:
                 return deps
 
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
-                tfs = schedule_bin_targets[new_temp][bin]
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin == dep_bin] for td in find_all_global_deps(new_temp)])))
+                schedule_before_tfs = set(chain(*[schedule_bin_targets[new_temp][key] for key in schedule_bin_targets[new_temp].keys() if key.is_colocated(bin)]))
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin.is_colocated(dep_bin)] for td in find_all_global_deps(new_temp)])))
                 if bin is ScheduleBin.PostInit:
                     schedule_after.append('ODESolvers_PostStep')  # Hack to ensure AMR and synchronization happen first
-                mk_synthetic_fn(bin, sorted([tf.name for tf in tfs]), schedule_after)
+                mk_synthetic_fn(bin, sorted([tf.name for tf in schedule_before_tfs]), schedule_after)
 
             if len(schedule_block_targets) > 0:
                 print(f'Warning: Global temporary {new_temp} is accessed in at least one custom schedule block,'
                       f' on which EmitCactus cannot perform schedule analysis. The temporary will be recomputed for each'
                       f' custom block, perhaps redundantly.')
 
-            for block, tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
+            for block, schedule_before_tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
-                mk_synthetic_fn(block, sorted([tf.name for tf in tfs]), schedule_after)
+                mk_synthetic_fn(block, sorted([tf.name for tf in schedule_before_tfs]), schedule_after)
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
