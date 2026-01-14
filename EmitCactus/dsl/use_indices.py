@@ -1314,11 +1314,12 @@ class ScheduleBin(ScheduleBinEnum):
     Init = auto(), 'Init', True,  ScheduleFrequency.Once, 0
     DriverInit = auto(), 'ODESolvers_Initial', False, ScheduleFrequency.Once, 1
     PostInit = auto(), 'PostInit', True,  ScheduleFrequency.Once, 2
-    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 3
-    SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 4
-    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 5
-    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 6
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 7
+    PostPostInit = auto(), 'PostPostInit', True,  ScheduleFrequency.Once, 3
+    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 4
+    SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 5
+    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 6
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 7
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 8
 
     @staticmethod
     def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
@@ -1331,7 +1332,7 @@ class ScheduleBin(ScheduleBinEnum):
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
                 print(f'Warning: A global temp is accessed by a thorn function in schedule bin {bin}, which has an inconsistent schedule frequency. The temporary will be recomputed, perhaps redundantly.')
-            elif bin is ScheduleBin.PostInit:  # Never elide PostInit targets. Needed for the timestep 0 PostInit hack.
+            elif bin in [ScheduleBin.PostInit, ScheduleBin.PostPostInit]:  # Never elide PostInit targets. Needed for the timestep 0 PostInit hack.
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
             elif len(freqs) > 0 and bin.schedule_frequency not in freqs:
@@ -1858,6 +1859,7 @@ class ThornDef:
                 continue
 
             def post_init_hack(tmp: Symbol) -> None:
+                return
                 if temp_kinds.get(tmp, None) == TempKind.Global:
                     schedule_bin_targets[tmp][ScheduleBin.PostInit].update(set())  # Just touch the set so defaultdict initializes it
                 for td in new_temp_dependencies[tmp]:
