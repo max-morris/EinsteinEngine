@@ -18,7 +18,7 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine
 from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr
+    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
 from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
@@ -172,6 +172,9 @@ class CppCarpetXGenerator(CactusGenerator):
                         if sync_this_var:
                             syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
 
+            if fn.schedule_target is ScheduleBin.SpecialEvolve:
+                reads.append(Intent(Identifier('ODESolvers::substep_counter'), None))
+
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
@@ -256,6 +259,8 @@ class CppCarpetXGenerator(CactusGenerator):
                 schedule_bin = Identifier('ODESolvers_EstimateError')
             elif schedule_target is ScheduleBin.Evolve:
                 schedule_bin = Identifier('ODESolvers_RHS')
+            elif schedule_target is ScheduleBin.SpecialEvolve:
+                schedule_bin = Identifier('ODESolvers_RHS')
             elif schedule_target is ScheduleBin.DriverInit:
                 schedule_bin = Identifier('ODESolvers_Initial')
             elif schedule_target is ScheduleBin.PostStep:
@@ -269,7 +274,7 @@ class CppCarpetXGenerator(CactusGenerator):
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
 
         # We always want to inherit from CarpetX even if no vars explicitly need it
-        inherits_from.add(Identifier('Driver'))
+        inherits_from.update({Identifier('Driver'), Identifier('ODESolvers')})
 
         return InterfaceRoot(
             HeaderSection(
@@ -528,7 +533,7 @@ class CppCarpetXGenerator(CactusGenerator):
         
         sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering.keys())
 
-        carpetx_loops: list[CarpetXGridLoopCall] = list()
+        carpetx_loops: list[Stmt] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             output_centering = loop_to_output_centering[loop_idx]
             output_region = loop_to_output_region[loop_idx]
@@ -554,6 +559,19 @@ class CppCarpetXGenerator(CactusGenerator):
                     )
                 )
             )
+        
+        if thorn_fn.schedule_target is ScheduleBin.SpecialEvolve:
+            carpetx_loops = [
+                IfElseStmt(
+                    BinOpExpr(
+                        IdExpr(Identifier('*substep_counter')),
+                        BinOp.Lte,
+                        IntLiteralExpr(1)
+                    ),
+                    carpetx_loops,
+                    []
+                )
+            ]
 
         # Build the function decl and its body.
         nodes.append(

@@ -139,6 +139,13 @@ class ExprStmt(Stmt):
 
 
 @dataclass
+class IfElseStmt(Stmt):
+    cond: Expr
+    then: List[Stmt]
+    else_: List[Stmt]
+
+
+@dataclass
 class Decl(Stmt):
     pass
 
