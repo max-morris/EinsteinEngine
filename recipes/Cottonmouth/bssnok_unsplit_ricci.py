@@ -520,7 +520,7 @@ fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 ###
 fun_bssn_cons = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_constraints",
-    ScheduleBin.Analysis
+    ScheduleBin.SpecialEvolve
 )
 
 fun_bssn_cons.add_eqn(
