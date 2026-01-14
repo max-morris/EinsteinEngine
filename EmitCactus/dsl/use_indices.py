@@ -1315,11 +1315,13 @@ class ScheduleBin(ScheduleBinEnum):
     DriverInit = auto(), 'ODESolvers_Initial', False, ScheduleFrequency.Once, 1
     PostInit = auto(), 'PostInit', True,  ScheduleFrequency.Once, 2
     PostPostInit = auto(), 'PostPostInit', True,  ScheduleFrequency.Once, 3
-    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 4
-    SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 5
-    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 6
-    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 7
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 8
+    InitEvolve = auto(), 'InitEvolve', False,  ScheduleFrequency.Once, 3
+    InitAnalysis = auto(), 'InitAnalysis', False,  ScheduleFrequency.Once, 3
+    Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 6
+    SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 7
+    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 8
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 9
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 9
 
     @staticmethod
     def _schedule_synthetic_fns(bins: Collection['ScheduleBin']) -> Collection['ScheduleBin']:
