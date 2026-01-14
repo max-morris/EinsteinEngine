@@ -1601,6 +1601,14 @@ class ThornFunction:
         return self.thorn_def.get_tensortype(item)
 
 
+def _is_valid_c_identifier(s: str) -> bool:
+    """Check if a string is a valid C identifier."""
+    if not s:
+        return False
+    # C identifiers must start with a letter or underscore, followed by letters, digits, or underscores
+    return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', s))
+
+
 class ThornDef:
     """
     Represents a Cactus thorn. A ThornDef object contains everything EmitCactus knows about a thorn over the course
@@ -1612,6 +1620,9 @@ class ThornDef:
     _xyz_subst_thorns: list[str] = ["ADMBaseX", "TmunuBaseX", "HydroBaseX"]
 
     def __init__(self, arr: str, name: str, *, run_simplify: bool = True) -> None:
+        if not _is_valid_c_identifier(name):
+            raise DslException(f"Thorn name '{name}' is not a valid C identifier")
+
         self.fun_args: Dict[str, int] = dict()
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
