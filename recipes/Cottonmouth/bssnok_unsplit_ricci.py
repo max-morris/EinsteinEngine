@@ -14,15 +14,17 @@ USE_GLOBAL_CSE = True
 if not USE_GLOBAL_CSE:
     gen_opts = {
         "do_cse": True,
+        "temporary_promotion_strategy": promote_none(),
         "do_madd": False,
         "do_recycle_temporaries": True,
         "do_split_output_eqns": True
     }
 else:
     gen_opts = {
-        "do_cse": False,
+        "do_cse": True,
+        "temporary_promotion_strategy": promote_rank(2),
         "do_madd": False,
-        "do_recycle_temporaries": False,
+        "do_recycle_temporaries": True,
         "do_split_output_eqns": True
     }
 
@@ -795,15 +797,17 @@ fun_bssn_rhs.add_eqn(
 )
 
 
-fun_bssn_rhs.bake(**gen_opts)
-fun_bssn_enforce_pt1.bake(**gen_opts)
-fun_bssn_enforce_pt2.bake(**gen_opts)
-fun_adm2bssn.bake(**gen_opts)
-fun_bssn2adm.bake(**gen_opts)
-fun_bssn_cons.bake(**gen_opts)
+# fun_bssn_rhs._early_bake(**gen_opts)
+# fun_bssn_enforce_pt1._early_bake(**gen_opts)
+# fun_bssn_enforce_pt2._early_bake(**gen_opts)
+# fun_adm2bssn._early_bake(**gen_opts)
+# fun_bssn2adm._early_bake(**gen_opts)
+# fun_bssn_cons._early_bake(**gen_opts)
 
-if USE_GLOBAL_CSE:
-    cottonmouth_bssnok.do_global_cse(promote_percentile(0.9))
+# if USE_GLOBAL_CSE:
+#     cottonmouth_bssnok._do_global_cse(promote_percentile(0.9))
+
+cottonmouth_bssnok.bake(**gen_opts)
 
 
 ###

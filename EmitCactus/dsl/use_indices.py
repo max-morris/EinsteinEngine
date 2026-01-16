@@ -25,7 +25,7 @@ from EmitCactus.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComple
 from EmitCactus.dsl.symm import Sym
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
-    TwoPassTemporaryPromotionStrategy, TemporaryPromotionStrategy, TemporaryPromotionPredicate
+    TwoPassTemporaryPromotionStrategy, TemporaryPromotionStrategy, TemporaryPromotionPredicate, promote_none
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
@@ -1364,10 +1364,24 @@ def safe_name(schedule_target: ScheduleTarget) -> str:
 
 
 class ThornFunctionBakeOptions(TypedDict, total=False):
-    do_cse: bool
     do_madd: bool
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
+
+
+class ThornDefBakeOptions(TypedDict, total=False):
+    # ThornDef opts
+    do_cse: bool
+    temporary_promotion_strategy: TemporaryPromotionStrategy
+
+    # ThornFunction default opts
+    do_madd: bool
+    do_recycle_temporaries: bool
+    do_split_output_eqns: bool
+
+    # Overrides for ThornFunction default opts
+    functions: dict[str, ThornFunctionBakeOptions]
+
 
 class ThornFunction:
     """
@@ -1386,6 +1400,7 @@ class ThornFunction:
         self.thorn_def = thorn_def
         self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil)
         self.been_baked: bool = False
+        self.been_late_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
 
@@ -1550,23 +1565,14 @@ class ThornFunction:
     @staticmethod
     def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
         return {
-            'do_cse': False,
             'do_madd': False,
             'do_recycle_temporaries': True,
             'do_split_output_eqns': True
         }
 
-    def bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
-        """
-        Finalize this function in preparation to be passed to a generator.
-        :param do_cse: If true, perform SymPy's common subexpression elimination.
-        :param do_madd: If true, attempt to generate fused multiply-add function calls where appropriate.
-        :param do_recycle_temporaries: If true, attempt to conserve register use by recycling temporary variables.
-        :param do_split_output_eqns: If true, split apart equations whose LHSes are output variables.
-        :return:
-        """
+    def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
         if self.been_baked:
-            raise DslException("bake should not be called more than once")
+            raise DslException("_early_bake should not be called more than once")
         print(f"*** {self.name} ***")
 
         options = self._mk_default_thorn_function_bake_options()
@@ -1578,18 +1584,25 @@ class ThornFunction:
 
         if options['do_madd']:
             self.madd()
-        #if do_cse:
-        #    self.cse()
 
         self.eqn_bake()
 
         if options['do_split_output_eqns']:
             self.split_output_eqns()
 
+        self.been_baked = True
+
+    def _late_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
+        if self.been_late_baked:
+            raise DslException("_late_bake should not be called more than once")
+
+        options = self._mk_default_thorn_function_bake_options()
+        options.update(kwargs)
+
         if options['do_recycle_temporaries']:
             self.recycle_temporaries()
 
-        self.been_baked = True
+        self.been_late_baked = True
 
     def show_tensortypes(self) -> None:
         keys: Set[str] = OrderedSet()
@@ -1670,7 +1683,49 @@ class ThornDef:
             gv |= tf.eqn_complex._grid_variables()
         return gv
 
-    def do_global_cse(self, promotion_strategy: TemporaryPromotionStrategy = promote_all()) -> None:
+    @staticmethod
+    def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
+        opts: ThornDefBakeOptions = {
+            'do_cse': True,
+            'temporary_promotion_strategy': promote_none(),
+            'functions': dict()
+        }
+
+        opts.update(ThornFunction._mk_default_thorn_function_bake_options())
+
+        return opts
+
+
+    def bake(self, **opts: Unpack[ThornDefBakeOptions]) -> None:
+        my_opts = self._mk_default_thorn_def_bake_options()
+        my_opts.update(opts)
+        my_tf_opts: dict[str, ThornFunctionBakeOptions] = dict()
+
+        for tf in self.thorn_functions.values():
+            tf_opts = typing.cast(ThornFunctionBakeOptions, my_opts.copy())  # Strict subset of ThornDefBakeOptions
+            if 'functions' in my_opts and tf.name in my_opts['functions']:
+                tf_opts.update(my_opts['functions'][tf.name])
+            my_tf_opts[tf.name] = tf_opts
+
+        for tf in self.thorn_functions.values():
+            assert tf.name in my_tf_opts, f"Thorn function '{tf.name}' not found in my_tf_opts"
+            tf._early_bake(**my_tf_opts[tf.name])
+
+        if my_opts['do_cse']:
+            self._do_global_cse(my_opts['temporary_promotion_strategy'])
+
+        for tf in self.thorn_functions.values():
+            if tf.name not in my_tf_opts:  # Must be a synthetic function
+                tf._late_bake()
+            else:
+                tf._late_bake(**my_tf_opts[tf.name])
+
+
+    def _do_global_cse(self, promotion_strategy: TemporaryPromotionStrategy = promote_all()) -> None:
+        for tf in self.thorn_functions.values():
+            if tf.been_late_baked:
+                raise DslException(f"Cannot do_global_cse on ThornFunction {self} because it has already undergone late baking.")
+
         tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
         old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
         old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict()
@@ -1910,7 +1965,7 @@ class ThornDef:
 
                 add_deps(new_temp)
 
-                synthetic_fn.bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+                synthetic_fn._early_bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 self.synthetic_fns[schedule_target].add(synthetic_fn)
                 return synthetic_fn
 
