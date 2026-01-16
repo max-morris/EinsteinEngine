@@ -22,7 +22,7 @@ if not USE_GLOBAL_CSE:
 else:
     gen_opts = {
         "do_cse": True,
-        "temporary_promotion_strategy": promote_rank(2),
+        "temporary_promotion_strategy": promote_rank(1),
         "do_madd": False,
         "do_recycle_temporaries": True,
         "do_split_output_eqns": True
