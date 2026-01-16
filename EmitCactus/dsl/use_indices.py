@@ -1691,7 +1691,7 @@ class ThornDef:
             'functions': dict()
         }
 
-        opts.update(ThornFunction._mk_default_thorn_function_bake_options())
+        opts.update(ThornFunction._mk_default_thorn_function_bake_options())  # type: ignore[typeddict-item]
 
         return opts
 
@@ -1965,7 +1965,7 @@ class ThornDef:
 
                 add_deps(new_temp)
 
-                synthetic_fn._early_bake(do_cse=False, do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+                synthetic_fn._early_bake(do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
                 self.synthetic_fns[schedule_target].add(synthetic_fn)
                 return synthetic_fn
 
