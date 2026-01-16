@@ -9,7 +9,7 @@ all: $(target_folder)/CottonmouthBSSNOK/interface.ccl \
 	 $(target_folder)/CottonmouthLinearWaveID/interface.ccl \
 	 $(target_folder)/CottonmouthTestBSSNOK/interface.ccl
 
-$(target_folder)/CottonmouthBSSNOK/interface.ccl: $(source_folder)/bssnok.py
+$(target_folder)/CottonmouthBSSNOK/interface.ccl: $(source_folder)/bssnok_unsplit_ricci.py
 	python $<
 
 $(target_folder)/CottonmouthDiagLinearWaveID/interface.ccl: $(source_folder)/diagonal_linear_wave.py
