@@ -358,6 +358,15 @@ cottonmouth_bssnok.add_substitution_rule(
     -Rational(1, 2) * (1 / w) * D(w, la)
 )
 
+cottonmouth_bssnok.add_substitution_rule(
+    cdphi2[la, lb],
+    -Rational(1, 2) * (1 / w) * (
+        D(w, la, lb)
+        - Gammat[uc, la, lb] * D(w, lc)
+    )
+    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+)
+
 # Matter
 cottonmouth_bssnok.add_substitution_rule(
     rho,
@@ -524,15 +533,6 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
 )
 
 fun_bssn_cons.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
-
-fun_bssn_cons.add_eqn(
     Rt[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
@@ -614,15 +614,6 @@ fun_bssn_rhs.add_eqn(
         + D(evo_lapse, lb) * cdphi[la]
     )
     + evo_lapse * R[la, lb]
-)
-
-fun_bssn_rhs.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
 )
 
 fun_bssn_rhs.add_eqn(
