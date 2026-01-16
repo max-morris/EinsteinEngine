@@ -200,7 +200,7 @@ if __name__ == "__main__":
     fun_fill_id.add_eqn(dt2alp, dt2_lapse)
     fun_fill_id.add_eqn(dt2beta[ua], dt2_shift)
 
-    fun_fill_id.bake(do_recycle_temporaries=False)
+    cottonmouth_diagonal_linear_wave_id.bake()
 
     ###
     # Thorn creation

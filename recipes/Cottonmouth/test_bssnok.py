@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     fun_test.add_eqn(HamConsTest, tanh(HamCons))
 
-    fun_test.bake()
+    cottonmouth_test_bssnok.bake()
 
     ###
     # Thorn creation
