@@ -32,7 +32,7 @@ else:
 # Finite difference stencils
 ###
 
-# Fith order Kreiss-Oliger disspation stencil
+# Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la,
