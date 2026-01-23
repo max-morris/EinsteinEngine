@@ -4,8 +4,9 @@ from sympy import Expr, IndexedBase, Symbol
 
 from EmitCactus import *
 from EmitCactus.dsl.eqnlist import DXI
-from EmitCactus.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, dimension, zero, \
+from EmitCactus.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
     do_div, x, one, y
+from EmitCactus.dsl.dimension import get_dimension
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 
@@ -83,7 +84,7 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(M[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == dimension, f"n = {n}"
+    assert n == get_dimension(), f"n = {n}"
 
     # Symmetric
     N = gf.decl("N", [la, lb])
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(N[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == dimension * (dimension - 1)
+    assert n == get_dimension() * (get_dimension() - 1)
 
     # Non-Symmetric
     Q = gf.decl("Q", [la, lb])
@@ -102,7 +103,7 @@ if __name__ == "__main__":
     for out in gf.expand_eqn(mkEq(Q[la, lb], B[la, lb])):
         print(out)
         n += 1
-    assert n == dimension ** 2
+    assert n == get_dimension() ** 2
 
     a = gf.decl("a", [], declare_as_temp=True)
     b = gf.decl("b", [])
@@ -110,7 +111,7 @@ if __name__ == "__main__":
     k = gf.decl("k", [la])
     gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
-    foofunc.add_eqn(a, sympify(dimension))
+    foofunc.add_eqn(a, sympify(get_dimension()))
     foofunc.add_eqn(b, a + sympify(2))
 
     # Test of custom derivative operation mdiv
@@ -130,7 +131,7 @@ if __name__ == "__main__":
     # Now test functions
     fmax = gf.decl_fun("fmax", 2)
     foofunc.add_eqn(c, fmax(a, b))
-    foofunc.bake()
+    gf.bake()
     assert foofunc._eqn_list.depends_on(getsym(c), getsym(a))
     assert foofunc._eqn_list.depends_on(getsym(c), getsym(b))
 

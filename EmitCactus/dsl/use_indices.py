@@ -31,6 +31,9 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFun
 from EmitCactus.emit.tree import Centering, Identifier
 from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency
 
+from EmitCactus.dsl.dimension import get_dimension, set_dimension
+from EmitCactus.dsl.functions import *
+
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "subst_tensor", "subst_tensor_xyz", "mk_pair",
@@ -39,6 +42,7 @@ __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
 
 from .temp_kind import TempKind
+from .util import cse_isolate
 from ..generators.sympy_complexity import SympyComplexityVisitor
 
 one = sympify(1)
@@ -463,17 +467,6 @@ def check_indices(rhs: Expr, defn: Optional[Dict[str, Tuple[str, List[Idx]]]] = 
 # Need Expand Visitor
 ###
 
-####
-# Generic derivatives
-div = mkFunction("div")
-D = mkFunction("D")
-"""
-Symbolic derivative function.
-"""
-
-# This is required due to a bug in pdoc.
-if div.__module__ is None:
-    div.__module__ = "use_indices"
 
 pair_tmp_name = "A"
 
@@ -773,21 +766,6 @@ def to_num_tup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]
     return to_num_tup_2([checked_cast(x, Idx) for x in li], values)
 
 
-stencil = mkFunction("stencil")
-DD = mkFunction("DD")
-DDI = mkFunction("DDI")
-noop = mkFunction("noop")
-
-dimension: int = 3
-
-
-def set_dimension(d: int) -> None:
-    global dimension
-    dimension = d
-
-
-def get_dimension() -> int:
-    return dimension
 
 
 ord0 = ord('0')
@@ -914,7 +892,7 @@ def incr(index_list: List[Idx], index_values: Dict[Idx, Idx]) -> bool:
             return False
         u_ind, ind = get_pair(index_list[ix])
         index_value = to_num(index_values[ind])
-        if index_value == dimension - 1:
+        if index_value == get_dimension() - 1:
             index_values[ind] = l0
             index_values[u_ind] = u0
             ix += 1
@@ -1076,18 +1054,6 @@ class Param:
         return f"Param({self.name})"
 
 
-# First derivatives
-for i in range(dimension):
-    div_nm = "div" + "xyz"[i]
-    globals()[div_nm] = mkFunction(div_nm)
-
-# Second derivatives
-for i in range(dimension):
-    for j in range(i, dimension):
-        div_nm = "div" + "xyz"[i] + "xyz"[j]
-        globals()[div_nm] = mkFunction(div_nm)
-
-
 def to_div(out: Expr) -> Expr:
     nm = "div"
     for k in out.args[1:]:
@@ -1226,7 +1192,7 @@ class ApplyDivN(Applier):
                         term = coefs[i]
                         new_expr += [(term, mkterm(expr.args[0], 0, 0, i - len(coefs) // 2))]
                     dxt = DZI
-            elif len(expr.args) == dimension:
+            elif len(expr.args) == get_dimension():
                 if expr.args[1:] == (l0, l0):
                     coefs = 2 * self.fd_matrix.col(2)
                     for i in range(len(coefs)):
@@ -1726,6 +1692,8 @@ class ThornDef:
             if tf.been_late_baked:
                 raise DslException(f"Cannot do_global_cse on ThornFunction {self} because it has already undergone late baking.")
 
+        grid_vars = self._grid_variables()
+
         tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
         old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
         old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict()
@@ -1745,7 +1713,7 @@ class ThornDef:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        substitutions_list, new_rhses = cse(list(chain(*old_tf_rhses.values())))
+        substitutions_list, new_rhses = cse_isolate(list(chain(*old_tf_rhses.values())), symbols_to_isolate=grid_vars)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
@@ -1816,7 +1784,7 @@ class ThornDef:
                 complexities.update(eqn_list.complexity)
 
         complexity_visitor = SympyComplexityVisitor(
-            lambda s: s in self._grid_variables() #or temp_kinds.get(s, None) == TempKind.Global
+            lambda s: s in grid_vars #or temp_kinds.get(s, None) == TempKind.Global
         )
         for new_temp, new_rhs in substitutions.items():
             complexities[new_temp] = complexity_visitor.complexity(new_rhs)
@@ -2114,13 +2082,13 @@ class ThornDef:
 
     def mk_coords(self, with_time: bool = False) -> List[Symbol]:
         # Note that x, y, and z are special symbols
-        if dimension == 3:
+        if get_dimension() == 3:
             if with_time:
                 self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
                                self._decl_scalar("z")]
             else:
                 self.coords = [self._decl_scalar("x"), self._decl_scalar("y"), self._decl_scalar("z")]
-        elif dimension == 4:
+        elif get_dimension() == 4:
             # TODO: No idea whether this works
             self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
                            self._decl_scalar("z")]
@@ -2336,7 +2304,7 @@ class ThornDef:
         if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
 
-        the_symbol = mkIndexedBase(basename, shape=tuple([dimension] * len(indices)))
+        the_symbol = mkIndexedBase(basename, shape=tuple([get_dimension()] * len(indices)))
 
         if len(indices) != 0:
             indexed_symbol = mkIndexed(the_symbol, *tuple(indices))
@@ -2421,7 +2389,7 @@ class ThornDef:
 
     def get_matrix(self, ind: Indexed) -> Matrix:
         values: Dict[Idx, Idx] = dict()
-        result = mkZeros(*tuple([dimension] * (len(ind.args) - 1)))
+        result = mkZeros(*tuple([get_dimension()] * (len(ind.args) - 1)))
         ind_args: List[Idx] = [checked_cast(x, Idx) for x in ind.args[1:]]
         while incr(ind_args, values):
             arr_idxs = tuple([to_num(checked_cast(do_subs(x, values), Idx)) for x in ind_args])
