@@ -61,7 +61,7 @@ ADMBaseX::initial_dtlapse = "none"
 ADMBaseX::initial_dtshift = "none"
 
 CottonmouthKerrSchildID::mass = 1.0 / 4.0
-CottonmouthKerrSchildID::spin = CottonmouthKerrSchildID::mass / 4.0
+CottonmouthKerrSchildID::spin = 0.0
 
 # Time Integration
 ODESolvers::verbose = yes
@@ -70,13 +70,9 @@ ODESolvers::method  = "RK4"
 
 # Spacetime evolution
 CottonmouthBSSNOK::eta_B                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK::evolved_lapse_floor    = 0.0
 CottonmouthBSSNOK::dissipation_epsilon    = 0.2
-
-# Output
-CarpetX::out_norm_omit_unstable = no
-CarpetX::out_norm_vars          = ""
 
 # Output
 IO::out_dir    = $parfile
