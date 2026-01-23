@@ -1,7 +1,8 @@
 ActiveThorns = "
   ADMBaseX
-  BSSN
+  TmunuBaseX
   CarpetX
+  CottonmouthBSSNOK
   CoordinatesX
   IOUtil
   ODESolvers
@@ -11,8 +12,10 @@ ActiveThorns = "
 # Driver
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
-CarpetX::verbose                 = no
+CarpetX::verbose                 = yes
 CarpetX::poison_undefined_values = no
+CarpetX::out_performance         = no
+CarpetX::out_metadata            = no
 
 # Run Termination
 Cactus::terminate   = "iteration"
@@ -59,30 +62,26 @@ ODESolvers::verbose    = yes
 ODESolvers::method     = "RK4"
 
 # Spacetime evolution
-BSSN::eta_B                  = 1.0
-BSSN::conformal_factor_floor = 1.0e-10
-BSSN::evolved_lapse_floor    = 1.0e-10
-BSSN::dissipation_epsilon    = 0.2
+CottonmouthBSSNOK::eta_B                  = 1.0
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
+CottonmouthBSSNOK::dissipation_epsilon    = 0.2
 
-# Checkpoint and recovery
-IO::out_dir                         = $parfile
-IO::out_every                       = 1
-
-# Norm and reduction output
-CarpetX::out_norm_omit_unstable = no
-CarpetX::out_norm_vars          = ""
+# IO
+IO::out_dir   = $parfile
+IO::out_every = 1
 
 # 1D output
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  BSSN::gt
-  BSSN::w
-  BSSN::At
-  BSSN::trK
-  BSSN::ConfConnect
-  BSSN::evo_lapse
-  BSSN::evo_shift
-  BSSN::shift_B
-  BSSN::HamCons
-  BSSN::MomCons
+  CottonmouthBSSNOK::gt
+  CottonmouthBSSNOK::w
+  CottonmouthBSSNOK::At
+  CottonmouthBSSNOK::trK
+  CottonmouthBSSNOK::ConfConnect
+  CottonmouthBSSNOK::evo_lapse
+  CottonmouthBSSNOK::evo_shift
+  CottonmouthBSSNOK::shift_B
+  CottonmouthBSSNOK::HamCons
+  CottonmouthBSSNOK::MomCons
 "

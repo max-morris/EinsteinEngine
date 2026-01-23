@@ -12,7 +12,7 @@ ActiveThorns = "
 # Driver
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
-CarpetX::verbose                 = no
+CarpetX::verbose                 = yes
 CarpetX::poison_undefined_values = no
 CarpetX::out_performance         = no
 CarpetX::out_metadata            = no
@@ -67,13 +67,9 @@ CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
 CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
 CottonmouthBSSNOK::dissipation_epsilon    = 0.2
 
-# Checkpoint and recovery
-IO::out_dir                         = $parfile
-IO::out_every                       = 1
-
-# Norm and reduction output
-CarpetX::out_norm_omit_unstable = no
-CarpetX::out_norm_vars          = ""
+# IO
+IO::out_dir   = $parfile
+IO::out_every = 1
 
 # 1D output
 CarpetX::out_tsv      = no
