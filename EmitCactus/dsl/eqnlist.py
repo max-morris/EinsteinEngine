@@ -11,6 +11,7 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.sympywrap import *
+from EmitCactus.dsl.functions import *
 from EmitCactus.dsl.util import require_baked
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
@@ -893,7 +894,6 @@ class EqnList:
 
     def madd(self) -> None:
         """ Insert fused multiply add instructions """
-        muladd = mkFunction("muladd")
         p0 = mkWild("p0", exclude=[0, 1, 2, -1, -2])
         p1 = mkWild("p1", exclude=[0, 1, 2, -1, -2])
         p2 = mkWild("p2", exclude=[0])
