@@ -3,6 +3,10 @@ from EmitCactus import *
 thorn = ThornDef('Test', 'Abcd')
 
 opts = {
+    "do_cse": True,
+    "temporary_promotion_strategy": promote_all(),
+    "do_madd": False,
+    "do_recycle_temporaries": True,
     "do_split_output_eqns": False
 }
 
@@ -11,20 +15,25 @@ b = thorn.add_param('b', 1.0, 'b')
 c = thorn.add_param('c', 1.0, 'c')
 
 o1 = thorn.decl('o1', [])
+o1_prime = thorn.overwrite(o1)
 o2 = thorn.decl('o2', [])
+o2_prime = thorn.overwrite(o2)
+
 
 f1 = thorn.create_function('f1', ScheduleBin.Evolve)
 f2 = thorn.create_function('f2', ScheduleBin.Evolve)
+f3 = thorn.create_function('f3', ScheduleBin.Evolve)
 
 f1.add_eqn(o1, a + b + c)
+f2.add_eqn(o1_prime, o1 + 1)  # If I change `f2` to `f1`, it all goes bananas.
 f2.add_eqn(o2, a + b)
+f3.add_eqn(o2_prime, o1_prime + o2)
 
-f1.bake(**opts)
-f2.bake(**opts)
+
+thorn.bake(**opts)
 
 print(">"*50)
 
-thorn.do_global_cse()
 
 CppCarpetXWizard(
     thorn,
