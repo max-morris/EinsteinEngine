@@ -5,6 +5,7 @@ import re
 import sys
 import typing
 from collections import defaultdict
+from dataclasses import dataclass
 from enum import auto
 from itertools import chain
 from enum import auto, Enum
@@ -1592,6 +1593,25 @@ def _is_valid_c_identifier(s: str) -> bool:
     # C identifiers must start with a letter or underscore, followed by letters, digits, or underscores
     return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', s))
 
+class DeclOptionalArgs(TypedDict, total=False):
+    centering: Centering
+    declare_as_temp: bool
+    rhs: IndexedBase
+    from_thorn: str
+    parity: TensorParity
+    group_name: str
+    symmetries: List[Tuple[Idx, Idx]]
+    anti_symmetries: List[Tuple[Idx, Idx]]
+    substitution_rule: MkSubstType | None
+
+@dataclass
+class _Declaration:
+    indices: List[Idx]
+    kwargs: DeclOptionalArgs
+
+class _OverwriteSymbolRecord(NamedTuple):
+    symbol: IndexedBase
+    resolves_to: IndexedBase
 
 class ThornDef:
     """
@@ -1640,6 +1660,8 @@ class ThornDef:
         self.div_makers["D"] = DivMakerVisitor(D)
         self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
+        self.declarations: dict[str, _Declaration] = dict()
+        self.overwrite_symbols: dict[str, _OverwriteSymbolRecord] = dict()
         for dmv in self.div_makers.values():
             dmv.params = self.mk_param_set()
 
@@ -2250,19 +2272,21 @@ class ThornDef:
 
         return func
 
-    class DeclOptionalArgs(TypedDict, total=False):
-        centering: Centering
-        declare_as_temp: bool
-        rhs: IndexedBase
-        from_thorn: str
-        parity: TensorParity
-        group_name: str
-        symmetries: List[Tuple[Idx, Idx]]
-        anti_symmetries: List[Tuple[Idx, Idx]]
-        substitution_rule: MkSubstType | None
-
     def get_state(self) -> List[IndexedBase]:
         return [self.gfs[k] for k in self.rhs]
+
+    def overwrite(self, sym: IndexedBase) -> IndexedBase:
+        if sym not in self.gfs.values() or str(sym) not in self.declarations:
+            raise DslException(f"Cannot overwrite symbol {sym} which is not declared")
+
+        orig_sym = sym if str(sym) not in self.overwrite_symbols else self.overwrite_symbols[str(sym)].resolves_to
+        decl = self.declarations[str(orig_sym)]
+        sym_prime = self.decl(f"{sym}'", decl.indices, **decl.kwargs)
+
+        self.overwrite_symbols[str(sym_prime)] = _OverwriteSymbolRecord(sym_prime, orig_sym)
+
+        return sym_prime
+
 
     # noinspection PyIncorrectDocstring
     def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
@@ -2296,6 +2320,8 @@ class ThornDef:
         :return: A symbolic `IndexedBase` object which represents the declared variable.
         :raises DslException: If symmetries or anti-symmetries are applied to a scalar variable.
         """
+        self.declarations[basename] = _Declaration(indices=indices, kwargs=kwargs)
+
         if (rhs := kwargs.get('rhs', None)) is not None:
             base_sym = rhs.args[0]
             assert isinstance(base_sym, Symbol)

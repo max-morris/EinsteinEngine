@@ -73,7 +73,7 @@ class CactusGenerator(ABC):
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
 
-        for var_name in [v for v in self.var_names if self._var_is_locally_declared(v)]:
+        for var_name in [v for v in self.var_names if self._var_is_locally_declared(v) and "'" not in v]:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
             tags: list[TagPropertyNode] = list()
 

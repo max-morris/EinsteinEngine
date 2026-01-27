@@ -137,7 +137,7 @@ class CppCarpetXGenerator(CactusGenerator):
             syncs: set[Identifier] = OrderedSet()
 
             for var, spec in fn.eqn_complex.read_decls.items():
-                if var in fn.eqn_complex.inputs and (var_name := str(var)) not in self.vars_to_ignore:
+                if var in fn.eqn_complex.inputs and (var_name := str(var)) not in self.vars_to_ignore and "'" not in var_name:
                     qualified_var_name = self._get_qualified_var_name(var_name)
 
                     reads.append(Intent(
@@ -146,7 +146,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     ))
 
             for var, spec in fn.eqn_complex.write_decls.items():
-                if var in fn.eqn_complex.outputs and (var_name := str(var)) not in self.vars_to_ignore:
+                if var in fn.eqn_complex.outputs and (var_name := str(var)) not in self.vars_to_ignore and "'" not in var_name:
                     qualified_var_name = self._get_qualified_var_name(var_name)
                     qualified_var_id = Identifier(qualified_var_name)
 
@@ -595,7 +595,9 @@ class CppCarpetXGenerator(CactusGenerator):
 
         tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
         
-        sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering.keys())
+        sympy_visitor = self._mk_sympy_visitor(
+            tile_temps_to_centering.keys()
+        )
 
         carpetx_loops: list[Stmt] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
@@ -604,7 +606,10 @@ class CppCarpetXGenerator(CactusGenerator):
 
             subst_result = substitute_recycled_temporaries(eqn_list)
 
-            eqns: list[tuple[sy.Symbol, Expr]] = [(lhs, sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
+            def _resolve_overwrite(s: sy.Symbol) -> sy.Symbol:
+                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
+
+            eqns: list[tuple[sy.Symbol, Expr]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
             temporaries = [
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
                 if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries) and str(lhs) not in self.var_names

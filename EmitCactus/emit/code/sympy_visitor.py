@@ -99,7 +99,8 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.Symbol) -> Expr:
         assert len(expr.args) == 0
-        return IdExpr(Identifier(self.substitution_fn(expr.name, self.visiting_stencil_fn_args)))
+        name = expr.name if "'" not in expr.name else expr.name.replace("'", "")
+        return IdExpr(Identifier(self.substitution_fn(name, self.visiting_stencil_fn_args)))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
