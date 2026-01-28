@@ -262,6 +262,17 @@ class EqnComplex:
 
         return result[0], result[1], result[2]
 
+    @cached_property
+    @require_baked(msg="Can't get stencil_idxes before baking the EqnComplex.")
+    def stencil_idxes(self) -> set[tuple[int, int, int]]:
+        result = set()
+
+        for eqn_list in self.eqn_lists:
+            for eqn_rhs in eqn_list.eqns.values():
+                # noinspection PyProtectedMember
+                eqn_list._stencil_idxes(result, eqn_rhs)
+
+        return result
 
 
 class EqnList:
@@ -966,6 +977,20 @@ class EqnList:
             else:
                 if isinstance(arg, Expr):
                     self._stencil_limits(result, arg)
+
+    def stencil_idxes(self) -> set[tuple[int, int, int]]:
+        result = set()
+        for eqn in self.eqns.values():
+            self._stencil_idxes(result, eqn)
+        return result
+
+    def _stencil_idxes(self, result: set[tuple[int, int, int]], expr: Expr) -> None:
+        for arg in expr.args:
+            if arg.is_Function and self.is_stencil.get(arg.func, False):
+                result.add(tuple(int(typing.cast(Expr, a).evalf()) for a in arg.args[1:]))
+            else:
+                if isinstance(arg, Expr):
+                    self._stencil_idxes(result, arg)
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
