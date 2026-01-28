@@ -598,6 +598,15 @@ class EqnList:
             raise DslException("Can't bake an EqnList that has already been baked.")
         self.been_baked = True
 
+        rd_overwrites = OrderedSet()
+        wr_overwrites = OrderedSet()
+        def process_overwrite(s:Symbol)->None:
+            if "'" in str(s):
+                rd = mkSymbol(str(s).replace("'", ""))
+                wr = s
+                rd_overwrites.add(rd)
+                wr_overwrites.add(wr)
+
         # Bake now regenerates inputs and outputs but not parameters
         self.inputs.clear()
         self.outputs.clear()
@@ -605,10 +614,13 @@ class EqnList:
         for lhs, rhs in self.eqns.items():
             assert lhs not in self.params, f"Symbol '{lhs}' is a parameter, but we are assigning to it."
             self.outputs.add(lhs)
+            process_overwrite(lhs)
             for symb in rhs.free_symbols:
+
                 if symb not in self.params:
                     assert isinstance(symb, Symbol), f"{symb} should be an instance of Symbol, but type={type(symb)}"
                     self.inputs.add(symb)
+                    process_overwrite(symb)
 
         for lhs in self.outputs:
             if lhs in self.inputs:
@@ -616,6 +628,18 @@ class EqnList:
         for lhs in self.temporaries:
             self.inputs.remove(lhs)
             self.outputs.remove(lhs)
+
+        for rd in rd_overwrites:
+            if rd in self.outputs:
+                raise DslException(f"Overwrite source symbol {rd} should not be in outputs")
+            if rd in self.temporaries:
+                raise DslException(f"Overwrite source symbol {rd} should not be in temporaries")
+
+        for wr in wr_overwrites:
+            if wr in self.inputs:
+                raise DslException(f"Overwrite destination symbol {wr} should not be in inputs")
+            if wr in self.temporaries:
+                raise DslException(f"Overwrite destination symbol {wr} should not be in temporaries")
 
         needed: Set[Symbol] = OrderedSet()
         complete: Dict[Symbol, int] = OrderedDict()
