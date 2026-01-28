@@ -497,7 +497,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             # Make sure the referenced layout has a preceding, corresponding decl of the form
             # `const GF3D5layout ${LAYOUT_NAME}_layout(cctkGH, {$I, $J, $K});`
-            if var_centering not in declared_layouts:
+            if var_centering not in declared_layouts and "'" not in var_name:
                 declared_layouts.add(var_centering)
 
                 i, j, k = var_centering.int_repr
@@ -516,7 +516,8 @@ class CppCarpetXGenerator(CactusGenerator):
             #     [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
             # ))
 
-            layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
+            if "'" not in var_name:
+                layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
 
         input_var_strs = [str(i) for i in thorn_fn.eqn_complex.inputs]
 
