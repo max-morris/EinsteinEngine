@@ -108,6 +108,30 @@ class SympyExprVisitor:
         assert len(tup.args) == 0, f"Missing arguments on symbol: {str(expr)} {tup.args} {len(tup.args)}"
         return typing.cast(Expr, self.visit(base))
 
+    @staticmethod
+    def encode_stencil_idx(*indices: int) -> str:
+        encoded = 'stencil_idx'
+
+        for idx in indices:
+            if idx >= 0:
+                encoded += f'_{idx}'
+            else:
+                encoded += f'_m{-idx}'
+
+        return encoded
+
+    def _visit_stencil_call(self, expr: sy.Function) -> Expr:
+        self.visiting_stencil_fn_args = True
+
+        gf_arg = self.visit(expr.args[0])
+        x_arg, y_arg, z_arg = expr.args[1:]
+
+        args_encoded = self.encode_stencil_idx(*(int(typing.cast(sy.Expr, arg).evalf()) for arg in [x_arg, y_arg, z_arg]))
+
+        self.visiting_stencil_fn_args = False
+
+        return FunctionCall(Identifier(f'{expr.func.name}'), [gf_arg, Identifier(args_encoded)], [])
+
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
         arg_list: list[Expr]
@@ -115,10 +139,10 @@ class SympyExprVisitor:
         if isinstance(expr.func, sy.core.function.UndefinedFunction):  # Undefined function calls are preserved as-is
             assert hasattr(expr.func, 'name')
             if expr.func.name in self.stencil_fns:
-                self.visiting_stencil_fn_args = True
-            arg_list = [self.visit(a) for a in expr.args]
-            self.visiting_stencil_fn_args = False
-            return FunctionCall(Identifier(expr.func.name), arg_list, [])
+                return self._visit_stencil_call(expr)
+            else:
+                arg_list = [self.visit(a) for a in expr.args]
+                return FunctionCall(Identifier(expr.func.name), arg_list, [])
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
         fn_type: StandardizedFunctionCallType

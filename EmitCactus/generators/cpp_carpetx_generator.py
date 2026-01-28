@@ -88,7 +88,7 @@ class CppCarpetXGenerator(CactusGenerator):
     _boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
-        #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
+        #define stencil(GF, IDX) (GF(p.mask, GF ## _layout, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
@@ -553,6 +553,17 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             )
 
+        stencil_idx_decls = [
+            ConstAssignDecl(
+                Identifier('auto'),
+                Identifier(SympyExprVisitor.encode_stencil_idx(*stencil_idx)),
+                VerbatimExpr(
+                    Verbatim(f'p.I + ({stencil_idx[0]})*p.DI[0] + ({stencil_idx[1]})*p.DI[1] + ({stencil_idx[2]})*p.DI[2]')
+                )
+            )
+            for stencil_idx in thorn_fn.eqn_complex.stencil_idxes
+        ]
+
         # DXI, DYI, DZI decls
         di_decls = [
             ConstAssignDecl(Identifier('auto'), Identifier(s), BinOpExpr(FloatLiteralExpr(1.0), BinOp.Div, VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))))
@@ -621,7 +632,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     output_centering,
                     output_region,
                     CarpetXGridLoopLambda(
-                        preceding=xyz_decls,
+                        preceding=xyz_decls+stencil_idx_decls,
                         equations=eqns,
                         succeeding=[],
                         temporaries=temporaries,
