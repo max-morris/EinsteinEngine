@@ -27,7 +27,7 @@ f3 = thorn.create_function('f3', ScheduleBin.Evolve)
 f1.add_eqn(o1, a + b + c)
 f2.add_eqn(o1_prime, o1 + 1)  # If I change `f2` to `f1`, it all goes bananas.
 f2.add_eqn(o2, a + b)
-f3.add_eqn(o2_prime, o1_prime + o2)
+f3.add_eqn(o2_prime, o1 + o2)
 
 
 thorn.bake(**opts)
