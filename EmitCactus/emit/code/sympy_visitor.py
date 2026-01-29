@@ -126,11 +126,11 @@ class SympyExprVisitor:
         gf_arg = self.visit(expr.args[0])
         x_arg, y_arg, z_arg = expr.args[1:]
 
-        args_encoded = self.encode_stencil_idx(*(int(typing.cast(sy.Expr, arg).evalf()) for arg in [x_arg, y_arg, z_arg]))
+        args_encoded = self.encode_stencil_idx(*(int(typing.cast(sy.Expr, arg).evalf()) for arg in [x_arg, y_arg, z_arg]))  # type: ignore[no-untyped-call]
 
         self.visiting_stencil_fn_args = False
 
-        return FunctionCall(Identifier(f'{expr.func.name}'), [gf_arg, Identifier(args_encoded)], [])
+        return FunctionCall(Identifier(f'{expr.func.name}'), [gf_arg, IdExpr(Identifier(args_encoded))], [])
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:

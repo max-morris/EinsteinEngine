@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 
 from EmitCactus.dsl.use_indices import ThornDef, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
@@ -48,7 +49,7 @@ class CactusGeneratorOptions(TypedDict, total=False):
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
-    variable_groups: Dict[str, VariableGroup]
+    variable_groups: OrderedDict[str, VariableGroup]
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
 
@@ -56,7 +57,7 @@ class CactusGenerator(ABC):
 
     def __init__(self, thorn_def: ThornDef, options: CactusGeneratorOptions):
         self.thorn_def = thorn_def
-        self.variable_groups = dict()
+        self.variable_groups = OrderedDict()
         self.var_names = OrderedSet()
         self.options = options if options is not None else dict()
 
