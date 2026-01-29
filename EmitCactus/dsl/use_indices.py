@@ -1539,7 +1539,7 @@ class ThornFunction:
         return {
             'do_madd': False,
             'do_recycle_temporaries': True,
-            'do_split_output_eqns': True
+            'do_split_output_eqns': False
         }
 
     def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
