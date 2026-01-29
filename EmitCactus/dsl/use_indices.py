@@ -2291,8 +2291,8 @@ class ThornDef:
 
         return func
 
-    def get_state(self) -> List[IndexedBase]:
-        return [self.gfs[k] for k in self.rhs]
+    def get_state(self) -> set[IndexedBase]:
+        return {self.gfs[k.replace("'", "")] for k in self.rhs}
 
     def overwrite(self, sym: IndexedBase) -> IndexedBase:
         if sym not in self.gfs.values() or str(sym) not in self.declarations:
