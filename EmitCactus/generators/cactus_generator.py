@@ -65,15 +65,15 @@ class CactusGenerator(ABC):
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqn_complex.inputs:
-                var_name = str(iv)
+                var_name = str(iv).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
             for ov in tf.eqn_complex.outputs:
-                var_name = str(ov)
+                var_name = str(ov).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
 
-        for var_name in [v for v in self.var_names if self._var_is_locally_declared(v) and "'" not in v]:
+        for var_name in [v for v in self.var_names if self._var_is_locally_declared(v)]:
             group_name = self.thorn_def.var2base.get(var_name, var_name)
             tags: list[TagPropertyNode] = list()
 
