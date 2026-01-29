@@ -646,6 +646,10 @@ class EqnList:
             if rd in self.temporaries:
                 raise DslException(f"Overwrite source symbol {rd} should not be in temporaries")
 
+        for rhs in self.eqns.values():
+            if "stencil" in rhs.free_symbols:
+                raise DsLException(f"Overwrite source symbol {rd} cannot be used inside a stencil")
+
         for wr in wr_overwrites:
             if wr in self.inputs:
                 raise DslException(f"Overwrite destination symbol {wr} should not be in inputs")
