@@ -40,7 +40,7 @@ __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "
            "set_dimension", "get_dimension", "lookup_pair", "subst_tensor", "subst_tensor_xyz", "mk_pair",
            "noop", "stencil", "DD", "DDI",
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
-           "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5"]
+           "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5", "CseOptimizationLevel"]
 
 from .temp_kind import TempKind
 from .util import cse_isolate
@@ -1336,9 +1336,14 @@ class ThornFunctionBakeOptions(TypedDict, total=False):
     do_split_output_eqns: bool
 
 
+class CseOptimizationLevel(Enum):
+    Fast = auto()
+    Optimal = auto()
+
 class ThornDefBakeOptions(TypedDict, total=False):
     # ThornDef opts
     do_cse: bool
+    cse_optimization_level: CseOptimizationLevel
     temporary_promotion_strategy: TemporaryPromotionStrategy
 
     # ThornFunction default opts
@@ -1675,6 +1680,7 @@ class ThornDef:
     def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
         opts: ThornDefBakeOptions = {
             'do_cse': True,
+            'cse_optimization_level': CseOptimizationLevel.Optimal,
             'temporary_promotion_strategy': promote_none(),
             'functions': dict()
         }
@@ -1700,7 +1706,7 @@ class ThornDef:
             tf._early_bake(**my_tf_opts[tf.name])
 
         if my_opts['do_cse']:
-            self._do_global_cse(my_opts['temporary_promotion_strategy'])
+            self._do_global_cse(my_opts['temporary_promotion_strategy'], my_opts['cse_optimization_level'])
 
         for tf in self.thorn_functions.values():
             if tf.name not in my_tf_opts:  # Must be a synthetic function
@@ -1709,7 +1715,11 @@ class ThornDef:
                 tf._late_bake(**my_tf_opts[tf.name])
 
 
-    def _do_global_cse(self, promotion_strategy: TemporaryPromotionStrategy = promote_all()) -> None:
+    def _do_global_cse(
+            self,
+            promotion_strategy: TemporaryPromotionStrategy = promote_all(),
+            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+    ) -> None:
         for tf in self.thorn_functions.values():
             if tf.been_late_baked:
                 raise DslException(f"Cannot do_global_cse on ThornFunction {self} because it has already undergone late baking.")
@@ -1735,7 +1745,16 @@ class ThornDef:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        substitutions_list, new_rhses = cse_isolate(list(chain(*old_tf_rhses.values())), symbols_to_isolate=grid_vars)
+
+        if optimization_level is CseOptimizationLevel.Optimal:
+            substitutions_list, new_rhses = cse_isolate(
+                list(chain(*old_tf_rhses.values())),
+                symbols_to_isolate=grid_vars
+            )
+        elif optimization_level is CseOptimizationLevel.Fast:
+            substitutions_list, new_rhses = cse(list(chain(*old_tf_rhses.values())))
+        else:
+            raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
