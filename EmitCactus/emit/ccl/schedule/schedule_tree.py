@@ -47,7 +47,7 @@ class IntentRegion(ReprEnum):
         return self if self is other else IntentRegion.Everywhere
 
 
-@dataclass
+@dataclass(frozen=True)
 class Intent(ScheduleNode):
     name: Identifier
     region: Optional[IntentRegion]
