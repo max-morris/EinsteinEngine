@@ -115,13 +115,13 @@ class CppVisitor(Visitor[CodeNode]):
             if isinstance(n.rhs, IntLiteralExpr) and n.rhs.integer == 2:
                 return f'pow2({lhs})'
             elif isinstance(n.rhs, IntLiteralExpr):
-                return f'pown<vreal>({lhs}, {rhs})'
+                return f'pown({lhs}, {rhs})'
             elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=2.0)):
                 return f'sqrt({lhs})'
             elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=3.0)):
                 return f'cbrt({lhs})'
             else:
-                return f'pow(static_cast<vreal>({lhs}), {rhs})'
+                return f'pow({lhs}, {rhs})'
 
         return f'({lhs} {n.op.representation} {rhs})'
 
@@ -186,7 +186,7 @@ class CppVisitor(Visitor[CodeNode]):
             assert n.write_destination is IntentRegion.Boundary
             loop_kind = 'bnd'
 
-        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}, vsize>(grid.nghostzones, {self.visit(n.fn)});"
+        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:
@@ -199,7 +199,7 @@ class CppVisitor(Visitor[CodeNode]):
                 if i in n.reassigned_lhses:
                     equations_list.append(f'{lhs} = {self.visit(rhs)};')
                 else:
-                    equations_list.append(f'vreal {lhs} = {self.visit(rhs)};')
+                    equations_list.append(f'auto {lhs} = {self.visit(rhs)};')
             else:
                 equations_list.append(f'store({lhs}, {self.visit(rhs)});')
 
