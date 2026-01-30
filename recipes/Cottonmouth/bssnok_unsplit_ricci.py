@@ -17,15 +17,17 @@ if not USE_GLOBAL_CSE:
         "temporary_promotion_strategy": promote_none(),
         "do_madd": False,
         "do_recycle_temporaries": True,
-        "do_split_output_eqns": True
+        "do_split_output_eqns": True,
+        "cse_optimization_level": CseOptimizationLevel.Fast
     }
 else:
     gen_opts = {
         "do_cse": True,
-        "temporary_promotion_strategy": promote_rank(1),
+        "temporary_promotion_strategy": promote_none(), #rank(1),
         "do_madd": False,
         "do_recycle_temporaries": True,
-        "do_split_output_eqns": True
+        "do_split_output_eqns": True,
+        "cse_optimization_level": CseOptimizationLevel.Fast
     }
 
 ###
@@ -33,7 +35,7 @@ else:
 ###
 
 # Fifth order Kreiss-Oliger disspation stencil
-div_diss = cottonmouth_bssnok.mk_stencil(
+div_diss0 = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la,
     Rational(1, 64) * DDI(la) * (
@@ -43,6 +45,9 @@ div_diss = cottonmouth_bssnok.mk_stencil(
         - 20.0 * stencil(0)
     )
 )
+
+def div_diss(a, b):
+    return sympify(0)
 
 ###
 # Extra math functions
