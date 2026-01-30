@@ -568,8 +568,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
             #return f'GF3D5index({result}, VVV_layout) /* HACK! Need to compute unique indices for different layouts! */'
             return [
-                VerbatimExpr(Verbatim(result)),
                 VerbatimExpr(Verbatim(f'VVV_layout /* HACK! Need to compute unique indices for different layouts! */')),
+                VerbatimExpr(Verbatim(result))
             ]
 
         stencil_idx_decls = [
