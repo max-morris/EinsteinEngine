@@ -86,9 +86,9 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     _boilerplate_setup: str = "#define CARPETX_GF3D5"
     _boilerplate_div_macros: str = """
-        #define access(GF) (GF(p.mask, stencil_idx_0_0_0))
-        #define store(GF, VAL) (GF.store(p.mask, stencil_idx_0_0_0, VAL))
-        #define stencil(GF, IDX) (GF(p.mask, IDX))
+        #define access(GF) (GF(stencil_idx_0_0_0))
+        #define store(GF, VAL) (GF.store(stencil_idx_0_0_0, VAL))
+        #define stencil(GF, IDX) (GF(IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
@@ -523,31 +523,31 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # x, y, and z are special, but x is extra special
         xyz_decls = [
-            ConstAssignDecl(Identifier('auto'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['y', 'z']
+            ConstAssignDecl(Identifier('auto'), Identifier(s), IdExpr(Identifier(f'p.{s}'))) for s in ['x', 'y', 'z']
             if s in input_var_strs
         ]
 
-        if 'x' in input_var_strs:
-            xyz_decls.append(
-                ConstAssignDecl(
-                    Identifier('vreal'),
-                    Identifier('x'),
-                    BinOpExpr(
-                        IdExpr(Identifier('p.x')),
-                        BinOp.Add,
-                        BinOpExpr(
-                            VerbatimExpr(Verbatim('Arith::iota<vreal>()')),
-                            BinOp.Mul,
-                            IdExpr(Identifier('p.dx'))
-                        )
-                    )
-                )
-            )
+        # if 'x' in input_var_strs:
+        #     xyz_decls.append(
+        #         ConstAssignDecl(
+        #             Identifier('auto'),
+        #             Identifier('x'),
+        #             BinOpExpr(
+        #                 IdExpr(Identifier('p.x')),
+        #                 BinOp.Add,
+        #                 BinOpExpr(
+        #                     VerbatimExpr(Verbatim('Arith::iota<vreal>()')),
+        #                     BinOp.Mul,
+        #                     IdExpr(Identifier('p.dx'))
+        #                 )
+        #             )
+        #         )
+        #     )
 
         if 't' in input_var_strs:
             xyz_decls.append(
                 ConstAssignDecl(
-                    Identifier('vreal'),
+                    Identifier('auto'),
                     Identifier('t'),
                     IdExpr(Identifier('cctk_time'))
                 )
