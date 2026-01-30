@@ -86,8 +86,8 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     _boilerplate_setup: str = "#define CARPETX_GF3D5"
     _boilerplate_div_macros: str = """
-        #define access(GF) (GF(p.mask, GF ## _layout, p.I))
-        #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
+        #define access(GF) (GF(p.mask, stencil_idx_0_0_0))
+        #define store(GF, VAL) (GF.store(p.mask, stencil_idx_0_0_0, VAL))
         #define stencil(GF, IDX) (GF(p.mask, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
@@ -580,6 +580,15 @@ class CppCarpetXGenerator(CactusGenerator):
             )
             for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
         ]
+
+        stencil_idx_decls.insert(
+            0,
+            ConstConstructDecl(
+                Identifier('GF3D5index'),
+                Identifier(SympyExprVisitor.encode_stencil_idx(0, 0, 0)),
+                calc_stencil_idx((0, 0, 0))
+            )
+        )
 
         # DXI, DYI, DZI decls
         di_decls = [
