@@ -88,7 +88,7 @@ class CppCarpetXGenerator(CactusGenerator):
     _boilerplate_div_macros: str = """
         #define access(GF) (GF(p.mask, GF ## _layout, p.I))
         #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
-        #define stencil(GF, IDX) (GF(p.mask, GF ## _layout, IDX))
+        #define stencil(GF, IDX) (GF(p.mask, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
@@ -553,7 +553,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             )
 
-        def calc_stencil_idx(stencil_idx: tuple[int, int, int]) -> str:
+        def calc_stencil_idx(stencil_idx: tuple[int, int, int]) -> list[Expr]:
             result = 'p.I'
 
             for i in range(3):
@@ -566,15 +566,17 @@ class CppCarpetXGenerator(CactusGenerator):
                 elif stencil_idx[i] > 0:
                     result += f' + {stencil_idx[i]}*p.DI[{i}]'
 
-            return result
+            #return f'GF3D5index({result}, VVV_layout) /* HACK! Need to compute unique indices for different layouts! */'
+            return [
+                VerbatimExpr(Verbatim(result)),
+                VerbatimExpr(Verbatim(f'VVV_layout /* HACK! Need to compute unique indices for different layouts! */')),
+            ]
 
         stencil_idx_decls = [
-            ConstAssignDecl(
-                Identifier('auto'),
+            ConstConstructDecl(
+                Identifier('GF3D5index'),
                 Identifier(SympyExprVisitor.encode_stencil_idx(*stencil_idx)),
-                VerbatimExpr(
-                    Verbatim(calc_stencil_idx(stencil_idx))
-                )
+                calc_stencil_idx(stencil_idx)
             )
             for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
         ]
