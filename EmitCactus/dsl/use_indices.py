@@ -1442,6 +1442,7 @@ class ThornFunction:
         if self.get_free_indices(lhs) != self.get_free_indices(rhs):
             raise DslException(f"Free indices of '{lhs}' and '{rhs}' do not match.")
         count = 0
+        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, _ = tup
@@ -1453,6 +1454,7 @@ class ThornFunction:
             rhs0 = rhs
             rhs2 = self.thorn_def.do_subs(rhs0, idxs)
             self._add_eqn2(lhs2, rhs2)
+            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
         if count == 0:
             # TODO: Understand what's going on with arg 0
             for ind in lhs.args[1:]:
@@ -1480,6 +1482,7 @@ class ThornFunction:
             raise DslException("add_eqn should not be called on a baked ThornFunction")
 
         count = 0
+        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, _ = tup
@@ -1490,6 +1493,7 @@ class ThornFunction:
             rhs2 = self.thorn_def.do_subs(rhs0, idxs)
             assert isinstance(lhs2, Symbol)
             self._add_eqn2(lhs2, rhs2)
+            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
         assert count > 0
 
     @add_eqn.register
@@ -1505,6 +1509,7 @@ class ThornFunction:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
         count = 0
+        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, idx = tup
@@ -1513,6 +1518,7 @@ class ThornFunction:
             lhs2 = lhs2_
             rhs2 = rhs[num_idx]
             assert isinstance(lhs2, Symbol)
+            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
             self._add_eqn2(lhs2, rhs2)
         assert count > 0
 

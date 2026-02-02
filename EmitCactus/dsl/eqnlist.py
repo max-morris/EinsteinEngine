@@ -297,6 +297,8 @@ class EqnList:
         self.inputs: Set[Symbol] = OrderedSet()
         self.outputs: Set[Symbol] = OrderedSet()
         self.order: List[Symbol] = list()
+        self.order_clumping: dict[int, set[Symbol]] = dict()
+        self.order_clumping_counter: int = 0
         self.sublists: List[List[Symbol]] = list()
         self.verbose = True
         self.read_decls: Dict[Symbol, IntentRegion] = OrderedDict()
@@ -320,6 +322,11 @@ class EqnList:
         self.add_param(DXI)
         self.add_param(DYI)
         self.add_param(DZI)
+
+    def _order_tag(self) -> int:
+        x = self.order_clumping_counter
+        self.order_clumping_counter += 1
+        return x
 
     #@cached_property
     @property
@@ -648,7 +655,7 @@ class EqnList:
 
         for rhs in self.eqns.values():
             if "stencil" in rhs.free_symbols:
-                raise DsLException(f"Overwrite source symbol {rd} cannot be used inside a stencil")
+                raise DslException(f"Overwrite source symbol {rd} cannot be used inside a stencil")
 
         for wr in wr_overwrites:
             if wr in self.inputs:
