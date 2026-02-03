@@ -30,6 +30,7 @@ class FactorStencil:
     def __init__(self, inputs):
         self.inputs = inputs
         self.temps = dict()
+        self.stencils = dict()
 
     def mktemp(self):
         return mkSymbol(f"temp{len(self.temps)}")
@@ -91,11 +92,12 @@ class FactorStencil:
         return Pow(self.visit(a.args[0]), a.args[1])
 
     def replace(self, a:Any)->None:
-        b = self.temps.get(a, None)
+        b = self.stencils.get(a, None)
         if b is not None:
             return b
         tmp = self.mktemp()
         self.temps[tmp] = a
+        self.stencils[a] = tmp
         return tmp
 
     def mktup(self, a):
