@@ -19,6 +19,7 @@ from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 from EmitCactus.util import get_or_compute
 from sepstencil import FactorStencil, is_stencil
 from symbify import Symbify
+from diag_free import diag_free_symbols
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -547,7 +548,7 @@ class EqnList:
 
     def add_me(self, lhs, used):
         rhs = self.eqns[lhs]
-        for f in free_symbols(rhs):
+        for f in diag_free_symbols(rhs):
             if f in used:
                 continue
             used.add(f)
@@ -555,9 +556,11 @@ class EqnList:
                 continue
             if f in self.params:
                 continue
+            if is_stencil(f):
+                continue
             self.add_me(f, used)
         self.order.append(lhs)
-        #print("ADDING:", lhs, "=", self.eqns[lhs])
+        print("ADDING:", lhs, "=", self.eqns[lhs])
 
     def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
         stencil = mkFunction("stencil")
@@ -581,8 +584,8 @@ class EqnList:
             else:
                 new_order.append(val)
 
-        for val in self.order:
-            print(colorize(">>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
+        #for val in self.order:
+        #    print(colorize(">>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
 
         def stkey_fn(b):
             a = self.eqns[b]
@@ -598,8 +601,8 @@ class EqnList:
             else:
                 self.order.append(val)
 
-        for val in self.order:
-            print(colorize(">>>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
+        #for val in self.order:
+        #    print(colorize(">>>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
 
     def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
         provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key

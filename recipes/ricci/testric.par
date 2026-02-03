@@ -1,4 +1,4 @@
-ActiveThorns = "Ricci CarpetX ADMBaseX ZeroTest"
+ActiveThorns = "Ricci CarpetX ADMBaseX ZeroTest ODESolvers"
 Cactus::presync_mode = "mixed-error"
 Cactus::cctk_itlast = 1
 
