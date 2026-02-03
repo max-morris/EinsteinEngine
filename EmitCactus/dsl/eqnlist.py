@@ -7,6 +7,7 @@ from typing import cast, Dict, List, Tuple, Optional, Set
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
@@ -38,6 +39,7 @@ class TemporaryLifetime:
     written_at: int
     replaces: Optional["TemporaryLifetime"]
     is_superseded: bool
+    is_dead: bool
 
     def __str__(self) -> str:
         ticks = "'" * self.prime
@@ -480,26 +482,51 @@ class EqnList:
                 read_at=temp_reads[temp_var],
                 written_at=temp_writes[temp_var].pop(),
                 replaces=None,
-                is_superseded=False
+                is_superseded=False,
+                is_dead=False
             ))
 
+        lifetimes_assigned_at = {lt.written_at: lt for lt in lifetimes} #sorted(lifetimes, key=lambda lt: lt.written_at)
+        lifetimes_final_read: SortedDict[int, set[TemporaryLifetime]] = SortedDict() #sorted(lifetimes, key=lambda lt: lt.final_read)
+        for lt in lifetimes:
+            if lt.final_read in lifetimes_final_read:
+                lifetimes_final_read[lt.final_read].add(lt)
+            else:
+                lifetimes_final_read[lt.final_read] = {lt}
+        lifetimes_final_read_keys = list(lifetimes_final_read.keys())
+
+        # Attempt to find a temporary lifetime that is both stale (last read was before eqn_idx) and not superseded.
+        def find_candidate(eqn_idx: int) -> Optional[TemporaryLifetime]:
+            eqn_probe = eqn_idx
+            while eqn_probe > 0:
+                # In the sorted list of keys, find the index to insert `eqn_probe`. This will either give us the
+                # index of `eqn_probe` itself if it's a valid key, or the index of the smallest key which is GT it.
+                # If we get 0 back, we are either the first key in the list or smaller than all valid keys, so abort.
+                if (key_idx := lifetimes_final_read.bisect_left(eqn_probe)) == 0:
+                    return None
+
+                # Subtract one from `key_idx` to get the next-smallest valid key.
+                # Now, `eqn_probe` holds the next-smallest valid key from its previous value.
+                eqn_probe = lifetimes_final_read_keys[key_idx - 1]
+
+                assert eqn_probe < eqn_idx
+                assert eqn_probe in lifetimes_final_read
+
+                # Inspect the lifetimes which expired in eqn number `eqn_probe`. If we find a non-superseded one, return it.
+                for lt in lifetimes_final_read[eqn_probe]:
+                    if not lt.is_superseded and not lt.is_dead:
+                        return lt
+
+            return None
+
+
+
         for eqn_i in range(len(self.order)):
-            def is_assigned_here(lt: TemporaryLifetime) -> bool:
-                return lt.written_at == eqn_i
-
-            def is_stale(lt: TemporaryLifetime) -> bool:
-                return lt.final_read < eqn_i and not lt.is_superseded
-
-            if not (assigned_here := cast(TemporaryLifetime, next(filter(is_assigned_here, lifetimes), None))):
+            if not (assigned_here := lifetimes_assigned_at.get(eqn_i, None)):
                 continue
 
-            stale_temporaries: List[TemporaryLifetime] = sorted(filter(is_stale, lifetimes),
-                                                                key=lambda lt: lt.final_read)
-
-            if len(stale_temporaries) == 0:
+            if not (candidate := find_candidate(eqn_i)):
                 continue
-
-            candidate = stale_temporaries[0]
 
             lifetimes.add(TemporaryLifetime(
                 symbol=candidate.symbol,
@@ -507,10 +534,11 @@ class EqnList:
                 read_at=assigned_here.read_at,
                 written_at=eqn_i,
                 replaces=assigned_here,
-                is_superseded=False
+                is_superseded=False,
+                is_dead=False
             ))
 
-            lifetimes.remove(assigned_here)
+            assigned_here.is_dead = True
             candidate.is_superseded = True
 
             self.temporary_replacements.add(TemporaryReplacement(
@@ -523,7 +551,7 @@ class EqnList:
             print(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
 
         print("*** Dumping temporary lifetimes ***")
-        for lifetime in sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime)):
+        for lifetime in filter(lambda lt: not lt.is_dead, sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime))):
             print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
 
     def uses_dict(self) -> Dict[Symbol, int]:
