@@ -14,7 +14,8 @@ gen_opts = {
     "temporary_promotion_strategy": promote_none(),
     "do_madd": False,
     "do_recycle_temporaries": True,
-    "do_split_output_eqns": True
+    "do_split_output_eqns": True,
+    "cse_optimization_level": CseOptimizationLevel.Fast
 }
 
 ###
