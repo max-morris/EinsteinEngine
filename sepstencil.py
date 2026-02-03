@@ -39,6 +39,10 @@ class FactorStencil:
         raise Exception(f"{type(a)}: {a}")
 
     @visit.register
+    def _(self, a:sy.NumberSymbol)->None:
+        return a
+
+    @visit.register
     def _(self, a:sy.Number)->None:
         return a
 
