@@ -1995,7 +1995,7 @@ class ThornDef:
 
                 def add_deps(temp: Symbol) -> None:
                     for td in new_temp_dependencies[temp]:
-                        if temp_kinds.get(td, None) in {TempKind.Local, TempKind.Tile}:
+                        if temp_kinds.get(td, None) in [TempKind.Local, TempKind.Tile]:
                             if td not in synthetic_fn._eqn_list.eqns:
                                 synthetic_fn._add_eqn2(td, substitutions[td])
                             add_deps(td)

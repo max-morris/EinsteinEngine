@@ -23,9 +23,9 @@ if not USE_GLOBAL_CSE:
 else:
     gen_opts = {
         "do_cse": True,
-        "temporary_promotion_strategy": promote_none(), #rank(1),
-        "do_madd": False,
-        "do_recycle_temporaries": True,
+        "temporary_promotion_strategy": promote_rank(1),  # EXAMPLE: promote_threshold(global_threshold=1000, inline_threshold=5)
+        "do_madd": False,                                 #          will promote complexity >= 1000 to globals, and demote complexity <= 5 to inline.
+        "do_recycle_temporaries": True,                   #          Anything in-between will be a local.
         "do_split_output_eqns": True,
         "cse_optimization_level": CseOptimizationLevel.Fast
     }
