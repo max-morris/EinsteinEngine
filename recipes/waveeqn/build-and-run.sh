@@ -29,7 +29,6 @@ EMIT_CACTUS_DIR="$PWD"
 echo "python3 recipies/waveeqn/waveeqn.py"
 set -e
 python3 recipes/waveeqn/waveeqn.py
-cp {./,TestEmitCactus/WaveEqn/src/}WaveEqn_refine.cpp
 set +e
 if [ ! -r "./TestEmitCactus/WaveEqn/interface.ccl" ]
 then

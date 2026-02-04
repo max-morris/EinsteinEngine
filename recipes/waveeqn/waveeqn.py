@@ -8,14 +8,6 @@ The waveequation! It can't be solved too many times.
 import nrpy.helpers.conditional_file_updater as cfu
 from math import pi
 
-gen_opts = {
-    "do_cse": True,
-    "temporary_promotion_strategy": promote_none(),
-    "do_madd": False,
-    "do_recycle_temporaries": True,
-    "do_split_output_eqns": True
-}
-
 
 # If we change our configuration, this will show us diffs of the
 # new output and the old.
