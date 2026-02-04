@@ -77,15 +77,19 @@ class PercentilePromotionPredicate:
 class ThresholdPromotionPredicate:
     complexities: dict[Symbol, int]
     threshold: int
+    inline_threshold: int
 
-    def __init__(self, complexities: dict[Symbol, int], /, *, threshold: int) -> None:
+    def __init__(self, complexities: dict[Symbol, int], /, *, threshold: int, inline_threshold: int = 0) -> None:
         self.complexities = complexities
         self.threshold = threshold
+        self.inline_threshold = inline_threshold
         if self.threshold < 0:
             raise DslException(f"threshold must be at least 0, got {self.threshold}")
 
     def __call__(self, temp_name: Symbol, /) -> TempKind:
-        if self.complexities[temp_name] >= self.threshold:
+        if self.complexities[temp_name] <= self.inline_threshold:
+            return TempKind.Inline
+        elif self.complexities[temp_name] >= self.threshold:
             return TempKind.Global
         else:
             return TempKind.Local
@@ -169,11 +173,12 @@ class _PercentilePromotionStrategy(TwoPassTemporaryPromotionStrategy):
 
 
 class _ThresholdPromotionStrategy(OnePassTemporaryPromotionStrategy):
-    def __init__(self, threshold: int) -> None:
-        self.threshold = threshold
+    def __init__(self, global_threshold: int, inline_threshold: int = 0) -> None:
+        self.threshold = global_threshold
+        self.inline_threshold = inline_threshold
 
     def __call__(self, complexities: dict[Symbol, int]) -> ThresholdPromotionPredicate:
-        return ThresholdPromotionPredicate(complexities, threshold=self.threshold)
+        return ThresholdPromotionPredicate(complexities, threshold=self.threshold, inline_threshold=self.inline_threshold)
 
 
 class _RankPromotionStrategy(TwoPassTemporaryPromotionStrategy):
@@ -212,12 +217,12 @@ def promote_percentile(percentile: float) -> TemporaryPromotionStrategy:
     return _PercentilePromotionStrategy(percentile)
 
 
-def promote_threshold(threshold: int) -> TemporaryPromotionStrategy:
+def promote_threshold(global_threshold: int, inline_threshold: int = 0) -> TemporaryPromotionStrategy:
     """
     Allow all temporaries whose complexity falls at or above the given threshold to be promoted as far as Global.
     """
 
-    return _ThresholdPromotionStrategy(threshold)
+    return _ThresholdPromotionStrategy(global_threshold, inline_threshold)
 
 
 def promote_rank(max_promotions: int) -> TemporaryPromotionStrategy:
