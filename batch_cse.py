@@ -21,6 +21,7 @@ def batch_cse(e, batch=3, symbols=None):
         elist.append(e[i])
         a, b = cse(elist, symbols=name_iter)
         if len(a) > batch:
+            print("a:",a)
             out += a
             out2 += b
             elist = []
@@ -45,11 +46,9 @@ if __name__ == "__main__":
         print(">>",item)
     for item in b:
         print(item)
-    print("len:",len(a),len(b))
     print()
     a, b = cse(e)
     for item in a:
         print(">>",item)
     for item in b:
         print(item)
-    print("len:",len(a),len(b))
