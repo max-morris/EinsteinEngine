@@ -1807,14 +1807,9 @@ class ThornDef:
 
                     drill(new_temp, temp_rhs)
 
-                for lhs in old_tf_lhses[tf_name]:
-                    assert lhs in eqn_list.eqns
-                    eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
-                    global_eqn_idx += 1
+                global_eqn_idx += el_shape
 
-                #global_eqn_idx += el_shape
-
-                eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
+                #eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
         tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
 
@@ -1905,8 +1900,35 @@ class ThornDef:
         for new_temp in substitutions.keys():
             print(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
 
+        inline_temps: list[tuple[Symbol, Expr]] = list()
+        for new_temp, new_rhs in sorted(substitutions.items(),
+                                        key=lambda kv: substitutions_order[kv[0]],
+                                        reverse=True):
+            if temp_kinds.get(new_temp, None) == TempKind.Inline:
+                inline_temps.append((new_temp, new_rhs))
+
+        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]
+
+        for lhs in substitutions.keys():
+            substitutions[lhs] = substitutions[lhs].subs(inline_temps)
+
+        for temp, _ in inline_temps:
+            del substitutions[temp]
+
+        global_eqn_idx = 0
+        for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
+            tf_name = TfName(tf.name)
+            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
+                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
+
+                for lhs in old_tf_lhses[tf_name]:
+                    assert lhs in eqn_list.eqns
+                    eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
+                    global_eqn_idx += 1
+
+
         for new_temp, new_rhs in substitutions.items():
-            if new_temp not in temp_kinds:
+            if new_temp not in temp_kinds or temp_kinds[new_temp] == TempKind.Inline:
                 continue
             elif temp_kinds[new_temp] == TempKind.Local:
                 for tf, els_reading in tfs_active_reads[new_temp].items():
@@ -1973,7 +1995,7 @@ class ThornDef:
 
                 def add_deps(temp: Symbol) -> None:
                     for td in new_temp_dependencies[temp]:
-                        if temp_kinds.get(td, None) != TempKind.Global:
+                        if temp_kinds.get(td, None) in {TempKind.Local, TempKind.Tile}:
                             if td not in synthetic_fn._eqn_list.eqns:
                                 synthetic_fn._add_eqn2(td, substitutions[td])
                             add_deps(td)

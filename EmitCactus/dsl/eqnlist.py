@@ -510,6 +510,7 @@ class EqnList:
                 assert eqn_probe in lifetimes_final_read
 
                 # Inspect the lifetimes which expired in eqn number `eqn_probe`. If we find a non-superseded one, return it.
+                lt: TemporaryLifetime
                 for lt in lifetimes_final_read[eqn_probe]:
                     if not lt.is_superseded and not lt.is_dead:
                         return lt

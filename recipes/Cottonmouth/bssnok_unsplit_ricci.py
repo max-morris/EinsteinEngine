@@ -26,7 +26,7 @@ else:
         "temporary_promotion_strategy": promote_none(), #rank(1),
         "do_madd": False,
         "do_recycle_temporaries": True,
-        "do_split_output_eqns": True,
+        "do_split_output_eqns": False,
         "cse_optimization_level": CseOptimizationLevel.Fast
     }
 
