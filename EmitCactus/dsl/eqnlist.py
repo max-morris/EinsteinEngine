@@ -21,6 +21,7 @@ from EmitCactus.util import get_or_compute
 from sepstencil import FactorStencil, is_stencil
 from symbify import Symbify
 from diag_free import diag_free_symbols
+from batch_cse import batch_cse
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -118,7 +119,7 @@ class EqnComplex:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        substitutions_list, new_rhses = cse(old_rhses)
+        substitutions_list, new_rhses = batch_cse(old_rhses, batch=100)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
@@ -320,6 +321,7 @@ class EqnList:
         self.been_baked: bool = False
         self.parent = parent
         self.complexity: dict[Symbol, int] = dict()
+        self.ordnum: dict[Symbol, int] = dict()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -590,7 +592,7 @@ class EqnList:
         self.order.append(lhs)
         print("ADDING:", lhs, "=", self.eqns[lhs])
 
-    def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
+    def order_builder1(self, complete: Dict[Symbol, int], cno: int) -> None:
         stencil = mkFunction("stencil")
 
         self.order.clear()
@@ -632,7 +634,7 @@ class EqnList:
         #for val in self.order:
         #    print(colorize(">>>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
 
-    def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
+    def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
         provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
         requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
         self.requires = OrderedDict()
@@ -655,7 +657,10 @@ class EqnList:
         self.order = list()
         self.sublists = list()
         result = list()
+        #klist = sorted(list(requires.keys()), key=lambda a: self.ordnum.get(a,6666))
+        #for k in klist:
         for k, v2 in requires.items():
+            v2 = requires[k]
             if len(v2) == 0:
                 result += self.apply_order(k, provides, requires)
                 complete[k] = cno
@@ -738,22 +743,23 @@ class EqnList:
             self.inputs.remove(lhs)
             self.outputs.remove(lhs)
 
-        ## Rebuild with new eqns
-        fs = FactorStencil(self.inputs)
-        for lhs in self.eqns.keys():
-            rhs = self.eqns[lhs]
-            if is_stencil(rhs):
-                continue
-            else:
-                new_rhs = fs.visit(rhs)
-                self.eqns[lhs] = new_rhs
-        for lhs, rhs in fs.temps.items():
-            #new_eqns[lhs] = rhs
-            if lhs not in self.eqns:
-                self.add_eqn(lhs, rhs)
-            else:
-                self.eqns[lhs] = rhs
-            self.temporaries.add(lhs)
+        if False:
+            ## Rebuild with new eqns
+            fs = FactorStencil(self.inputs)
+            for lhs in self.eqns.keys():
+                rhs = self.eqns[lhs]
+                if is_stencil(rhs):
+                    continue
+                else:
+                    new_rhs = fs.visit(rhs)
+                    self.eqns[lhs] = new_rhs
+            for lhs, rhs in fs.temps.items():
+                #new_eqns[lhs] = rhs
+                if lhs not in self.eqns:
+                    self.add_eqn(lhs, rhs)
+                else:
+                    self.eqns[lhs] = rhs
+                self.temporaries.add(lhs)
 
         for rd in rd_overwrites:
             if rd in self.outputs:
@@ -946,7 +952,7 @@ class EqnList:
                     print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
             print()
 
-        if False:
+        if True:
             for k, v in self.eqns.items():
                 assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
                 val1: int = complete[k]
