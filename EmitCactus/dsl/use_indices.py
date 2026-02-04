@@ -35,8 +35,6 @@ from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute, Schedul
 from EmitCactus.dsl.dimension import get_dimension, set_dimension
 from EmitCactus.dsl.functions import *
 
-from batch_cse import batch_cse
-
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
            "set_dimension", "get_dimension", "lookup_pair", "subst_tensor", "subst_tensor_xyz", "mk_pair",
@@ -1760,7 +1758,7 @@ class ThornDef:
                 symbols_to_isolate=grid_vars
             )
         elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = batch_cse(list(chain(*old_tf_rhses.values())), batch=100)
+            substitutions_list, new_rhses = cse(list(chain(*old_tf_rhses.values())))
         else:
             raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
@@ -1801,7 +1799,7 @@ class ThornDef:
                     # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
                     def drill(lhs: Symbol, rhs: Expr) -> None:
                         temp_dependencies = free_symbols(rhs).intersection(substitutions.keys())
-                        assert lhs not in temp_dependencies, f'lhs "{lhs}" not in temp_dependencies'
+                        assert lhs not in temp_dependencies
                         for td in temp_dependencies:
                             new_temp_dependencies[lhs].add(td)
                             new_temp_dependents[td].add(lhs)
