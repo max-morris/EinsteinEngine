@@ -658,7 +658,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     output_centering,
                     output_region,
                     CarpetXGridLoopLambda(
-                        preceding=xyz_decls+stencil_idx_decls,
+                        preceding=xyz_decls+stencil_idx_decls,  # type: ignore[operator]
                         equations=eqns,
                         succeeding=[],
                         temporaries=temporaries,
