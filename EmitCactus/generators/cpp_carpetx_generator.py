@@ -572,8 +572,6 @@ class CppCarpetXGenerator(CactusGenerator):
                 VerbatimExpr(Verbatim(result))
             ]
 
-        if (0,0,0) not in thorn_fn.eqn_complex.stencil_idxes:
-            thorn_fn.eqn_complex.stencil_idxes.add((0,0,0))
         stencil_idx_decls = [
             ConstConstructDecl(
                 Identifier('GF3D5index'),
@@ -582,6 +580,15 @@ class CppCarpetXGenerator(CactusGenerator):
             )
             for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
         ]
+
+        stencil_idx_decls.insert(
+            0,
+            ConstConstructDecl(
+                Identifier('GF3D5index'),
+                Identifier(SympyExprVisitor.encode_stencil_idx(0, 0, 0)),
+                calc_stencil_idx((0, 0, 0))
+            )
+        )
 
         # DXI, DYI, DZI decls
         di_decls = [

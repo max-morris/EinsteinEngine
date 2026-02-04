@@ -18,8 +18,6 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
 from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 from EmitCactus.util import get_or_compute
-from sepstencil import FactorStencil, is_stencil
-from symbify import Symbify
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -29,6 +27,7 @@ DZI = mkSymbol("DZI")
 DX = mkSymbol("DX")
 DY = mkSymbol("DY")
 DZ = mkSymbol("DZ")
+
 
 @dataclass
 class TemporaryLifetime:
@@ -387,8 +386,7 @@ class EqnList:
 
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
-        s = Symbify()
-        self.eqns[s.visit(lhs)] = s.visit(rhs)
+        self.eqns[lhs] = rhs
 
     def _prepend_split_subeqn(self, target_lhs: Symbol, new_lhs: Symbol, new_rhs: Expr) -> None:
         """
@@ -573,63 +571,7 @@ class EqnList:
                 result.append(v)
         return result
 
-    def add_me(self, lhs, used):
-        rhs = self.eqns[lhs]
-        for f in free_symbols(rhs):
-            if f in used:
-                continue
-            used.add(f)
-            if f in self.inputs:
-                continue
-            if f in self.params:
-                continue
-            self.add_me(f, used)
-        self.order.append(lhs)
-        #print("ADDING:", lhs, "=", self.eqns[lhs])
-
     def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
-        stencil = mkFunction("stencil")
-
-        self.order.clear()
-        used = set()
-        for k in self.outputs:
-            self.add_me(k, used)
-
-        stmap = dict()
-        new_order = list()
-        for i in range(len(self.order)):
-            val = self.order[i]
-            rhs = self.eqns[val]
-            if is_stencil(rhs):
-                stkey = stencil(rhs.args[0],0,0,0)
-                if stkey not in stmap:
-                    stmap[stkey] = set()
-                    new_order.append(stkey)
-                stmap[stkey].add(val)
-            else:
-                new_order.append(val)
-
-        for val in self.order:
-            print(colorize(">>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
-
-        def stkey_fn(b):
-            a = self.eqns[b]
-            return a.args[3], a.args[2], a.args[1], str(a.args[0])
-
-        self.order.clear()
-        for i in range(len(new_order)):
-            val = new_order[i]
-            if is_stencil(val):
-                stencils = sorted(list(stmap[val]), key=stkey_fn)
-                for stencil in stencils:
-                    self.order.append(stencil)
-            else:
-                self.order.append(val)
-
-        for val in self.order:
-            print(colorize(">>>","magenta"), colorize(val,"yellow"), "=", colorize(self.eqns[val],"yellow"))
-
-    def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
         provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
         requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
         self.requires = OrderedDict()
@@ -638,7 +580,6 @@ class EqnList:
         #   v_t = div(u,la,lb) g[ua,ub]
         # provides = {v:{u_t}, u:{v_t}}
         # requires = {u_t:{v}, v_t:{u}}
-
         for k in self.eqns:
             if k not in requires:
                 requires[k] = OrderedSet()
@@ -680,7 +621,6 @@ class EqnList:
                 if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
                     raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
         self.provides = provides
-        print("ORDER:",self.order)
 
     def _run_preliminary_complexity_analysis(self) -> None:
         grid_vars = self._grid_variables()
@@ -734,23 +674,6 @@ class EqnList:
         for lhs in self.temporaries:
             self.inputs.remove(lhs)
             self.outputs.remove(lhs)
-
-        ## Rebuild with new eqns
-        fs = FactorStencil(self.inputs)
-        for lhs in self.eqns.keys():
-            rhs = self.eqns[lhs]
-            if is_stencil(rhs):
-                continue
-            else:
-                new_rhs = fs.visit(rhs)
-                self.eqns[lhs] = new_rhs
-        for lhs, rhs in fs.temps.items():
-            #new_eqns[lhs] = rhs
-            if lhs not in self.eqns:
-                self.add_eqn(lhs, rhs)
-            else:
-                self.eqns[lhs] = rhs
-            self.temporaries.add(lhs)
 
         for rd in rd_overwrites:
             if rd in self.outputs:
@@ -943,21 +866,20 @@ class EqnList:
                     print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
             print()
 
-        if False:
-            for k, v in self.eqns.items():
-                assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
-                val1: int = complete[k]
-                for k2 in free_symbols(v):
-                    val2: Optional[int] = complete.get(k2, None)
-                    assert val2 is not None, f"k2={k2}"
-                    assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
-            for k in needed:
-                if k not in complete:
-                    print(f"Symbol '{k}' needed but could not be evaluated. Cycle in assignment?")
-            for k in self.inputs:
-                assert k in complete, f"Symbol '{k}' appears in inputs but is not complete"
-            for k in self.eqns:
-                assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
+        for k, v in self.eqns.items():
+            assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
+            val1: int = complete[k]
+            for k2 in free_symbols(v):
+                val2: Optional[int] = complete.get(k2, None)
+                assert val2 is not None, f"k2={k2}"
+                assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
+        for k in needed:
+            if k not in complete:
+                print(f"Symbol '{k}' needed but could not be evaluated. Cycle in assignment?")
+        for k in self.inputs:
+            assert k in complete, f"Symbol '{k}' appears in inputs but is not complete"
+        for k in self.eqns:
+            assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
 
         class FindBad:
             def __init__(self, outer: EqnList) -> None:
