@@ -1631,8 +1631,28 @@ class ThornDef:
     and more.
     """
 
+    # These thorns do tensor expansion with the xyz rules as opposed to our preferred nrpy rules.
     # noinspection SpellCheckingInspection
     _xyz_subst_thorns: list[str] = ["ADMBaseX", "TmunuBaseX", "HydroBaseX"]
+
+    # Hardcoding some known nonsensical mappings from other thorns.
+    # noinspection SpellCheckingInspection
+    _special_group_mappings: dict[str, dict[str, str]] = {
+        # https://github.com/EinsteinToolkit/CarpetX/blob/main/ADMBaseX/interface.ccl
+        'ADMBaseX': {
+            'g': 'metric',
+            'k': 'curv',
+            'alp': 'lapse',
+            'beta': 'shift',
+            'dtalp': 'dtlapse',
+            'dtbeta': 'dtshift'
+        },
+        # https://github.com/EinsteinToolkit/CarpetX/blob/main/TmunuBaseX/interface.ccl
+        'TmunuBaseX': {
+            'eTt': 'eTti',
+            'eT': 'eTij'
+        }
+    }
 
     def __init__(self, arr: str, name: str, *, run_simplify: bool = True) -> None:
         if not _is_valid_c_identifier(name):
@@ -2392,6 +2412,11 @@ class ThornDef:
 
         if (from_thorn := kwargs.get('from_thorn', None)) is not None:
             self.base2thorn[basename] = from_thorn
+
+            if ((special_mappings := self._special_group_mappings.get(from_thorn, None)) is not None
+                    and (special_group := special_mappings.get(basename, None)) is not None):
+                self.base2group[basename] = special_group
+
 
         if kwargs.get('declare_as_temp', False):
             self.temp.add(basename)
