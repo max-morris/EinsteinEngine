@@ -17,7 +17,7 @@ if not USE_GLOBAL_CSE:
         "temporary_promotion_strategy": promote_none(),
         "do_madd": False,
         "do_recycle_temporaries": True,
-        "do_split_output_eqns": True,
+        "do_split_output_eqns": False,
         "cse_optimization_level": CseOptimizationLevel.Fast
     }
 else:
@@ -26,7 +26,7 @@ else:
         "temporary_promotion_strategy": promote_rank(1),  # EXAMPLE: promote_threshold(global_threshold=1000, inline_threshold=5)
         "do_madd": False,                                 #          will promote complexity >= 1000 to globals, and demote complexity <= 5 to inline.
         "do_recycle_temporaries": True,                   #          Anything in-between will be a local.
-        "do_split_output_eqns": True,
+        "do_split_output_eqns": False,
         "cse_optimization_level": CseOptimizationLevel.Fast
     }
 
@@ -424,7 +424,7 @@ fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt1",
     post_step_group,
     schedule_after=["StateSync"],
-    schedule_before=["cottonmouth_bssnok_enforce_pt2"]
+    schedule_before=["cottonmouth_bssnok_enforce_pt2_group"]
 )
 
 # Enforce \det(\tilde{\gamma}) = 1
@@ -455,7 +455,7 @@ fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
     post_step_group,
     schedule_after=["cottonmouth_bssnok_enforce_pt1"],
-    schedule_before=["cottonmouth_bssnok_bssn2adm"]
+    schedule_before=["cottonmouth_bssnok_bssn2adm_group"]
 )
 
 fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])

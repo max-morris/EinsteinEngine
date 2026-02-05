@@ -424,7 +424,7 @@ fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt1",
     post_step_group,
     schedule_after=["StateSync"],
-    schedule_before=["cottonmouth_bssnok_enforce_pt2"]
+    schedule_before=["cottonmouth_bssnok_enforce_pt2_group"]
 )
 
 # Enforce \det(\tilde{\gamma}) = 1
@@ -455,7 +455,7 @@ fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
     post_step_group,
     schedule_after=["cottonmouth_bssnok_enforce_pt1"],
-    schedule_before=["cottonmouth_bssnok_bssn2adm"]
+    schedule_before=["cottonmouth_bssnok_bssn2adm_group"]
 )
 
 fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])

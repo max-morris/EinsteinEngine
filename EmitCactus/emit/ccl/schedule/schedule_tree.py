@@ -29,8 +29,8 @@ class StorageSection(ScheduleNode):
 
 
 class AtOrIn(ReprEnum):
-    At = auto(), 'AT'
-    In = auto(), 'IN'
+    At = auto(), 'AT'  # For builtins
+    In = auto(), 'IN'  # For user-defined groups
 
 
 class GroupOrFunction(Enum):

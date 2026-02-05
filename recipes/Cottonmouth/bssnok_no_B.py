@@ -415,7 +415,7 @@ fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt1",
     post_step_group,
     schedule_after=["StateSync"],
-    schedule_before=["cottonmouth_bssnok_enforce_pt2"]
+    schedule_before=["cottonmouth_bssnok_enforce_pt2_group"]
 )
 
 # Enforce \det(\tilde{\gamma}) = 1 (G)
@@ -446,7 +446,7 @@ fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
     post_step_group,
     schedule_after=["cottonmouth_bssnok_enforce_pt1"],
-    schedule_before=["cottonmouth_bssnok_bssn2adm"]
+    schedule_before=["cottonmouth_bssnok_bssn2adm_group"]
 )
 
 fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])
@@ -529,7 +529,7 @@ fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
 fun_bssn_ricci_evolve = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_compute_ricci_rhs",
     ScheduleBin.Evolve,
-    schedule_before=["cottonmouth_bssnok_rhs"]
+    schedule_before=["cottonmouth_bssnok_rhs_group"]
 )
 
 fun_bssn_ricci_evolve.add_eqn(
@@ -561,7 +561,7 @@ fun_bssn_ricci_evolve.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 fun_bssn_ricci_analysis = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_compute_ricci_analysis",
     ScheduleBin.Analysis,
-    schedule_before=["cottonmouth_bssnok_constraints"]
+    schedule_before=["cottonmouth_bssnok_constraints_group"]
 )
 
 fun_bssn_ricci_analysis.add_eqn(
