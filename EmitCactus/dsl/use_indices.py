@@ -2036,10 +2036,10 @@ class ThornDef:
 
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
                 schedule_before_tfs = set(chain(*[schedule_bin_targets[new_temp][key] for key in schedule_bin_targets[new_temp].keys() if key.is_colocated(bin)]))
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}' for dep_bin in schedule_bin_targets[td].keys() if bin.is_colocated(dep_bin)] for td in find_all_global_deps(new_temp)])))
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}_group' for dep_bin in schedule_bin_targets[td].keys() if bin.is_colocated(dep_bin)] for td in find_all_global_deps(new_temp)])))
                 if bin is ScheduleBin.PostInit:
                     schedule_after.append('ODESolvers_PostStep')  # Hack to ensure AMR and synchronization happen first
-                mk_synthetic_fn(bin, sorted([tf.name for tf in schedule_before_tfs]), schedule_after)
+                mk_synthetic_fn(bin, sorted([f'{tf.name}_group' for tf in schedule_before_tfs]), schedule_after)
 
             if len(schedule_block_targets) > 0:
                 print(f'Warning: Global temporary {new_temp} is accessed in at least one custom schedule block,'
@@ -2047,8 +2047,8 @@ class ThornDef:
                       f' custom block, perhaps redundantly.')
 
             for block, schedule_before_tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
-                mk_synthetic_fn(block, sorted([tf.name for tf in schedule_before_tfs]), schedule_after)
+                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}_group' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
+                mk_synthetic_fn(block, sorted([f'{tf.name}_group' for tf in schedule_before_tfs]), schedule_after)
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
