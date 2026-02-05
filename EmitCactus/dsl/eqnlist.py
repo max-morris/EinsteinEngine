@@ -29,6 +29,9 @@ DY = mkSymbol("DY")
 DZ = mkSymbol("DZ")
 
 
+stencil = mkFunction("stencil")
+
+
 @dataclass
 class TemporaryLifetime:
     symbol: Symbol
@@ -699,51 +702,26 @@ class EqnList:
         read: Set[Symbol] = OrderedSet()
         written: Set[Symbol] = OrderedSet()
 
-        self.read_decls.clear()
-        self.write_decls.clear()
-
-        self.lhs: Symbol
-
         for temp in self.temporaries:
             if temp in self.outputs:
                 self.outputs.remove(temp)
             if temp in self.inputs:
                 self.inputs.remove(temp)
 
-        def ftrace(sym: Symbol) -> bool:
-            if sym.is_Function:
-                # The noop function should be treated
-                # mathematically as parenthesis
-                if str(sym.func) == "noop":
-                    sym.args[0].replace(ftrace, noop)  # type: ignore[no-untyped-call]
-                elif self.is_stencil.get(sym.func, False):
-                    for arg in sym.args:
-                        if arg.is_Number:
-                            continue
-                        sym2 = cast(Symbol, arg)
-                        self.read_decls[sym2] = IntentRegion.Everywhere
-                        self.write_decls[self.lhs] = IntentRegion.Interior
-                else:
-                    for arg in sym.args:
-                        if arg.is_Number:
-                            continue
-                        sym2 = cast(Symbol, arg)
-                        self.read_decls[sym2] = IntentRegion.Everywhere
-                        self.write_decls[self.lhs] = IntentRegion.Everywhere
-            return False
+        self.read_decls.clear()
+        self.write_decls.clear()
 
-        def noop(x: Symbol) -> Symbol:
-            return x
+        # Figure out the read/writes
+        for lhs in self.inputs:
+            self.read_decls[lhs] = IntentRegion.Interior
+        for lhs in self.outputs:
+            self.write_decls[lhs] = IntentRegion.Interior
 
-        for lhs in self.eqns:
-            self.lhs = lhs
-            rhs = self.eqns[lhs]
-            rhs.replace(ftrace, noop)  # type: ignore[no-untyped-call]
-
-        for lhs in self.eqns:
-            assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
-            rhs = self.eqns[lhs]
-            print(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs)
+        for lhs, rhs in self.eqns.items():
+            for sten in rhs.find(stencil):
+                if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
+                    var = sten.args[0]
+                    self.read_decls[var] = IntentRegion.Everywhere
 
         if self.verbose:
             print(colorize("Inputs:", "green"), self.inputs)
@@ -803,57 +781,6 @@ class EqnList:
 
         self.order_builder(complete, 1)
         print(colorize("Order:", "green"), self.order)
-
-        default_read_spec = IntentRegion.Interior
-        default_write_spec = IntentRegion.Everywhere
-        for var in self.inputs:
-            for val in self.read_decls.values():
-                if val == IntentRegion.Everywhere:
-                    default_read_spec = val
-                    break
-        for key in self.read_decls.keys():
-            self.read_decls[key] = default_read_spec
-        for var in self.outputs:
-            for val in self.write_decls.values():
-                if val == IntentRegion.Interior:
-                    default_write_spec = val
-                    break
-        for key in self.write_decls.keys():
-            self.write_decls[key] = default_write_spec
-
-        # Figure out the rest of the READ/WRITEs
-        spec: IntentRegion
-        for var in self.order:
-            if var in self.inputs and var not in self.read_decls:
-                if default_read_spec is None:
-                    default_read_spec = IntentRegion.Everywhere
-                self.read_decls[var] = default_read_spec
-            elif var in self.outputs and var not in self.write_decls:
-                if default_write_spec is None:
-                    default_write_spec = IntentRegion.Everywhere
-                spec = default_write_spec
-                # if there are variables only valid in the interior on the RHS of the
-                # equation where the var is assigned, then it must have spec = Interior
-                for rvar in free_symbols(self.eqns[var]):
-                    if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
-                        spec = IntentRegion.Interior
-                        break
-                self.write_decls[var] = spec
-            elif var in self.temporaries and var in self.write_decls and var not in self.read_decls:
-                # temporaries don't really have reads/writes, we figure out
-                # what they would be just to connect the reads/writes of the inputs/outputs.
-                self.read_decls[var] = self.write_decls[var]
-            elif var in self.temporaries and var not in self.write_decls:
-                if default_write_spec is None:
-                    default_write_spec = IntentRegion.Everywhere
-                spec = default_write_spec
-                if spec != IntentRegion.Interior:
-                    for rvar in free_symbols(self.eqns[var]):
-                        if self.read_decls.get(rvar, IntentRegion.Everywhere) == IntentRegion.Interior:
-                            spec = IntentRegion.Interior
-                            break
-                self.write_decls[var] = spec
-                self.read_decls[var] = spec
 
         if self.verbose:
             print(colorize("READS:", "green"), end="")
