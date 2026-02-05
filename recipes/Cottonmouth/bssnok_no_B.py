@@ -414,7 +414,6 @@ post_step_group = ScheduleBlock(
 fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt1",
     post_step_group,
-    schedule_after=["StateSync"],
     schedule_before=["cottonmouth_bssnok_enforce_pt2_group"]
 )
 
@@ -445,7 +444,7 @@ fun_bssn_enforce_pt1.add_eqn(
 fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_enforce_pt2",
     post_step_group,
-    schedule_after=["cottonmouth_bssnok_enforce_pt1"],
+    schedule_after=["cottonmouth_bssnok_enforce_pt1_group"],
     schedule_before=["cottonmouth_bssnok_bssn2adm_group"]
 )
 
@@ -506,7 +505,7 @@ fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
 fun_bssn2adm = cottonmouth_bssnok.create_function(
     "cottonmouth_bssnok_bssn2adm",
     post_step_group,
-    schedule_after=["cottonmouth_bssnok_enforce_pt2"]
+    schedule_after=["cottonmouth_bssnok_enforce_pt2_group"]
 )
 
 fun_bssn2adm.add_eqn(g[li, lj], (1/(w**2)) * gt[li, lj])
