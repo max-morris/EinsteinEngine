@@ -106,14 +106,16 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
-    def get_sync_batch_fn_src_file_name(self, which: ExplicitSyncBatch) -> str:
-        return f'{self.thorn_def.name}_{which.name}.cpp'
+    def get_sync_batch_fn_src_file_name(self, which: ExplicitSyncBatch | str) -> str:
+        return f'{self.thorn_def.name}_{which.name if isinstance(which, ExplicitSyncBatch) else which}.cpp'
 
     def generate_makefile(self) -> str:
         srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
 
         for sync_batch in self.options.get('explicit_syncs', list()):
             srcs.append(self.get_sync_batch_fn_src_file_name(sync_batch))
+
+        srcs.append(self.get_sync_batch_fn_src_file_name('StateSync'))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -876,12 +878,12 @@ class CppCarpetXGenerator(CactusGenerator):
         return output_centering
 
 
-    def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch) -> CodeRoot:
+    def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch | str) -> CodeRoot:
         return CodeRoot([
             Verbatim(self._boilerplate_setup),
             *[IncludeDirective(include) for include in self._boilerplate_includes],
             ThornFunctionDecl(
-                Identifier(sync_batch.name),
+                Identifier(sync_batch.name if isinstance(sync_batch, ExplicitSyncBatch) else sync_batch),
                 []
             )
         ])
