@@ -11,6 +11,7 @@ from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EmitCactus.dsl.dsl_exception import DslException
+from EmitCactus.dsl.stencil_idx import StencilIdxWithName, StencilIdx
 from EmitCactus.dsl.sympywrap import *
 from EmitCactus.dsl.functions import *
 from EmitCactus.dsl.util import require_baked
@@ -269,8 +270,8 @@ class EqnComplex:
 
     @cached_property
     @require_baked(msg="Can't get stencil_idxes before baking the EqnComplex.")
-    def stencil_idxes(self) -> set[tuple[int, int, int]]:
-        result: set[tuple[int, int, int]] = set()
+    def stencil_idxes(self) -> set[StencilIdxWithName]:
+        result: set[StencilIdxWithName] = set()
 
         for eqn_list in self.eqn_lists:
             for eqn_rhs in eqn_list.eqns.values():
@@ -945,17 +946,26 @@ class EqnList:
                 if isinstance(arg, Expr):
                     self._stencil_limits(result, arg)
 
-    def stencil_idxes(self) -> set[tuple[int, int, int]]:
-        result: set[tuple[int, int, int]] = set()
+    def stencil_idxes(self) -> set[StencilIdxWithName]:
+        result: set['StencilIdxWithName'] = set()
         for eqn in self.eqns.values():
             self._stencil_idxes(result, eqn)
         return result
 
-    def _stencil_idxes(self, result: set[tuple[int, int, int]], expr: Expr) -> None:
+    def _stencil_idxes(self, result: set[StencilIdxWithName], expr: Expr) -> None:
+        grid_vars = self._grid_variables()
         stencil_calls: set[Basic] = expr.find(lambda x: hasattr(x, 'func') and self.is_stencil.get(x.func, False))  # type: ignore[no-untyped-call]
+        straight_accesses: set[Basic] = expr.xreplace({call: Symbol("_stencil_call") for call in stencil_calls}).find(lambda x: x in grid_vars)  # type: ignore[no-untyped-call]
+
+        for access in straight_accesses:
+            result.add(StencilIdxWithName(StencilIdx(0, 0, 0), str(access)))
+
+        for store in self.outputs:
+            result.add(StencilIdxWithName(StencilIdx(0, 0, 0), str(store)))
+
         for call in stencil_calls:
             assert len(call.args) == 4, "Stencil function should have 4 arguments"
-            result.add(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]))  # type: ignore[arg-type, no-untyped-call]
+            result.add(StencilIdxWithName(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]), str(call.args[0])))  # type: ignore[arg-type, no-untyped-call]
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))
