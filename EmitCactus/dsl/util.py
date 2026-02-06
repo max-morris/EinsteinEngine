@@ -51,3 +51,8 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
         return new_syms, new_exprs
     else:
         return cse(exprs)
+
+def require[T](expr: Optional[T], msg: Callable[[], str] = lambda: "Expression is required.") -> T:
+    if expr is None:
+        raise DslException(msg())
+    return expr

@@ -6,7 +6,9 @@ import sympy as sy
 from typing_extensions import Unpack, OrderedDict
 
 from EmitCactus.dsl.carpetx import ExplicitSyncBatch
+from EmitCactus.dsl.stencil_idx import StencilIdxWithCentering
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
+from EmitCactus.dsl.util import require
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
     VariableSection
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
@@ -20,10 +22,12 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
+from EmitCactus.emit.util import encode_stencil_idx
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
 from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
+from EmitCactus.generators.util import VarCenteringFn
 from EmitCactus.util import OrderedSet
 
 
@@ -86,8 +90,8 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     _boilerplate_setup: str = "#define CARPETX_GF3D5"
     _boilerplate_div_macros: str = """
-        #define access(GF) (GF(p.mask, stencil_idx_0_0_0))
-        #define store(GF, VAL) (GF.store(p.mask, stencil_idx_0_0_0, VAL))
+        #define access(GF, IDX) (GF(p.mask, IDX))
+        #define store(GF, IDX, VAL) (GF.store(p.mask, IDX, VAL))
         #define stencil(GF, IDX) (GF(p.mask, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
@@ -533,14 +537,7 @@ class CppCarpetXGenerator(CactusGenerator):
             if var_name not in used_var_names:
                 continue
 
-            var_centering: Optional[Centering]
-
-            # Try looking up the var's centering directly...
-            if (var_centering := self.thorn_def.centering.get(var_name, None)) is not None:
-                pass
-            # Otherwise, try looking it up by the var's base...
-            elif (var_base := self.thorn_def.var2base.get(var_name, None)) is not None:
-                var_centering = self.thorn_def.centering.get(var_base, None)
+            var_centering = self.thorn_def.get_centering_from_var_name(var_name)
 
             # If this var doesn't have a defined centering, skip it.
             if var_centering is None:
@@ -608,33 +605,42 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             )
 
-        def calc_stencil_idx(stencil_idx: tuple[int, int, int]) -> list[Expr]:
+        def calc_stencil_idx(stencil_idx: StencilIdxWithCentering) -> list[Expr]:
             result = 'p.I'
 
             for i in range(3):
-                if stencil_idx[i] == 1:
+                if stencil_idx.indices[i] == 1:
                     result += f' + p.DI[{i}]'
-                elif stencil_idx[i] == -1:
+                elif stencil_idx.indices[i] == -1:
                     result += f' - p.DI[{i}]'
-                elif stencil_idx[i] < 0:
-                    result += f' - {-stencil_idx[i]}*p.DI[{i}]'
-                elif stencil_idx[i] > 0:
-                    result += f' + {stencil_idx[i]}*p.DI[{i}]'
+                elif stencil_idx.indices[i] < 0:
+                    result += f' - {-stencil_idx.indices[i]}*p.DI[{i}]'
+                elif stencil_idx.indices[i] > 0:
+                    result += f' + {stencil_idx.indices[i]}*p.DI[{i}]'
 
-            #return f'GF3D5index({result}, VVV_layout) /* HACK! Need to compute unique indices for different layouts! */'
             return [
-                VerbatimExpr(Verbatim(f'VVV_layout /* HACK! Need to compute unique indices for different layouts! */')),
+                VerbatimExpr(Verbatim(f'{stencil_idx.centering.string_repr}_layout')),
                 VerbatimExpr(Verbatim(result))
             ]
 
-        thorn_fn.eqn_complex.stencil_idxes.add((0, 0, 0))
+        idxes_with_centerings = OrderedSet(
+            StencilIdxWithCentering(
+                stencil_idx.indices,
+                require(
+                    self.thorn_def.get_centering_from_var_name(stencil_idx.var_name),
+                    lambda: f'Stencil index {stencil_idx} refers to variable {stencil_idx.var_name} with an unknown centering.'
+                )
+            )
+            for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
+        )
+
         stencil_idx_decls = [
             ConstConstructDecl(
                 Identifier('GF3D5index'),
-                Identifier(SympyExprVisitor.encode_stencil_idx(*stencil_idx)),
+                Identifier(encode_stencil_idx(stencil_idx)),
                 calc_stencil_idx(stencil_idx)
             )
-            for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
+            for stencil_idx in idxes_with_centerings
         ]
 
         # DXI, DYI, DZI decls
@@ -681,7 +687,8 @@ class CppCarpetXGenerator(CactusGenerator):
         tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
         
         sympy_visitor = self._mk_sympy_visitor(
-            tile_temps_to_centering.keys()
+            tile_temps_to_centering.keys(),
+            centering_fn=lambda vn: self.thorn_def.get_centering_from_var_name(vn)
         )
 
         carpetx_loops: list[Stmt] = list()
@@ -774,18 +781,17 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return _TileTempCenteringData(temps_by_centering=tile_temps_by_centering, temps_to_centering=tile_temps_to_centering)
 
-    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol]) -> SympyExprVisitor:
+    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol], centering_fn: VarCenteringFn) -> SympyExprVisitor:
         stencil_fn_names = {str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil}
         tile_temp_names = {str(sym) for sym in tile_temps}
 
-        def name_subst_fn(name: str, in_stencil_args: bool) -> str:
-            if not in_stencil_args and (name in self.var_names or name in tile_temp_names):
-                return f'access({name})'
-            return name
+        def should_wrap_with_access_fn(name: str, in_stencil_args: bool) -> bool:
+            return not in_stencil_args and (name in self.var_names or name in tile_temp_names)
 
         sympy_visitor = SympyExprVisitor(
             stencil_fns=stencil_fn_names,
-            substitution_fn=name_subst_fn
+            should_wrap_with_access_fn=should_wrap_with_access_fn,
+            centering_fn=centering_fn
         )
         return sympy_visitor
 
