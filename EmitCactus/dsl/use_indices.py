@@ -1927,10 +1927,10 @@ class ThornDef:
             if temp_kinds.get(new_temp, None) == TempKind.Inline:
                 inline_temps.append((new_temp, new_rhs))
 
-        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]
+        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]  # type: ignore[no-untyped-call]
 
         for lhs in substitutions.keys():
-            substitutions[lhs] = substitutions[lhs].subs(inline_temps)
+            substitutions[lhs] = substitutions[lhs].subs(inline_temps)  # type: ignore[no-untyped-call]
 
         for temp, _ in inline_temps:
             del substitutions[temp]

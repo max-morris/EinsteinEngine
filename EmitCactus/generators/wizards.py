@@ -3,6 +3,7 @@ import sys
 from abc import ABC
 from typing import TypeVar, Generic, Optional
 
+from EmitCactus import ExplicitSyncBatch
 from EmitCactus.util import OrderedSet
 from EmitCactus.dsl.use_indices import ThornDef
 from EmitCactus.emit.ccl.interface.interface_visitor import InterfaceVisitor
@@ -119,7 +120,8 @@ class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
     def generate_thorn(self) -> None:
         super().generate_thorn()
 
-        for sync_batch in self.generator.options.get('explicit_syncs', list()):
+        sync_batch: ExplicitSyncBatch | str
+        for sync_batch in OrderedSet(self.generator.options.get('explicit_syncs', list()) + ['StateSync']):  # type: ignore[operator]
             code_tree = self.generator.generate_sync_batch_function_code(sync_batch)
             code = self.code_visitor.visit(code_tree)
             code_fname = os.path.join(self.base_dir, "src", self.generator.get_sync_batch_fn_src_file_name(sync_batch))
