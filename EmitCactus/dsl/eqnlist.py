@@ -648,9 +648,9 @@ class EqnList:
             raise DslException("Can't bake an EqnList that has already been baked.")
         self.been_baked = True
 
-        rd_overwrites = OrderedSet()
-        wr_overwrites = OrderedSet()
-        def process_overwrite(s:Symbol)->None:
+        rd_overwrites: OrderedSet[Symbol] = OrderedSet()
+        wr_overwrites: OrderedSet[Symbol] = OrderedSet()
+        def process_overwrite(s: Symbol) -> None:
             if "'" in str(s):
                 rd = mkSymbol(str(s).replace("'", ""))
                 wr = s
@@ -718,7 +718,7 @@ class EqnList:
             self.write_decls[lhs] = IntentRegion.Interior
 
         for lhs, rhs in self.eqns.items():
-            for sten in rhs.find(stencil):
+            for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
                 if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
                     var = sten.args[0]
                     self.read_decls[var] = IntentRegion.Everywhere
