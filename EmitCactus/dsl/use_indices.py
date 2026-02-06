@@ -1702,6 +1702,18 @@ class ThornDef:
             gv |= tf.eqn_complex._grid_variables()
         return gv
 
+    def get_centering_from_var_name(self, var_name: str) -> Optional[Centering]:
+        var_centering: Optional[Centering]
+
+        # Try looking up the var's centering directly...
+        if (var_centering := self.centering.get(var_name, None)) is not None:
+            pass
+        # Otherwise, try looking it up by the var's base...
+        elif (var_base := self.var2base.get(var_name, None)) is not None:
+            var_centering = self.centering.get(var_base, None)
+
+        return var_centering
+
     @staticmethod
     def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
         opts: ThornDefBakeOptions = {

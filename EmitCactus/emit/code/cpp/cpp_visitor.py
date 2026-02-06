@@ -3,6 +3,8 @@ from typing import Dict
 
 from multimethod import multimethod
 
+from EmitCactus.dsl.stencil_idx import StencilIdxWithCentering, StencilIdx
+from EmitCactus.dsl.util import require
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.emit.code.code_tree import CodeNode, StandardizedFunctionCallType, IdExpr, IntLiteralExpr, \
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
@@ -11,6 +13,7 @@ from EmitCactus.emit.code.code_tree import CodeNode, StandardizedFunctionCallTyp
     ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl, IfElseExpr, IfElseStmt
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
+from EmitCactus.emit.util import encode_stencil_idx
 from EmitCactus.emit.visitor import Visitor, visit_each
 from EmitCactus.generators.cactus_generator import CactusGenerator
 from EmitCactus.util import indent
@@ -43,14 +46,13 @@ class CppVisitor(Visitor[CodeNode]):
 
         stencil_fns = {str(fn) for fn, fn_is_stencil in generator.thorn_def.is_stencil.items() if fn_is_stencil}
 
-        def substitution_fn(name: str, in_stencil_args: bool) -> str:
-            if not in_stencil_args and name in self.generator.var_names:
-                return f'access({name})'
-            return name
+        def should_wrap_with_access_fn(name: str, in_stencil_args: bool) -> bool:
+            return not in_stencil_args and name in self.generator.var_names
 
         self.sympy_visitor = SympyExprVisitor(
             stencil_fns=stencil_fns,
-            substitution_fn=substitution_fn
+            should_wrap_with_access_fn=should_wrap_with_access_fn,
+            centering_fn=lambda vn: self.generator.thorn_def.get_centering_from_var_name(vn)
         )
 
     @multimethod
@@ -201,7 +203,16 @@ class CppVisitor(Visitor[CodeNode]):
                 else:
                     equations_list.append(f'vreal {lhs} = {self.visit(rhs)};')
             else:
-                equations_list.append(f'store({lhs}, {self.visit(rhs)});')
+                stencil_idx_node = Identifier(
+                    encode_stencil_idx(
+                        StencilIdxWithCentering(
+                            StencilIdx(0, 0, 0),
+                            require(self.generator.thorn_def.get_centering_from_var_name(str(lhs)), lambda: f'Unknown centering for variable {str(lhs)}')
+                        )
+                    )
+                )
+
+                equations_list.append(f'store({lhs}, {self.visit(stencil_idx_node)}, {self.visit(rhs)});')
 
         equations = '\n'.join(equations_list)
 
