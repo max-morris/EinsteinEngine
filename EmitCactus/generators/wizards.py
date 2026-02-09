@@ -121,7 +121,7 @@ class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
         super().generate_thorn()
 
         sync_batch: ExplicitSyncBatch | str
-        for sync_batch in OrderedSet(self.generator.options.get('explicit_syncs', list()) + ['StateSync']):  # type: ignore[operator]
+        for sync_batch in OrderedSet(self.generator.options.get('explicit_syncs', list()) + [f'StateSync_{self.thorn_def.name}']):  # type: ignore[operator]
             code_tree = self.generator.generate_sync_batch_function_code(sync_batch)
             code = self.code_visitor.visit(code_tree)
             code_fname = os.path.join(self.base_dir, "src", self.generator.get_sync_batch_fn_src_file_name(sync_batch))
