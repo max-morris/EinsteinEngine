@@ -114,6 +114,9 @@ class ScheduleBlock(ScheduleNode):
         if self.writes is not None and len(self.writes) == 0:
             self.writes = None
 
+    def __hash__(self) -> int:
+        return hash(self.name)
+
 
 @dataclass
 class ScheduleSection(ScheduleNode):
