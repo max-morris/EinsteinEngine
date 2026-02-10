@@ -71,4 +71,4 @@ then
 fi
 
 export OMP_NUM_THREADS=1
-make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthTestBSSNOK
+make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthTestBSSNOK |& tee run.out
