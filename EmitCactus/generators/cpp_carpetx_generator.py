@@ -387,6 +387,8 @@ class CppCarpetXGenerator(CactusGenerator):
             elif schedule_target is ScheduleBin.DriverInit:
                 schedule_bin = Identifier('ODESolvers_Initial')
             elif schedule_target is ScheduleBin.PostStep:
+                schedule_bin = Identifier('poststep')
+            elif schedule_target is ScheduleBin.PostSubStep:
                 schedule_bin = Identifier('ODESolvers_PostStep')
             else:
                 raise NotImplementedError(f'Bad ScheduleBin enum member {schedule_target}')
