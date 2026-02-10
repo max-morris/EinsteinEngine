@@ -21,7 +21,7 @@ class AnalyticFunctionChecker:
             self.is_analytic[k] = True
             self.exc.add(k)
 
-    def analytic(self)->List[Symbol]:
+    def analytic(self)->Set[Symbol]:
         done = False
         while not done:
             done = True
@@ -40,19 +40,20 @@ class AnalyticFunctionChecker:
         return self.is_analytic.get(a, None)
 
     @visit.register
-    def _(self, a:sy.Number)->bool:
+    def _(self, a:sy.Number)->Optional[bool]:
         return True
 
     @visit.register
-    def _(self, a:sy.NumberSymbol)->bool:
+    def _(self, a:sy.NumberSymbol)->Optional[bool]:
         return True
 
     @visit.register
-    def _(self, a:sy.Add|sy.Mul|sy.Function|sy.Pow)->bool:
+    def _(self, a:sy.Add|sy.Mul|sy.Function|sy.Pow)->Optional[bool]:
         for arg in a.args:
-            a = self.visit(arg)
-            if a != True:
-                return a
+            b = self.visit(arg)
+            assert b is None or type(b) == bool
+            if b != True:
+                return b
         return True
 
 if __name__ == "__main__":
