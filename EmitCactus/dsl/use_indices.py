@@ -1286,9 +1286,10 @@ class ScheduleBin(ScheduleBinEnum):
     InitAnalysis = auto(), 'InitAnalysis', False,  ScheduleFrequency.Once, 4
     Evolve = auto(), 'Evolve', False, ScheduleFrequency.EachStep, 6
     SpecialEvolve = auto(), 'SpecialEvolve', False, ScheduleFrequency.EachStep, 7
-    PostStep = auto(), 'ODESolvers_PostStep', False, ScheduleFrequency.EachStep, 8
-    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 9
-    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 10
+    PostSubStep = auto(), 'PostSubStep', False, ScheduleFrequency.EachStep, 8
+    PostStep = auto(), 'PostStep', True, ScheduleFrequency.EachStep, 9
+    Analysis = auto(), 'Analysis', True, ScheduleFrequency.EachStep, 10
+    EstimateError = auto(), 'EstimateError', False, ScheduleFrequency.Inconsistent, 11
 
     def is_colocated(self, other: 'ScheduleBin') -> bool:
         return self == other or (
