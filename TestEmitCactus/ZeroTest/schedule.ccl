@@ -6,5 +6,5 @@ SCHEDULE GROUP CheckZeroGroup {
 SCHEDULE CheckZero IN CheckZeroGroup
 {
 LANG: C
-Reads: ZeroTest::ZeroVal(Everywhere)
+Reads: ZeroTest::ZeroVal(Interior)
 } "RicZero"

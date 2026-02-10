@@ -19,6 +19,8 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
 from EmitCactus.util import OrderedSet, incr_and_get, consolidate
 from EmitCactus.util import get_or_compute
+from EmitCactus.dsl.symbify import symbify
+from EmitCactus.dsl.analytic_function_checker import AnalyticFunctionChecker
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -390,7 +392,8 @@ class EqnList:
 
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
-        self.eqns[lhs] = rhs
+        # Ensure we only have symbols in eqnlist
+        self.eqns[symbify(lhs)] = symbify(rhs)
 
     def _prepend_split_subeqn(self, target_lhs: Symbol, new_lhs: Symbol, new_rhs: Expr) -> None:
         """
@@ -724,6 +727,11 @@ class EqnList:
                     var = sten.args[0]
                     self.read_decls[var] = IntentRegion.Everywhere
 
+        checker = AnalyticFunctionChecker(self.params, self.eqns)
+        for lhs in checker.analytic():
+            if lhs in self.outputs:
+                self.write_decls[lhs] = IntentRegion.Everywhere
+
         if self.verbose:
             print(colorize("Inputs:", "green"), self.inputs)
             print(colorize("Outputs:", "green"), self.outputs)
@@ -749,8 +757,6 @@ class EqnList:
 
         for arg in self.inputs:
             assert isinstance(arg, Symbol), f"{arg}, type={type(arg)}"
-            if arg not in self.read_decls:
-                self.read_decls[arg] = self.default_read_write_spec
 
         for k in self.outputs:
             assert isinstance(k, Symbol)
