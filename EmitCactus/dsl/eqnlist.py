@@ -491,15 +491,15 @@ class EqnList:
             ))
 
         lifetimes_assigned_at = {lt.written_at: lt for lt in lifetimes} #sorted(lifetimes, key=lambda lt: lt.written_at)
-        lifetimes_final_read: SortedDict[int, set[TemporaryLifetime]] = SortedDict() #sorted(lifetimes, key=lambda lt: lt.final_read)
+        lifetimes_final_read: SortedDict[int, OrderedSet[TemporaryLifetime]] = SortedDict() #sorted(lifetimes, key=lambda lt: lt.final_read)
         for lt in lifetimes:
             if lt.final_read in lifetimes_final_read:
                 lifetimes_final_read[lt.final_read].add(lt)
             else:
-                lifetimes_final_read[lt.final_read] = {lt}
+                lifetimes_final_read[lt.final_read] = OrderedSet([lt])
         lifetimes_final_read_keys = list(lifetimes_final_read.keys())
 
-        # Attempt to find a temporary lifetime that is both stale (last read was before eqn_idx) and not superseded.
+        # Attempt to find a temporary lifetime that is stale (last read was before eqn_idx), not superseded, and not dead.
         def find_candidate(eqn_idx: int) -> Optional[TemporaryLifetime]:
             eqn_probe = eqn_idx
             while eqn_probe > 0:
@@ -516,7 +516,7 @@ class EqnList:
                 assert eqn_probe < eqn_idx
                 assert eqn_probe in lifetimes_final_read
 
-                # Inspect the lifetimes which expired in eqn number `eqn_probe`. If we find a non-superseded one, return it.
+                # Inspect the lifetimes which expired in eqn number `eqn_probe`. If we find a live one, return it.
                 lt: TemporaryLifetime
                 for lt in lifetimes_final_read[eqn_probe]:
                     if not lt.is_superseded and not lt.is_dead:
