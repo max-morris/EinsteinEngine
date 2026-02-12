@@ -45,6 +45,6 @@ if __name__ == "__main__":
         cottonmouth_test_bssnok,
         CppCarpetXGenerator(
             cottonmouth_test_bssnok,
-            interior_sync_mode=InteriorSyncMode.HandsOff
+            interior_sync_mode=InteriorSyncMode.MixedRhs
         )
     ).generate_thorn()
