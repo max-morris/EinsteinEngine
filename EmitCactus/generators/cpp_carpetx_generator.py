@@ -75,13 +75,6 @@ class CppCarpetXGenerator(CactusGenerator):
         #endif
     """.strip().replace('    ', '')
 
-    @staticmethod
-    def _boilerplate_timer_init(fn_name: str) -> str:
-        return f"""
-            static CarpetX::Timer timer("{fn_name}");
-            CarpetX::Interval interval(timer);
-        """.strip().replace('    ', '')
-
     _boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
     _boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
@@ -755,7 +748,6 @@ class CppCarpetXGenerator(CactusGenerator):
                     UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
                     ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
                     Verbatim(self._boilerplate_nv_tools_init(fn_name)),
-                    Verbatim(self._boilerplate_timer_init(fn_name)),
                     *layout_decls,
                     *di_decls,
                     *stencil_limit_checks,
