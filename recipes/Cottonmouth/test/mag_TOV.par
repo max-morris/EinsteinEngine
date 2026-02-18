@@ -131,10 +131,8 @@ IO::out_dir       = $parfile
 IO::out_every     = 50
 IO::parfile_write = no
 
-CarpetX::out_metadata           = no
-CarpetX::out_performance        = no
-CarpetX::out_norm_vars          = ""
-CarpetX::out_norm_omit_unstable = yes
+CarpetX::out_metadata = no
+CarpetX::out_performance = no
 
 CarpetX::out_tsv_vars = "
     HydroBaseX::rho
