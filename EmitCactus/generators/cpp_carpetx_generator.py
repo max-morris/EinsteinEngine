@@ -881,7 +881,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         output_regions = {
             spec for var, spec in write_decls.items()
-            if str(var) in self.var_names
+            if str(var).replace("'", "") in self.var_names
         }
 
         if None in output_regions or len(output_regions) == 0:
@@ -906,7 +906,7 @@ class CppCarpetXGenerator(CactusGenerator):
         """
 
         output_centerings = {
-            var_centerings[var_name] for var_name in [str(var) for var in output_vars]
+            var_centerings[var_name] for var_name in (str(var).replace("'", "") for var in output_vars)
             if var_name in self.var_names
         }
 
