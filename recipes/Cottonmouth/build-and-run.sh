@@ -47,28 +47,26 @@ cd "$CACTUS_DIR"
 cat "$THORNLIST" > .pre_bssn.th
 echo Cottonmouth/CottonmouthBSSNOK >> .pre_bssn.th
 echo Cottonmouth/CottonmouthDiagLinearWaveID >> .pre_bssn.th
-echo Cottonmouth/CottonmouthKerrSchildID >> .pre_bssn.th
 echo Cottonmouth/CottonmouthLinearWaveID >> .pre_bssn.th
-echo Cottonmouth/CottonmouthTestBSSNOK >> .pre_bssn.th
 
 set -e
 
-PAR_FILE1="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/kerr_schild_id.par"
-PAR_FILE2="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/kerr_schild.par"
-PAR_FILE3="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave.par"
-PAR_FILE4="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0.par"
-PAR_FILE5="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV.par"
-TEST_NAME=bssn_test
+PAR_FILE1="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave.par"
+PAR_FILE2="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0.par"
+PAR_FILE3="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV.par"
 
-perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3" "$PAR_FILE4" "$PAR_FILE5"
+perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3"
 
 CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
 ./simfactory/bin/sim build bssn -j$(($CPUS / 4)) --thornlist bssn.th |& tee make.out
 
-if [ ! -d arrangements/Cottonmouth/CottonmouthTestBSSNOK/test ]
+SOURCE_TEST_DIR=$EMIT_CACTUS_DIR/recipes/Cottonmouth/test
+TARGET_TEST_DIR=arrangements/Cottonmouth/CottonmouthBSSNOK/test
+
+if [ ! -d $TARGET_TEST_DIR ]
 then
-    ln -s "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test" "arrangements/Cottonmouth/CottonmouthTestBSSNOK"
+    ln -s $SOURCE_TEST_DIR $TARGET_TEST_DIR
 fi
 
 export OMP_NUM_THREADS=1
-make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthTestBSSNOK |& tee run.out
+make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthBSSNOK |& tee run.out
