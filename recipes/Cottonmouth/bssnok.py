@@ -6,20 +6,13 @@ from sympy import Rational
 ###
 cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 
-###
-# Code generation options
-###
-gen_opts = {
-    "do_cse": True,
-    "temporary_promotion_strategy": promote_none(),
-    "do_madd": False,
-    "do_recycle_temporaries": True,
-    "do_split_output_eqns": True
-}
 
 ###
 # Finite difference stencils
 ###
+
+# Fourth order centered
+cottonmouth_bssnok.set_derivative_stencil(5)
 
 # Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_bssnok.mk_stencil(
@@ -219,36 +212,6 @@ MomCons = cottonmouth_bssnok.decl("MomCons", [ua], parity=parity_vector)
 DeltaCons = cottonmouth_bssnok.decl("DeltaCons", [ua], parity=parity_vector)
 
 ###
-# Enforced Constraint Vars.
-###
-# TODO: It would be good if enforcing in two parts was not required.
-w_enforce = cottonmouth_bssnok.decl(
-    "w_enforce",
-    [],
-    parity=parity_scalar
-)
-
-evo_lapse_enforce = cottonmouth_bssnok.decl(
-    "evo_lapse_enforce",
-    [],
-    parity=parity_scalar
-)
-
-gt_enforce = cottonmouth_bssnok.decl(
-    "gt_enforce",
-    [li, lj],
-    symmetries=[(li, lj)],
-    parity=parity_sym2ten
-)
-
-At_enforce = cottonmouth_bssnok.decl(
-    "At_enforce",
-    [li, lj],
-    symmetries=[(li, lj)],
-    parity=parity_sym2ten
-)
-
-###
 # Ricci tensor.
 # We single out the Ricci tensor and compute it on its own function in order
 # to increase efficiency
@@ -356,15 +319,6 @@ cottonmouth_bssnok.add_substitution_rule(
     -Rational(1, 2) * (1 / w) * D(w, la)
 )
 
-cottonmouth_bssnok.add_substitution_rule(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
-
 # Matter
 cottonmouth_bssnok.add_substitution_rule(
     rho,
@@ -408,89 +362,68 @@ post_step_group = ScheduleBlock(
     description=String("BSSNOK post-step routines")
 )
 
-###
-# Enforce algebraic constraints
-###
-fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_enforce_pt1",
-    post_step_group,
-    schedule_before=["cottonmouth_bssnok_enforce_pt2_group"]
+# RHS
+rhs_group = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_RHSGroup"),
+    at_or_in=AtOrIn.In,
+    schedule_bin=Identifier("ODESolvers_RHS"),
+    description=String("BSSNOK equations RHS computation"),
 )
 
-# Enforce \det(\tilde{\gamma}) = 1 (G)
-fun_bssn_enforce_pt1.add_eqn(
-    gt_enforce[li, lj],
-    gt[li, lj] / (cbrt(detgt))
+# Ricci tensor
+ricci_group_rhs = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
+    at_or_in=AtOrIn.In,
+    schedule_bin=Identifier("ODESolvers_RHS"),
+    before=[Identifier("CottonmouthBSSNOK_RHSGroup")],
+    description=String("BSSNOK Ricci tensor computation"),
 )
 
-# Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0 (A)
-fun_bssn_enforce_pt1.add_eqn(
-    At_enforce[li, lj],
-    At[li, lj] - Rational(1, 3) * gt[li, lj] * gt[ua, ub] * At[la, lb]
+ricci_group_analysis = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
+    at_or_in=AtOrIn.At,
+    schedule_bin=Identifier("analysis"),
+    before=[Identifier("CottonmouthBSSNOK_AnalysisGroup")],
+    description=String("BSSNOK Ricci tensor computation"),
 )
 
-# Enforce conformal factor floor
-fun_bssn_enforce_pt1.add_eqn(
-    w_enforce,
-    def_max(w, conformal_factor_floor)
+# Analysis
+analysis_group = ScheduleBlock(
+    group_or_function=GroupOrFunction.Group,
+    name=Identifier("CottonmouthBSSNOK_AnalysisGroup"),
+    at_or_in=AtOrIn.At,
+    schedule_bin=Identifier("analysis"),
+    description=String("BSSNOK analysis routines"),
 )
-
-# Enforce lapse floor
-fun_bssn_enforce_pt1.add_eqn(
-    evo_lapse_enforce,
-    def_max(evo_lapse, evolved_lapse_floor)
-)
-
-fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_enforce_pt2",
-    post_step_group,
-    schedule_after=["cottonmouth_bssnok_enforce_pt1_group"],
-    schedule_before=["cottonmouth_bssnok_bssn2adm_group"]
-)
-
-fun_bssn_enforce_pt2.add_eqn(gt[li, lj], gt_enforce[li, lj])
-fun_bssn_enforce_pt2.add_eqn(At[li, lj], At_enforce[li, lj])
-fun_bssn_enforce_pt2.add_eqn(w, w_enforce)
-fun_bssn_enforce_pt2.add_eqn(evo_lapse, evo_lapse_enforce)
-
 
 ###
 # Convert ADM to BSSN variables
+#
+# We initialize the BSSN variables in two parts, first
+# computing all variables but the conformal connection,
+# and then, when we have the conformal metric, we compute
+# it. This 2 part procedure seems to help when initializing
+# with puncture data
 ###
-fun_adm2bssn = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_adm2bssn",
+fun_adm2bssn_pt1 = cottonmouth_bssnok.create_function(
+    "adm2bssn_pt1",
     initial_group
 )
 
-fun_adm2bssn.add_eqn(
-    gt[la, lb],
-    (1 / cbrt(detg)) * g[la, lb]
+fun_adm2bssn_pt1.add_eqn(
+    evo_lapse,
+    alp
 )
 
-fun_adm2bssn.add_eqn(w, 1 / (sqrt(cbrt(detg))))
-
-fun_adm2bssn.add_eqn(
-    At[la, lb],
-    (1 / cbrt(detg)) * (
-        k[la, lb]
-        - Rational(1, 3) * g[la, lb] * g[uc, ud] * k[lc, ld]
-    )
+fun_adm2bssn_pt1.add_eqn(
+    evo_shift[ua],
+    beta[ua]
 )
 
-fun_adm2bssn.add_eqn(trK, g[ua, ub] * k[la, lb])
-
-fun_adm2bssn.add_eqn(
-    ConfConnect[ua],
-    -Rational(1, 3) * (1 / (cbrt(detg)**2)) * (
-        3 * detg * D(g[ua, ub], lb)
-        + g[ua, ub] * D(detg, lb)
-    )
-)
-
-fun_adm2bssn.add_eqn(evo_lapse, alp)
-fun_adm2bssn.add_eqn(evo_shift[ua], beta[ua])
-
-fun_adm2bssn.add_eqn(
+fun_adm2bssn_pt1.add_eqn(
     shift_B[ua],
     Rational(4, 3) * (1 / alp) * (
         dtbeta[ua]
@@ -498,17 +431,104 @@ fun_adm2bssn.add_eqn(
     )
 )
 
+fun_adm2bssn_pt1.add_eqn(
+    w,
+    1 / (sqrt(cbrt(detg)))
+)
+
+fun_adm2bssn_pt1.add_eqn(
+    gt[la, lb],
+    (1 / cbrt(detg)) * g[la, lb]
+)
+
+fun_adm2bssn_pt1.add_eqn(
+    At[la, lb],
+    (1 / cbrt(detg)) * (
+        k[la, lb]
+        - Rational(1, 3) * g[la, lb] * g[uc, ud] * k[lc, ld]
+    )
+)
+
+fun_adm2bssn_pt1.add_eqn(
+    trK,
+    g[ua, ub] * k[la, lb]
+)
+
+fun_adm2bssn_pt2 = cottonmouth_bssnok.create_function(
+    "adm2bssn_pt2",
+    initial_group,
+    schedule_after=["adm2bssn_pt2"]
+)
+
+fun_adm2bssn_pt2.add_eqn(
+    ConfConnect[ua],
+    gt[ub, uc] * Gammat[ua, lb, lc]
+)
+
+###
+# Enforce algebraic constraints
+# This operation is order dependent, and we have to be carefull to
+# enforce the constraints in the correct order, i.e,. enforce
+###
+fun_bssn_enforce_pt1 = cottonmouth_bssnok.create_function(
+    "enforce_pt1",
+    post_step_group
+)
+
+# Enforce conformal factor floor
+w_enforce = cottonmouth_bssnok.overwrite(w)
+
+fun_bssn_enforce_pt1.add_eqn(
+    w_enforce,
+    def_max(w, conformal_factor_floor)
+)
+
+# Enforce lapse floor
+evo_lapse_enforce = cottonmouth_bssnok.overwrite(evo_lapse)
+
+fun_bssn_enforce_pt1.add_eqn(
+    evo_lapse_enforce,
+    def_max(evo_lapse, evolved_lapse_floor)
+)
+
+# Enforce \det(\tilde{\gamma}) = 1 (G)
+gt_enforce = cottonmouth_bssnok.overwrite(gt)
+
+fun_bssn_enforce_pt1.add_eqn(
+    gt_enforce[li, lj],
+    gt[li, lj] / (cbrt(detgt))
+)
+
+fun_bssn_enforce_pt2 = cottonmouth_bssnok.create_function(
+    "enforce_pt2",
+    post_step_group,
+    schedule_after=["enforce_pt1"]
+)
+
+# Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0 (A)
+At_enforce = cottonmouth_bssnok.overwrite(At)
+
+fun_bssn_enforce_pt2.add_eqn(
+    At_enforce[li, lj],
+    At[li, lj] - Rational(1, 3) * gt[li, lj] * gt[ua, ub] * At[la, lb]
+)
 
 ###
 # Convert BSSN to ADM variables
+# In order to make sure that the ADM variables are valid
+# everywhere for other thorns, we schedule an explicit
+# sync after calculating them.
 ###
 fun_bssn2adm = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_bssn2adm",
+    "bssn2adm",
     post_step_group,
-    schedule_after=["cottonmouth_bssnok_enforce_pt2_group"]
+    schedule_after=["enforce_pt2"]
 )
 
-fun_bssn2adm.add_eqn(g[li, lj], (1/(w**2)) * gt[li, lj])
+fun_bssn2adm.add_eqn(
+    g[li, lj],
+    (1/(w**2)) * gt[li, lj]
+)
 
 fun_bssn2adm.add_eqn(
     k[li, lj],
@@ -518,20 +538,45 @@ fun_bssn2adm.add_eqn(
     )
 )
 
-fun_bssn2adm.add_eqn(alp, evo_lapse)
-fun_bssn2adm.add_eqn(beta[ua], evo_shift[ua])
+fun_bssn2adm.add_eqn(
+    alp,
+    evo_lapse
+)
 
+fun_bssn2adm.add_eqn(
+    beta[ua],
+    evo_shift[ua]
+)
+
+sync_adm_vars = ExplicitSyncBatch(
+    [g, k, alp, beta],
+    post_step_group,
+    schedule_after=["bssn2adm"],
+)
 
 ###
 # Compute the Ricci tensor
+# Note that we schedule it in ricci_group_rhs.
+# Because ricci_group_analysis is the same group,
+# only with a different python handle, we don't need to
+# explicitly schedule it there.
 ###
-fun_bssn_ricci_evolve = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_compute_ricci_rhs",
-    ScheduleBin.Evolve,
-    schedule_before=["cottonmouth_bssnok_rhs_group"]
+fun_bssn_ricci = cottonmouth_bssnok.create_function(
+    "compute_ricci",
+    ricci_group_rhs
 )
 
-fun_bssn_ricci_evolve.add_eqn(
+# Aux. equations
+fun_bssn_ricci.add_eqn(
+    cdphi2[la, lb],
+    -Rational(1, 2) * (1 / w) * (
+        D(w, la, lb)
+        - Gammat[uc, la, lb] * D(w, lc)
+    )
+    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+)
+
+fun_bssn_ricci.add_eqn(
     Rt[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
@@ -545,7 +590,7 @@ fun_bssn_ricci_evolve.add_eqn(
     )
 )
 
-fun_bssn_ricci_evolve.add_eqn(
+fun_bssn_ricci.add_eqn(
     RPhi[la, lb],
     - 2 * cdphi2[lb, la]
     - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
@@ -554,46 +599,18 @@ fun_bssn_ricci_evolve.add_eqn(
 )
 
 # Ricci tensor
-fun_bssn_ricci_evolve.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
-
-# TODO: Stupid code duplication because I can't use custom groups
-fun_bssn_ricci_analysis = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_compute_ricci_analysis",
-    ScheduleBin.Analysis,
-    schedule_before=["cottonmouth_bssnok_constraints_group"]
+fun_bssn_ricci.add_eqn(
+    R[la, lb],
+    Rt[la, lb] + RPhi[la, lb]
 )
 
-fun_bssn_ricci_analysis.add_eqn(
-    Rt[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
-)
-
-fun_bssn_ricci_analysis.add_eqn(
-    RPhi[la, lb],
-    - 2 * cdphi2[lb, la]
-    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
-    + 4 * cdphi[la] * cdphi[lb]
-    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
-)
-
-# Ricci tensor
-fun_bssn_ricci_analysis.add_eqn(R[la, lb], Rt[la, lb] + RPhi[la, lb])
 
 ###
 # Compute monitored constraints
 ###
 fun_bssn_cons = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_constraints",
-    ScheduleBin.Analysis
+    "constraints",
+    analysis_group
 )
 
 # Hamiltonian constraint
@@ -625,20 +642,16 @@ fun_bssn_cons.add_eqn(
     ConfConnect[ua] - Delta[ua]
 )
 
+
 ###
 # BSSN Evolution equations
 # Following [1], we will replace \tilde{\Gamma}^i with
 # \Delta^i \equiv \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk}
 # whenever \tilde{\Gamma}^i are needed without derivatives.
-#
-# Following [4] FD stencils are centered except for terms
-# of the form (\shift^i \partial_i u) which are calculated
-# using an "upwind" stencil which is shifted by one point in
-# the direction of the shift, and of the same order
 ###
 fun_bssn_rhs = cottonmouth_bssnok.create_function(
-    "cottonmouth_bssnok_rhs",
-    ScheduleBin.Evolve
+    "rhs",
+    rhs_group
 )
 
 # Aux. equations
@@ -766,7 +779,6 @@ fun_bssn_rhs.add_eqn(
 fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
 
 # Everyone likes to do gauge conditions their own way.
-# Information is often incoherent or inconsistent.
 # We will settle on Eqs. (25a) and (25b) of Ref. [4]
 
 # 1 + log lapse.
@@ -797,6 +809,7 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
+# Gamma driver B vector evolution
 fun_bssn_rhs.add_eqn(
     shift_B_rhs[ua],
     ConfConnect_rhs_tmp[ua]
@@ -816,7 +829,14 @@ fun_bssn_rhs.add_eqn(
 ###
 # Bake the cake
 ###
-cottonmouth_bssnok.bake(**gen_opts)
+cottonmouth_bssnok.bake(
+    do_cse=True,
+    temporary_promotion_strategy=promote_none(),
+    do_madd=False,
+    do_recycle_temporaries=True,
+    do_split_output_eqns=False,
+    cse_optimization_level=CseOptimizationLevel.Fast
+)
 
 ###
 # Thorn creation
@@ -825,12 +845,20 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
-        interior_sync_schedule_target=post_step_group,
+        interior_sync_mode=InteriorSyncMode.HandsOff,
+        # interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
             post_step_group,
+            rhs_group,
+            ricci_group_rhs,
+            ricci_group_analysis,
+            analysis_group,
+            initial_group,
         ],
+        explicit_syncs=[
+            sync_adm_vars,
+        ]
     )
 ).generate_thorn()
 
