@@ -13,9 +13,7 @@ ActiveThorns = "
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = yes
-CarpetX::poison_undefined_values = no
-CarpetX::out_performance         = no
-CarpetX::out_metadata            = no
+CarpetX::poison_undefined_values = yes
 
 # Run Termination
 Cactus::terminate   = "iteration"
@@ -70,6 +68,10 @@ CottonmouthBSSNOK::dissipation_epsilon    = 0.2
 # IO
 IO::out_dir   = $parfile
 IO::out_every = 1
+IO::parfile_write = no
+
+CarpetX::out_metadata = no
+CarpetX::out_performance = no
 
 # 1D output
 CarpetX::out_tsv      = no
