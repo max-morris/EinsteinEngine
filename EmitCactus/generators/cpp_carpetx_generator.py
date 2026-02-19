@@ -609,20 +609,19 @@ class CppCarpetXGenerator(CactusGenerator):
     @functools.cache
     def _get_names_from_new_rad_x_batch(self, batch: NewRadXBoundaryBatch) -> _NewRadXBatchNames:
         base_name = str(batch.base_var)
-        if base_name not in self.thorn_def.base2group:
-            raise GeneratorException(
-                f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no group.")
 
         if base_name not in self.thorn_def.rhs:
             raise GeneratorException(
                 f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
         rhs_sym = self.thorn_def.rhs[base_name]
 
-        group_name = self.thorn_def.base2group[base_name]
-        assert group_name in self.thorn_def.groups, f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} whose group {group_name} is not defined in groups."
+        group_name = self.thorn_def.base2group.get(base_name, None)
 
-        var_names = sorted(self.thorn_def.groups[group_name])
-        rhs_names = sorted(self.thorn_def.groups[self.thorn_def.base2group[(rhs_name := str(rhs_sym))]])
+        rhs_name = str(rhs_sym)
+        rhs_group_name = self.thorn_def.base2group.get(rhs_name, None)
+
+        var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))
+        rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))
 
         return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
 
