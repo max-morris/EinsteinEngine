@@ -2,7 +2,7 @@
 from .emit.tree import Identifier, String, Centering
 from .generators.cpp_carpetx_generator import CppCarpetXGenerator
 from .dsl.carpetx import ExplicitSyncBatch
-from .generators.cactus_generator import InteriorSyncMode
+from .generators.cactus_generator import SyncMode
 from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cot, sec, csc, cosh, sinh, tanh, sech, csch, coth, erf, pi, atan
 from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
 from .generators.wizards import CppCarpetXWizard
@@ -32,7 +32,7 @@ from sympy.core.relational import Relational
 
 __all__ = [
     "Identifier", "String", "Centering",
-    "CppCarpetXGenerator", "InteriorSyncMode",
+    "CppCarpetXGenerator", "SyncMode",
     "cbrt", "sqrt", "mkMatrix", "mkPiecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch",

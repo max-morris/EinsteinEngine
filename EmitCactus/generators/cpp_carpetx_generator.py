@@ -24,7 +24,7 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.util import encode_stencil_idx
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
-from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, SyncMode
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EmitCactus.generators.util import VarCenteringFn
