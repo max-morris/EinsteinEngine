@@ -620,8 +620,8 @@ class CppCarpetXGenerator(CactusGenerator):
         rhs_name = str(rhs_sym)
         rhs_group_name = self.thorn_def.base2group.get(rhs_name, None)
 
-        var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))
-        rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))
+        var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))  # type: ignore[arg-type] (we want None to resolve to the default case)
+        rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))  # type: ignore[arg-type] (")
 
         return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
 
