@@ -116,6 +116,9 @@ class CppCarpetXGenerator(CactusGenerator):
         for sync_batch in self.options.get('explicit_syncs', list()):
             srcs.append(self.get_explicit_src_file_name(sync_batch))
 
+        for rad_x_batch in self.options.get('new_rad_x_boundary_fns', list()):
+            srcs.append(self.get_explicit_src_file_name(rad_x_batch))
+
         srcs.append(self.get_explicit_src_file_name(f'StateSync_{self.thorn_def.name}'))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
