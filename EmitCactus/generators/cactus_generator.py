@@ -77,7 +77,7 @@ class CactusGenerator(ABC):
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod
-    def get_src_file_name(self, which_fn: str) -> str:
+    def get_fn_src_file_name(self, which_fn: str) -> str:
         ...
 
     @abstractmethod

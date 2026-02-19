@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from .emit.tree import Identifier, String, Centering
 from .generators.cpp_carpetx_generator import CppCarpetXGenerator
-from .dsl.carpetx import ExplicitSyncBatch
+from .dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
 from .generators.cactus_generator import SyncMode
 from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cot, sec, csc, cosh, sinh, tanh, sech, csch, coth, erf, pi, atan
 from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn
@@ -51,4 +51,4 @@ __all__ = [
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
-    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel"]
+    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch"]
