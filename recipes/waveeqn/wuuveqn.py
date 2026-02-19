@@ -82,7 +82,7 @@ u_newrad = NewRadXBoundaryBatch(
 # Again for wave_init
 # du/dt = spd**2 * ((d/dx)**2 u + (d/dy)**2 u)
 # dv/dt = u
-vfun = amp*sin(kx * x) * sin(ky * y) * sin(w * t)
+vfun = exp((x*x + y*y + z*z)/2) #amp*sin(kx * x) * sin(ky * y) * sin(w * t)
 ufun = vfun.diff(t)
 
 init = gf.create_function("newwave_init", ScheduleBin.Init)
