@@ -821,7 +821,7 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        sync_mode=SyncMode.EmulatePresync,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
