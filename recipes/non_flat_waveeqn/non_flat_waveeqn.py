@@ -243,7 +243,7 @@ CppCarpetXWizard(
     nfweq,
     CppCarpetXGenerator(
         nfweq,
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        sync_mode=SyncMode.EmulatePresync,
         extra_schedule_blocks=[zero_test_group]
     )
 ).generate_thorn()

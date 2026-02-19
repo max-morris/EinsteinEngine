@@ -896,7 +896,7 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        interior_sync_mode=InteriorSyncMode.HandsOff,
+        sync_mode=SyncMode.EmulatePresync,
         extra_schedule_blocks=[
             initial_group,
             post_step_group,

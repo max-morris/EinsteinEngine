@@ -209,7 +209,7 @@ if __name__ == "__main__":
         cottonmouth_diagonal_linear_wave_id,
         CppCarpetXGenerator(
             cottonmouth_diagonal_linear_wave_id,
-            interior_sync_mode=InteriorSyncMode.HandsOff,
+            sync_mode=SyncMode.EmulatePresync,
             extra_schedule_blocks=[adm_id_group]
         )
     ).generate_thorn()

@@ -70,7 +70,7 @@ CppCarpetXWizard(
     gf,
     CppCarpetXGenerator(
         gf,
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        sync_mode=SyncMode.EmulatePresync,
         extra_schedule_blocks=[check_zero]
     )
 ).generate_thorn()
