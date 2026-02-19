@@ -1,16 +1,16 @@
-import typing
+import functools
 from dataclasses import dataclass
-from typing import Optional, List, Collection
+from typing import Optional, List, Collection, Protocol, NamedTuple
 
 import sympy as sy
 from typing_extensions import Unpack, OrderedDict
 
-from EmitCactus.dsl.carpetx import ExplicitSyncBatch
+from EmitCactus.dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
 from EmitCactus.dsl.stencil_idx import StencilIdxWithCentering
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.dsl.util import require
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
-    VariableSection
+    VariableSection, UsesInclude
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
     KeywordParamRange, StringParamRange, IntParamRange, IntParamDescWildcard, IntParamDescRange, IntParamOpenLowerBound, \
     IntParamOpenUpperBound, RealParamRange, RealParamDescWildcard, RealParamDescRange, RealParamOpenLowerBound, \
@@ -22,9 +22,9 @@ from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective,
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
     CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
-from EmitCactus.emit.util import encode_stencil_idx
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
-from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, SyncMode
+from EmitCactus.emit.util import encode_stencil_idx
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EmitCactus.generators.util import VarCenteringFn
@@ -38,6 +38,10 @@ class _TileTempCenteringData:
 
 class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
+    new_rad_x_boundary_fns: Collection[NewRadXBoundaryBatch]
+
+class _HasName(Protocol):
+    name: str
 
 
 class CppCarpetXGenerator(CactusGenerator):
@@ -98,21 +102,21 @@ class CppCarpetXGenerator(CactusGenerator):
         if len(unbaked_fns) > 0:
             raise GeneratorException(f"One or more functions have not been baked. Namely: {unbaked_fns}")
 
-    def get_src_file_name(self, which_fn: str) -> str:
+    def get_fn_src_file_name(self, which_fn: str) -> str:
         assert which_fn in self.thorn_def.thorn_functions
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
-    def get_sync_batch_fn_src_file_name(self, which: ExplicitSyncBatch | str) -> str:
-        return f'{self.thorn_def.name}_{which.name if isinstance(which, ExplicitSyncBatch) else which}.cpp'
+    def get_explicit_src_file_name(self, which: _HasName | str) -> str:
+        return f'{self.thorn_def.name}_{which if isinstance(which, str) else which.name}.cpp'
 
     def generate_makefile(self) -> str:
-        srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
+        srcs = [self.get_fn_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
 
         for sync_batch in self.options.get('explicit_syncs', list()):
-            srcs.append(self.get_sync_batch_fn_src_file_name(sync_batch))
+            srcs.append(self.get_explicit_src_file_name(sync_batch))
 
-        srcs.append(self.get_sync_batch_fn_src_file_name(f'StateSync_{self.thorn_def.name}'))
+        srcs.append(self.get_explicit_src_file_name(f'StateSync_{self.thorn_def.name}'))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -305,6 +309,38 @@ class CppCarpetXGenerator(CactusGenerator):
                     after=[Identifier(s) for s in sync_batch.schedule_after]
                 ))
 
+        if (new_rad_x_items := self.options.get('new_rad_x_boundary_fns', None)) is not None:
+            for batch in new_rad_x_items:
+                schedule_bin, at_or_in = self._resolve_schedule_target(batch.schedule_target)
+                base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
+
+                reads = OrderedSet(
+                    Intent(
+                        Identifier(self._get_qualified_group_name_from_var_name(var_name)),
+                        IntentRegion.Interior
+                    )
+                    for var_name in var_names
+                )
+
+                writes = OrderedSet(
+                    Intent(
+                        Identifier(self._get_qualified_group_name_from_var_name(rhs_name)),
+                        IntentRegion.Interior
+                    )
+                    for rhs_name in rhs_names
+                )
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(batch.name),
+                    at_or_in=at_or_in,
+                    schedule_bin=schedule_bin,
+                    description=String(f'Function for applying NewRadX boundary conditions: {base_name} -> {rhs_name}. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    reads=list(reads),
+                    writes=list(writes)
+                ))
+
         post_post_init_bin, post_post_init_at_in = self._resolve_schedule_target(ScheduleBin.PostPostInit)
 
         schedule_blocks.append(ScheduleBlock(
@@ -409,7 +445,9 @@ class CppCarpetXGenerator(CactusGenerator):
                 inherits=[*inherits_from],
                 friends=[]
             ),
-            IncludeSection([]),
+            IncludeSection([
+                UsesInclude(Verbatim('newradx.hxx'))
+            ]),
             FunctionSection([]),
             VariableSection(list(self.variable_groups.values()))
         )
@@ -497,6 +535,96 @@ class CppCarpetXGenerator(CactusGenerator):
             ))
 
         return ParamRoot(params)
+
+    def generate_new_rad_x_boundary_function_code(self, batch: NewRadXBoundaryBatch) -> CodeRoot:
+        nodes: list[CodeElem] = list()
+
+        # Includes, usings...
+        for include in self._boilerplate_includes:
+            nodes.append(IncludeDirective(include))
+
+        nodes.append(IncludeDirective(Identifier('newradx.hxx')))
+
+        for include in self._boilerplate_quoted_includes:
+            nodes.append(IncludeDirective(include, True))
+
+        nodes.append(Verbatim(self._boilerplate_nv_tools_include))
+
+        for ns in self._boilerplate_namespace_usings:
+            nodes.append(UsingNamespace(ns))
+
+        nodes.append(UsingNamespace(Identifier('NewRadX')))
+
+        base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
+
+        sympy_visitor = SympyExprVisitor()
+        val_at_infinity = sympy_visitor.visit(batch.val_at_infinity)
+        propagation_speed = sympy_visitor.visit(batch.propagation_speed)
+        radial_falloff_exponent = sympy_visitor.visit(batch.radial_falloff_exponent)
+
+        apply_calls: list[Stmt] = list()
+        for (v, r) in zip(var_names, rhs_names):
+            apply_calls.append(
+                ExprStmt(
+                    FunctionCall(
+                        Identifier(f'NewRadX_Apply'),
+                        [
+                            IdExpr(Identifier('cctkGH')),
+                            IdExpr(Identifier(v)),
+                            IdExpr(Identifier(r)),
+                            val_at_infinity,
+                            propagation_speed,
+                            radial_falloff_exponent
+                        ],
+                        []
+                    )
+                )
+            )
+
+        nodes.append(
+            ThornFunctionDecl(
+                Identifier(batch.name),
+                [
+                    DeclareCarpetXArgs(Identifier(batch.name)),
+                    DeclareCarpetParams(),
+                    UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
+                    ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'),
+                                        VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    Verbatim(self._boilerplate_nv_tools_init(batch.name)),
+                    *apply_calls,
+                    Verbatim(self._boilerplate_nv_tools_destructor)
+                ]
+            )
+        )
+
+        return CodeRoot(nodes)
+
+
+    class _NewRadXBatchNames(NamedTuple):
+        base_var: str
+        rhs_var: str
+        var_names: list[str]
+        rhs_names: list[str]
+
+    @functools.cache
+    def _get_names_from_new_rad_x_batch(self, batch: NewRadXBoundaryBatch) -> _NewRadXBatchNames:
+        base_name = str(batch.base_var)
+        if base_name not in self.thorn_def.base2group:
+            raise GeneratorException(
+                f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no group.")
+
+        if base_name not in self.thorn_def.rhs:
+            raise GeneratorException(
+                f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
+        rhs_sym = self.thorn_def.rhs[base_name]
+
+        group_name = self.thorn_def.base2group[base_name]
+        assert group_name in self.thorn_def.groups, f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} whose group {group_name} is not defined in groups."
+
+        var_names = sorted(self.thorn_def.groups[group_name])
+        rhs_names = sorted(self.thorn_def.groups[self.thorn_def.base2group[(rhs_name := str(rhs_sym))]])
+
+        return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
 
     def generate_function_code(self, which_fn: str) -> CodeRoot:
         nodes: list[CodeElem] = list()
@@ -914,12 +1042,12 @@ class CppCarpetXGenerator(CactusGenerator):
         return output_centering
 
 
-    def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch | str) -> CodeRoot:
+    def generate_sync_batch_function_code(self, sync_batch: _HasName | str) -> CodeRoot:
         return CodeRoot([
             Verbatim(self._boilerplate_setup),
             *[IncludeDirective(include) for include in self._boilerplate_includes],
             ThornFunctionDecl(
-                Identifier(sync_batch.name if isinstance(sync_batch, ExplicitSyncBatch) else sync_batch),
+                Identifier(sync_batch if isinstance(sync_batch, str) else sync_batch.name),
                 []
             )
         ])

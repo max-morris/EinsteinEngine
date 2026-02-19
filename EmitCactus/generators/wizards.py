@@ -42,7 +42,7 @@ class ThornWizard(ABC, Generic[G, CV]):
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)
             # print(code)
-            code_fname = os.path.join(self.base_dir, "src", self.generator.get_src_file_name(fn_name))
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_fn_src_file_name(fn_name))
             with ConditionalFileUpdater(code_fname) as fd:
                 fd.write(code)
 
@@ -73,7 +73,7 @@ class ThornWizard(ABC, Generic[G, CV]):
 
         print('== configuration.ccl ==')
         configuration_ccl = f"""
-REQUIRES Arith Loop {self.thorn_def.name}_gen AMReX
+REQUIRES Arith Loop {self.thorn_def.name}_gen AMReX NewRadX
 
 PROVIDES {self.thorn_def.name}_gen
 {{
@@ -124,6 +124,13 @@ class CppCarpetXWizard(ThornWizard[CppCarpetXGenerator, CppVisitor]):
         for sync_batch in OrderedSet(self.generator.options.get('explicit_syncs', list()) + [f'StateSync_{self.thorn_def.name}']):  # type: ignore[operator]
             code_tree = self.generator.generate_sync_batch_function_code(sync_batch)
             code = self.code_visitor.visit(code_tree)
-            code_fname = os.path.join(self.base_dir, "src", self.generator.get_sync_batch_fn_src_file_name(sync_batch))
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_explicit_src_file_name(sync_batch))
+            with ConditionalFileUpdater(code_fname) as fd:
+                fd.write(code)
+
+        for rad_batch in OrderedSet(self.generator.options.get('new_rad_x_boundary_fns', list())):
+            code_tree = self.generator.generate_new_rad_x_boundary_function_code(rad_batch)
+            code = self.code_visitor.visit(code_tree)
+            code_fname = os.path.join(self.base_dir, "src", self.generator.get_explicit_src_file_name(rad_batch))
             with ConditionalFileUpdater(code_fname) as fd:
                 fd.write(code)
