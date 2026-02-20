@@ -19,13 +19,14 @@ ActiveThorns = "
     CottonmouthBSSNOK
     AsterMasks
     TOVSolverX
-    SystemTopology
+    TimerReport
 "
 
 # Termination
+
 Cactus::terminate       = "any"
 Cactus::cctk_itlast     = 10000000
-Cactus::cctk_final_time = 400
+Cactus::cctk_final_time = 1600.0
 Cactus::max_runtime     = 1 * 24 * 60 - 30
 
 # General settings
@@ -33,6 +34,7 @@ CarpetX::verbose    = yes
 ODESolvers::verbose = yes
 
 Cactus::presync_mode = "mixed-error"
+
 CarpetX::poison_undefined_values = no
 
 # Distribution
@@ -40,19 +42,30 @@ CarpetX::blocking_factor_x = 8
 CarpetX::blocking_factor_y = 8
 CarpetX::blocking_factor_z = 8
 
+CarpetX::max_grid_size_x = 2**30
+CarpetX::max_grid_size_y = 2**30
+CarpetX::max_grid_size_z = 2**30
+
+CarpetX::max_tile_size_x = 2**30
+CarpetX::max_tile_size_y = 2**30
+CarpetX::max_tile_size_z = 2**30
+
 # Grid settings
-# Finest grid spacing is 0.2509765625
-CarpetX::xmin = -642.5
-CarpetX::ymin = -642.5
-CarpetX::zmin = -642.5
+# Finest grid spacing is 0.15625
+# To have a symmetric grid along 0, we have odd number of points (257)
+# along each direction going from -20.078125 to +20.078125 for the finest level
 
-CarpetX::xmax = 642.5
-CarpetX::ymax = 642.5
-CarpetX::zmax = 642.5
+CarpetX::xmin = -512.0
+CarpetX::ymin = -512.0
+CarpetX::zmin = -512.0
 
-CarpetX::ncells_x = 160
-CarpetX::ncells_y = 160
-CarpetX::ncells_z = 160
+CarpetX::xmax = 512.0
+CarpetX::ymax = 512.0
+CarpetX::zmax = 512.0
+
+CarpetX::ncells_x = 128
+CarpetX::ncells_y = 128
+CarpetX::ncells_z = 128
 
 CarpetX::boundary_x       =  "neumann"
 CarpetX::boundary_y       =  "neumann"
@@ -64,32 +77,34 @@ CarpetX::boundary_upper_z =  "neumann"
 CarpetX::ghost_size = 3
 
 # Mesh refinement
+
 CarpetX::max_num_levels         = 6
-CarpetX::regrid_every           = 128
+CarpetX::regrid_every           = 32000000
 CarpetX::regrid_error_threshold = 0.9
 
-CarpetX::prolongation_type = "ddf"
+CarpetX::prolongation_type = "poly-cons3lfb"
 
 BoxInBox::num_regions  = 1
 BoxInBox::shape_1      = "cube"
 BoxInBox::num_levels_1 = 6
-BoxInBox::radius_1     = [ -1.0, 321.25, 160.625, 80.3125, 40.15625, 20.078125 ]
+BoxInBox::radius_1     = [-1.0, 256.0, 128.0, 64.0, 32.0, 16.0]
 
 # Time integration
 ODESolvers::method = "RK4"
 CarpetX::dtfac     = 0.25
 
 # Spacetime evolution
-ADMBaseX::initial_data                       = "tov"
-ADMBaseX::initial_lapse                      = "tov"
-ADMBaseX::initial_shift                      = "tov"
-ADMBaseX::initial_dtlapse                    = "zero"
-ADMBaseX::initial_dtshift                    = "zero"
+
+ADMBaseX::initial_data    = "tov"
+ADMBaseX::initial_lapse   = "tov"
+ADMBaseX::initial_shift   = "tov"
+ADMBaseX::initial_dtlapse = "zero"
+ADMBaseX::initial_dtshift = "zero"
 
 CottonmouthBSSNOK::eta_b                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-6
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-8
-CottonmouthBSSNOK::dissipation_epsilon    = 0.32
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
+CottonmouthBSSNOK::dissipation_epsilon    = 0.3
 
 # Hydro
 TOVSolverX::TOV_Rho_Central[0] = 1.28e-3
@@ -133,6 +148,15 @@ EOSX::poly_k = 100
 EOSX::rho_max = 1e8
 EOSX::eps_max = 1e8
 
+# Timer output
+TimerReport::out_every                  = 64
+TimerReport::out_filename               = "TimerReport"
+TimerReport::n_top_timers               = 200
+TImerReport::output_all_timers          = yes
+TimerReport::output_all_timers_readable = yes
+TimerReport::output_all_timers_together = yes
+TimerReport::output_schedule_timers     = yes
+
 # IO
 IO::out_dir = $parfile
 IO::out_every = 64
@@ -145,7 +169,6 @@ CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
   HydroBaseX::rho
   CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
 "
 
 CarpetX::out_silo_vars = "
@@ -157,6 +180,7 @@ CarpetX::out_silo_vars = "
     ADMBaseX::lapse
     ADMBaseX::shift
     ADMBaseX::metric
+    ADMBaseX::curv
     TmunuBaseX::eTtt
     TmunuBaseX::eTti
     TmunuBaseX::eTij
@@ -164,15 +188,13 @@ CarpetX::out_silo_vars = "
     CottonmouthBSSNOK::MomCons
 "
 
-CarpetX::out_tsv = no
-CarpetX::out_tsv_vars = ""
+IO::checkpoint_dir = "../checkpoint"
+IO::recover_dir    = "../checkpoint"
+IO::checkpoint_ID = no
+IO::checkpoint_every = 0
+IO::checkpoint_every_walltime_hours = 12.0
+IO::checkpoint_on_terminate = yes
+IO::recover                 = "autoprobe"
 
-# Checkpoint and recovery
-IO::checkpoint_dir                  = "../checkpoints_$parfile"
-IO::recover_dir                     = "../checkpoints_$parfile"
-IO::checkpoint_ID                   = no
-IO::checkpoint_every_walltime_hours = 6
-IO::checkpoint_on_terminate         = yes
-IO::recover                         = "autoprobe"
-CarpetX::checkpoint_method          = "openpmd"
-CarpetX::recover_method             = "openpmd"
+CarpetX::checkpoint_method = "openpmd"
+CarpetX::recover_method    = "openpmd"
