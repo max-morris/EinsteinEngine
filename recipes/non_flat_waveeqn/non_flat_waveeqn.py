@@ -172,8 +172,6 @@ nfweq_init.add_eqn(
     diff(id_func, z)
 )
 
-nfweq_init.bake(do_recycle_temporaries=False)
-
 ###
 # RHS Equations
 ###
@@ -209,8 +207,6 @@ nfweq_rhs.add_eqn(
     D(rho, la)
 )
 
-nfweq_rhs.bake(do_recycle_temporaries=False)
-
 ###
 # Analysis
 ###
@@ -220,7 +216,8 @@ nfweq_zero = nfweq.create_function(
 )
 
 nfweq_zero.add_eqn(ZeroVal, u - id_func)
-nfweq_zero.bake(do_recycle_temporaries=False)
+
+nfweq.bake(do_recycle_temporaries=False)
 
 ###
 # Zero test group
@@ -233,8 +230,6 @@ zero_test_group = ScheduleBlock(
     description=String("Do the check"),
     after=[Identifier("RicZero")]
 )
-
-nfweq.do_global_cse()
 
 ###
 # Generate

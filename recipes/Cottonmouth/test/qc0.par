@@ -1,39 +1,45 @@
 ActiveThorns = "
   ADMBaseX
-  TmunuBaseX
   CarpetX
   CottonmouthBSSNOK
+  CanudaX_NPScalars
   CoordinatesX
   IOUtil
+  Multipole
+  NewRadX
   ODESolvers
+  TmunuBaseX
   TwoPuncturesX
 "
+
+$itlast    = 32
+$out_every = 2
 
 # Driver
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = yes
-CarpetX::poison_undefined_values = yes
+CarpetX::poison_undefined_values = no
 
 # Run Termination
 Cactus::terminate   = "iteration"
-Cactus::cctk_itlast = 10
+Cactus::cctk_itlast = $itlast
 
 # Grid setup
-CarpetX::xmin       = -5.0
-CarpetX::ymin       = -5.0
-CarpetX::zmin       = -5.0
-CarpetX::xmax       = 5.0
-CarpetX::ymax       = 5.0
-CarpetX::zmax       = 5.0
-CarpetX::ncells_x   = 64
-CarpetX::ncells_y   = 64
-CarpetX::ncells_z   = 64
-CarpetX::ghost_size = 3
+CarpetX::xmin = -10.0
+CarpetX::ymin = -10.0
+CarpetX::zmin = -10.0
 
+CarpetX::xmax = 10.0
+CarpetX::ymax = 10.0
+CarpetX::zmax = 10.0
+
+CarpetX::ncells_x = 40
+CarpetX::ncells_y = 40
+CarpetX::ncells_z = 40
+
+CarpetX::ghost_size          = 3
 CarpetX::interpolation_order = 3
-CarpetX::prolongation_type   = "ddf"
-CarpetX::prolongation_order  = 5
 
 # Boundary conditions
 CarpetX::boundary_x       = "linear extrapolation"
@@ -43,39 +49,66 @@ CarpetX::boundary_upper_x = "linear extrapolation"
 CarpetX::boundary_upper_y = "linear extrapolation"
 CarpetX::boundary_upper_z = "linear extrapolation"
 
+# Mesh refinement
+CarpetX::prolongation_type  = "ddf"
+CarpetX::prolongation_order = 5
+
 # Initial data
 ADMBaseX::initial_data           = "TwoPunctures"
 ADMBaseX::initial_lapse          = "TwoPunctures-averaged"
+
 TwoPuncturesX::verbose           = yes
-TwoPuncturesX::par_b             = 1.5
-TwoPuncturesX::par_m_plus        = 0.5
-TwoPuncturesX::par_m_minus       = 0.5
+TwoPuncturesX::par_b             = 1.168642873
+TwoPuncturesX::par_m_plus        = 0.453
+TwoPuncturesX::par_m_minus       = 0.453
+TwoPuncturesX::par_P_plus [1]    = +0.3331917498
+TwoPuncturesX::par_P_minus[1]    = -0.3331917498
 TwoPuncturesX::grid_setup_method = "evaluation"
-TwoPuncturesX::TP_epsilon        = 1.0e-2
-TwoPuncturesX::TP_Tiny           = 1.0e-2
+TwoPuncturesX::TP_epsilon        = 1.0e-8
+TwoPuncturesX::TP_Tiny           = 1.0e-8
 
 # Time Integration
-CarpetX::dtfac         = 0.25
-ODESolvers::verbose    = yes
-ODESolvers::method     = "RK4"
+CarpetX::dtfac      = 0.25
+ODESolvers::verbose = yes
+ODESolvers::method  = "RK4"
 
 # Spacetime evolution
 CottonmouthBSSNOK::eta_B                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
-CottonmouthBSSNOK::dissipation_epsilon    = 0.2
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
+CottonmouthBSSNOK::dissipation_epsilon    = 0.3
 
-# IO
+# Wave extraction
+CanudaX_NPScalars::NP_order           = 4
+CanudaX_NPScalars::calculate_NP_every = $out_every
+
+Multipole::verbose   = yes
+Multipole::nradii    = 2
+Multipole::radius[0] = 1.0
+Multipole::radius[1] = 3.0
+Multipole::radius[2] = 5.0
+Multipole::ntheta    = 120
+Multipole::nphi      = 240
+
+Multipole::variables         = "
+  CanudaX_NPScalars::psi4re{sw=-2 cmplx='CanudaX_NPScalars::psi4im' name='NP_Psi4'}
+"
+
+Multipole::out_every         = $out_every
+Multipole::l_max             = 4
+Multipole::interpolator_pars = "order=3"
+
+# Output
 IO::out_dir   = $parfile
-IO::out_every = 1
-IO::parfile_write = no
+IO::out_every = $out_every
 
-CarpetX::out_metadata = no
 CarpetX::out_performance = no
+CarpetX::out_metadata = no
 
-# 1D output
-CarpetX::out_tsv      = no
+CarpetX::out_tsv = no
 CarpetX::out_tsv_vars = "
+  ADMBaseX::metric
+  ADMBaseX::curv
   CottonmouthBSSNOK::gt
   CottonmouthBSSNOK::w
   CottonmouthBSSNOK::At
@@ -86,4 +119,6 @@ CarpetX::out_tsv_vars = "
   CottonmouthBSSNOK::shift_B
   CottonmouthBSSNOK::HamCons
   CottonmouthBSSNOK::MomCons
+  CanudaX_NPScalars::NPPsi4R_group
+  CanudaX_NPScalars::NPPsi4I_group
 "
