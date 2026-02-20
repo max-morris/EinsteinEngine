@@ -1975,11 +1975,15 @@ class ThornDef:
                     ec = tf.eqn_complex
                     primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
 
-                    primary_el.add_eqn(new_temp, substitutions[new_temp])
-                    ec._tile_temporaries.add(new_temp)
-                    primary_el.uninitialized_tile_temporaries.add(new_temp)
-                    for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
-                        eqn_list.uninitialized_tile_temporaries.add(new_temp)
+                    if len(els_reading) == 1:
+                        primary_el.add_eqn(new_temp, substitutions[new_temp])
+                        primary_el.temporaries.add(new_temp)
+                    else:
+                        primary_el.add_eqn(new_temp, substitutions[new_temp])
+                        ec._tile_temporaries.add(new_temp)
+                        primary_el.uninitialized_tile_temporaries.add(new_temp)
+                        for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
+                            eqn_list.uninitialized_tile_temporaries.add(new_temp)
             else:  # TempKind.Global
                 self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
                 self.global_temporaries.add(new_temp)

@@ -8,6 +8,7 @@ from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtO
 from .generators.wizards import CppCarpetXWizard
 from .dsl.use_indices import parities, ThornFunctionBakeOptions, CseOptimizationLevel
 from .dsl.temporary_promotion_predicate import *
+from .dsl.temp_kind import TempKind
 
 from .dsl.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, Param, ThornFunction, ScheduleBin, ThornDef, \
        set_dimension, get_dimension, lookup_pair, subst_tensor_xyz, mk_pair, \
@@ -51,4 +52,4 @@ __all__ = [
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
-    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch"]
+    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind"]
