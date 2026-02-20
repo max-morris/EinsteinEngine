@@ -68,5 +68,5 @@ then
     ln -s $SOURCE_TEST_DIR $TARGET_TEST_DIR
 fi
 
-export OMP_NUM_THREADS=1
+export OMP_NUM_THREADS=4
 make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthBSSNOK |& tee run.out

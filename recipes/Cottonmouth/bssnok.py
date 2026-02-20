@@ -6,7 +6,6 @@ from sympy import Rational
 ###
 cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 
-
 ###
 # Finite difference stencils
 ###
@@ -96,7 +95,6 @@ dtbeta = cottonmouth_bssnok.decl("dtbeta", [ua], from_thorn="ADMBaseX")
 eTtt = cottonmouth_bssnok.decl("eTtt", [], from_thorn="TmunuBaseX")
 
 eTti = cottonmouth_bssnok.decl("eTt", [la], from_thorn="TmunuBaseX")
-
 
 eTij = cottonmouth_bssnok.decl(
     "eT",
