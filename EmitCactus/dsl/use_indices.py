@@ -1767,8 +1767,8 @@ class ThornDef:
 
         tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
         old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
-        old_tf_lhses: OrderedDict[TfName, list[Symbol]] = OrderedDict()
-        old_tf_rhses: OrderedDict[TfName, list[Expr]] = OrderedDict()
+        old_tf_lhses: OrderedDict[TfName, list[list[Symbol]]] = OrderedDict()
+        old_tf_rhses: OrderedDict[TfName, list[list[Expr]]] = OrderedDict()
 
         for tf_name in tf_names:
             old_tf_shapes[tf_name] = list()
@@ -1778,20 +1778,22 @@ class ThornDef:
         for tf_name, tf in sorted([(TfName(name), tf) for name, tf in self.thorn_functions.items()], key=lambda kv: tf_names.index(kv[0])):
             for eqn_list in tf.eqn_complex.eqn_lists:
                 old_tf_shapes[tf_name].append(len(eqn_list.eqns))
+                old_tf_lhses[tf_name].append(list())
+                old_tf_rhses[tf_name].append(list())
                 for lhs, rhs in sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])):
-                    old_tf_lhses[tf_name].append(lhs)
-                    old_tf_rhses[tf_name].append(rhs)
+                    old_tf_lhses[tf_name][-1].append(lhs)
+                    old_tf_rhses[tf_name][-1].append(rhs)
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
 
         if optimization_level is CseOptimizationLevel.Optimal:
             substitutions_list, new_rhses = cse_isolate(
-                list(chain(*old_tf_rhses.values())),
+                list(chain(*chain(*old_tf_rhses.values()))),
                 symbols_to_isolate=grid_vars
             )
         elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = cse(list(chain(*old_tf_rhses.values())))
+            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
         else:
             raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
@@ -1954,7 +1956,7 @@ class ThornDef:
             for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
                 eqn_list = tf.eqn_complex.eqn_lists[el_idx]
 
-                for lhs in old_tf_lhses[tf_name]:
+                for lhs in old_tf_lhses[tf_name][el_idx]:
                     assert lhs in eqn_list.eqns
                     eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
                     global_eqn_idx += 1
