@@ -678,6 +678,8 @@ fun_bssn_rhs.add_eqn(
     + evo_lapse * R[la, lb]
 )
 
+fun_bssn_rhs.split_loop()
+
 # Evolution equations
 fun_bssn_rhs.add_eqn(
     gt_rhs[la, lb],
@@ -880,7 +882,7 @@ fun_bssn_diss.add_eqn(
 ###
 cottonmouth_bssnok.bake(
     do_cse=True,
-    temporary_promotion_strategy=promote_none(),
+    temporary_promotion_strategy=promote_all(TempKind.Tile),
     do_madd=False,
     do_recycle_temporaries=True,
     do_split_output_eqns=False,
