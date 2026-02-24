@@ -500,7 +500,8 @@ fun_bssn_enforce_pt2.add_eqn(
 fun_bssn2adm = cottonmouth_bssnok.create_function(
     "bssn2adm",
     post_step_group,
-    schedule_after=["enforce_pt2"]
+    schedule_after=["enforce_pt2"],
+    e2e=True
 )
 
 fun_bssn2adm.add_eqn(

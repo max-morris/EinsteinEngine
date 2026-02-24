@@ -1367,15 +1367,17 @@ class ThornFunction:
                  schedule_target: ScheduleTarget,
                  thorn_def: "ThornDef",
                  schedule_before: Optional[Collection[str]],
-                 schedule_after: Optional[Collection[str]]) -> None:
+                 schedule_after: Optional[Collection[str]],
+                 e2e: bool = False) -> None:
         self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
-        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil)
+        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, e2e)
         self.been_baked: bool = False
         self.been_late_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
+        self.e2e: bool = e2e
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -2148,8 +2150,9 @@ class ThornDef:
                         schedule_target: ScheduleTarget,
                         *,
                         schedule_before: Optional[Collection[str]] = None,
-                        schedule_after: Optional[Collection[str]] = None) -> ThornFunction:
-        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after)
+                        schedule_after: Optional[Collection[str]] = None,
+                        e2e: bool = False) -> ThornFunction:
+        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, e2e)
         self.thorn_functions[name] = tf
         return tf
 
