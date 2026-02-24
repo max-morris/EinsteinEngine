@@ -73,11 +73,13 @@ class TemporaryReplacement:
 class EqnComplex:
     eqn_lists: list['EqnList']
     is_stencil: dict[UFunc, bool]
+    e2e: bool
     been_baked: bool
     _tile_temporaries: set[Symbol]
 
-    def __init__(self, is_stencil: Dict[UFunc, bool]) -> None:
+    def __init__(self, is_stencil: Dict[UFunc, bool], e2e: bool = False) -> None:
         self.is_stencil = is_stencil
+        self.e2e = e2e
         self.eqn_lists = [EqnList(self, is_stencil)]
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
@@ -717,13 +719,15 @@ class EqnList:
 
         # Figure out the read/writes
         for lhs in self.inputs:
-            self.read_decls[lhs] = IntentRegion.Interior
+            self.read_decls[lhs] = IntentRegion.Everywhere if self.parent.e2e else IntentRegion.Interior
         for lhs in self.outputs:
-            self.write_decls[lhs] = IntentRegion.Interior
+            self.write_decls[lhs] = IntentRegion.Everywhere if self.parent.e2e else IntentRegion.Interior
 
         for lhs, rhs in self.eqns.items():
             for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
                 if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
+                    if self.parent.e2e:
+                        raise DslException(f"Stencil '{sten}' found in the RHS for {lhs} cannot have nonzero offset in E2E mode.")
                     var = sten.args[0]
                     self.read_decls[var] = IntentRegion.Everywhere
 
