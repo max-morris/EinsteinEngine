@@ -1,0 +1,60 @@
+ActiveThorns = "
+  CarpetX
+  IOUtil
+  NewRadX
+  NewRadXWeq
+  ODESolvers
+"
+
+###### Settings ######
+$final_time = 40.0
+$out_every = 32
+
+$ncells = 81
+######################
+
+CarpetX::poison_undefined_values = no
+CarpetX::verbose = yes
+
+Cactus::cctk_show_schedule = yes
+Cactus::presync_mode = "mixed-error"
+
+CarpetX::xmin = -10.0
+CarpetX::ymin = -10.0
+CarpetX::zmin = -10.0
+
+CarpetX::xmax = 10.0
+CarpetX::ymax = 10.0
+CarpetX::zmax = 10.0
+
+CarpetX::ncells_x = $ncells
+CarpetX::ncells_y = $ncells
+CarpetX::ncells_z = $ncells
+
+CarpetX::blocking_factor_x = 1
+CarpetX::blocking_factor_y = 1
+CarpetX::blocking_factor_z = 1
+
+CarpetX::ghost_size = 2
+
+CarpetX::boundary_x       =  "neumann"
+CarpetX::boundary_y       =  "neumann"
+CarpetX::boundary_z       =  "neumann"
+CarpetX::boundary_upper_x =  "neumann"
+CarpetX::boundary_upper_y =  "neumann"
+CarpetX::boundary_upper_z =  "neumann"
+
+Cactus::terminate = "time"
+Cactus::cctk_final_time = $final_time
+
+ODESolvers::method = "RK4"
+ODESolvers::verbose = yes
+CarpetX::dtfac = 0.25
+
+IO::out_dir = $parfile
+IO::out_every = $out_every
+
+CarpetX::out_silo_vars = "
+  NewRadXWeq::u
+  NewRadXWeq::rho
+"
