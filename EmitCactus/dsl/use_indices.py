@@ -1690,6 +1690,7 @@ class ThornDef:
         self.set_derivative_stencil(5)
         self.div_makers["div"] = DivMakerVisitor(div)
         self.div_makers["D"] = DivMakerVisitor(D)
+        self.tile_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
         self.declarations: dict[str, _Declaration] = dict()
@@ -1968,11 +1969,13 @@ class ThornDef:
             elif temp_kinds[new_temp] == TempKind.Local:
                 for tf, els_reading in tfs_active_reads[new_temp].items():
                     ec = tf.eqn_complex
-                    primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
 
-                    primary_el.add_eqn(new_temp, substitutions[new_temp])
-                    primary_el.temporaries.add(new_temp)
+                    for el in (ec.eqn_lists[el_idx] for el_idx in els_reading):
+                        el.add_eqn(new_temp, substitutions[new_temp])
+                        el.temporaries.add(new_temp)
             elif temp_kinds[new_temp] == TempKind.Tile:
+                self.tile_temporaries.add(new_temp)
+
                 for tf, els_reading in tfs_active_reads[new_temp].items():
                     ec = tf.eqn_complex
                     primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
@@ -1985,7 +1988,7 @@ class ThornDef:
                         ec._tile_temporaries.add(new_temp)
                         primary_el.uninitialized_tile_temporaries.add(new_temp)
                         for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
-                            eqn_list.uninitialized_tile_temporaries.add(new_temp)
+                            eqn_list.preinitialized_tile_temporaries.add(new_temp)
             else:  # TempKind.Global
                 self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
                 self.global_temporaries.add(new_temp)
