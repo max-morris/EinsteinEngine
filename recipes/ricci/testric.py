@@ -15,7 +15,8 @@ x, y, z = gf.mk_coords()
 Ric = gf.decl("Ric", [la, lb], symmetries=[(la, lb)])
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 G = gf.decl("Affine", [ua, lb, lc], symmetries=[
-            (lb, lc)], substitution_rule=None)
+            (lb, lc)]) #, substitution_rule=None)
+gf.add_substitution_rule(G[la, lb, lc])
 
 gmat = gf.get_matrix(g[la, lb])
 print(gmat)
@@ -34,11 +35,13 @@ gmat = mkMatrix([
 assert det(gmat) == 1
 
 # Define the affine connections
-gf.add_substitution_rule(
-    G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
-gf.add_substitution_rule(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
-
 fun = gf.create_function("setGL", ScheduleBin.Analysis)
+
+fun.add_eqn(G[la, lb, lc],
+            (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
+
+gf.add_substitution_rule(G[ud, lb, lc], g[ud, ua] * G[la, lb, lc])
+fun.split_loop()
 
 fun.add_eqn(Ric[li, lj],
             D(G[ua, li, lj], la) - D(G[ua, la, li], lj) +
