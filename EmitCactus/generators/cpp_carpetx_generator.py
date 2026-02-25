@@ -35,6 +35,7 @@ from EmitCactus.util import OrderedSet
 class _TileTempCenteringData:
     temps_by_centering: dict[Centering, set[sy.Symbol]]
     temps_to_centering: dict[sy.Symbol, Centering]
+    final_loop_centerings: list[Centering]
 
 class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
@@ -813,12 +814,12 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         loop_to_output_region = [
-            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls)
+            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls, eqn_list.read_decls)
             for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
         ]
 
         tile_temp_centerings = self._get_tile_temp_centerings(loop_to_output_centering, thorn_fn)
-        tile_temps_by_centering, tile_temps_to_centering = tile_temp_centerings.temps_by_centering, tile_temp_centerings.temps_to_centering
+        tile_temps_by_centering, tile_temps_to_centering, final_loop_centerings = tile_temp_centerings.temps_by_centering, tile_temp_centerings.temps_to_centering, tile_temp_centerings.final_loop_centerings
 
         tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
         
@@ -829,7 +830,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         carpetx_loops: list[Stmt] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
-            output_centering = loop_to_output_centering[loop_idx]
+            output_centering = final_loop_centerings[loop_idx]
             output_region = loop_to_output_region[loop_idx]
 
             subst_result = substitute_recycled_temporaries(eqn_list)
@@ -894,27 +895,58 @@ class CppCarpetXGenerator(CactusGenerator):
         return CodeRoot(nodes)
 
     @staticmethod
-    def _get_tile_temp_centerings(loop_to_output_centering: list[Centering], thorn_fn: ThornFunction) -> _TileTempCenteringData:
+    def _get_tile_temp_centerings(loop_to_output_centering: list[Optional[Centering]], thorn_fn: ThornFunction) -> _TileTempCenteringData:
         tile_temps_by_centering: dict[Centering, set[sy.Symbol]] = OrderedDict()
         tile_temps_to_centering: dict[sy.Symbol, Centering] = OrderedDict()
+
+        final_loop_centerings = list()
+
+        td = thorn_fn.thorn_def
 
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             loop_centering = loop_to_output_centering[loop_idx]
 
             for tile_temp in eqn_list.uninitialized_tile_temporaries:
-                tile_temps_by_centering.setdefault(loop_centering, set()).add(tile_temp)
-                tile_temps_to_centering[tile_temp] = loop_centering
+                centering = loop_centering or td.centering.get(td.var2base.get(str(tile_temp), str(tile_temp)), None)
+
+                if not centering:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Tile temporary {tile_temp} does not have a declared centering, and no centering is specified for the loop, so its centering cannot be inferred."
+                    )
+
+                tile_temps_by_centering.setdefault(centering, set()).add(tile_temp)
+                tile_temps_to_centering[tile_temp] = centering
+
+            if loop_centering is None:
+                inferred_centerings = set(tile_temps_by_centering.keys())
+
+                if len(inferred_centerings) == 0:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Cannot infer output centering because there are no output vars or tile temps."
+                    )
+                elif len(inferred_centerings) > 1:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Cannot infer output centering because there are no output vars, and multiple possible centerings were inferred from the tile temps: {inferred_centerings}."
+                    )
+                else:
+                    loop_centering = inferred_centerings.pop()
+
+            final_loop_centerings.append(loop_centering)
 
             for tile_temp in eqn_list.preinitialized_tile_temporaries:
                 assert tile_temp in tile_temps_to_centering
                 if tile_temps_to_centering[tile_temp] != loop_centering:
                     raise GeneratorException(
-                        f"All loops accessing tile temporary '{tile_temp}' must have the same centering."
+                        f"In {thorn_fn}: All loops accessing tile temporary '{tile_temp}' must have the same centering."
                         f"  Declared with centering: {tile_temps_to_centering[tile_temp]}"
                         f"  Read in loop {loop_idx} with centering: {loop_centering.string_repr}"
                     )
 
-        return _TileTempCenteringData(temps_by_centering=tile_temps_by_centering, temps_to_centering=tile_temps_to_centering)
+        return _TileTempCenteringData(
+            temps_by_centering=tile_temps_by_centering,
+            temps_to_centering=tile_temps_to_centering,
+            final_loop_centerings=final_loop_centerings
+        )
 
     def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol], centering_fn: VarCenteringFn) -> SympyExprVisitor:
         stencil_fn_names = {str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil}
@@ -996,34 +1028,69 @@ class CppCarpetXGenerator(CactusGenerator):
     def _get_output_region_for_loop(self,
                                     thorn_fn: ThornFunction,
                                     loop_idx: int,
-                                    write_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
+                                    write_decls: dict[sy.Symbol, IntentRegion],
+                                    read_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
 
         """
-        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs.
+        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs, or, failing that, the inputs.
         All of this loop's outputs need to have the same write region.
         """
 
-        output_regions = {
-            spec for var, spec in write_decls.items()
-            if str(var).replace("'", "") in self.var_names
+        writes = {
+            var: spec
+            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in write_decls.items())
+            if var in self.var_names
         }
 
-        if None in output_regions or len(output_regions) == 0:
-            raise GeneratorException(f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a write region.")
+        reads = {
+            var: spec
+            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in read_decls.items())
+            if var in self.var_names
+        }
 
-        if len(output_regions) > 1:
-            raise GeneratorException(
-                f"Output vars for '{thorn_fn.name}@{loop_idx}' have mixed write regions: {list(write_decls.items())}"
-            )
+        if len(writes) == 0 and len(reads) == 0:
+            return IntentRegion.Everywhere  # No inputs and outputs; assume analytical
 
-        [output_region] = output_regions
-        return output_region
+        if len(writes) == 0:
+            input_regions = set(writes.values())
+
+            if None in input_regions or len(input_regions) == 0:
+                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
+
+            if len(input_regions) > 1:
+                if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
+                    print(f"Warning: In {thorn_fn.name}@{loop_idx}:"
+                          f" While trying to infer the loop region, we found that there were no output vars,"
+                          f" and we found the input vars to have a mix of Interior and Everywhere read regions."
+                          f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
+                          f" finite difference, so we will infer Interior as the loop region.")
+                    return IntentRegion.Interior
+
+                raise GeneratorException(
+                    f"In {thorn_fn.name}@{loop_idx}: Input vars have mixed read regions: {list(write_decls.items())}\nSince there are no output vars, the loop region cannot be inferred."
+                )
+
+            [input_region] = input_regions
+            return input_region
+        else:
+            output_regions = set(writes.values())
+
+            if None in output_regions or len(output_regions) == 0:
+                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All output vars for must have a write region.")
+
+            if len(output_regions) > 1:
+                raise GeneratorException(
+                    f"In {thorn_fn.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}"
+                )
+
+            [output_region] = output_regions
+            return output_region
 
     def _get_output_centering_for_loop(self,
                                        thorn_fn: ThornFunction,
                                        loop_idx: int,
                                        output_vars: set[sy.Symbol],
-                                       var_centerings: dict[str, Centering]) -> Centering:
+                                       var_centerings: dict[str, Centering]) -> Optional[Centering]:
         """
         Figure out which centering to pass to grid.loop_int_device<...>
         All of this loop's outputs need to have the same centering.
@@ -1035,8 +1102,7 @@ class CppCarpetXGenerator(CactusGenerator):
         }
 
         if None in output_centerings or len(output_centerings) == 0:
-            raise GeneratorException(
-                f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a centering: {output_centerings}")
+            return None  # This may be a case where a loop has no outputs but writes to a tile temp, so just return None for now.
 
         if len(output_centerings) > 1:
             raise GeneratorException(
