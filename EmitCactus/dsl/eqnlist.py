@@ -232,7 +232,7 @@ class EqnComplex:
                         read_els.add(el_idx)
                         break
 
-            if written_el is not None:
+            if written_el is not None and len(read_els) > 0:
                 assert all(read_el > written_el for read_el in read_els), f"Determined {temp} should be a tile-temp in {self}, but it is written ({written_el}) after is is read ({read_els})"
 
                 self._tile_temporaries.add(temp)
@@ -267,37 +267,34 @@ class EqnComplex:
             consolidate(self._write_decls, eqn_list.write_decls, lambda r1, r2: r1.consolidate(r2))
 
         for t in self.temporaries:
-            del self._read_decls[t]
-            del self._write_decls[t]
+            if t in self._read_decls:
+                del self._read_decls[t]
+            if t in self._write_decls:
+                del self._write_decls[t]
 
     @property
     @require_baked(msg="Can't get tile_temporaries before baking the EqnComplex.")
     def tile_temporaries(self) -> set[Symbol]:
         assert hasattr(self, '_tile_temporaries')
         self._calc_tile_temps()
-        print("TileTemps calculated: ", self._tile_temporaries)
         return self._tile_temporaries
 
     @property
     @require_baked(msg="Can't get inputs before baking the EqnComplex.")
     def inputs(self) -> set[Symbol]:
         self._calc_vars()
-        print("Inputs calculated: ", self._inputs)
         return self._inputs
 
     @property
     @require_baked(msg="Can't get outputs before baking the EqnComplex.")
     def outputs(self) -> set[Symbol]:
         self._calc_vars()
-        print("Outputs calculated: ", self._outputs)
         return self._outputs
 
     @property
     @require_baked(msg="Can't get temporaries before baking the EqnComplex.")
     def temporaries(self) -> set[Symbol]:
         self._calc_vars()
-
-        print("Temps calculated: ", self._temporaries)
         return self._temporaries
 
     @property
