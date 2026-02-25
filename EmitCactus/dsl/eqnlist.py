@@ -773,7 +773,7 @@ class EqnList:
 
         for k in read:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
-            if k not in self.inputs and k not in self.params and k not in self.uninitialized_tile_temporaries  and k not in self.preinitialized_tile_temporaries:
+            if k not in self.inputs and k not in self.params and k not in self.uninitialized_tile_temporaries and k not in self.preinitialized_tile_temporaries:
                 self.temporaries.add(k)
 
         if self.verbose:
