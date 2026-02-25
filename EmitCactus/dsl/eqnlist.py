@@ -1,3 +1,4 @@
+from functools import cache
 import typing
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -75,7 +76,14 @@ class EqnComplex:
     is_stencil: dict[UFunc, bool]
     e2e: bool
     been_baked: bool
+
     _tile_temporaries: set[Symbol]
+    _inputs: set[Symbol]
+    _outputs: set[Symbol]
+    _temporaries: set[Symbol]
+    _read_decls: dict[Symbol, IntentRegion]
+    _write_decls: dict[Symbol, IntentRegion]
+    _variables: set[Symbol]
 
     def __init__(self, is_stencil: Dict[UFunc, bool], e2e: bool = False) -> None:
         self.is_stencil = is_stencil
@@ -206,59 +214,109 @@ class EqnComplex:
         for eqn_list in self.eqn_lists:
             eqn_list.split_output_eqns()
 
+    @cache
+    def _calc_tile_temps(self) -> None:
+        # Don't clear out self._tile_temporaries because it will already be populated by global_cse
+
+        for temp in self.temporaries:
+            written_el: Optional[int] = None
+            read_els: set[int] = set()
+
+            for el_idx, eqn_list in enumerate(self.eqn_lists):
+                if temp in eqn_list.eqns:
+                    written_el = el_idx
+                    continue
+
+                for lhs, rhs in eqn_list.eqns.items():
+                    if temp in free_symbols(rhs):
+                        read_els.add(el_idx)
+                        break
+
+            if written_el is not None:
+                assert all(read_el > written_el for read_el in read_els), f"Determined {temp} should be a tile-temp in {self}, but it is written ({written_el}) after is is read ({read_els})"
+
+                self._tile_temporaries.add(temp)
+                self.eqn_lists[written_el].uninitialized_tile_temporaries.add(temp)
+                for el_idx in read_els:
+                    self.eqn_lists[el_idx].preinitialized_tile_temporaries.add(temp)
+
+    @cache
+    def _calc_vars(self) -> None:
+        self._inputs = OrderedSet()
+        self._outputs = OrderedSet()
+        self._temporaries = OrderedSet()
+        self._variables = OrderedSet()
+
+        for eqn_list in self.eqn_lists:
+            self._inputs |= eqn_list.inputs
+            self._outputs |= eqn_list.outputs
+            self._temporaries |= eqn_list.temporaries
+            self._variables |= eqn_list.variables
+
+        self._temporaries.update(self._inputs.intersection(self._outputs))
+        self._inputs.difference_update(self._temporaries)
+        self._outputs.difference_update(self._temporaries)
+
+    @cache
+    def _calc_decls(self) -> None:
+        self._read_decls = OrderedDict()
+        self._write_decls = OrderedDict()
+
+        for eqn_list in self.eqn_lists:
+            consolidate(self._read_decls, eqn_list.read_decls, lambda r1, r2: r1.consolidate(r2))
+            consolidate(self._write_decls, eqn_list.write_decls, lambda r1, r2: r1.consolidate(r2))
+
+        for t in self.temporaries:
+            del self._read_decls[t]
+            del self._write_decls[t]
+
     @property
     @require_baked(msg="Can't get tile_temporaries before baking the EqnComplex.")
     def tile_temporaries(self) -> set[Symbol]:
         assert hasattr(self, '_tile_temporaries')
+        self._calc_tile_temps()
+        print("TileTemps calculated: ", self._tile_temporaries)
         return self._tile_temporaries
 
-    @cached_property
+    @property
     @require_baked(msg="Can't get inputs before baking the EqnComplex.")
     def inputs(self) -> set[Symbol]:
-        ret: set[Symbol] = OrderedSet()
-        for eqn_list in self.eqn_lists:
-            ret |= eqn_list.inputs
-        return ret
+        self._calc_vars()
+        print("Inputs calculated: ", self._inputs)
+        return self._inputs
 
-    @cached_property
+    @property
     @require_baked(msg="Can't get outputs before baking the EqnComplex.")
     def outputs(self) -> set[Symbol]:
-        ret: set[Symbol] = OrderedSet()
-        for eqn_list in self.eqn_lists:
-            ret |= eqn_list.outputs
-        return ret
+        self._calc_vars()
+        print("Outputs calculated: ", self._outputs)
+        return self._outputs
 
-    @cached_property
+    @property
     @require_baked(msg="Can't get temporaries before baking the EqnComplex.")
     def temporaries(self) -> set[Symbol]:
-        ret: set[Symbol] = OrderedSet()
-        for eqn_list in self.eqn_lists:
-            ret |= eqn_list.temporaries
-        return ret
+        self._calc_vars()
 
-    @cached_property
+        print("Temps calculated: ", self._temporaries)
+        return self._temporaries
+
+    @property
     @require_baked(msg="Can't get read_decls before baking the EqnComplex.")
     def read_decls(self) -> dict[Symbol, IntentRegion]:
-        ret: dict[Symbol, IntentRegion] = OrderedDict()
-        for eqn_list in self.eqn_lists:
-            consolidate(ret, eqn_list.read_decls, lambda r1, r2: r1.consolidate(r2))
-        return ret
+        self._calc_decls()
+        return self._read_decls
 
-    @cached_property
+    @property
     @require_baked(msg="Can't get write_decls before baking the EqnComplex.")
     def write_decls(self) -> dict[Symbol, IntentRegion]:
-        ret: dict[Symbol, IntentRegion] = OrderedDict()
-        for eqn_list in self.eqn_lists:
-            consolidate(ret, eqn_list.write_decls, lambda r1, r2: r1.consolidate(r2))
-        return ret
+        self._calc_decls()
+        return self._write_decls
 
-    @cached_property
+    @property
     @require_baked(msg="Can't get variables before baking the EqnComplex.")
     def variables(self) -> set[Symbol]:
-        ret: set[Symbol] = OrderedSet()
-        for eqn_list in self.eqn_lists:
-            ret |= eqn_list.variables
-        return ret
+        self._calc_decls()
+        return self._variables
 
     @cached_property
     @require_baked(msg="Can't get stencil_limits before baking the EqnComplex.")
