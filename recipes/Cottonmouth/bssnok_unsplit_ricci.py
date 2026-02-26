@@ -494,8 +494,8 @@ fun_bssn_enforce_pt2.add_eqn(
 ###
 # Convert BSSN to ADM variables
 # In order to make sure that the ADM variables are valid
-# everywhere for other thorns, we schedule an explicit
-# sync after calculating them.
+# everywhere for other thorns, we make it an everywhere
+# to everywhere (e2e) operation
 ###
 fun_bssn2adm = cottonmouth_bssnok.create_function(
     "bssn2adm",
@@ -525,13 +525,6 @@ fun_bssn2adm.add_eqn(
 fun_bssn2adm.add_eqn(
     beta[ua],
     evo_shift[ua]
-)
-
-sync_adm_vars = ExplicitSyncBatch(
-    [g, k, alp, beta],
-    post_step_group,
-    schedule_after=["bssn2adm"],
-    name="sync_adm_vars"
 )
 
 ###
@@ -904,7 +897,6 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_adm_vars,
             sync_monitored_constraints
         ]
     )
