@@ -39,15 +39,15 @@ CarpetX::ncells_y = 40
 CarpetX::ncells_z = 40
 
 CarpetX::ghost_size          = 3
-CarpetX::interpolation_order = 3
+CarpetX::interpolation_order = 1
 
 # Boundary conditions
-CarpetX::boundary_x       = "linear extrapolation"
-CarpetX::boundary_y       = "linear extrapolation"
-CarpetX::boundary_z       = "linear extrapolation"
-CarpetX::boundary_upper_x = "linear extrapolation"
-CarpetX::boundary_upper_y = "linear extrapolation"
-CarpetX::boundary_upper_z = "linear extrapolation"
+CarpetX::boundary_x       = "neumann"
+CarpetX::boundary_y       = "neumann"
+CarpetX::boundary_z       = "neumann"
+CarpetX::boundary_upper_x = "neumann"
+CarpetX::boundary_upper_y = "neumann"
+CarpetX::boundary_upper_z = "neumann"
 
 # Mesh refinement
 CarpetX::prolongation_type  = "ddf"
@@ -96,7 +96,7 @@ Multipole::variables         = "
 
 Multipole::out_every         = $out_every
 Multipole::l_max             = 4
-Multipole::interpolator_pars = "order=3"
+Multipole::interpolator_pars = "order=1"
 
 # Output
 IO::out_dir   = $parfile

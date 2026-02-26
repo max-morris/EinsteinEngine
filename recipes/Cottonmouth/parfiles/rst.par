@@ -1,12 +1,12 @@
 # Settings
 #################################
-$rho                = 1  # Refinement factor. Should be 1, 2, 4
+$rho          = 1  # Refinement factor. Should be 1, 2, 4
 
-$base_cells         = 64 # Initial number of cells to use
+$base_cells   = 64 # Initial number of cells to use
 
-$final_time         = 1.0
-$time_stepper       = "RK4"
-$dtfac              = 0.1
+$final_time   = 1.0
+$time_stepper = "RK4"
+$dtfac        = 0.1
 #################################
 
 $num_cells  = $base_cells * $rho
@@ -18,8 +18,6 @@ ActiveThorns = "
   CarpetX
   CottonmouthBSSNOK
   IOUtil
-  NewRadX
-  NoiseX
   ODESolvers
   TimerReport
   TmunuBaseX
@@ -29,7 +27,7 @@ ActiveThorns = "
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
 CarpetX::verbose                 = yes
-CarpetX::poison_undefined_values = no
+CarpetX::poison_undefined_values = yes
 
 # Run Termination
 Cactus::terminate       = "time"
