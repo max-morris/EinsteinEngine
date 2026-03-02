@@ -1052,7 +1052,7 @@ class CppCarpetXGenerator(CactusGenerator):
             return IntentRegion.Everywhere  # No inputs and outputs; assume analytical
 
         if len(writes) == 0:
-            input_regions = set(writes.values())
+            input_regions = set(reads.values())
 
             if None in input_regions or len(input_regions) == 0:
                 raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
