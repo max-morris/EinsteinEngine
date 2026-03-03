@@ -694,8 +694,6 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[uc] * D(At[la, lb], lc)
 )
 
-fun_bssn_rhs.split_loop()
-
 fun_bssn_rhs.add_eqn(
     gt_rhs[la, lb],
     - 2 * evo_lapse * At[la, lb]
