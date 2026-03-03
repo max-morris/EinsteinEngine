@@ -674,26 +674,6 @@ fun_bssn_rhs.add_eqn(
 
 # Evolution equations
 fun_bssn_rhs.add_eqn(
-    gt_rhs[la, lb],
-    - 2 * evo_lapse * At[la, lb]
-    + gt[la, lc] * D(evo_shift[uc], lb)
-    + gt[lb, lc] * D(evo_shift[uc], la)
-    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
-    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * D(gt[la, lb], lc)
-)
-
-fun_bssn_rhs.add_eqn(
-    w_rhs,
-    Rational(1, 3) * w * (
-        evo_lapse * trK
-        - D(evo_shift[ua], la)
-    )
-    # TODO: Advection: + Upwind[beta[ua], phi, la]
-    + evo_shift[ua] * D(w, la)
-)
-
-fun_bssn_rhs.add_eqn(
     At_rhs[la, lb],
     (w**2) * (
         Ats[la, lb]
@@ -712,6 +692,28 @@ fun_bssn_rhs.add_eqn(
     )
     # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
     + evo_shift[uc] * D(At[la, lb], lc)
+)
+
+fun_bssn_rhs.split_loop()
+
+fun_bssn_rhs.add_eqn(
+    gt_rhs[la, lb],
+    - 2 * evo_lapse * At[la, lb]
+    + gt[la, lc] * D(evo_shift[uc], lb)
+    + gt[lb, lc] * D(evo_shift[uc], la)
+    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
+    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
+    + evo_shift[uc] * D(gt[la, lb], lc)
+)
+
+fun_bssn_rhs.add_eqn(
+    w_rhs,
+    Rational(1, 3) * w * (
+        evo_lapse * trK
+        - D(evo_shift[ua], la)
+    )
+    # TODO: Advection: + Upwind[beta[ua], phi, la]
+    + evo_shift[ua] * D(w, la)
 )
 
 fun_bssn_rhs.add_eqn(
