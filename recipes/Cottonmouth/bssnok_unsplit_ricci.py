@@ -296,7 +296,6 @@ cottonmouth_bssnok.add_substitution_rule(
     Gammat[lc, la, lb],
     Rational(1, 2) * (
         D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
-        #divg[lc,la,lb] + divg[lc,lb,la] - divg[la,lb,lc]
     )
 )
 
@@ -562,7 +561,7 @@ fun_bssn_cons.add_eqn(
     )
 )
 
-fun_bssn_cons.split_loop()
+#fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     RPhi[la, lb],
@@ -628,9 +627,9 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     rhs_group
 )
 
-fun_bssn_rhs.add_eqn(divg[la, lb, lc], D(gt[la, lb], lc) )
 fun_bssn_rhs.add_eqn(dw[la], D(w, la))
 
+fun_bssn_rhs.split_loop()
 
 # Aux. equations
 fun_bssn_rhs.add_eqn(
@@ -656,7 +655,6 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
-fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     RPhi[la, lb],
@@ -706,6 +704,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[uc] * D(At[la, lb], lc)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
     gt_rhs[la, lb],
     - 2 * evo_lapse * At[la, lb]
@@ -713,7 +713,7 @@ fun_bssn_rhs.add_eqn(
     + gt[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
     # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * divg[la,lb,lc] #D(gt[la, lb], lc)
+    + evo_shift[uc] * D(gt[la, lb], lc)
 )
 
 fun_bssn_rhs.add_eqn(
