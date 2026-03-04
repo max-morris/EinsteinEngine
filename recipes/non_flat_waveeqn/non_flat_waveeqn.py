@@ -196,15 +196,23 @@ nfweq_rhs.add_eqn(
     rho
 )
 
+drho = nfweq.decl("drho", [la])
+nfweq_rhs.add_eqn(
+    drho[la],
+    D(rho, la)
+)
+
+nfweq_rhs.split_loop()
+
 nfweq_rhs.add_eqn(
     rho_rhs,
-    beta[ua] * D(rho, la)
+    beta[ua] * drho[la]  # D(rho, la)
     + alp / sqrt(detg) * D(flux[ua], la)
 )
 
 nfweq_rhs.add_eqn(
     v_rhs[la],
-    D(rho, la)
+    drho[la]  # D(rho, la)
 )
 
 ###
@@ -217,7 +225,14 @@ nfweq_zero = nfweq.create_function(
 
 nfweq_zero.add_eqn(ZeroVal, u - id_func)
 
-nfweq.bake(do_recycle_temporaries=False)
+nfweq.bake(
+    do_cse=True,
+    temporary_promotion_strategy=promote_all(TempKind.Tile),
+    do_madd=False,
+    do_recycle_temporaries=True,
+    do_split_output_eqns=False,
+    cse_optimization_level=CseOptimizationLevel.Fast
+)
 
 ###
 # Zero test group
