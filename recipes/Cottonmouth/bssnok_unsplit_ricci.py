@@ -288,11 +288,15 @@ cottonmouth_bssnok.add_substitution_rule(gt[ua, ub], gt_imat)
 cottonmouth_bssnok.add_substitution_rule(At[ua, lb], gt[ua, uc] * At[lc, lb])
 cottonmouth_bssnok.add_substitution_rule(At[ua, ub], gt[ub, uc] * At[ua, lc])
 
+divg = cottonmouth_bssnok.decl("divg", [la, lb, lc], symmetries=[(la, lb)]) # yyy
+dw = cottonmouth_bssnok.decl("dw", [la])
+
 # Gammat (Conformal connection)
 cottonmouth_bssnok.add_substitution_rule(
     Gammat[lc, la, lb],
     Rational(1, 2) * (
         D(gt[lc, la], lb) + D(gt[lc, lb], la) - D(gt[la, lb], lc)
+        #divg[lc,la,lb] + divg[lc,lb,la] - divg[la,lb,lc]
     )
 )
 
@@ -558,6 +562,8 @@ fun_bssn_cons.add_eqn(
     )
 )
 
+fun_bssn_cons.split_loop()
+
 fun_bssn_cons.add_eqn(
     RPhi[la, lb],
     - 2 * cdphi2[lb, la]
@@ -622,14 +628,18 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     rhs_group
 )
 
+fun_bssn_rhs.add_eqn(divg[la, lb, lc], D(gt[la, lb], lc) )
+fun_bssn_rhs.add_eqn(dw[la], D(w, la))
+
+
 # Aux. equations
 fun_bssn_rhs.add_eqn(
     cdphi2[la, lb],
     -Rational(1, 2) * (1 / w) * (
         D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
+        - Gammat[uc, la, lb] * dw[lc] #D(w, lc)
     )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+    + Rational(1, 2) * (1 / (w**2)) * dw[la] * dw[lb] #D(w, la) * D(w, lb)
 )
 
 fun_bssn_rhs.add_eqn(
@@ -645,6 +655,8 @@ fun_bssn_rhs.add_eqn(
         + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
     )
 )
+
+fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     RPhi[la, lb],
@@ -701,7 +713,7 @@ fun_bssn_rhs.add_eqn(
     + gt[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
     # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * D(gt[la, lb], lc)
+    + evo_shift[uc] * divg[la,lb,lc] #D(gt[la, lb], lc)
 )
 
 fun_bssn_rhs.add_eqn(
@@ -711,8 +723,10 @@ fun_bssn_rhs.add_eqn(
         - D(evo_shift[ua], la)
     )
     # TODO: Advection: + Upwind[beta[ua], phi, la]
-    + evo_shift[ua] * D(w, la)
+    + evo_shift[ua] * dw[la] #D(w, la)
 )
+
+fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     trK_rhs,
@@ -876,7 +890,7 @@ cottonmouth_bssnok.bake(
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
-    do_recycle_temporaries=True,
+    do_recycle_temporaries=False,
     do_split_output_eqns=False,
     cse_optimization_level=CseOptimizationLevel.Fast
 )
