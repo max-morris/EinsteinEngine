@@ -693,6 +693,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(w, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
     At_rhs[la, lb],
     (w**2) * (
