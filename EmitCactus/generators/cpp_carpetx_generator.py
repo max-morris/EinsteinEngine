@@ -903,6 +903,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
         td = thorn_fn.thorn_def
 
+        thorn_fn.eqn_complex._calc_tile_temps()
+
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             loop_centering = loop_to_output_centering[loop_idx]
 
