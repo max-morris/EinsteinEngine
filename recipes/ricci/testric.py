@@ -50,6 +50,7 @@ fun.add_eqn(Ric[li, lj],
 fun = gf.create_function(
     "MetricSet", ScheduleBin.Analysis, schedule_before=["setGL"])
 fun.add_eqn(g[li, lj], gmat)
+fun.add_eqn(G[la, lb, lc], sympify(0))
 
 fun = gf.create_function(
     "RicZero", ScheduleBin.Analysis, schedule_after=["setGL"])
