@@ -629,8 +629,6 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 
 fun_bssn_rhs.add_eqn(dw[la], D(w, la))
 
-fun_bssn_rhs.split_loop()
-
 # Aux. equations
 fun_bssn_rhs.add_eqn(
     cdphi2[la, lb],
@@ -640,6 +638,8 @@ fun_bssn_rhs.add_eqn(
     )
     + Rational(1, 2) * (1 / (w**2)) * dw[la] * dw[lb] #D(w, la) * D(w, lb)
 )
+
+fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     Rt[la, lb],
@@ -654,7 +654,6 @@ fun_bssn_rhs.add_eqn(
         + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
     )
 )
-
 
 fun_bssn_rhs.add_eqn(
     RPhi[la, lb],
@@ -726,7 +725,7 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * dw[la] #D(w, la)
 )
 
-fun_bssn_rhs.split_loop()
+#fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     trK_rhs,

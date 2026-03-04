@@ -191,6 +191,14 @@ nfweq.add_substitution_rule(
     )
 )
 
+drho = nfweq.decl("drho", [la])
+
+nfweq_rhs.add_eqn(
+    drho[la],
+    D(rho, la))
+
+nfweq_rhs.split_loop()
+
 nfweq_rhs.add_eqn(
     u_rhs,
     rho
@@ -202,9 +210,11 @@ nfweq_rhs.add_eqn(
     + alp / sqrt(detg) * D(flux[ua], la)
 )
 
+#nfweq_rhs.split_loop()
+
 nfweq_rhs.add_eqn(
     v_rhs[la],
-    D(rho, la)
+    drho[la]
 )
 
 ###
