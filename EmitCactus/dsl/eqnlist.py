@@ -393,6 +393,10 @@ class EqnList:
         self.order_clumping_counter += 1
         return x
 
+    @property
+    def tile_temporaries(self):
+        return self.uninitialized_tile_temporaries.union(self.preinitialized_tile_temporaries)
+
     #@cached_property
     @property
     @require_baked(msg="Can't get variables before baking the EqnList.")
