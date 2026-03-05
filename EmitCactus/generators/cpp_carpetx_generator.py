@@ -368,7 +368,14 @@ class CppCarpetXGenerator(CactusGenerator):
             after=[Identifier(f'Init_Evolve_{self.thorn_def.name}')]
         ))
 
-        state_vec_sync = [Identifier(self._get_qualified_group_name_from_var_name(str(v))) for v in self.thorn_def.get_state()]
+        state_vec = self.thorn_def.get_state()
+        state_vec_strs = {str(v) for v in state_vec}
+
+        for tf in self.thorn_def.thorn_functions.values():
+            if len(bad_vars := {self.thorn_def.var2base.get(str_v := str(v), str_v) for v in tf.eqn_complex.tile_temporaries}.intersection(state_vec_strs)) > 0:
+                raise GeneratorException(f'Thorn function {tf.name} uses one or more tile temporaries {bad_vars} that are also in the state vector by way of being declared with an `rhs` property. This is not allowed.')
+
+        state_vec_sync = [Identifier(self._get_qualified_group_name_from_var_name(str(v))) for v in state_vec]
         state_vec_sync_desc = ", ".join(s.identifier for s in state_vec_sync)
 
         schedule_blocks.append(ScheduleBlock(
