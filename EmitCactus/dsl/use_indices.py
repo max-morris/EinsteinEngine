@@ -42,6 +42,8 @@ __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "
            "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
            "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5", "CseOptimizationLevel"]
 
+from .splitmaxxer import SplitMaxxer
+
 from .temp_kind import TempKind
 from .util import cse_isolate
 from ..generators.sympy_complexity import SympyComplexityVisitor
@@ -1335,6 +1337,7 @@ class ThornFunctionBakeOptions(TypedDict, total=False):
     do_madd: bool
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
+    splitmaxxing: bool
 
 
 class CseOptimizationLevel(Enum):
@@ -1351,6 +1354,7 @@ class ThornDefBakeOptions(TypedDict, total=False):
     do_madd: bool
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
+    splitmaxxing: bool
 
     # Overrides for ThornFunction default opts
     functions: dict[str, ThornFunctionBakeOptions]
@@ -1433,6 +1437,30 @@ class ThornFunction:
         if self.been_baked:
             raise DslException("Cannot split loop because the EqnComplex has already been baked.")
         self.eqn_complex.new_eqn_list()
+
+    def _do_splitmaxxing(self) -> None:
+        assert self.been_baked, "Cannot perform splitmaxxing because the EqnComplex has not been baked."
+        assert not self.been_late_baked, "Cannot perform splitmaxxing because the EqnComplex has already been late-baked."
+
+        for loop_idx, eqn_list in enumerate(self.eqn_complex.eqn_lists):
+            new_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
+            modify_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
+
+            for lhs, rhs in eqn_list.eqns.items():
+                splitmaxxer = SplitMaxxer(f'{self.name}_loop{loop_idx}_{str(lhs).replace("'", "_prime_")}')
+                modify_eqns[lhs] = splitmaxxer.visit(rhs, top=True)
+                new_eqns.update(splitmaxxer.new_eqns)
+
+            for lhs, rhs in modify_eqns.items():
+                eqn_list.eqns[lhs] = rhs
+
+            for lhs, rhs in new_eqns.items():
+                eqn_list.add_eqn(lhs, rhs)
+
+            print(f'*** Rebaking {self.name} loop {loop_idx} after do_splitmaxxing ***')
+            eqn_list.bake(force_rebake=True)
+            eqn_list.dump()
+
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
@@ -1548,7 +1576,8 @@ class ThornFunction:
         return {
             'do_madd': False,
             'do_recycle_temporaries': True,
-            'do_split_output_eqns': False
+            'do_split_output_eqns': False,
+            'splitmaxxing': False
         }
 
     def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
@@ -1754,6 +1783,8 @@ class ThornDef:
             if tf.name not in my_tf_opts:  # Must be a synthetic function
                 tf._late_bake()
             else:
+                if my_tf_opts[tf.name]['splitmaxxing']:
+                    tf._do_splitmaxxing()
                 tf._late_bake(**my_tf_opts[tf.name])
 
 
