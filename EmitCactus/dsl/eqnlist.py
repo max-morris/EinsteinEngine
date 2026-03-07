@@ -716,8 +716,8 @@ class EqnList:
         rd_overwrites: OrderedSet[Symbol] = OrderedSet()
         wr_overwrites: OrderedSet[Symbol] = OrderedSet()
         def process_overwrite(s: Symbol) -> None:
-            if "'" in str(s):
-                rd = mkSymbol(str(s).replace("'", ""))
+            if "'" in (ss := str(s)):
+                rd = mkSymbol(ss.replace("'", ""))
                 wr = s
                 rd_overwrites.add(rd)
                 wr_overwrites.add(wr)
