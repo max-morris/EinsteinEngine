@@ -394,7 +394,7 @@ class EqnList:
         return x
 
     @property
-    def tile_temporaries(self):
+    def tile_temporaries(self) -> set[Symbol]:
         return self.uninitialized_tile_temporaries.union(self.preinitialized_tile_temporaries)
 
     #@cached_property

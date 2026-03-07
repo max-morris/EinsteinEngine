@@ -1,3 +1,4 @@
+from typing import cast
 from collections import OrderedDict
 
 from multimethod import multimethod
@@ -6,6 +7,7 @@ from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Ratio
 from sympy.core.operations import AssocOp
 from sympy.core.relational import Relational
 
+from EmitCactus import mkSymbol
 from EmitCactus.dsl.dsl_exception import DslException
 
 
@@ -18,7 +20,7 @@ class SplitMaxxer:
 
     def _new_symbol(self) -> Symbol:
         name = f"{self._name_base}_splitmaxxed_{self._name_counter}"
-        s = Symbol(name)
+        s = mkSymbol(name)
         self._name_counter += 1
         return s
 
@@ -45,10 +47,10 @@ class SplitMaxxer:
             new_args.append(self.visit(arg))
 
         if len(expr.args) == 2 and top:
-            return expr.func(*new_args)
+            return cast(Expr, expr.func(*new_args))
 
         new_symbol = self._put_new_eqn(expr.func(*new_args[:2]))
-        return self.visit(expr.func(new_symbol, *expr.args[2:]), top=top)
+        return cast(Expr, self.visit(expr.func(new_symbol, *expr.args[2:]), top=top))
 
     @visit.register
     def _(self, expr: Relational | Pow | Function, top: bool = False) -> Expr:  # AssocOp is the supertype of Add and Mul
@@ -58,7 +60,7 @@ class SplitMaxxer:
             new_args.append(self.visit(arg))
 
         if top or hasattr(expr, 'name') and expr.name == 'noop':
-            return expr.func(*new_args)
+            return cast(Expr, expr.func(*new_args))
 
         return self._put_new_eqn(expr.func(*new_args))
 
