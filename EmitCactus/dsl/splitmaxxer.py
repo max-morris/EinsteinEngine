@@ -7,7 +7,7 @@ from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Ratio
 from sympy.core.operations import AssocOp
 from sympy.core.relational import Relational
 
-from EmitCactus import mkSymbol
+from EmitCactus.dsl.sympywrap import mkSymbol
 from EmitCactus.dsl.dsl_exception import DslException
 
 
