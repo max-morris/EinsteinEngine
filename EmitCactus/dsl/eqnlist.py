@@ -10,6 +10,7 @@ from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer
+import sympy as sy
 
 from EmitCactus.dsl.dsl_exception import DslException
 from EmitCactus.dsl.stencil_idx import StencilIdxWithName, StencilIdx
@@ -34,6 +35,15 @@ DZ = mkSymbol("DZ")
 
 
 stencil = mkFunction("stencil")
+
+def by_complexity(eqn:Symbol)->int:
+    if hasattr(eqn, "args"):
+        n = 1
+        for a in eqn.args:
+            n += by_complexity(a)
+        return n
+    else:
+        return 1
 
 
 @dataclass
@@ -641,6 +651,36 @@ class EqnList:
         return result
 
     def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
+
+        weight = dict()
+        for lhs, rhs in self.eqns.items():
+            weight[lhs] = by_complexity(rhs)
+
+        for k in self.inputs:
+            complete[k] = 0
+        for k in self.params:
+            complete[k] = 0
+
+        class Ord:
+            def __init__(self, eqns):
+                self.ord = list()
+                self.eqns = eqns
+            def add(self, sym:Symbol):
+                if sym in complete:
+                    return
+                for dep in free_symbols(self.eqns[sym]):
+                    if dep in self.eqns:
+                        self.add(dep)
+                self.ord.append(sym)
+                complete[sym] = len(self.ord)
+
+        ord = Ord(self.eqns)
+        for sym in sorted(list(self.eqns.keys()), key=lambda x: -weight[x]):
+            ord.add(sym)
+        self.order = ord.ord
+                
+
+    def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
         provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
         requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
         self.requires = OrderedDict()
@@ -662,6 +702,11 @@ class EqnList:
         self.order = list()
         self.sublists = list()
         result = list()
+
+        weight = dict()
+        for lhs, rhs in self.eqns.items():
+            weight[lhs] = by_complexity(rhs)
+
         for k, v2 in requires.items():
             if len(v2) == 0:
                 result += self.apply_order(k, provides, requires)
@@ -679,7 +724,10 @@ class EqnList:
         while len(result) > 0:
             cno += 1
             new_result = list()
-            for r in result:
+            count = 0
+            for r in sorted(result, key=lambda foo: weight[foo]):
+                count += 1
+                print(">> count:", count,")", r, "=>", self.eqns[r], "=>", weight[r])
                 new_result += self.apply_order(r, provides, requires)
                 complete[r] = cno
             if len(new_result) > 0:
