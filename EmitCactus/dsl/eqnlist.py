@@ -33,18 +33,7 @@ DX = mkSymbol("DX")
 DY = mkSymbol("DY")
 DZ = mkSymbol("DZ")
 
-
 stencil = mkFunction("stencil")
-
-def by_complexity(eqn:Symbol)->int:
-    if hasattr(eqn, "args"):
-        n = 1
-        for a in eqn.args:
-            n += by_complexity(a)
-        return n
-    else:
-        return 1
-
 
 @dataclass
 class TemporaryLifetime:
@@ -650,22 +639,17 @@ class EqnList:
                 result.append(v)
         return result
 
-    def order_builder(self, complete: Dict[Symbol, int], cno: int) -> None:
-
-        weight = dict()
-        for lhs, rhs in self.eqns.items():
-            weight[lhs] = by_complexity(rhs)
-
+    def order_builder(self, complete: Dict[Symbol, int]) -> None:
         for k in self.inputs:
             complete[k] = 0
         for k in self.params:
             complete[k] = 0
 
         class Ord:
-            def __init__(self, eqns):
-                self.ord = list()
+            def __init__(self, eqns: dict[Symbol, Expr]) -> None:
+                self.ord: list[Symbol] = list()
                 self.eqns = eqns
-            def add(self, sym:Symbol):
+            def add(self, sym: Symbol) -> None:
                 if sym in complete:
                     return
                 for dep in free_symbols(self.eqns[sym]):
@@ -675,69 +659,66 @@ class EqnList:
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
-        for sym in sorted(list(self.eqns.keys()), key=lambda x: -weight[x]):
+        for sym in sorted(list(self.eqns.keys()), key=lambda x: self.complexity[x], reverse=True):
             ord.add(sym)
         self.order = ord.ord
                 
 
-    def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
-        provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
-        requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
-        self.requires = OrderedDict()
-        # Thus for
-        #   u_t = v
-        #   v_t = div(u,la,lb) g[ua,ub]
-        # provides = {v:{u_t}, u:{v_t}}
-        # requires = {u_t:{v}, v_t:{u}}
-        for k in self.eqns:
-            if k not in requires:
-                requires[k] = OrderedSet()
-                self.requires[k] = OrderedSet()
-            for v in free_symbols(self.eqns[k]):
-                if v not in provides:
-                    provides[v] = OrderedSet()
-                provides[v].add(k)
-                requires[k].add(v)
-                self.requires[k].add(v)
-        self.order = list()
-        self.sublists = list()
-        result = list()
-
-        weight = dict()
-        for lhs, rhs in self.eqns.items():
-            weight[lhs] = by_complexity(rhs)
-
-        for k, v2 in requires.items():
-            if len(v2) == 0:
-                result += self.apply_order(k, provides, requires)
-                complete[k] = cno
-        for k in self.inputs:
-            result += self.apply_order(k, provides, requires)
-            complete[k] = cno
-        for k in self.params:
-            result += self.apply_order(k, provides, requires)
-            complete[k] = cno
-        for k in self.preinitialized_tile_temporaries:
-            result += self.apply_order(k, provides, requires)
-            complete[k] = cno
-        self.sublists.append(result)
-        while len(result) > 0:
-            cno += 1
-            new_result = list()
-            count = 0
-            for r in sorted(result, key=lambda foo: weight[foo]):
-                count += 1
-                print(">> count:", count,")", r, "=>", self.eqns[r], "=>", weight[r])
-                new_result += self.apply_order(r, provides, requires)
-                complete[r] = cno
-            if len(new_result) > 0:
-                self.sublists.append(new_result)
-            result = new_result
-        for k, v2 in requires.items():
-            for vv in v2:
-                if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
-                    raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
-        self.provides = provides
+    # TODO: Not used. Remove?
+    # def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
+    #     provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
+    #     requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
+    #     self.requires = OrderedDict()
+    #     # Thus for
+    #     #   u_t = v
+    #     #   v_t = div(u,la,lb) g[ua,ub]
+    #     # provides = {v:{u_t}, u:{v_t}}
+    #     # requires = {u_t:{v}, v_t:{u}}
+    #     for k in self.eqns:
+    #         if k not in requires:
+    #             requires[k] = OrderedSet()
+    #             self.requires[k] = OrderedSet()
+    #         for v in free_symbols(self.eqns[k]):
+    #             if v not in provides:
+    #                 provides[v] = OrderedSet()
+    #             provides[v].add(k)
+    #             requires[k].add(v)
+    #             self.requires[k].add(v)
+    #     self.order = list()
+    #     self.sublists = list()
+    #     result = list()
+    #
+    #     for k, v2 in requires.items():
+    #         if len(v2) == 0:
+    #             result += self.apply_order(k, provides, requires)
+    #             complete[k] = cno
+    #     for k in self.inputs:
+    #         result += self.apply_order(k, provides, requires)
+    #         complete[k] = cno
+    #     for k in self.params:
+    #         result += self.apply_order(k, provides, requires)
+    #         complete[k] = cno
+    #     for k in self.preinitialized_tile_temporaries:
+    #         result += self.apply_order(k, provides, requires)
+    #         complete[k] = cno
+    #     self.sublists.append(result)
+    #     while len(result) > 0:
+    #         cno += 1
+    #         new_result = list()
+    #         count = 0
+    #         for r in sorted(result, key=lambda foo: self.complexity[foo], reverse=True):
+    #             count += 1
+    #             print(">> count:", count,")", r, "=>", self.eqns[r], "=>", self.complexity[r])
+    #             new_result += self.apply_order(r, provides, requires)
+    #             complete[r] = cno
+    #         if len(new_result) > 0:
+    #             self.sublists.append(new_result)
+    #         result = new_result
+    #     for k, v2 in requires.items():
+    #         for vv in v2:
+    #             if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
+    #                 raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
+    #     self.provides = provides
 
     def _run_preliminary_complexity_analysis(self) -> None:
         grid_vars = self._grid_variables()
@@ -875,57 +856,23 @@ class EqnList:
 
         for k in written:
             assert isinstance(k, Symbol)
-            if k not in self.outputs and k not in self.uninitialized_tile_temporaries and k not in self.preinitialized_tile_temporaries:
+            if (k not in self.outputs
+                    and k not in self.uninitialized_tile_temporaries
+                    and k not in self.preinitialized_tile_temporaries):
                 self.temporaries.add(k)
 
         for k in read:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
-            if k not in self.inputs and k not in self.params and k not in self.uninitialized_tile_temporaries and k not in self.preinitialized_tile_temporaries:
+            if (k not in self.inputs
+                    and k not in self.params
+                    and k not in self.uninitialized_tile_temporaries
+                    and k not in self.preinitialized_tile_temporaries):
                 self.temporaries.add(k)
 
         if self.verbose:
             print(colorize("Temps:", "green"), self.temporaries)
             print(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
             print(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
-
-        for k in self.temporaries:
-            assert k in read, f"Temporary variable '{k}' is never read"
-            assert k in written, f"Temporary variable '{k}' is never written"
-            # assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
-            assert k not in self.inputs, f"Temporary variable '{k}' in inputs"
-
-        for k in read:
-            assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
-
-        self.order_builder(complete, 1)
-        print(colorize("Order:", "green"), self.order)
-
-        if self.verbose:
-            print(colorize("READS:", "green"), end="")
-            for var, spec in self.read_decls.items():
-                if var in self.inputs:
-                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
-            print()
-            print(colorize("WRITES:", "green"), end="")
-            for var, spec in self.write_decls.items():
-                if var in self.outputs:
-                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
-            print()
-
-        for k, v in self.eqns.items():
-            assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
-            val1: int = complete[k]
-            for k2 in free_symbols(v):
-                val2: Optional[int] = complete.get(k2, None)
-                assert val2 is not None, f"k2={k2}"
-                assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
-        for k in needed:
-            if k not in complete:
-                print(f"Symbol '{k}' needed but could not be evaluated. Cycle in assignment?")
-        for k in self.inputs:
-            assert k in complete, f"Symbol '{k}' appears in inputs but is not complete"
-        for k in self.eqns:
-            assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
 
         class FindBad:
             def __init__(self, outer: EqnList) -> None:
@@ -954,6 +901,45 @@ class EqnList:
             fb.exc()
 
         self._run_main_complexity_analysis()
+
+        self.order_builder(complete)
+        print(colorize("Order:", "green"), self.order)
+
+        for k in self.temporaries:
+            assert k in read, f"Temporary variable '{k}' is never read"
+            assert k in written, f"Temporary variable '{k}' is never written"
+            # assert k not in self.outputs, f"Temporary variable '{k}' in outputs"
+            assert k not in self.inputs, f"Temporary variable '{k}' in inputs"
+
+        for k in read:
+            assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
+
+        if self.verbose:
+            print(colorize("READS:", "green"), end="")
+            for var, spec in self.read_decls.items():
+                if var in self.inputs:
+                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+            print()
+            print(colorize("WRITES:", "green"), end="")
+            for var, spec in self.write_decls.items():
+                if var in self.outputs:
+                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+            print()
+
+        for k, v in self.eqns.items():
+            assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
+            val1: int = complete[k]
+            for k2 in free_symbols(v):
+                val2: Optional[int] = complete.get(k2, None)
+                assert val2 is not None, f"k2={k2}"
+                assert val1 >= val2, f"Symbol '{k}' is part of an assignment cycle."
+        for k in needed:
+            if k not in complete:
+                print(f"Symbol '{k}' needed but could not be evaluated. Cycle in assignment?")
+        for k in self.inputs:
+            assert k in complete, f"Symbol '{k}' appears in inputs but is not complete"
+        for k in self.eqns:
+            assert k in complete, f"Equation '{k} = {self.eqns[k]}' is never complete"
 
         for lhs in self.eqns:
             assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
