@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from EmitCactus import *
-from sympy import Expr, Rational
+from sympy import Expr
 
 newradx_weq = ThornDef("TestEmitCactus", "NewRadXWeq")
 newradx_weq.set_derivative_stencil(5)
@@ -58,7 +58,7 @@ def radius(X: Expr, Y: Expr, Z: Expr) -> Expr:
 
 
 def gaussian(r: Expr) -> Expr:
-    return GAUSSIAN_AMPLITUDE * exp(-r**2 / (2 * GAUSSIAN_WIDTH**2))
+    return GAUSSIAN_AMPLITUDE * exp(-r**2 / (2 * GAUSSIAN_WIDTH**2))  # type: ignore[no-any-return]
 
 
 test_newradx_init = newradx_weq.create_function(
