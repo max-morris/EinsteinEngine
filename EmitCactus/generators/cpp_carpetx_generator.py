@@ -1,13 +1,16 @@
+import functools
 from dataclasses import dataclass
-from typing import Optional, List, Collection
+from typing import Optional, List, Collection, Protocol, NamedTuple
 
 import sympy as sy
 from typing_extensions import Unpack, OrderedDict
 
-from EmitCactus.dsl.carpetx import ExplicitSyncBatch
+from EmitCactus.dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
+from EmitCactus.dsl.stencil_idx import StencilIdxWithCentering
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
+from EmitCactus.dsl.util import require
 from EmitCactus.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
-    VariableSection
+    VariableSection, UsesInclude
 from EmitCactus.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
     KeywordParamRange, StringParamRange, IntParamRange, IntParamDescWildcard, IntParamDescRange, IntParamOpenLowerBound, \
     IntParamOpenUpperBound, RealParamRange, RealParamDescWildcard, RealParamDescRange, RealParamOpenLowerBound, \
@@ -17,12 +20,14 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine
 from EmitCactus.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr
+    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt
 from EmitCactus.emit.code.sympy_visitor import SympyExprVisitor
 from EmitCactus.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
-from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, InteriorSyncMode
+from EmitCactus.emit.util import encode_stencil_idx
+from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
+from EmitCactus.generators.util import VarCenteringFn
 from EmitCactus.util import OrderedSet
 
 
@@ -30,9 +35,14 @@ from EmitCactus.util import OrderedSet
 class _TileTempCenteringData:
     temps_by_centering: dict[Centering, set[sy.Symbol]]
     temps_to_centering: dict[sy.Symbol, Centering]
+    final_loop_centerings: list[Centering]
 
 class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
+    new_rad_x_boundary_fns: Collection[NewRadXBoundaryBatch]
+
+class _HasName(Protocol):
+    name: str
 
 
 class CppCarpetXGenerator(CactusGenerator):
@@ -70,13 +80,6 @@ class CppCarpetXGenerator(CactusGenerator):
         #endif
     """.strip().replace('    ', '')
 
-    @staticmethod
-    def _boilerplate_timer_init(fn_name: str) -> str:
-        return f"""
-            static CarpetX::Timer timer("{fn_name}");
-            CarpetX::Interval interval(timer);
-        """.strip().replace('    ', '')
-
     _boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
     _boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
 
@@ -85,9 +88,9 @@ class CppCarpetXGenerator(CactusGenerator):
     #  or alternate defs.
     _boilerplate_setup: str = "#define CARPETX_GF3D5"
     _boilerplate_div_macros: str = """
-        #define access(GF) (GF(p.mask, GF ## _layout, p.I))
-        #define store(GF, VAL) (GF.store(p.mask, GF ## _layout, p.I, VAL))
-        #define stencil(GF, IX, IY, IZ) (GF(p.mask, GF ## _layout, p.I + IX*p.DI[0] + IY*p.DI[1] + IZ*p.DI[2]))
+        #define access(GF, IDX) (GF(p.mask, IDX))
+        #define store(GF, IDX, VAL) (GF.store(p.mask, IDX, VAL))
+        #define stencil(GF, IDX) (GF(p.mask, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
 
@@ -100,19 +103,24 @@ class CppCarpetXGenerator(CactusGenerator):
         if len(unbaked_fns) > 0:
             raise GeneratorException(f"One or more functions have not been baked. Namely: {unbaked_fns}")
 
-    def get_src_file_name(self, which_fn: str) -> str:
+    def get_fn_src_file_name(self, which_fn: str) -> str:
         assert which_fn in self.thorn_def.thorn_functions
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
-    def get_sync_batch_fn_src_file_name(self, which: ExplicitSyncBatch) -> str:
-        return f'{self.thorn_def.name}_{which.name}.cpp'
+    def get_explicit_src_file_name(self, which: _HasName | str) -> str:
+        return f'{self.thorn_def.name}_{which if isinstance(which, str) else which.name}.cpp'
 
     def generate_makefile(self) -> str:
-        srcs = [self.get_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
+        srcs = [self.get_fn_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
 
         for sync_batch in self.options.get('explicit_syncs', list()):
-            srcs.append(self.get_sync_batch_fn_src_file_name(sync_batch))
+            srcs.append(self.get_explicit_src_file_name(sync_batch))
+
+        for rad_x_batch in self.options.get('new_rad_x_boundary_fns', list()):
+            srcs.append(self.get_explicit_src_file_name(rad_x_batch))
+
+        srcs.append(self.get_explicit_src_file_name(f'StateSync_{self.thorn_def.name}'))
 
         return f'SRCS = {" ".join(srcs)}\n\nSUBDIRS = '
 
@@ -128,109 +136,277 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             ]))
 
-        for fn_name, fn in self.thorn_def.thorn_functions.items():
+        for fn_name, fn in sorted(self.thorn_def.thorn_functions.items()):
             schedule_bin, at_or_in = self._resolve_schedule_target(fn.schedule_target)
 
-            reads: list[Intent] = list()
-            writes: list[Intent] = list()
-            syncs: set[Identifier] = OrderedSet()
+            reads: OrderedSet[Intent] = OrderedSet()
+            writes: OrderedSet[Intent] = OrderedSet()
+            sync_var_groups: OrderedSet[str] = OrderedSet()
+            fn_group_name = f'{fn_name}_group'
 
             for var, spec in fn.eqn_complex.read_decls.items():
-                if var in fn.eqn_complex.inputs and (var_name := str(var)) not in self.vars_to_ignore:
+                if var in fn.eqn_complex.inputs and (var_name := str(var).replace("'", "")) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
 
-                    reads.append(Intent(
+                    reads.add(Intent(
                         name=Identifier(qualified_var_name),
                         region=spec
                     ))
 
+                    if spec is IntentRegion.Everywhere:
+                        sync_var_groups.add(self._get_qualified_group_name_from_var_name(var_name))
+
             for var, spec in fn.eqn_complex.write_decls.items():
-                if var in fn.eqn_complex.outputs and (var_name := str(var)) not in self.vars_to_ignore:
+                if var in fn.eqn_complex.outputs and (var_name := str(var).replace("'", "")) not in self.vars_to_ignore:
                     qualified_var_name = self._get_qualified_var_name(var_name)
                     qualified_var_id = Identifier(qualified_var_name)
 
-                    writes.append(Intent(
+                    writes.add(Intent(
                         name=qualified_var_id,
                         region=spec
                     ))
 
-                    if spec is IntentRegion.Interior and self.options['interior_sync_mode'] is not InteriorSyncMode.HandsOff:
-                        sync_this_var = self.options['interior_sync_mode'] is InteriorSyncMode.Always
-                        if not sync_this_var:
-                            rhses = self.thorn_def.rhs.values()
-                            rhs_names = [str(sym) for sym in rhses]
+            if fn.schedule_target is ScheduleBin.SpecialEvolve:
+                reads.add(Intent(Identifier('ODESolvers::substep_counter'), None))
 
-                            # todo: There's currently a bug s.t. single-variable groups are not reflected in var2base or groups.
-                            # assert var_name in self.thorn_def.var2base
-                            if var_name in self.thorn_def.var2base:
-                                if self.thorn_def.var2base[var_name] not in rhs_names:
-                                    sync_this_var = True
-                            elif var not in rhses:
-                                    sync_this_var = True
-
-                        if sync_this_var:
-                            syncs.add(Identifier(self._get_qualified_group_name_from_var_name(var_name)))
+            schedule_blocks.append(ScheduleBlock(
+                group_or_function=GroupOrFunction.Group,
+                name=Identifier(fn_group_name),
+                at_or_in=at_or_in,
+                schedule_bin=schedule_bin,
+                description=String(f'Group for function `{fn_name}`. Generated by EmitCactus.'),
+                lang=Language.C,
+                before=[Identifier(f'{s}_group') for s in fn.schedule_before],
+                after=[Identifier(f'{s}_group') for s in fn.schedule_after]
+            ))
 
             schedule_blocks.append(ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier(fn_name),
-                at_or_in=at_or_in,
-                schedule_bin=schedule_bin,
+                at_or_in=AtOrIn.In,
+                schedule_bin=Identifier(fn_group_name),
                 description=String(f'Function `{fn_name}` generated by EmitCactus.'),
                 lang=Language.C,
-                reads=reads,
-                writes=writes,
-                sync=list(syncs),
-                before=[Identifier(s) for s in fn.schedule_before],
-                after=[Identifier(s) for s in fn.schedule_after]
+                reads=list(reads),
+                writes=list(writes)
             ))
+
+            if len(sync_var_groups) > 0:
+                syncs = [Identifier(g) for g in sync_var_groups]
+                syncs_desc = ", ".join(s.identifier for s in syncs)
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(f'StateSync_{self.thorn_def.name}'),
+                    at_or_in=AtOrIn.In,
+                    schedule_bin=Identifier(fn_group_name),
+                    description=String(f'Empty function for explicitly SYNCing variables read Everywhere in function `{fn_name}`. Syncs: {syncs_desc}. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    sync=syncs,
+                    before=[Identifier(fn_name)]
+                ))
+
+            # Rancid hack: In CarpetX, Evolve DOES NOT run on step 0, while Analysis DOES. This breaks global temps
+            #  if they happen to be initialized in Evolve then read in Analysis. Originally, we worked around this by
+            #  identifying which synthetics are read in Analysis and precomputing them in PostInit. This didn't do the
+            #  trick due to dependency issues with symbols defined in the recipe. Instead, we will just duplicate
+            #  all Evolve and Analysis thorn functions into PostPostInit to ensure everything is initialized.
+            if fn.schedule_target in [ScheduleBin.Evolve, ScheduleBin.SpecialEvolve]:
+                post_init_bin, post_init_at_in = self._resolve_schedule_target(ScheduleBin.InitEvolve)
+                fn_group_name = f'{fn_name}_init_evolve_group'
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Group,
+                    name=Identifier(fn_group_name),
+                    at_or_in=post_init_at_in,
+                    schedule_bin=post_init_bin,
+                    description=String(f'Group for function `{fn_name}` in InitEvolve. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    before=[Identifier(f'{s}_init_evolve_group') for s in fn.schedule_before],
+                    after=[Identifier(f'{s}_init_evolve_group') for s in fn.schedule_after]
+                ))
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(fn_name),
+                    at_or_in=AtOrIn.In,
+                    schedule_bin=Identifier(fn_group_name),
+                    description=String(f'Function `{fn_name}` in InitEvolve generated by EmitCactus.'),
+                    lang=Language.C,
+                    reads=list(reads),
+                    writes=list(writes)
+                ))
+
+                if len(sync_var_groups) > 0:
+                    syncs = [Identifier(g) for g in sync_var_groups]
+                    syncs_desc = ", ".join(s.identifier for s in syncs)
+                    schedule_blocks.append(ScheduleBlock(
+                        group_or_function=GroupOrFunction.Function,
+                        name=Identifier(f'StateSync_{self.thorn_def.name}'),
+                        at_or_in=AtOrIn.In,
+                        schedule_bin=Identifier(fn_group_name),
+                        description=String(f'Empty function for explicitly SYNCing variables read Everywhere in function `{fn_name}` in InitEvolve. Syncs: {syncs_desc}. Generated by EmitCactus.'),
+                        lang=Language.C,
+                        sync=syncs,
+                        before=[Identifier(fn_name)]
+                    ))
+
+            if fn.schedule_target is ScheduleBin.Analysis:
+                post_init_bin, post_init_at_in = self._resolve_schedule_target(ScheduleBin.InitAnalysis)
+                fn_group_name = f'{fn_name}_init_analysis_group'
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Group,
+                    name=Identifier(fn_group_name),
+                    at_or_in=post_init_at_in,
+                    schedule_bin=post_init_bin,
+                    description=String(f'Group for function `{fn_name}` in InitAnalysis. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    before=[Identifier(f'{s}_init_analysis_group') for s in fn.schedule_before],
+                    after=[Identifier(f'{s}_init_analysis_group') for s in fn.schedule_after]
+                ))
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(fn_name),
+                    at_or_in=AtOrIn.In,
+                    schedule_bin=Identifier(fn_group_name),
+                    description=String(f'Function `{fn_name}` in InitAnalysis generated by EmitCactus.'),
+                    lang=Language.C,
+                    reads=list(reads),
+                    writes=list(writes)
+                ))
+
+                if len(sync_var_groups) > 0:
+                    syncs = [Identifier(g) for g in sync_var_groups]
+                    syncs_desc = ", ".join(s.identifier for s in syncs)
+                    schedule_blocks.append(ScheduleBlock(
+                        group_or_function=GroupOrFunction.Function,
+                        name=Identifier(f'StateSync_{self.thorn_def.name}'),
+                        at_or_in=AtOrIn.In,
+                        schedule_bin=Identifier(fn_group_name),
+                        description=String(f'Empty function for explicitly SYNCing variables read Everywhere in function `{fn_name}` in InitAnalysis. Syncs: {syncs_desc}. Generated by EmitCactus.'),
+                        lang=Language.C,
+                        sync=syncs,
+                        before=[Identifier(fn_name)]
+                    ))
 
         if 'extra_schedule_blocks' in self.options:
             for block in self.options['extra_schedule_blocks']:
                 schedule_blocks.append(block)
-
-        if self.options['interior_sync_mode'] is InteriorSyncMode.MixedRhs:
-            new_explicit_syncs: List[ExplicitSyncBatch] = list(self.options.get('explicit_syncs', list()))
-            sync_target = self.options.get('interior_sync_schedule_target', ScheduleBin.PostStep)
-            sync_target_id, _ = self._resolve_schedule_target(sync_target)
-
-            new_explicit_syncs.append(
-                ExplicitSyncBatch(
-                    vars=self.thorn_def.get_state(),
-                    schedule_target=sync_target,
-                    name="StateSync"
-                )
-            )
-            self.options['explicit_syncs'] = new_explicit_syncs
-
-            # Ensure that StateSync is the first fn in its schedule target to run
-            for schedule_block in [b for b in schedule_blocks if b.schedule_bin == sync_target_id]:
-                schedule_block.after.append(Identifier("StateSync"))
 
         if (sync_batch_items := self.options.get('explicit_syncs', None)) is not None:
             for sync_batch in sync_batch_items:
                 schedule_bin, at_or_in = self._resolve_schedule_target(sync_batch.schedule_target)
                 var_names = [str(v) for v in sync_batch.vars]
 
+                syncs = [Identifier(self._get_qualified_group_name_from_var_name(var_name)) for var_name in var_names]
+                syncs_desc = ", ".join(s.identifier for s in syncs)
                 schedule_blocks.append(ScheduleBlock(
                     group_or_function=GroupOrFunction.Function,
                     name=Identifier(sync_batch.name),
                     at_or_in=at_or_in,
                     schedule_bin=schedule_bin,
-                    description=String(f'Empty function for explicitly SYNCing state variables. Generated by EmitCactus.'),
+                    description=String(f'Empty function for explicitly SYNCing variables as provided in an ExplicitSyncBatch. Syncs: {syncs_desc}. Generated by EmitCactus.'),
                     lang=Language.C,
-                    sync=[Identifier(self._get_qualified_group_name_from_var_name(var_name)) for var_name in var_names],
+                    sync=syncs,
                     before=[Identifier(s) for s in sync_batch.schedule_before],
                     after=[Identifier(s) for s in sync_batch.schedule_after]
                 ))
+
+        if (new_rad_x_items := self.options.get('new_rad_x_boundary_fns', None)) is not None:
+            for batch in new_rad_x_items:
+                schedule_bin, at_or_in = self._resolve_schedule_target(batch.schedule_target)
+                base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
+
+                reads = OrderedSet(
+                    Intent(
+                        Identifier(self._get_qualified_group_name_from_var_name(var_name)),
+                        IntentRegion.Interior
+                    )
+                    for var_name in var_names
+                )
+
+                writes = OrderedSet(
+                    Intent(
+                        Identifier(self._get_qualified_group_name_from_var_name(rhs_name)),
+                        IntentRegion.Interior
+                    )
+                    for rhs_name in rhs_names
+                )
+
+                schedule_blocks.append(ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier(batch.name),
+                    at_or_in=at_or_in,
+                    schedule_bin=schedule_bin,
+                    description=String(f'Function for applying NewRadX boundary conditions: {base_name} -> {rhs_name}. Generated by EmitCactus.'),
+                    lang=Language.C,
+                    reads=list(reads),
+                    writes=list(writes),
+                    before=[Identifier(f'{s}_group') for s in batch.schedule_before],
+                    after=[Identifier(f'{s}_group') for s in batch.schedule_after]
+                ))
+
+        post_post_init_bin, post_post_init_at_in = self._resolve_schedule_target(ScheduleBin.PostPostInit)
+
+        schedule_blocks.append(ScheduleBlock(
+            group_or_function=GroupOrFunction.Group,
+            name=Identifier(f'Init_Evolve_{self.thorn_def.name}'),
+            at_or_in=post_post_init_at_in,
+            schedule_bin=post_post_init_bin,
+            description=String('Group containing all functions from Evolve that should run before step 0. Generated by EmitCactus.'),
+            lang=Language.C
+        ))
+
+        schedule_blocks.append(ScheduleBlock(
+            group_or_function=GroupOrFunction.Group,
+            name=Identifier(f'Init_Analysis_{self.thorn_def.name}'),
+            at_or_in=post_post_init_at_in,
+            schedule_bin=post_post_init_bin,
+            description=String('Group containing all functions from Analysis that should run before step 0. Generated by EmitCactus.'),
+            lang=Language.C,
+            after=[Identifier(f'Init_Evolve_{self.thorn_def.name}')]
+        ))
+
+        state_vec = self.thorn_def.get_state()
+        state_vec_strs = {str(v) for v in state_vec}
+
+        for tf in self.thorn_def.thorn_functions.values():
+            if len(bad_vars := {self.thorn_def.var2base.get(str_v := str(v), str_v) for v in tf.eqn_complex.tile_temporaries}.intersection(state_vec_strs)) > 0:
+                raise GeneratorException(f'Thorn function {tf.name} uses one or more tile temporaries {bad_vars} that are also in the state vector by way of being declared with an `rhs` property. This is not allowed.')
+
+        state_vec_sync = [Identifier(self._get_qualified_group_name_from_var_name(str(v))) for v in state_vec]
+        state_vec_sync_desc = ", ".join(s.identifier for s in state_vec_sync)
+
+        schedule_blocks.append(ScheduleBlock(
+            group_or_function=GroupOrFunction.Function,
+            name=Identifier(f'StateSync_{self.thorn_def.name}'),
+            at_or_in=post_post_init_at_in,
+            schedule_bin=post_post_init_bin,
+            description=String(f'Empty function to SYNC the state vector. Syncs: {state_vec_sync_desc}. Generated by EmitCactus.'),
+            lang=Language.C,
+            before=[Identifier(f'Init_Evolve_{self.thorn_def.name}')],
+            sync=state_vec_sync
+        ))
+
+        post_step_bin, post_step_at_in = self._resolve_schedule_target(ScheduleBin.PostStep)
+
+        schedule_blocks.append(ScheduleBlock(
+            group_or_function=GroupOrFunction.Function,
+            name=Identifier(f'StateSync_{self.thorn_def.name}'),
+            at_or_in=post_step_at_in,
+            schedule_bin=post_step_bin,
+            description=String(f'Empty function to SYNC the state vector. Syncs: {state_vec_sync_desc}. Generated by EmitCactus.'),
+            lang=Language.C,
+            sync=state_vec_sync
+        ))
 
         return ScheduleRoot(
             storage_section=StorageSection(storage_lines),
             schedule_section=ScheduleSection(schedule_blocks)
         )
 
-    @staticmethod
-    def _resolve_schedule_target(schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
+    def _resolve_schedule_target(self, schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
         schedule_bin: Identifier
         at_or_in: AtOrIn
 
@@ -243,15 +419,27 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if schedule_target is ScheduleBin.Init:
                 schedule_bin = Identifier('initial')
+            elif schedule_target is ScheduleBin.PostInit:
+                schedule_bin = Identifier('postinitial')
+            elif schedule_target is ScheduleBin.PostPostInit:
+                schedule_bin = Identifier('postpostinitial')
+            elif schedule_target is ScheduleBin.InitEvolve:
+                schedule_bin = Identifier(f'Init_Evolve_{self.thorn_def.name}')
+            elif schedule_target is ScheduleBin.InitAnalysis:
+                schedule_bin = Identifier(f'Init_Analysis_{self.thorn_def.name}')
             elif schedule_target is ScheduleBin.Analysis:
                 schedule_bin = Identifier('analysis')
             elif schedule_target is ScheduleBin.EstimateError:
                 schedule_bin = Identifier('ODESolvers_EstimateError')
             elif schedule_target is ScheduleBin.Evolve:
                 schedule_bin = Identifier('ODESolvers_RHS')
+            elif schedule_target is ScheduleBin.SpecialEvolve:
+                schedule_bin = Identifier('ODESolvers_RHS')
             elif schedule_target is ScheduleBin.DriverInit:
                 schedule_bin = Identifier('ODESolvers_Initial')
             elif schedule_target is ScheduleBin.PostStep:
+                schedule_bin = Identifier('poststep')
+            elif schedule_target is ScheduleBin.PostSubStep:
                 schedule_bin = Identifier('ODESolvers_PostStep')
             else:
                 raise NotImplementedError(f'Bad ScheduleBin enum member {schedule_target}')
@@ -262,7 +450,7 @@ class CppCarpetXGenerator(CactusGenerator):
         inherits_from = {Identifier(inherited_thorn) for inherited_thorn in self.thorn_def.base2thorn.values()}
 
         # We always want to inherit from CarpetX even if no vars explicitly need it
-        inherits_from.add(Identifier('Driver'))
+        inherits_from.update({Identifier('Driver'), Identifier('ODESolvers')})
 
         return InterfaceRoot(
             HeaderSection(
@@ -270,7 +458,9 @@ class CppCarpetXGenerator(CactusGenerator):
                 inherits=[*inherits_from],
                 friends=[]
             ),
-            IncludeSection([]),
+            IncludeSection([
+                UsesInclude(Verbatim('newradx.hxx'))
+            ]),
             FunctionSection([]),
             VariableSection(list(self.variable_groups.values()))
         )
@@ -359,6 +549,95 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return ParamRoot(params)
 
+    def generate_new_rad_x_boundary_function_code(self, batch: NewRadXBoundaryBatch) -> CodeRoot:
+        nodes: list[CodeElem] = list()
+
+        # Includes, usings...
+        for include in self._boilerplate_includes:
+            nodes.append(IncludeDirective(include))
+
+        nodes.append(IncludeDirective(Identifier('newradx.hxx')))
+
+        for include in self._boilerplate_quoted_includes:
+            nodes.append(IncludeDirective(include, True))
+
+        nodes.append(Verbatim(self._boilerplate_nv_tools_include))
+
+        for ns in self._boilerplate_namespace_usings:
+            nodes.append(UsingNamespace(ns))
+
+        nodes.append(UsingNamespace(Identifier('NewRadX')))
+
+        base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
+
+        sympy_visitor = SympyExprVisitor()
+        val_at_infinity = sympy_visitor.visit(batch.val_at_infinity)
+        propagation_speed = sympy_visitor.visit(batch.propagation_speed)
+        radial_falloff_exponent = sympy_visitor.visit(batch.radial_falloff_exponent)
+
+        apply_calls: list[Stmt] = list()
+        for (v, r) in zip(var_names, rhs_names):
+            apply_calls.append(
+                ExprStmt(
+                    FunctionCall(
+                        Identifier(f'NewRadX_Apply'),
+                        [
+                            IdExpr(Identifier('cctkGH')),
+                            IdExpr(Identifier(v)),
+                            IdExpr(Identifier(r)),
+                            val_at_infinity,
+                            propagation_speed,
+                            radial_falloff_exponent
+                        ],
+                        []
+                    )
+                )
+            )
+
+        nodes.append(
+            ThornFunctionDecl(
+                Identifier(batch.name),
+                [
+                    DeclareCarpetXArgs(Identifier(batch.name)),
+                    DeclareCarpetParams(),
+                    UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
+                    ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'),
+                                        VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    Verbatim(self._boilerplate_nv_tools_init(batch.name)),
+                    *apply_calls,
+                    Verbatim(self._boilerplate_nv_tools_destructor)
+                ]
+            )
+        )
+
+        return CodeRoot(nodes)
+
+
+    class _NewRadXBatchNames(NamedTuple):
+        base_var: str
+        rhs_var: str
+        var_names: list[str]
+        rhs_names: list[str]
+
+    @functools.cache
+    def _get_names_from_new_rad_x_batch(self, batch: NewRadXBoundaryBatch) -> _NewRadXBatchNames:
+        base_name = str(batch.base_var)
+
+        if base_name not in self.thorn_def.rhs:
+            raise GeneratorException(
+                f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
+        rhs_sym = self.thorn_def.rhs[base_name]
+
+        group_name = self.thorn_def.base2group.get(base_name, None)
+
+        rhs_name = str(rhs_sym)
+        rhs_group_name = self.thorn_def.base2group.get(rhs_name, None)
+
+        var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))  # type: ignore[arg-type]
+        rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))  # type: ignore[arg-type]
+
+        return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
+
     def generate_function_code(self, which_fn: str) -> CodeRoot:
         nodes: list[CodeElem] = list()
         thorn_fn: ThornFunction = self.thorn_def.thorn_functions[which_fn]
@@ -402,14 +681,7 @@ class CppCarpetXGenerator(CactusGenerator):
             if var_name not in used_var_names:
                 continue
 
-            var_centering: Optional[Centering]
-
-            # Try looking up the var's centering directly...
-            if (var_centering := self.thorn_def.centering.get(var_name, None)) is not None:
-                pass
-            # Otherwise, try looking it up by the var's base...
-            elif (var_base := self.thorn_def.var2base.get(var_name, None)) is not None:
-                var_centering = self.thorn_def.centering.get(var_base, None)
+            var_centering = self.thorn_def.get_centering_from_var_name(var_name)
 
             # If this var doesn't have a defined centering, skip it.
             if var_centering is None:
@@ -421,7 +693,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             # Make sure the referenced layout has a preceding, corresponding decl of the form
             # `const GF3D5layout ${LAYOUT_NAME}_layout(cctkGH, {$I, $J, $K});`
-            if var_centering not in declared_layouts:
+            if var_centering not in declared_layouts and "'" not in var_name:
                 declared_layouts.add(var_centering)
 
                 i, j, k = var_centering.int_repr
@@ -440,7 +712,8 @@ class CppCarpetXGenerator(CactusGenerator):
             #     [IdExpr(Identifier(f'{var_centering.string_repr}_layout'))]
             # ))
 
-            layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
+            if "'" not in var_name:
+                layout_decls.append(Verbatim(f'#define {var_name}_layout {var_centering.string_repr}_layout'))
 
         input_var_strs = [str(i) for i in thorn_fn.eqn_complex.inputs]
 
@@ -451,7 +724,7 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         if 'x' in input_var_strs:
-            xyz_decls = [
+            xyz_decls.append(
                 ConstAssignDecl(
                     Identifier('vreal'),
                     Identifier('x'),
@@ -464,13 +737,55 @@ class CppCarpetXGenerator(CactusGenerator):
                             IdExpr(Identifier('p.dx'))
                         )
                     )
-                ),
+                )
+            )
+
+        if 't' in input_var_strs:
+            xyz_decls.append(
                 ConstAssignDecl(
                     Identifier('vreal'),
                     Identifier('t'),
                     IdExpr(Identifier('cctk_time'))
                 )
-            ] + xyz_decls
+            )
+
+        def calc_stencil_idx(stencil_idx: StencilIdxWithCentering) -> list[Expr]:
+            result = 'p.I'
+
+            for i in range(3):
+                if stencil_idx.indices[i] == 1:
+                    result += f' + p.DI[{i}]'
+                elif stencil_idx.indices[i] == -1:
+                    result += f' - p.DI[{i}]'
+                elif stencil_idx.indices[i] < 0:
+                    result += f' - {-stencil_idx.indices[i]}*p.DI[{i}]'
+                elif stencil_idx.indices[i] > 0:
+                    result += f' + {stencil_idx.indices[i]}*p.DI[{i}]'
+
+            return [
+                VerbatimExpr(Verbatim(f'{stencil_idx.centering.string_repr}_layout')),
+                VerbatimExpr(Verbatim(result))
+            ]
+
+        idxes_with_centerings = OrderedSet(
+            StencilIdxWithCentering(
+                stencil_idx.indices,
+                require(
+                    self.thorn_def.get_centering_from_var_name(stencil_idx.var_name),
+                    lambda: f'Stencil index {stencil_idx} refers to variable {stencil_idx.var_name} with an unknown centering.'
+                )
+            )
+            for stencil_idx in sorted(thorn_fn.eqn_complex.stencil_idxes)
+        )
+
+        stencil_idx_decls = [
+            ConstConstructDecl(
+                Identifier('GF3D5index'),
+                Identifier(encode_stencil_idx(stencil_idx)),
+                calc_stencil_idx(stencil_idx)
+            )
+            for stencil_idx in idxes_with_centerings
+        ]
 
         # DXI, DYI, DZI decls
         di_decls = [
@@ -506,39 +821,62 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         loop_to_output_region = [
-            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls)
+            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls, eqn_list.read_decls)
             for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
         ]
 
         tile_temp_centerings = self._get_tile_temp_centerings(loop_to_output_centering, thorn_fn)
-        tile_temps_by_centering, tile_temps_to_centering = tile_temp_centerings.temps_by_centering, tile_temp_centerings.temps_to_centering
+        tile_temps_by_centering, tile_temps_to_centering, final_loop_centerings = tile_temp_centerings.temps_by_centering, tile_temp_centerings.temps_to_centering, tile_temp_centerings.final_loop_centerings
 
         tile_temp_setup = self._generate_tile_temp_setup(tile_temps_by_centering)
         
-        sympy_visitor = self._mk_sympy_visitor(tile_temps_to_centering)
+        sympy_visitor = self._mk_sympy_visitor(
+            tile_temps_to_centering.keys(),
+            centering_fn=lambda vn: self.thorn_def.get_centering_from_var_name(vn)
+        )
 
-        carpetx_loops: list[CarpetXGridLoopCall] = list()
+        carpetx_loops: list[Stmt] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
-            output_centering = loop_to_output_centering[loop_idx]
+            output_centering = final_loop_centerings[loop_idx]
             output_region = loop_to_output_region[loop_idx]
 
             subst_result = substitute_recycled_temporaries(eqn_list)
 
-            eqns: list[tuple[sy.Symbol, Expr]] = [(lhs, sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
+            def _resolve_overwrite(s: sy.Symbol) -> sy.Symbol:
+                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
+
+            eqns: list[tuple[sy.Symbol, Expr]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
+            temporaries = [
+                str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
+                if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries - eqn_list.tile_temporaries) and str(lhs) not in self.var_names
+            ]
 
             carpetx_loops.append(
                 CarpetXGridLoopCall(
                     output_centering,
                     output_region,
                     CarpetXGridLoopLambda(
-                        preceding=xyz_decls,
+                        preceding=xyz_decls+stencil_idx_decls,  # type: ignore[operator]
                         equations=eqns,
                         succeeding=[],
-                        temporaries=[str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys()) if lhs in eqn_list.temporaries],
+                        temporaries=temporaries,
                         reassigned_lhses=subst_result.substituted_lhs_idxes
                     )
                 )
             )
+        
+        if thorn_fn.schedule_target is ScheduleBin.SpecialEvolve:
+            carpetx_loops = [
+                IfElseStmt(
+                    BinOpExpr(
+                        IdExpr(Identifier('*substep_counter')),
+                        BinOp.Lte,
+                        IntLiteralExpr(1)
+                    ),
+                    carpetx_loops,
+                    []
+                )
+            ]
 
         # Build the function decl and its body.
         nodes.append(
@@ -550,7 +888,6 @@ class CppCarpetXGenerator(CactusGenerator):
                     UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
                     ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
                     Verbatim(self._boilerplate_nv_tools_init(fn_name)),
-                    Verbatim(self._boilerplate_timer_init(fn_name)),
                     *layout_decls,
                     *di_decls,
                     *stencil_limit_checks,
@@ -565,40 +902,72 @@ class CppCarpetXGenerator(CactusGenerator):
         return CodeRoot(nodes)
 
     @staticmethod
-    def _get_tile_temp_centerings(loop_to_output_centering: list[Centering], thorn_fn: ThornFunction) -> _TileTempCenteringData:
+    def _get_tile_temp_centerings(loop_to_output_centering: list[Optional[Centering]], thorn_fn: ThornFunction) -> _TileTempCenteringData:
         tile_temps_by_centering: dict[Centering, set[sy.Symbol]] = OrderedDict()
         tile_temps_to_centering: dict[sy.Symbol, Centering] = OrderedDict()
+
+        final_loop_centerings = list()
+
+        td = thorn_fn.thorn_def
+
+        thorn_fn.eqn_complex._calc_tile_temps()
 
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             loop_centering = loop_to_output_centering[loop_idx]
 
             for tile_temp in eqn_list.uninitialized_tile_temporaries:
-                tile_temps_by_centering.setdefault(loop_centering, set()).add(tile_temp)
-                tile_temps_to_centering[tile_temp] = loop_centering
+                centering = loop_centering or td.centering.get(td.var2base.get(str(tile_temp), str(tile_temp)), None)
+
+                if not centering:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Tile temporary {tile_temp} does not have a declared centering, and no centering is specified for the loop, so its centering cannot be inferred."
+                    )
+
+                tile_temps_by_centering.setdefault(centering, set()).add(tile_temp)
+                tile_temps_to_centering[tile_temp] = centering
+
+            if loop_centering is None:
+                inferred_centerings = set(tile_temps_by_centering.keys())
+
+                if len(inferred_centerings) == 0:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Cannot infer output centering because there are no output vars or tile temps."
+                    )
+                elif len(inferred_centerings) > 1:
+                    raise GeneratorException(
+                        f"In {thorn_fn.name}@{loop_idx}: Cannot infer output centering because there are no output vars, and multiple possible centerings were inferred from the tile temps: {inferred_centerings}."
+                    )
+                else:
+                    loop_centering = inferred_centerings.pop()
+
+            final_loop_centerings.append(loop_centering)
 
             for tile_temp in eqn_list.preinitialized_tile_temporaries:
                 assert tile_temp in tile_temps_to_centering
                 if tile_temps_to_centering[tile_temp] != loop_centering:
                     raise GeneratorException(
-                        f"All loops accessing tile temporary '{tile_temp}' must have the same centering."
+                        f"In {thorn_fn}: All loops accessing tile temporary '{tile_temp}' must have the same centering."
                         f"  Declared with centering: {tile_temps_to_centering[tile_temp]}"
                         f"  Read in loop {loop_idx} with centering: {loop_centering.string_repr}"
                     )
 
-        return _TileTempCenteringData(temps_by_centering=tile_temps_by_centering, temps_to_centering=tile_temps_to_centering)
+        return _TileTempCenteringData(
+            temps_by_centering=tile_temps_by_centering,
+            temps_to_centering=tile_temps_to_centering,
+            final_loop_centerings=final_loop_centerings
+        )
 
-    def _mk_sympy_visitor(self, tile_temps_to_centering: dict[sy.Symbol, Centering]) -> SympyExprVisitor:
-        stencil_fn_names = [str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil]
-        tile_temp_names = [str(sym) for sym in tile_temps_to_centering.keys()]
+    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol], centering_fn: VarCenteringFn) -> SympyExprVisitor:
+        stencil_fn_names = {str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil}
+        tile_temp_names = {str(sym) for sym in tile_temps}
 
-        def name_subst_fn(name: str, in_stencil_args: bool) -> str:
-            if not in_stencil_args and (name in self.var_names or name in tile_temp_names):
-                return f'access({name})'
-            return name
+        def should_wrap_with_access_fn(name: str, in_stencil_args: bool) -> bool:
+            return not in_stencil_args and (name in self.var_names or name in tile_temp_names)
 
         sympy_visitor = SympyExprVisitor(
             stencil_fns=stencil_fn_names,
-            substitution_fn=name_subst_fn
+            should_wrap_with_access_fn=should_wrap_with_access_fn,
+            centering_fn=centering_fn
         )
         return sympy_visitor
 
@@ -668,47 +1037,81 @@ class CppCarpetXGenerator(CactusGenerator):
     def _get_output_region_for_loop(self,
                                     thorn_fn: ThornFunction,
                                     loop_idx: int,
-                                    write_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
+                                    write_decls: dict[sy.Symbol, IntentRegion],
+                                    read_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
 
         """
-        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs.
+        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs, or, failing that, the inputs.
         All of this loop's outputs need to have the same write region.
         """
 
-        output_regions = {
-            spec for var, spec in write_decls.items()
-            if str(var) in self.var_names
+        writes = {
+            var: spec
+            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in write_decls.items())
+            if var in self.var_names
         }
 
-        if None in output_regions or len(output_regions) == 0:
-            raise GeneratorException(f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a write region.")
+        reads = {
+            var: spec
+            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in read_decls.items())
+            if var in self.var_names
+        }
 
-        if len(output_regions) > 1:
-            raise GeneratorException(
-                f"Output vars for '{thorn_fn.name}@{loop_idx}' have mixed write regions: {list(write_decls.items())}"
-            )
+        if len(writes) == 0 and len(reads) == 0:
+            return IntentRegion.Everywhere  # No inputs and outputs; assume analytical
 
-        [output_region] = output_regions
-        return output_region
+        if len(writes) == 0:
+            input_regions = set(reads.values())
+
+            if None in input_regions or len(input_regions) == 0:
+                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
+
+            if len(input_regions) > 1:
+                if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
+                    print(f"Warning: In {thorn_fn.name}@{loop_idx}:"
+                          f" While trying to infer the loop region, we found that there were no output vars,"
+                          f" and we found the input vars to have a mix of Interior and Everywhere read regions."
+                          f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
+                          f" finite difference, so we will infer Interior as the loop region.")
+                    return IntentRegion.Interior
+
+                raise GeneratorException(
+                    f"In {thorn_fn.name}@{loop_idx}: Input vars have mixed read regions: {list(write_decls.items())}\nSince there are no output vars, the loop region cannot be inferred."
+                )
+
+            [input_region] = input_regions
+            return input_region
+        else:
+            output_regions = set(writes.values())
+
+            if None in output_regions or len(output_regions) == 0:
+                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All output vars for must have a write region.")
+
+            if len(output_regions) > 1:
+                raise GeneratorException(
+                    f"In {thorn_fn.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}"
+                )
+
+            [output_region] = output_regions
+            return output_region
 
     def _get_output_centering_for_loop(self,
                                        thorn_fn: ThornFunction,
                                        loop_idx: int,
                                        output_vars: set[sy.Symbol],
-                                       var_centerings: dict[str, Centering]) -> Centering:
+                                       var_centerings: dict[str, Centering]) -> Optional[Centering]:
         """
         Figure out which centering to pass to grid.loop_int_device<...>
         All of this loop's outputs need to have the same centering.
         """
 
         output_centerings = {
-            var_centerings[var_name] for var_name in [str(var) for var in output_vars]
+            var_centerings[var_name] for var_name in (str(var).replace("'", "") for var in output_vars)
             if var_name in self.var_names
         }
 
         if None in output_centerings or len(output_centerings) == 0:
-            raise GeneratorException(
-                f"All output vars for '{thorn_fn.name}@{loop_idx}' must have a centering: {output_centerings}")
+            return None  # This may be a case where a loop has no outputs but writes to a tile temp, so just return None for now.
 
         if len(output_centerings) > 1:
             raise GeneratorException(
@@ -718,12 +1121,12 @@ class CppCarpetXGenerator(CactusGenerator):
         return output_centering
 
 
-    def generate_sync_batch_function_code(self, sync_batch: ExplicitSyncBatch) -> CodeRoot:
+    def generate_sync_batch_function_code(self, sync_batch: _HasName | str) -> CodeRoot:
         return CodeRoot([
             Verbatim(self._boilerplate_setup),
             *[IncludeDirective(include) for include in self._boilerplate_includes],
             ThornFunctionDecl(
-                Identifier(sync_batch.name),
+                Identifier(sync_batch if isinstance(sync_batch, str) else sync_batch.name),
                 []
             )
         ])

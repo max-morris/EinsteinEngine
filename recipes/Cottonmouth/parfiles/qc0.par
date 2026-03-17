@@ -1,8 +1,8 @@
 # Settings
 #################################
-$itlast             = 1000000000
-$final_time         = 200
-$max_runtime        = 23 * 60 # In minutes
+$itlast             = 100000000
+$final_time         = 500.0
+$max_runtime        = 1 * 24 * 60 - 30 # In minutes
 
 $xmin               = -120.0
 $xmax               = +120.0
@@ -11,22 +11,24 @@ $ncells             = 120
 $nlevels            = 7
 
 $time_stepper       = "RK4"
-$dtfac              = 0.25
+$dtfac              = 0.4
 $error_threshold    = 0.9
+$diss_eps           = 0.3
 
-$out_every          = 64
-$wave_extract_every = $out_every
-$ah_every           = $out_every
+$out_every          = 32
+$out_silo_every     = 256
+$wave_extract_every = 32
+$regrid_every       = 32
 #################################
 
 ActiveThorns = "
   ADMBaseX
-  TmunuBaseX
   AEILocalInterp
   AHFinderDirect
   BoxInBox
   CarpetX
   CottonmouthBSSNOK
+  CanudaX_NPScalars
   CoordinatesX
   IOUtil
   Multipole
@@ -36,14 +38,13 @@ ActiveThorns = "
   TimerReport
   TmunuBaseX
   TwoPuncturesX
-  WeylScal4
 "
 
 # Driver
 Cactus::cctk_show_schedule       = yes
 Cactus::presync_mode             = "mixed-error"
-CarpetX::verbose                 = no
-CarpetX::poison_undefined_values = yes
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = no
 
 # Run Termination
 Cactus::terminate       = "any"
@@ -52,19 +53,29 @@ Cactus::cctk_final_time = $final_time
 Cactus::cctk_itlast     = $itlast
 
 # Grid setup
-CarpetX::xmin                = $xmin
-CarpetX::ymin                = $xmin
-CarpetX::zmin                = $xmin
-CarpetX::xmax                = $xmax
-CarpetX::ymax                = $xmax
-CarpetX::zmax                = $xmax
-CarpetX::ncells_x            = $ncells
-CarpetX::ncells_y            = $ncells
-CarpetX::ncells_z            = $ncells
+CarpetX::xmin = $xmin
+CarpetX::ymin = $xmin
+CarpetX::zmin = $xmin
+
+CarpetX::xmax = $xmax
+CarpetX::ymax = $xmax
+CarpetX::zmax = $xmax
+
+CarpetX::ncells_x = $ncells
+CarpetX::ncells_y = $ncells
+CarpetX::ncells_z = $ncells
+
 CarpetX::ghost_size          = 3
 CarpetX::interpolation_order = 3
-CarpetX::prolongation_type   = "ddf"
-CarpetX::prolongation_order  = 5
+
+# Distribution
+CarpetX::blocking_factor_x = 8
+CarpetX::blocking_factor_y = 8
+CarpetX::blocking_factor_z = 8
+
+CarpetX::max_tile_size_x = 2**30
+CarpetX::max_tile_size_y = 2**30
+CarpetX::max_tile_size_z = 2**30
 
 # Boundary conditions
 CarpetX::boundary_x       = "linear extrapolation"
@@ -75,8 +86,11 @@ CarpetX::boundary_upper_y = "linear extrapolation"
 CarpetX::boundary_upper_z = "linear extrapolation"
 
 # Mesh refinement
+CarpetX::prolongation_type  = "ddf"
+CarpetX::prolongation_order = 5
+
 CarpetX::max_num_levels         = $nlevels
-CarpetX::regrid_every           = 128
+CarpetX::regrid_every           = $regrid_every
 CarpetX::regrid_error_threshold = $error_threshold
 
 BoxInBox::num_regions  = 2
@@ -96,6 +110,7 @@ BoxInBox::radius_2     = [-1., 64., 16., 8., 4., 2., 1.]
 # Initial data
 ADMBaseX::initial_data           = "TwoPunctures"
 ADMBaseX::initial_lapse          = "TwoPunctures-averaged"
+
 TwoPuncturesX::verbose           = yes
 TwoPuncturesX::par_b             = 1.168642873
 TwoPuncturesX::par_m_plus        = 0.453
@@ -103,19 +118,19 @@ TwoPuncturesX::par_m_minus       = 0.453
 TwoPuncturesX::par_P_plus [1]    = +0.3331917498
 TwoPuncturesX::par_P_minus[1]    = -0.3331917498
 TwoPuncturesX::grid_setup_method = "evaluation"
-TwoPuncturesX::TP_epsilon        = 1.0e-2
-TwoPuncturesX::TP_Tiny           = 1.0e-2
+TwoPuncturesX::TP_epsilon        = 1.0e-8
+TwoPuncturesX::TP_Tiny           = 1.0e-8
 
 # Time Integration
-CarpetX::dtfac         = $dtfac
-ODESolvers::verbose    = yes
-ODESolvers::method     = $time_stepper
+CarpetX::dtfac      = $dtfac
+ODESolvers::verbose = yes
+ODESolvers::method  = $time_stepper
 
 # Spacetime evolution
 CottonmouthBSSNOK::eta_B                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-10
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-10
-CottonmouthBSSNOK::dissipation_epsilon    = 0.2
+CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
+CottonmouthBSSNOK::dissipation_epsilon    = $diss_eps
 
 # Spherical surfaces
 SphericalSurface::nsurfaces = 5
@@ -126,67 +141,67 @@ SphericalSurface::verbose   = no
 # Surfaces 0 and 1 are used by PunctureTracker
 
 # Tracker 1
-SphericalSurface::ntheta      [0] = 39
-SphericalSurface::nphi        [0] = 76
-SphericalSurface::nghoststheta[0] = 2
-SphericalSurface::nghostsphi  [0] = 2
+SphericalSurface::ntheta           [0] = 39
+SphericalSurface::nphi             [0] = 76
+SphericalSurface::nghoststheta     [0] = 2
+SphericalSurface::nghostsphi       [0] = 2
 
 # Tracker 2
-SphericalSurface::ntheta      [1] = 39
-SphericalSurface::nphi        [1] = 76
-SphericalSurface::nghoststheta[1] = 2
-SphericalSurface::nghostsphi  [1] = 2
+SphericalSurface::ntheta           [1] = 39
+SphericalSurface::nphi             [1] = 76
+SphericalSurface::nghoststheta     [1] = 2
+SphericalSurface::nghostsphi       [1] = 2
 
 # Surfaces 2, 3, 4 are used by AHFinderDirect and QuasiLocalMeasures
 # Horizon 1
-SphericalSurface::ntheta       [2] = 39
-SphericalSurface::nphi         [2] = 76
-SphericalSurface::nghoststheta [2] = 2
-SphericalSurface::nghostsphi   [2] = 2
+SphericalSurface::ntheta           [2] = 39
+SphericalSurface::nphi             [2] = 76
+SphericalSurface::nghoststheta     [2] = 2
+SphericalSurface::nghostsphi       [2] = 2
 
 # Horizon 2
-SphericalSurface::ntheta      [3] = 39
-SphericalSurface::nphi        [3] = 76
-SphericalSurface::nghoststheta[3] = 2
-SphericalSurface::nghostsphi  [3] = 2
- 
-# Horizon 3
-SphericalSurface::ntheta      [4] = 39
-SphericalSurface::nphi        [4] = 76
-SphericalSurface::nghoststheta[4] = 2
-SphericalSurface::nghostsphi  [4] = 2
+SphericalSurface::ntheta           [3] = 39
+SphericalSurface::nphi             [3] = 76
+SphericalSurface::nghoststheta     [3] = 2
+SphericalSurface::nghostsphi       [3] = 2
 
-# Puncture tracking 
-PunctureTracker::verbose       = no
-PunctureTracker::track_boxes   = yes
-PunctureTracker::interp_order  = 3
-PunctureTracker::track     [0] = yes
-PunctureTracker::initial_x [0] = +1.168642873
-PunctureTracker::track     [1] = yes
-PunctureTracker::initial_x [1] = -1.168642873
+# Horizon 3
+SphericalSurface::ntheta           [4] = 39
+SphericalSurface::nphi             [4] = 76
+SphericalSurface::nghoststheta     [4] = 2
+SphericalSurface::nghostsphi       [4] = 2
+
+# Puncture tracking
+PunctureTracker::verbose           = yes
+PunctureTracker::track_boxes       = yes
+PunctureTracker::interp_order      = 3
+PunctureTracker::track         [0] = yes
+PunctureTracker::initial_x     [0] = +1.168642873
+PunctureTracker::track         [1] = yes
+PunctureTracker::initial_x     [1] = -1.168642873
 
 # Apparent horizons
-AHFinderDirect::find_every                         = $ah_every 
-AHFinderDirect::verbose_level                      = "physics details"
-AHFinderDirect::output_BH_diagnostics              = "true"
-AHFinderDirect::run_at_CCTK_POST_RECOVER_VARIABLES = no 
-AHFinderDirect::output_h_every                     = $ah_every 
- 
+AHFinderDirect::find_every = $wave_extract_every
+AHFinderDirect::verbose_level                            = "physics details"
+AHFinderDirect::output_BH_diagnostics                    = "true"
+AHFinderDirect::run_at_CCTK_POST_RECOVER_VARIABLES       = no
+AHFinderDirect::output_h_every = 0  # Turn off horizon shape output
+
 AHFinderDirect::max_Newton_iterations__initial           = 50
 AHFinderDirect::max_Newton_iterations__subsequent        = 50
 AHFinderDirect::max_allowable_Theta_growth_iterations    = 10
 AHFinderDirect::max_allowable_Theta_nonshrink_iterations = 10
 AHFinderDirect::geometry_interpolator_name               = "CarpetX"
-AHFinderDirect::geometry_interpolator_pars                = "order=3 boundary_off_centering_tolerance={1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10} boundary_extrapolation_tolerance={0.0 0.0 0.0 0.0 0.0 0.0}"
-AHFinderDirect::surface_interpolator_name                 = "Lagrange polynomial interpolation"
-AHFinderDirect::surface_interpolator_pars                 = "order=3"
- 
-AHFinderDirect::move_origins            = yes 
-AHFinderDirect::reshape_while_moving    = yes 
-AHFinderDirect::predict_origin_movement = yes 
- 
+AHFinderDirect::geometry_interpolator_pars = "order=3 boundary_off_centering_tolerance={1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10 1.0e-10} boundary_extrapolation_tolerance={0.0 0.0 0.0 0.0 0.0 0.0}"
+AHFinderDirect::surface_interpolator_name  = "Lagrange polynomial interpolation"
+AHFinderDirect::surface_interpolator_pars  = "order=3"
+
+AHFinderDirect::move_origins            = yes
+AHFinderDirect::reshape_while_moving    = yes
+AHFinderDirect::predict_origin_movement = yes
+
 AHFinderDirect::N_horizons = 3
- 
+
 AHFinderDirect::origin_x                             [1] = +1.168642873
 AHFinderDirect::origin_y                             [1] = 0
 AHFinderDirect::origin_z                             [1] = 0
@@ -195,11 +210,11 @@ AHFinderDirect::initial_guess__coord_sphere__x_center[1] = +1.168642873
 AHFinderDirect::initial_guess__coord_sphere__y_center[1] = 0
 AHFinderDirect::initial_guess__coord_sphere__z_center[1] = 0
 AHFinderDirect::initial_guess__coord_sphere__radius  [1] = 0.25
-AHFinderDirect::which_surface_to_store_info          [1] = 2 
+AHFinderDirect::which_surface_to_store_info          [1] = 2
 AHFinderDirect::set_mask_for_individual_horizon      [1] = no
 AHFinderDirect::reset_horizon_after_not_finding      [1] = no
-AHFinderDirect::dont_find_after_individual_time      [1] = 30.0 
- 
+AHFinderDirect::dont_find_after_individual_time      [1] = 30.0
+
 AHFinderDirect::origin_x                             [2] = -1.168642873
 AHFinderDirect::origin_y                             [2] = 0
 AHFinderDirect::origin_z                             [2] = 0
@@ -208,10 +223,10 @@ AHFinderDirect::initial_guess__coord_sphere__x_center[2] = -1.168642873
 AHFinderDirect::initial_guess__coord_sphere__y_center[2] = 0
 AHFinderDirect::initial_guess__coord_sphere__z_center[2] = 0
 AHFinderDirect::initial_guess__coord_sphere__radius  [2] =  0.25
-AHFinderDirect::which_surface_to_store_info          [2] = 3 
+AHFinderDirect::which_surface_to_store_info          [2] = 3
 AHFinderDirect::reset_horizon_after_not_finding      [2] = no
 AHFinderDirect::dont_find_after_individual_time      [2] = 30.0
- 
+
 AHFinderDirect::origin_x                             [3] = 0.0
 AHFinderDirect::origin_y                             [3] = 0
 AHFinderDirect::origin_z                             [3] = 0
@@ -219,13 +234,15 @@ AHFinderDirect::initial_guess_method                 [3] = "coordinate sphere"
 AHFinderDirect::initial_guess__coord_sphere__x_center[3] = 0.0
 AHFinderDirect::initial_guess__coord_sphere__y_center[3] = 0
 AHFinderDirect::initial_guess__coord_sphere__z_center[3] = 0
-AHFinderDirect::initial_guess__coord_sphere__radius  [3] = 0.6 
-AHFinderDirect::which_surface_to_store_info          [3] = 4 
+AHFinderDirect::initial_guess__coord_sphere__radius  [3] = 0.6
+AHFinderDirect::which_surface_to_store_info          [3] = 4
 AHFinderDirect::find_after_individual_time           [3] = 0.0
 
 # Wave extraction
-WeylScal4::WeylScal4_psi4_calc_4th_calc_every = $wave_extract_every 
-Multipole::verbose   = no
+CanudaX_NPScalars::NP_order           = 4
+CanudaX_NPScalars::calculate_NP_every = $wave_extract_every
+
+Multipole::verbose   = yes
 Multipole::nradii    = 8
 Multipole::radius[0] = 15
 Multipole::radius[1] = 30
@@ -235,14 +252,25 @@ Multipole::radius[4] = 60
 Multipole::radius[5] = 70
 Multipole::radius[6] = 80
 Multipole::radius[7] = 90
-Multipole::ntheta    = 120
-Multipole::nphi      = 240
-Multipole::variables = "
-  WeylScal4::Psi4r{sw=-2 cmplx='WeylScal4::Psi4i' name='Psi4'}
+Multipole::ntheta            = 120
+Multipole::nphi              = 240
+
+Multipole::variables         = "
+  CanudaX_NPScalars::psi4re{sw=-2 cmplx='CanudaX_NPScalars::psi4im' name='NP_Psi4'}
 "
+
 Multipole::out_every         = $wave_extract_every
 Multipole::l_max             = 4
 Multipole::interpolator_pars = "order=3"
+
+# Timer output
+TimerReport::out_every                  = $out_every
+TimerReport::out_filename               = "TimerReport"
+TimerReport::n_top_timers               = 200
+TImerReport::output_all_timers          = yes
+TimerReport::output_all_timers_readable = yes
+TimerReport::output_all_timers_together = yes
+TimerReport::output_schedule_timers     = yes
 
 # Checkpoint and recovery
 IO::out_dir                         = $parfile
@@ -258,28 +286,40 @@ CarpetX::checkpoint_method          = "openpmd"
 CarpetX::recover_method             = "openpmd"
 
 # Output
-TimerReport::out_every                  = $out_every
-TimerReport::out_filename               = "TimerReport"
-TimerReport::n_top_timers               = 200
-TImerReport::output_all_timers          = yes
-TimerReport::output_all_timers_readable = yes
-TimerReport::output_all_timers_together = yes
-TimerReport::output_schedule_timers     = yes
+CarpetX::out_performance = no
+CarpetX::out_metadata = no
 
-# Norm and reduction output
 CarpetX::out_norm_omit_unstable = no
-CarpetX::out_norm_vars          = "all"
+CarpetX::out_norm_vars          = "
+  ADMBaseX::metric
+  ADMBaseX::curv
+  CottonmouthBSSNOK::evo_lapse
+  CottonmouthBSSNOK::evo_shift
+  CottonmouthBSSNOK::w
+  CottonmouthBSSNOK::HamCons
+  CottonmouthBSSNOK::MomCons
+"
 
-# 1D output
+CarpetX::out_tsv = no
 CarpetX::out_tsv_vars = "
   PunctureTracker::pt_loc
   PunctureTracker::pt_vel
 "
 
-# 3D output
+CarpetX::out_silo_every = $out_silo_every
 CarpetX::out_silo_vars = "
-  ADMBaseX::lapse
-  WeylScal4::Psi4r
-  WeylScal4::Psi4i
+  ADMBaseX::metric
+  ADMBaseX::curv
+  CottonmouthBSSNOK::gt
+  CottonmouthBSSNOK::w
+  CottonmouthBSSNOK::At
+  CottonmouthBSSNOK::trK
+  CottonmouthBSSNOK::ConfConnect
+  CottonmouthBSSNOK::evo_lapse
+  CottonmouthBSSNOK::evo_shift
+  CottonmouthBSSNOK::shift_B
+  CottonmouthBSSNOK::HamCons
+  CottonmouthBSSNOK::MomCons
+  CanudaX_NPScalars::NPPsi4R_group
+  CanudaX_NPScalars::NPPsi4I_group
 "
-

@@ -25,7 +25,8 @@ if __name__ == '__main__':
     gf.add_substitution_rule(g[ua, ub], imat)
     gf.add_substitution_rule(D(g[la, lb], lc))  # D(g[l0,l1],l2) -> gDD01_dD2
     gf.add_substitution_rule(D(g[ua, ub], lc))
-    gf.add_substitution_rule(G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
+    gf.add_substitution_rule(
+        G[la, lb, lc], (D(g[la, lb], lc) + D(g[la, lc], lb) - D(g[lb, lc], la)) / 2)
 
     fun = gf.create_function("setAff", ScheduleBin.Analysis)
 
@@ -37,6 +38,6 @@ if __name__ == '__main__':
     # Check non-diagonal metric
 
     # Ensure the equations make sense
-    fun.bake(do_recycle_temporaries=True)
+    gf.bake(do_recycle_temporaries=True)
 
     CppCarpetXWizard(gf).generate_thorn()
