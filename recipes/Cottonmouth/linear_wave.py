@@ -196,7 +196,7 @@ if __name__ == "__main__":
     fun_fill_id.add_eqn(dt2alp, dt2_lapse)
     fun_fill_id.add_eqn(dt2beta[ua], dt2_shift)
 
-    fun_fill_id.bake(do_recycle_temporaries=False)
+    cottonmouth_linear_wave_id.bake()
 
     ###
     # Thorn creation
@@ -205,7 +205,7 @@ if __name__ == "__main__":
         cottonmouth_linear_wave_id,
         CppCarpetXGenerator(
             cottonmouth_linear_wave_id,
-            interior_sync_mode=InteriorSyncMode.HandsOff,
+            sync_mode=SyncMode.EmulatePresync,
             extra_schedule_blocks=[adm_id_group]
         )
     ).generate_thorn()

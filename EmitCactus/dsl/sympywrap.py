@@ -1,4 +1,4 @@
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Iterable
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Iterable, Collection
 
 import sympy.core.numbers
 from sympy import Expr, Matrix, Piecewise

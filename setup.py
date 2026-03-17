@@ -15,6 +15,8 @@ setup(
         'sympy==1.12.1',
         'multimethod>=1.10',
         'numpy==2.1.0',
-        'pdoc==14.6.0'
+        'pdoc==14.6.0',
+        'sortedcontainers==2.4.0',
+        'sortedcontainers-stubs==2.4.3'
     ]
 )

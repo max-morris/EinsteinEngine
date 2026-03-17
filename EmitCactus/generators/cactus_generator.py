@@ -1,4 +1,7 @@
 from abc import ABC, abstractmethod
+from collections import OrderedDict
+from enum import auto, Enum
+from typing import Set, Optional, TypedDict
 
 from EmitCactus.dsl.use_indices import ThornDef, ScheduleTarget
 from EmitCactus.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
@@ -8,47 +11,25 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlo
 from EmitCactus.emit.code.code_tree import CodeRoot
 from EmitCactus.emit.tree import Identifier, String, Bool
 from EmitCactus.util import get_or_compute, OrderedSet
-from typing import Dict, Set, Optional, TypedDict
-from typing_extensions import Unpack
-from enum import auto, Enum
 
 
-class InteriorSyncMode(Enum):
+class SyncMode(Enum):
     """
-    Determines explicit syncing behavior for variables (grid functions) which are written on the interior.
-    """
-
-    HandsOff = auto()
-    """
-    Never emit SYNC statements. Use this if you are relying on `presync-only`.
+    Determines explicit syncing behavior for grid functions.
     """
 
-    IgnoreRhs = auto()
-    """
-    Emit SYNC statements for all variables written on the interior, except those which are the RHS of a state variable.
-    """
-
-    MixedRhs = auto()
-    """
-    Emit SYNC statements for all variables written on the interior, except those which are the RHS of a state variable.
-    When targeting CarpetX, also produce an `ExplicitSyncBatch` containing all the state variables. 
-    """
-
-    Always = auto()
-    """
-    Emit SYNC statements for all variables written on the interior.
-    """
+    EmulatePresync = auto()
 
 
 class CactusGeneratorOptions(TypedDict, total=False):
     extra_schedule_blocks: list[ScheduleBlock]
-    interior_sync_mode: InteriorSyncMode
+    sync_mode: SyncMode
     interior_sync_schedule_target: ScheduleTarget
 
 
 class CactusGenerator(ABC):
     thorn_def: ThornDef
-    variable_groups: Dict[str, VariableGroup]
+    variable_groups: OrderedDict[str, VariableGroup]
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
 
@@ -56,20 +37,20 @@ class CactusGenerator(ABC):
 
     def __init__(self, thorn_def: ThornDef, options: CactusGeneratorOptions):
         self.thorn_def = thorn_def
-        self.variable_groups = dict()
+        self.variable_groups = OrderedDict()
         self.var_names = OrderedSet()
         self.options = options if options is not None else dict()
 
-        if 'interior_sync_mode' not in self.options:
-            self.options['interior_sync_mode'] = InteriorSyncMode.Always
+        if 'sync_mode' not in self.options:
+            self.options['sync_mode'] = SyncMode.EmulatePresync
 
         for tf in self.thorn_def.thorn_functions.values():
             for iv in tf.eqn_complex.inputs:
-                var_name = str(iv)
+                var_name = str(iv).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
             for ov in tf.eqn_complex.outputs:
-                var_name = str(ov)
+                var_name = str(ov).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.var_names.add(var_name)
 
@@ -96,7 +77,7 @@ class CactusGenerator(ABC):
             )).variable_names.append(Identifier(var_name))
 
     @abstractmethod
-    def get_src_file_name(self, which_fn: str) -> str:
+    def get_fn_src_file_name(self, which_fn: str) -> str:
         ...
 
     @abstractmethod
