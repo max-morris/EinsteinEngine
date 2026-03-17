@@ -662,63 +662,6 @@ class EqnList:
         for sym in sorted(list(self.eqns.keys()), key=lambda x: self.complexity[x], reverse=True):
             ord.add(sym)
         self.order = ord.ord
-                
-
-    # TODO: Not used. Remove?
-    # def order_builder2(self, complete: Dict[Symbol, int], cno: int) -> None:
-    #     provides: Dict[Symbol, Set[Symbol]] = OrderedDict()  # vals require key
-    #     requires: Dict[Symbol, Set[Symbol]] = OrderedDict()  # key requires vals
-    #     self.requires = OrderedDict()
-    #     # Thus for
-    #     #   u_t = v
-    #     #   v_t = div(u,la,lb) g[ua,ub]
-    #     # provides = {v:{u_t}, u:{v_t}}
-    #     # requires = {u_t:{v}, v_t:{u}}
-    #     for k in self.eqns:
-    #         if k not in requires:
-    #             requires[k] = OrderedSet()
-    #             self.requires[k] = OrderedSet()
-    #         for v in free_symbols(self.eqns[k]):
-    #             if v not in provides:
-    #                 provides[v] = OrderedSet()
-    #             provides[v].add(k)
-    #             requires[k].add(v)
-    #             self.requires[k].add(v)
-    #     self.order = list()
-    #     self.sublists = list()
-    #     result = list()
-    #
-    #     for k, v2 in requires.items():
-    #         if len(v2) == 0:
-    #             result += self.apply_order(k, provides, requires)
-    #             complete[k] = cno
-    #     for k in self.inputs:
-    #         result += self.apply_order(k, provides, requires)
-    #         complete[k] = cno
-    #     for k in self.params:
-    #         result += self.apply_order(k, provides, requires)
-    #         complete[k] = cno
-    #     for k in self.preinitialized_tile_temporaries:
-    #         result += self.apply_order(k, provides, requires)
-    #         complete[k] = cno
-    #     self.sublists.append(result)
-    #     while len(result) > 0:
-    #         cno += 1
-    #         new_result = list()
-    #         count = 0
-    #         for r in sorted(result, key=lambda foo: self.complexity[foo], reverse=True):
-    #             count += 1
-    #             print(">> count:", count,")", r, "=>", self.eqns[r], "=>", self.complexity[r])
-    #             new_result += self.apply_order(r, provides, requires)
-    #             complete[r] = cno
-    #         if len(new_result) > 0:
-    #             self.sublists.append(new_result)
-    #         result = new_result
-    #     for k, v2 in requires.items():
-    #         for vv in v2:
-    #             if vv not in self.params and vv not in self.preinitialized_tile_temporaries:
-    #                 raise DslException(f"Unsatisfied {k} <- {vv} : {self.params}")
-    #     self.provides = provides
 
     def _run_preliminary_complexity_analysis(self) -> None:
         grid_vars = self._grid_variables()

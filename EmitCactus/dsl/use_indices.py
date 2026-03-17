@@ -16,7 +16,7 @@ from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Integer, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, MatrixBase, exp, \
+from sympy import Integer, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic, MatrixBase, \
     ImmutableDenseMatrix, Expr
 from sympy.core.relational import Relational
 
