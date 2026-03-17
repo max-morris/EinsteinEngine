@@ -29,8 +29,8 @@ class StorageSection(ScheduleNode):
 
 
 class AtOrIn(ReprEnum):
-    At = auto(), 'AT'
-    In = auto(), 'IN'
+    At = auto(), 'AT'  # For builtins
+    In = auto(), 'IN'  # For user-defined groups
 
 
 class GroupOrFunction(Enum):
@@ -47,10 +47,10 @@ class IntentRegion(ReprEnum):
         return self if self is other else IntentRegion.Everywhere
 
 
-@dataclass
+@dataclass(frozen=True)
 class Intent(ScheduleNode):
     name: Identifier
-    region: IntentRegion
+    region: Optional[IntentRegion]
 
 
 class ScheduleBlockOptionalArgs(TypedDict, total=False):
@@ -113,6 +113,9 @@ class ScheduleBlock(ScheduleNode):
 
         if self.writes is not None and len(self.writes) == 0:
             self.writes = None
+
+    def __hash__(self) -> int:
+        return hash(self.name)
 
 
 @dataclass

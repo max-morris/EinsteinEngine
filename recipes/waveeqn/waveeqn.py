@@ -55,13 +55,12 @@ evo = gf.create_function("newwave_evo", ScheduleBin.Evolve)
 evo.add_eqn(v_t, u)
 evo.add_eqn(u_t, spd ** 2 * g[ui, uj] * D(v, li, lj))  # ==> u_t = spd^2 * (d^2_x + d^2_y) v
 print('*** ThornFunction wave_evo:')
-evo.bake()
 
 # Dump
-evo.dump()
+#evo.dump()
 
 # Show tensortypes
-evo.show_tensortypes()
+#evo.show_tensortypes()
 
 # Again for wave_init
 # du/dt = spd**2 * ((d/dx)**2 u + (d/dy)**2 u)
@@ -72,18 +71,14 @@ ufun = vfun.diff(t)
 init = gf.create_function("newwave_init", ScheduleBin.Init)
 init.add_eqn(u,  ufun)
 init.add_eqn(v,  vfun)
-init.bake()
 
 refine = gf.create_function("refine", ScheduleBin.EstimateError)
 regrid_error = gf.decl("regrid_error", [], centering=Centering.CCC, from_thorn='CarpetXRegrid')
 refine.add_eqn(regrid_error, 9/((x-20)**2 + (y-20)**2))
-refine.bake()
 
 wave_zero = gf.create_function("WaveZero", ScheduleBin.Analysis)
 wave_zero.add_eqn(ZeroVal, u - ufun)
-wave_zero.bake()
 
-wave_zero.dump()
 
 check_zero = ScheduleBlock(
     group_or_function=GroupOrFunction.Group,
@@ -94,11 +89,18 @@ check_zero = ScheduleBlock(
     after=[Identifier('RicZero')]
 )
 
+gf.bake(
+    do_recycle_temporaries=False,
+    do_cse=True,
+    temporary_promotion_strategy=promote_none(),
+    cse_optimization_level=CseOptimizationLevel.Fast
+)
+
 CppCarpetXWizard(
     gf,
     CppCarpetXGenerator(
         gf,
-        interior_sync_mode=InteriorSyncMode.MixedRhs,
+        sync_mode=SyncMode.EmulatePresync,
         extra_schedule_blocks=[check_zero]
     )
 ).generate_thorn()

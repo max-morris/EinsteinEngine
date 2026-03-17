@@ -6,6 +6,7 @@ from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleNode, ScheduleRoo
     StorageDecl, ScheduleSection, ScheduleBlock, GroupOrFunction, Intent
 from EmitCactus.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
 from EmitCactus.emit.visitor import Visitor, visit_each
+from EmitCactus.util import indent
 
 
 class ScheduleVisitor(Visitor[ScheduleNode]):
@@ -56,7 +57,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
     @visit.register
     def _(self, n: ScheduleSection) -> str:
-        return '\n'.join(visit_each(self, n.schedule_blocks))
+        return '\n\n'.join(visit_each(self, n.schedule_blocks))
 
     @visit.register
     def _(self, n: ScheduleBlock) -> str:
@@ -90,31 +91,35 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
         s += '\n{'
 
+        s_inner = ''
+
         if n.lang is not None:
-            s += f'\nLANG: {n.lang.representation}'
+            s_inner += f'\nLANG: {n.lang.representation}'
 
         if n.storage is not None:
-            s += f'\n{self.visit(n.storage)}'
+            s_inner += f'\n{self.visit(n.storage)}'
 
         if n.trigger is not None and len(n.trigger) > 0:
-            s += f'\nTRIGGER: {", ".join(visit_each(self, n.trigger))}'
+            s_inner += f'\nTRIGGER: {", ".join(visit_each(self, n.trigger))}'
 
         if n.sync is not None and len(n.sync) > 0:
-            s += f'\nSYNC: {", ".join(visit_each(self, n.sync))}'
+            s_inner += f'\nSYNC: {", ".join(visit_each(self, n.sync))}'
 
         if n.options is not None and len(n.options) > 0:
-            s += f'\nOPTIONS: {", ".join(visit_each(self, n.options))}'
+            s_inner += f'\nOPTIONS: {", ".join(visit_each(self, n.options))}'
 
         if n.reads is not None and len(n.reads) > 0:
-            s += f'\nReads: {", ".join(visit_each(self, sorted(n.reads, key=repr)))}'
+            s_inner += f'\nReads: {", ".join(visit_each(self, sorted(n.reads, key=repr)))}'
 
         if n.writes is not None and len(n.writes) > 0:
-            s += f'\nWrites: {", ".join(visit_each(self, sorted(n.writes, key=repr)))}'
+            s_inner += f'\nWrites: {", ".join(visit_each(self, sorted(n.writes, key=repr)))}'
 
-        s += '\n} ' + self.visit(n.description)
+        s += indent(s_inner) + '\n} ' + self.visit(n.description)
 
         return s
 
     @visit.register
     def _(self, n: Intent) -> str:
+        if n.region is None:
+            return f'{self.visit(n.name)}'
         return f'{self.visit(n.name)}({n.region.representation})'
