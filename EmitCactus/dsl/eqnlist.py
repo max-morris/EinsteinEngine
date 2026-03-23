@@ -1,9 +1,10 @@
 from functools import cache
 import typing
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain
+from statistics import mean, median
 from typing import cast, Dict, List, Tuple, Optional, Set
 
 from multimethod import multimethod
@@ -848,6 +849,13 @@ class EqnList:
         self.order_builder(complete)
         print(colorize("Order:", "green"), self.order)
 
+        memory_footprint = self._score_memory_footprint()
+        print(colorize("Memory Footprint:", "magenta"))
+        print(f"  Total: {memory_footprint}")
+        print(f"  Mean: {mean(memory_footprint.values())}")
+        print(f"  Median: {median(memory_footprint.values())}")
+        print(f"  Max: {max(memory_footprint.items(), key=lambda kv: kv[1])}")
+
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
             assert k in written, f"Temporary variable '{k}' is never written"
@@ -906,6 +914,20 @@ class EqnList:
                 new_eqns[k] = v2
 
         self.eqns = new_eqns
+
+    def _score_memory_footprint(self) -> Dict[Symbol, int]:
+        assert len(self.order) > 0
+
+        first_read: Dict[Symbol, int] = dict()
+        last_read: Dict[Symbol, int] = dict()
+
+        for idx, (_, rhs) in enumerate(sorted(self.eqns.items(), key=lambda eqn: self.order.index(eqn[0]))):
+            for sym in free_symbols(rhs):
+                if sym not in first_read:
+                    first_read[sym] = idx
+                last_read[sym] = idx
+
+        return {sym: last_read[sym] - first_read[sym] + 1 for sym in first_read}
 
     def uncse(self) -> None:
         print("Call UnCSE")
