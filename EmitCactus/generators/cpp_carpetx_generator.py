@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Optional, List, Collection, Protocol, NamedTuple
 
 import sympy as sy
+from sympy import IndexedBase, Indexed
 from typing_extensions import Unpack, OrderedDict
 
 from EmitCactus.dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
@@ -621,22 +622,42 @@ class CppCarpetXGenerator(CactusGenerator):
 
     @functools.cache
     def _get_names_from_new_rad_x_batch(self, batch: NewRadXBoundaryBatch) -> _NewRadXBatchNames:
-        base_name = str(batch.base_var)
+        if isinstance(batch.var, IndexedBase):
+            base_name = str(batch.var)
 
-        if base_name not in self.thorn_def.rhs:
-            raise GeneratorException(
-                f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
-        rhs_sym = self.thorn_def.rhs[base_name]
+            if base_name not in self.thorn_def.rhs:
+                raise GeneratorException(
+                    f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
+            rhs_sym = self.thorn_def.rhs[base_name]
 
-        group_name = self.thorn_def.base2group.get(base_name, None)
+            group_name = self.thorn_def.base2group.get(base_name, None)
 
-        rhs_name = str(rhs_sym)
-        rhs_group_name = self.thorn_def.base2group.get(rhs_name, None)
+            rhs_name = str(rhs_sym)
+            rhs_group_name = self.thorn_def.base2group.get(rhs_name, None)
 
-        var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))  # type: ignore[arg-type]
-        rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))  # type: ignore[arg-type]
+            var_names = sorted(self.thorn_def.groups.get(group_name, [base_name]))  # type: ignore[arg-type]
+            rhs_names = sorted(self.thorn_def.groups.get(rhs_group_name, [rhs_name]))  # type: ignore[arg-type]
 
-        return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
+            return CppCarpetXGenerator._NewRadXBatchNames(base_name, rhs_name, var_names, rhs_names)
+        else:
+            assert isinstance(batch.var, Indexed)
+
+            base_name = str(batch.var.base)
+
+            if base_name not in self.thorn_def.rhs:
+                raise GeneratorException(
+                    f"NewRadXBoundaryBatch {batch.name} uses base variable {base_name} which has no RHS.")
+            rhs_sym = self.thorn_def.rhs[base_name]
+
+            rhs_name = str(rhs_sym)
+
+            rhs_indexed = self.thorn_def.gfs[rhs_name][*batch.var.args[1:]]
+
+            var_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(batch.var))
+            rhs_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(rhs_indexed))
+
+            return CppCarpetXGenerator._NewRadXBatchNames(str(batch.var), str(rhs_indexed), var_names, rhs_names)
+
 
     def generate_function_code(self, which_fn: str) -> CodeRoot:
         nodes: list[CodeElem] = list()
