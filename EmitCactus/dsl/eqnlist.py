@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Tuple, Optional, Set
+from typing import cast, Dict, List, Tuple, Optional, Set, Iterator
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -660,7 +660,24 @@ class EqnList:
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
-        for sym in sorted(list(self.eqns.keys()), key=lambda x: self.complexity[x], reverse=True):
+
+        def minimize_memory_pressure() -> Iterator[Symbol]:
+            eqns_remaining = self.eqns.copy()
+            in_memory: set[Symbol] = set()
+            assert len(eqns_remaining) > 0
+
+            lhs, rhs = max(eqns_remaining.items(), key=lambda kv: self.complexity[kv[0]])
+            del eqns_remaining[lhs]
+            in_memory.update(free_symbols(rhs))
+            yield lhs
+
+            while len(eqns_remaining) > 0:
+                lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (len(free_symbols(kv[1]).intersection(in_memory)), self.complexity[kv[0]]))
+                del eqns_remaining[lhs]
+                in_memory.update(free_symbols(rhs))
+                yield lhs
+
+        for sym in minimize_memory_pressure():
             ord.add(sym)
         self.order = ord.ord
 
@@ -851,7 +868,7 @@ class EqnList:
 
         memory_footprint = self._score_memory_footprint()
         print(colorize("Memory Footprint:", "magenta"))
-        print(f"  Total: {memory_footprint}")
+        print(f"  Total: {sorted(memory_footprint.items(), key=lambda kv: kv[1], reverse=True)}")
         print(f"  Mean: {mean(memory_footprint.values())}")
         print(f"  Median: {median(memory_footprint.values())}")
         print(f"  Max: {max(memory_footprint.items(), key=lambda kv: kv[1])}")
