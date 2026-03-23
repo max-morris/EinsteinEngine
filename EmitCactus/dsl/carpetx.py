@@ -1,7 +1,7 @@
 from typing import Collection, Optional
 
 import sympy
-from sympy import IndexedBase
+from sympy import IndexedBase, Indexed
 
 from EmitCactus.dsl.use_indices import ScheduleBin
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock
@@ -36,7 +36,7 @@ class ExplicitSyncBatch:
 
 
 class NewRadXBoundaryBatch:
-    base_var: IndexedBase
+    var: IndexedBase | Indexed
     val_at_infinity: sympy.Expr
     propagation_speed: sympy.Expr
     radial_falloff_exponent: sympy.Expr
@@ -49,7 +49,7 @@ class NewRadXBoundaryBatch:
 
 
     def __init__(self,
-                 base_var: IndexedBase,
+                 var: IndexedBase | Indexed,
                  val_at_infinity: sympy.Expr,
                  propagation_speed: sympy.Expr,
                  radial_falloff_exponent: sympy.Expr,
@@ -58,7 +58,7 @@ class NewRadXBoundaryBatch:
                  schedule_before: Optional[Collection[str]] = None,
                  schedule_after: Optional[Collection[str]] = None,
                  name: Optional[str] = None):
-        self.base_var = base_var
+        self.var = var
         self.val_at_infinity = val_at_infinity
         self.propagation_speed = propagation_speed
         self.radial_falloff_exponent = radial_falloff_exponent

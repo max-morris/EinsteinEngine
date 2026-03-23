@@ -1461,7 +1461,6 @@ class ThornFunction:
             eqn_list.bake(force_rebake=True)
             eqn_list.dump()
 
-
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
         check_indices(rhs, self.thorn_def.defn)
@@ -1487,7 +1486,6 @@ class ThornFunction:
             self._add_eqn2(lhs2, rhs2)
             self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
         if count == 0:
-            # TODO: Understand what's going on with arg 0
             for ind in lhs.args[1:]:
                 assert isinstance(ind, Idx)
                 assert is_numeric_index(ind)
@@ -1746,6 +1744,21 @@ class ThornDef:
             var_centering = self.centering.get(var_base, None)
 
         return var_centering
+
+    def _flatten_indexed(self, sym: Indexed) -> Iterator[Symbol]:
+        count = 0
+        for sym_x, idxes, _ in expand_free_indices(sym, self.symmetries):
+            count += 1
+            sym2: Basic = do_isub(sym_x, self.subs)
+            if not isinstance(sym2, Symbol):
+                mms = mk_mk_subst(repr(sym2))
+                raise Exception(f"'{sym2}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
+            yield sym2
+        if count == 0:
+            for ind in sym.args[1:]:
+                assert isinstance(ind, Idx)
+                assert is_numeric_index(ind)
+            yield cast(Symbol, self.do_subs(sym))
 
     @staticmethod
     def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
