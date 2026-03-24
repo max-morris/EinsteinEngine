@@ -653,13 +653,13 @@ class EqnList:
             eqns_remaining = eqns.copy()
             in_memory: set[Symbol] = set()
 
-            lhs, rhs = max(eqns_remaining.items(), key=lambda kv: self.complexity[kv[0]])
+            lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (self.complexity[kv[0]], str(kv[0])))
             del eqns_remaining[lhs]
             in_memory.update(free_symbols(rhs))
             yield lhs
 
             while len(eqns_remaining) > 0:
-                lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (len(free_symbols(kv[1]).intersection(in_memory)), self.complexity[kv[0]]))
+                lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (len(free_symbols(kv[1]).intersection(in_memory)), self.complexity[kv[0]], str(kv[0])))
                 del eqns_remaining[lhs]
                 in_memory.update(free_symbols(rhs))
                 yield lhs

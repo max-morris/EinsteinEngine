@@ -7,6 +7,7 @@ from sympy import IndexedBase, Indexed
 from typing_extensions import Unpack, OrderedDict
 
 from EmitCactus.dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
+from EmitCactus.dsl.eqnlist import stencil
 from EmitCactus.dsl.stencil_idx import StencilIdxWithCentering
 from EmitCactus.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EmitCactus.dsl.util import require
@@ -842,8 +843,8 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         loop_to_output_region = [
-            self._get_output_region_for_loop(thorn_fn, loop_idx, eqn_list.write_decls, eqn_list.read_decls)
-            for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists)
+            self._get_output_region_for_loop(thorn_fn, loop_idx)
+            for loop_idx, _ in enumerate(thorn_fn.eqn_complex.eqn_lists)
         ]
 
         tile_temp_centerings = self._get_tile_temp_centerings(loop_to_output_centering, thorn_fn)
@@ -1057,14 +1058,16 @@ class CppCarpetXGenerator(CactusGenerator):
 
     def _get_output_region_for_loop(self,
                                     thorn_fn: ThornFunction,
-                                    loop_idx: int,
-                                    write_decls: dict[sy.Symbol, IntentRegion],
-                                    read_decls: dict[sy.Symbol, IntentRegion]) -> IntentRegion:
+                                    loop_idx: int) -> IntentRegion:
 
         """
         Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs, or, failing that, the inputs.
         All of this loop's outputs need to have the same write region.
         """
+
+        eqn_list = thorn_fn.eqn_complex.eqn_lists[loop_idx]
+        write_decls = eqn_list.write_decls
+        read_decls = eqn_list.read_decls
 
         writes = {
             var: spec
@@ -1086,6 +1089,11 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if None in input_regions or len(input_regions) == 0:
                 raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
+
+            for rhs in eqn_list.eqns.values():
+                for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
+                    if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
+                        return IntentRegion.Interior
 
             if len(input_regions) > 1:
                 if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
