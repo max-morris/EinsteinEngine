@@ -646,25 +646,12 @@ class EqnList:
         for k in self.params:
             complete[k] = 0
 
-        class Ord:
-            def __init__(self, eqns: dict[Symbol, Expr]) -> None:
-                self.ord: list[Symbol] = list()
-                self.eqns = eqns
-            def add(self, sym: Symbol) -> None:
-                if sym in complete:
-                    return
-                for dep in free_symbols(self.eqns[sym]):
-                    if dep in self.eqns:
-                        self.add(dep)
-                self.ord.append(sym)
-                complete[sym] = len(self.ord)
+        def minimize_memory_pressure(eqns: dict[Symbol, Expr]) -> Iterator[Symbol]:
+            if len(eqns) == 0:
+                return
 
-        ord = Ord(self.eqns)
-
-        def minimize_memory_pressure() -> Iterator[Symbol]:
-            eqns_remaining = self.eqns.copy()
+            eqns_remaining = eqns.copy()
             in_memory: set[Symbol] = set()
-            assert len(eqns_remaining) > 0
 
             lhs, rhs = max(eqns_remaining.items(), key=lambda kv: self.complexity[kv[0]])
             del eqns_remaining[lhs]
@@ -677,7 +664,21 @@ class EqnList:
                 in_memory.update(free_symbols(rhs))
                 yield lhs
 
-        for sym in minimize_memory_pressure():
+        class Ord:
+            def __init__(self, eqns: dict[Symbol, Expr]) -> None:
+                self.ord: list[Symbol] = list()
+                self.eqns = eqns
+            def add(self, sym: Symbol) -> None:
+                if sym in complete:
+                    return
+                for dep in minimize_memory_pressure({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}):
+                    self.add(dep)
+                self.ord.append(sym)
+                complete[sym] = len(self.ord)
+
+        ord = Ord(self.eqns)
+
+        for sym in minimize_memory_pressure(self.eqns):
             ord.add(sym)
         self.order = ord.ord
 
