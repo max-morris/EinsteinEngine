@@ -20,7 +20,7 @@ from EmitCactus.dsl.functions import *
 from EmitCactus.dsl.util import require_baked
 from EmitCactus.emit.ccl.schedule.schedule_tree import IntentRegion
 from EmitCactus.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
-from EmitCactus.util import OrderedSet, incr_and_get, consolidate
+from EmitCactus.util import OrderedSet, incr_and_get, consolidate, vprint, wprint, ProgressBarImpl, ProgressBar
 from EmitCactus.util import get_or_compute
 from EmitCactus.dsl.symbify import symbify
 from EmitCactus.dsl.analytic_function_checker import AnalyticFunctionChecker
@@ -176,7 +176,6 @@ class EqnComplex:
                 eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
                 global_eqn_idx += 1
 
-            eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
 
         for new_temp, temp_dependencies in sorted(new_temp_dependencies.items(),
                                                   key=lambda kv: substitutions_order[kv[0]],
@@ -365,7 +364,6 @@ class EqnList:
         self.order_clumping: dict[int, set[Symbol]] = dict()
         self.order_clumping_counter: int = 0
         self.sublists: List[List[Symbol]] = list()
-        self.verbose = True
         self.read_decls: Dict[Symbol, IntentRegion] = OrderedDict()
         self.write_decls: Dict[Symbol, IntentRegion] = OrderedDict()
         # TODO: need a better default
@@ -532,14 +530,14 @@ class EqnList:
         lifetimes: Set[TemporaryLifetime] = OrderedSet()
 
         for temp_var in local_temporaries:
-            print(f'Temporary {temp_var}:')
+            vprint(f'Temporary {temp_var}:')
             assert len(temp_writes[temp_var]) == 1
 
             reads_str = [str(x) for x in temp_reads[temp_var]]
             writes_str = [str(x) for x in temp_writes[temp_var]]
 
-            print(f'    Read in EQNs: {", ".join(reads_str)}')
-            print(f'    Written in EQNs: {", ".join(writes_str)}')
+            vprint(f'    Read in EQNs: {", ".join(reads_str)}')
+            vprint(f'    Written in EQNs: {", ".join(writes_str)}')
 
             lifetimes.add(TemporaryLifetime(
                 symbol=temp_var,
@@ -551,8 +549,8 @@ class EqnList:
                 is_dead=False
             ))
 
-        lifetimes_assigned_at = {lt.written_at: lt for lt in lifetimes} #sorted(lifetimes, key=lambda lt: lt.written_at)
-        lifetimes_final_read: SortedDict[int, OrderedSet[TemporaryLifetime]] = SortedDict() #sorted(lifetimes, key=lambda lt: lt.final_read)
+        lifetimes_assigned_at = {lt.written_at: lt for lt in lifetimes}
+        lifetimes_final_read: SortedDict[int, OrderedSet[TemporaryLifetime]] = SortedDict()
         for lt in lifetimes:
             if lt.final_read in lifetimes_final_read:
                 lifetimes_final_read[lt.final_read].add(lt)
@@ -614,11 +612,11 @@ class EqnList:
                 end_eqn=assigned_here.final_read
             ))
 
-            print(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
+            vprint(f'Will replace the declaration of {assigned_here.symbol} with reassignment to {candidate.symbol} in equation {eqn_i}.')
 
-        print("*** Dumping temporary lifetimes ***")
+        vprint("*** Dumping temporary lifetimes ***")
         for lifetime in filter(lambda lt: not lt.is_dead, sorted(lifetimes, key=lambda lt: (str(lt.symbol), lt.prime))):
-            print(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
+            vprint(f'{lifetime} [{lifetime.written_at}, {max(lifetime.read_at)}]')
 
     def uses_dict(self) -> Dict[Symbol, int]:
         uses: Dict[Symbol, int] = dict()
@@ -788,10 +786,9 @@ class EqnList:
             if lhs in self.outputs:
                 self.write_decls[lhs] = IntentRegion.Everywhere
 
-        if self.verbose:
-            print(colorize("Inputs:", "green"), self.inputs)
-            print(colorize("Outputs:", "green"), self.outputs)
-            print(colorize("Params:", "green"), self.params)
+        vprint(colorize("Inputs:", "green"), self.inputs)
+        vprint(colorize("Outputs:", "green"), self.outputs)
+        vprint(colorize("Params:", "green"), self.params)
 
         for k in self.eqns:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -799,9 +796,8 @@ class EqnList:
             for q in free_symbols(self.eqns[k]):
                 read.add(q)
 
-        if self.verbose:
-            print(colorize("Read:", "green"), read)
-            print(colorize("Written:", "green"), written)
+        vprint(colorize("Read:", "green"), read)
+        vprint(colorize("Written:", "green"), written)
 
         for k in self.inputs:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -833,10 +829,9 @@ class EqnList:
                     and k not in self.preinitialized_tile_temporaries):
                 self.temporaries.add(k)
 
-        if self.verbose:
-            print(colorize("Temps:", "green"), self.temporaries)
-            print(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
-            print(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
+        vprint(colorize("Temps:", "green"), self.temporaries)
+        vprint(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
+        vprint(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
 
         class FindBad:
             def __init__(self, outer: EqnList) -> None:
@@ -867,14 +862,14 @@ class EqnList:
         self._run_main_complexity_analysis()
 
         self.order_builder(complete)
-        print(colorize("Order:", "green"), self.order)
+        vprint(colorize("Order:", "green"), self.order)
 
         memory_footprint = self._score_memory_footprint()
-        print(colorize("Memory Footprint:", "magenta"))
-        print(f"  Total: {sorted(memory_footprint.items(), key=lambda kv: kv[1], reverse=True)}")
-        print(f"  Mean: {mean(memory_footprint.values())}")
-        print(f"  Median: {median(memory_footprint.values())}")
-        print(f"  Max: {max(memory_footprint.items(), key=lambda kv: kv[1])}")
+        vprint(colorize("Memory Footprint:", "magenta"))
+        vprint(f"  Total: {sorted(memory_footprint.items(), key=lambda kv: kv[1], reverse=True)}")
+        vprint(f"  Mean: {mean(memory_footprint.values())}")
+        vprint(f"  Median: {median(memory_footprint.values())}")
+        vprint(f"  Max: {max(memory_footprint.items(), key=lambda kv: kv[1])}")
 
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
@@ -885,17 +880,16 @@ class EqnList:
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
-        if self.verbose:
-            print(colorize("READS:", "green"), end="")
-            for var, spec in self.read_decls.items():
-                if var in self.inputs:
-                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
-            print()
-            print(colorize("WRITES:", "green"), end="")
-            for var, spec in self.write_decls.items():
-                if var in self.outputs:
-                    print(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
-            print()
+        vprint(colorize("READS:", "green"), end="")
+        for var, spec in self.read_decls.items():
+            if var in self.inputs:
+                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+        vprint()
+        vprint(colorize("WRITES:", "green"), end="")
+        for var, spec in self.write_decls.items():
+            if var in self.outputs:
+                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+        vprint()
 
         for k, v in self.eqns.items():
             assert k in complete, f"Eqn '{k} = {v}' does not contribute to the output."
@@ -915,7 +909,7 @@ class EqnList:
         for lhs in self.eqns:
             assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
             rhs = self.eqns[lhs]
-            print(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs, " ", colorize(f"[complexity = {self.complexity[lhs]}]", "magenta"))
+            vprint(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs, " ", colorize(f"[complexity = {self.complexity[lhs]}]", "magenta"))
 
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
@@ -924,7 +918,7 @@ class EqnList:
             if v.is_symbol:
                 # k is not not needed
                 subs[k] = cast(Symbol, v)
-                print(f"Warning: equation '{k} = {v}' can be trivially eliminated")
+                wprint(f"Equation '{k} = {v}' can be trivially eliminated")
 
         new_eqns: Dict[Symbol, Expr] = dict()
         for k in self.eqns:
@@ -948,40 +942,6 @@ class EqnList:
                 last_read[sym] = idx
 
         return {sym: last_read[sym] - first_read[sym] + 1 for sym in first_read}
-
-    def uncse(self) -> None:
-        print("Call UnCSE")
-
-        class UndoCSE:
-            def __init__(self, outer: EqnList) -> None:
-                self.outer = outer
-                self.value: Optional[Expr] = None
-
-            def m(self, expr: Expr) -> bool:
-                self.value = None
-                if expr.is_Function and self.outer.is_stencil.get(expr.func, False) and len(expr.args) > 0:
-                    arg = expr.args[0]
-                    assert arg is not None
-                    while arg in self.outer.temporaries:
-                        assert arg is not None
-                        assert isinstance(arg, Symbol)
-                        print("UNDO:", arg, '->', end=' ')
-                        arg = self.outer.eqns[arg]
-                        print(arg)
-                        args_list = list(expr.args)
-                        args_list[0] = arg
-                        args = tuple(args_list)
-                        self.value = expr.func(*args)
-                        print("UNDO:", expr, "->", self.value)
-                return self.value is not None
-
-            def r(self, expr: Expr) -> Expr:
-                assert self.value is not None
-                return self.value
-
-        undo = UndoCSE(self)
-        for eqn in self.eqns.items():
-            self.eqns[eqn[0]] = do_replace(eqn[1], undo.m, undo.r)
 
     def madd(self) -> None:
         """ Insert fused multiply add instructions """

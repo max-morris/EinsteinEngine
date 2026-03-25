@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import os
 from enum import Enum, auto
 from time import time
 from types import TracebackType
-from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set
+from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
+
+if TYPE_CHECKING:
+    from _typeshed import SupportsWrite
 
 
 def get_class_name(x: Any) -> str:
@@ -154,3 +159,32 @@ class ProgressBar:
     def __exit__(self, ty: Optional[type[BaseException]], val: Optional[BaseException],
                  tb: Optional[TracebackType]) -> None:
         print()
+
+
+def verbose() -> bool:
+    return (e := os.getenv("EMITCACTUS_VERBOSE")) is not None and e != "0"
+
+def vprint(*values: object,
+           sep: str | None = " ",
+           end: str | None = "\n",
+           file: SupportsWrite[str] | None = None,
+           flush: Literal[False] = False) -> None:
+    if verbose():
+        print(*values, sep=sep, end=end, file=file, flush=flush)
+
+def wprint(*values: object,
+           sep: str | None = " ",
+           end: str | None = "\n",
+           file: SupportsWrite[str] | None = None,
+           flush: Literal[False] = False) -> None:
+    print(colorize("Warning: " + " ".join(map(str, values)), "yellow"), sep=sep, end=end, file=file, flush=flush)
+
+def pprint(*values: object,
+           sep: str | None = " ",
+           end: str | None = "\n",
+           file: SupportsWrite[str] | None = None,
+           flush: Literal[False] = False) -> None:
+    if verbose():
+        print("***", *values, "***", sep=sep, end=end, file=file, flush=flush)
+    else:
+        print(*values, sep=sep, end=end, file=file, flush=flush)

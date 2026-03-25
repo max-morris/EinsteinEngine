@@ -12,6 +12,7 @@ from enum import auto, Enum
 from typing import *
 
 import sympy.logic.boolalg
+from EmitCactus import util
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
@@ -30,7 +31,7 @@ from EmitCactus.dsl.temporary_promotion_predicate import OnePassTemporaryPromoti
 from EmitCactus.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EmitCactus.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EmitCactus.emit.tree import Centering, Identifier
-from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency
+from EmitCactus.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency, pprint, vprint, verbose, wprint
 
 from EmitCactus.dsl.dimension import get_dimension, set_dimension
 from EmitCactus.dsl.functions import *
@@ -1308,14 +1309,14 @@ class ScheduleBin(ScheduleBinEnum):
             if bin.schedule_frequency == ScheduleFrequency.Inconsistent:
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
-                print(f'Warning: A global temp is accessed by a thorn function in schedule bin {bin}, which has an inconsistent schedule frequency. The temporary will be recomputed, perhaps redundantly.')
+                wprint(f'A global temp is accessed by a thorn function in schedule bin {bin}, which has an inconsistent schedule frequency. The temporary will be recomputed, perhaps redundantly.')
             elif bin in [ScheduleBin.PostInit, ScheduleBin.PostPostInit]:  # Never elide PostInit targets. Needed for the timestep 0 PostInit hack.
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
             elif len(freqs) > 0 and bin.schedule_frequency not in freqs:
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
-                print(f'Warning: A global temp is accessed by thorn functions in schedule bins {freqs} with disparate schedule frequencies. The temporary will be recomputed, perhaps redundantly.')
+                wprint(f'A global temp is accessed by thorn functions in schedule bins {freqs} with disparate schedule frequencies. The temporary will be recomputed, perhaps redundantly.')
             elif len(freqs) == 0:
                 freqs.add(bin.schedule_frequency)
                 ret.append(bin)
@@ -1427,7 +1428,7 @@ class ThornFunction:
             raise Exception(fb.msg)
         assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
         self._eqn_list.add_eqn(lhs2, rhs2)
-        print(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
+        vprint(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
         it = check_indices(expr, self.thorn_def.defn)
@@ -1457,9 +1458,11 @@ class ThornFunction:
             for lhs, rhs in new_eqns.items():
                 eqn_list.add_eqn(lhs, rhs)
 
-            print(f'*** Rebaking {self.name} loop {loop_idx} after do_splitmaxxing ***')
+            pprint(f'Rebaking {self.name} loop {loop_idx} after do_splitmaxxing...')
             eqn_list.bake(force_rebake=True)
-            eqn_list.dump()
+
+            if util.verbose():
+                eqn_list.dump()
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
@@ -1564,6 +1567,7 @@ class ThornFunction:
         self.eqn_complex.bake()
 
     def recycle_temporaries(self) -> None:
+        pprint(f"Recycling temporaries for {self.name}...")
         self.eqn_complex.recycle_temporaries()
 
     def split_output_eqns(self) -> None:
@@ -1581,7 +1585,7 @@ class ThornFunction:
     def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
         if self.been_baked:
             raise DslException("_early_bake should not be called more than once")
-        print(f"*** {self.name} ***")
+        pprint(f"Early Baking {self.name}...")
 
         options = self._mk_default_thorn_function_bake_options()
         options.update(kwargs)
@@ -1603,6 +1607,7 @@ class ThornFunction:
     def _late_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
         if self.been_late_baked:
             raise DslException("_late_bake should not be called more than once")
+        pprint(f"Late Baking {self.name}...")
 
         options = self._mk_default_thorn_function_bake_options()
         options.update(kwargs)
@@ -1790,6 +1795,7 @@ class ThornDef:
             tf._early_bake(**my_tf_opts[tf.name])
 
         if my_opts['do_cse']:
+            pprint("Performing CSE...")
             self._do_global_cse(my_opts['temporary_promotion_strategy'], my_opts['cse_optimization_level'])
 
         for tf in self.thorn_functions.values():
@@ -1891,8 +1897,6 @@ class ThornDef:
 
                 global_eqn_idx += el_shape
 
-                #eqn_list.uncse()  # todo: Kept this around from the previous implementation, but do we need it anymore?
-
         tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
 
         for new_temp, new_rhs in substitutions.items():
@@ -1908,7 +1912,7 @@ class ThornDef:
                 complexities.update(eqn_list.complexity)
 
         complexity_visitor = SympyComplexityVisitor(
-            lambda s: s in grid_vars #or temp_kinds.get(s, None) == TempKind.Global
+            lambda s: s in grid_vars
         )
         for new_temp, new_rhs in substitutions.items():
             complexities[new_temp] = complexity_visitor.complexity(new_rhs)
@@ -1964,7 +1968,7 @@ class ThornDef:
             if len(centerings) == 0:
                 #raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings")
                 #todo: Cases where a temp has no grid functions in its RHS might require us to check its dependents
-                print(f"Warning: Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings. Defaulting to VVV.")
+                wprint(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings. Defaulting to VVV.")
                 centerings = {Centering.VVV}
             elif len(centerings) > 1:
                 raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; its dependencies have conflicting centerings {centerings}")
@@ -1980,7 +1984,7 @@ class ThornDef:
         schedule_block_targets: dict[Symbol, dict[Identifier, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
 
         for new_temp in substitutions.keys():
-            print(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+            vprint(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
 
         inline_temps: list[tuple[Symbol, Expr]] = list()
         for new_temp, new_rhs in sorted(substitutions.items(),
@@ -2110,9 +2114,9 @@ class ThornDef:
                 mk_synthetic_fn(bin, sorted([f'{tf.name}_group' for tf in schedule_before_tfs]), schedule_after)
 
             if len(schedule_block_targets) > 0:
-                print(f'Warning: Global temporary {new_temp} is accessed in at least one custom schedule block,'
-                      f' on which EmitCactus cannot perform schedule analysis. The temporary will be recomputed for each'
-                      f' custom block, perhaps redundantly.')
+                wprint(f'Global temporary {new_temp} is accessed in at least one custom schedule block,'
+                       f' on which EmitCactus cannot perform schedule analysis. The temporary will be recomputed for each'
+                       f' custom block, perhaps redundantly.')
 
             for block, schedule_before_tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
                 schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}_group' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
@@ -2120,10 +2124,10 @@ class ThornDef:
 
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
-                print(f'*** Rebaking {tf.name} loop {idx} after do_global_cse ***')
+                pprint(f'Rebaking {tf.name} loop {idx} after CSE...')
                 eqn_list.bake(force_rebake=True)
-                eqn_list.dump()
-
+                if verbose():
+                    eqn_list.dump()
 
     class _ClassifyTempsResult(NamedTuple):
         temp_kinds: dict[Symbol, TempKind]
@@ -2632,14 +2636,14 @@ class ThornDef:
                     self.groups[out_str] = list()
                 members = self.groups[out_str]
                 members.append(sub_val)
-                print(colorize(indexed_sym, "red"), colorize("->", "magenta"), colorize(sub_val, "cyan"))
+                vprint(colorize(indexed_sym, "red"), colorize("->", "magenta"), colorize(sub_val, "cyan"))
                 self.subs[indexed_sym] = sub_val_
 
     @add_substitution_rule.register
     def _(self, indexedBase: IndexedBase, f: Expr) -> None:
         rhs = simplify(self.do_subs(f, idx_subs={}))
         self.subs[indexedBase] = rhs
-        print(colorize(indexedBase,"cyan"), colorize("->","green"), colorize(rhs,"yellow"))
+        vprint(colorize(indexedBase,"cyan"), colorize("->","green"), colorize(rhs,"yellow"))
 
     @add_substitution_rule.register
     def _(self, indexed: Indexed, f: Expr) -> None:
@@ -2655,7 +2659,7 @@ class ThornDef:
                 self.subs[indexed_sym] = simplify(self.do_subs(f, idx_subs=ind_rep))
             else:
                 self.subs[indexed_sym] = self.do_subs(f, idx_subs=ind_rep)
-            print(colorize(indexed_sym, "red"), colorize("->", "magenta"), colorize(self.subs[indexed_sym], "cyan"))
+            vprint(colorize(indexed_sym, "red"), colorize("->", "magenta"), colorize(self.subs[indexed_sym], "cyan"))
         return None
 
     @add_substitution_rule.register
@@ -2683,7 +2687,7 @@ class ThornDef:
                 self.subs[out] = res
             else:
                 self.subs[out] = set_matrix[arr_idxs]
-            print(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
+            vprint(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
         return None
 
     def expand_eqn(self, eqn: Eq) -> List[Eq]:
