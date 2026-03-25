@@ -30,7 +30,7 @@ from EmitCactus.generators.cactus_generator import CactusGenerator, CactusGenera
 from EmitCactus.generators.generator_exception import GeneratorException
 from EmitCactus.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EmitCactus.generators.util import VarCenteringFn
-from EmitCactus.util import OrderedSet
+from EmitCactus.util import OrderedSet, wprint
 
 
 @dataclass(frozen=True)
@@ -1097,11 +1097,11 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if len(input_regions) > 1:
                 if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
-                    print(f"Warning: In {thorn_fn.name}@{loop_idx}:"
-                          f" While trying to infer the loop region, we found that there were no output vars,"
-                          f" and we found the input vars to have a mix of Interior and Everywhere read regions."
-                          f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
-                          f" finite difference, so we will infer Interior as the loop region.")
+                    wprint(f"In {thorn_fn.name}@{loop_idx}:"
+                           f" While trying to infer the loop region, we found that there were no output vars,"
+                           f" and we found the input vars to have a mix of Interior and Everywhere read regions."
+                           f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
+                           f" finite difference, so we will infer Interior as the loop region.")
                     return IntentRegion.Interior
 
                 raise GeneratorException(

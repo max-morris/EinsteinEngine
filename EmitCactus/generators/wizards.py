@@ -41,7 +41,6 @@ class ThornWizard(ABC, Generic[G, CV]):
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)
-            # print(code)
             code_fname = os.path.join(self.base_dir, "src", self.generator.get_fn_src_file_name(fn_name))
             with ConditionalFileUpdater(code_fname) as fd:
                 fd.write(code)
@@ -58,7 +57,6 @@ class ThornWizard(ABC, Generic[G, CV]):
         print('== interface.ccl ==')
         interface_tree = self.generator.generate_interface_ccl()
         interface_ccl = InterfaceVisitor().visit(interface_tree)
-        # print(interface_ccl)
         interface_ccl_fname = os.path.join(self.base_dir, "interface.ccl")
         with ConditionalFileUpdater(interface_ccl_fname) as fd:
             fd.write(interface_ccl)
@@ -66,7 +64,6 @@ class ThornWizard(ABC, Generic[G, CV]):
         print('== schedule.ccl ==')
         schedule_tree = self.generator.generate_schedule_ccl()
         schedule_ccl = ScheduleVisitor().visit(schedule_tree)
-        # print(schedule_ccl)
         schedule_ccl_fname = os.path.join(self.base_dir, "schedule.ccl")
         with ConditionalFileUpdater(schedule_ccl_fname) as fd:
             fd.write(schedule_ccl)
@@ -81,14 +78,12 @@ PROVIDES {self.thorn_def.name}_gen
 #   LANG python3
 }}
 """.strip()
-        # print(configuration_ccl)
         configuration_ccl_fname = os.path.join(self.base_dir, "configuration.ccl")
         with ConditionalFileUpdater(configuration_ccl_fname) as fd:
             fd.write(configuration_ccl)
 
         print('== make.code.defn ==')
         makefile = self.generator.generate_makefile()
-        # print(makefile)
         makefile_fname = os.path.join(self.base_dir, "src/make.code.defn")
         with ConditionalFileUpdater(makefile_fname) as fd:
             fd.write(makefile)
