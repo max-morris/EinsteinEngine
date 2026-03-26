@@ -1,14 +1,14 @@
 if __name__ == '__main__':
-    from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, inv, sympify
-    from EmitCactus.emit.ccl.interface.interface_visitor import InterfaceVisitor
-    from EmitCactus.emit.ccl.param.param_visitor import ParamVisitor
-    from EmitCactus.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
-    from EmitCactus.emit.code.cpp.cpp_visitor import CppVisitor
+    from EinsteinEngine.dsl.use_indices import *
+    from EinsteinEngine.dsl.sympywrap import mkMatrix, inv, sympify
+    from EinsteinEngine.emit.ccl.interface.interface_visitor import InterfaceVisitor
+    from EinsteinEngine.emit.ccl.param.param_visitor import ParamVisitor
+    from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
+    from EinsteinEngine.emit.code.cpp.cpp_visitor import CppVisitor
     from typing import cast, Any
     from sympy import Expr, Idx, cos, sin
-    from EmitCactus.emit.tree import Centering
-    from EmitCactus.generators.wizards import CppCarpetXWizard
+    from EinsteinEngine.emit.tree import Centering
+    from EinsteinEngine.generators.wizards import CppCarpetXWizard
 
     # Create a set of grid functions
     gf = ThornDef("TestAffine", "Affine")

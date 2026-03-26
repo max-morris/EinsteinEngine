@@ -1,8 +1,8 @@
-# EmitCactus
-EmitCactus is a DSL and toolkit for creating Cactus thorns.
+# Einstein Engine
+The Einstein Engine is a DSL and toolkit for creating Cactus thorns.
 It can generate complete CarpetX thorns from simple recipes written in Python.
 
-## How to set up EmitCactus:
+## How to set up EinsteinEngine:
 
 1. Create a venv and activate it. 
    ```bash
@@ -13,7 +13,7 @@ It can generate complete CarpetX thorns from simple recipes written in Python.
    python -m pip install -r requirements.txt
    ```
 
-3. Install EmitCactus. 
+3. Install EinsteinEngine. 
    ```bash
    python -m pip install .
    ```

@@ -1,7 +1,7 @@
-from EmitCactus import *
+from EinsteinEngine import *
 
 # Create a set of grid functions
-gf = ThornDef("TestEmitCactus", "Ricci")
+gf = ThornDef("TestEinsteinEngine", "Ricci")
 gf.set_derivative_stencil(5)
 
 a = gf.add_param("a", default=10.0, desc="Just a constant")
