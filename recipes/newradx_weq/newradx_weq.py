@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-from EmitCactus import *
+from EinsteinEngine import *
 from sympy import Expr
 
-newradx_weq = ThornDef("TestEmitCactus", "NewRadXWeq")
+newradx_weq = ThornDef("TestEinsteinEngine", "NewRadXWeq")
 newradx_weq.set_derivative_stencil(5)
 
 ###

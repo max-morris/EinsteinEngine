@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from EmitCactus import *
+from EinsteinEngine import *
 import nrpy.helpers.conditional_file_updater as cfu
 
 # If we change our configuration, this will show us diffs of the
@@ -10,7 +10,7 @@ cfu.verbose = True
 # Thorn creation
 # We implement Eqs. (5)-(9) of https://arxiv.org/abs/gr-qc/0602104v2
 ###
-nfweq = ThornDef("TestEmitCactus", "NonFlatWaveEqn")
+nfweq = ThornDef("TestEinsteinEngine", "NonFlatWaveEqn")
 nfweq.set_derivative_stencil(5)
 
 ###

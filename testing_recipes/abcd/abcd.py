@@ -1,4 +1,4 @@
-from EmitCactus import *
+from EinsteinEngine import *
 
 thorn = ThornDef('Test', 'Abcd')
 
