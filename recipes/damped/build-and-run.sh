@@ -30,28 +30,28 @@ echo "python3 recipies/damped/damped.py"
 set -e
 python3 recipes/damped/damped.py
 set +e
-if [ ! -r "./TestEmitCactus/Damped/interface.ccl" ]
+if [ ! -r "./TestEinsteinEngine/Damped/interface.ccl" ]
 then
-    echo "Cannot find './TestEmitCactus/Damped/interface.ccl" >&2
+    echo "Cannot find './TestEinsteinEngine/Damped/interface.ccl" >&2
     exit 5
 fi
-ln -s "$PWD/TestEmitCactus" "$CACTUS_DIR/arrangements/TestEmitCactus" 2>/dev/null
-if [ ! -L "$CACTUS_DIR/arrangements/TestEmitCactus" ]
+ln -s "$PWD/TestEinsteinEngine" "$CACTUS_DIR/arrangements/TestEinsteinEngine" 2>/dev/null
+if [ ! -L "$CACTUS_DIR/arrangements/TestEinsteinEngine" ]
 then
-    echo "'$CACTUS_DIR/arrangements/TestEmitCactus' is not a symlink"
+    echo "'$CACTUS_DIR/arrangements/TestEinsteinEngine' is not a symlink"
     exit 6
 fi
-P1=$(realpath "$CACTUS_DIR/arrangements/TestEmitCactus")
-P2=$(realpath "TestEmitCactus")
+P1=$(realpath "$CACTUS_DIR/arrangements/TestEinsteinEngine")
+P2=$(realpath "TestEinsteinEngine")
 if [ "$P1" != "$P2" ]
 then
-    echo "Bad symlink: '$CACTUS_DIR/arrangements/TestEmitCactus'"
+    echo "Bad symlink: '$CACTUS_DIR/arrangements/TestEinsteinEngine'"
     exit 7
 fi
 cd "$CACTUS_DIR"
 cat "$THORNLIST" > .pre_damped.th
-echo TestEmitCactus/Damped >> .pre_damped.th
-echo TestEmitCactus/ZeroTest >> .pre_damped.th
+echo TestEinsteinEngine/Damped >> .pre_damped.th
+echo TestEinsteinEngine/ZeroTest >> .pre_damped.th
 
 set -e
 
