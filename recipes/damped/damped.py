@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from EmitCactus import *
+from EinsteinEngine import *
 
 """
 The damped wave equation! It can't be solved too many times.
@@ -21,7 +21,7 @@ flat_metric = mkMatrix([
 ])
 
 # Create a set of grid functions
-gf = ThornDef("TestEmitCactus", "Damped")
+gf = ThornDef("TestEinsteinEngine", "Damped")
 
 # Use a NRPy calculated stencil instead
 gf.set_derivative_stencil(5)

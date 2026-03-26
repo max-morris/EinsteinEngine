@@ -17,7 +17,7 @@ cd "$SCRIPT_DIR"
 
 . ./venv/bin/activate
 
-echo "Checking EmitCactus..."
+echo "Checking EinsteinEngine..."
 mypy 
 
 echo "Checking recipes..."
