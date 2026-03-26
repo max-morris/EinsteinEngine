@@ -25,7 +25,12 @@ It can generate complete CarpetX thorns from simple recipes written in Python.
    . ./venv/bin/activate
    ```
 
-2. Run the recipe.
+2. Typecheck the recipe with MyPy.
+   ```bash
+   mypy ./path/to/recipe.py
+   ```
+
+3. Run the recipe.
    ```bash
    python ./path/to/recipe.py
    ```
