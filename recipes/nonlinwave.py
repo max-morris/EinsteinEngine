@@ -3,7 +3,7 @@ if __name__ == "__main__":
     The waveequation! It can't be solved too many times.
     """
 
-    from EmitCactus import *
+    from EinsteinEngine import *
     from sympy import Expr, Idx, sin, Indexed
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi

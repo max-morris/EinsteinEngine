@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='EmitCactus',
+    name='EinsteinEngine',
     version='0.1.0',
     description='DSL and toolset for creating Cactus thorns',
-    url='https://github.com/mmor115/EmitCactus',
+    url='https://github.com/mmor115/EinsteinEngine',
     author='Max Morris',
     author_email='mmorris@cct.lsu.edu',
     license='MIT',
-    packages=find_packages(include='EmitCactus.*'),
+    packages=find_packages(include='EinsteinEngine.*'),
     install_requires=[
         'mypy==1.16.1',
         'nrpy==2.0.18',

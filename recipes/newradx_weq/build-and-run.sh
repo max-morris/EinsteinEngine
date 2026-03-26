@@ -30,27 +30,27 @@ echo "python3 recipies/newradx_weq/newradx_weq.py"
 set -e
 python3 recipes/newradx_weq/newradx_weq.py
 set +e
-if [ ! -r "./TestEmitCactus/NonFlatWaveEqn/interface.ccl" ]
+if [ ! -r "./TestEinsteinEngine/NonFlatWaveEqn/interface.ccl" ]
 then
-    echo "Cannot find './TestEmitCactus/NonFlatWaveEqn/interface.ccl" >&2
+    echo "Cannot find './TestEinsteinEngine/NonFlatWaveEqn/interface.ccl" >&2
     exit 5
 fi
-ln -s "$PWD/TestEmitCactus" "$CACTUS_DIR/arrangements/TestEmitCactus" 2>/dev/null
-if [ ! -L "$CACTUS_DIR/arrangements/TestEmitCactus" ]
+ln -s "$PWD/TestEinsteinEngine" "$CACTUS_DIR/arrangements/TestEinsteinEngine" 2>/dev/null
+if [ ! -L "$CACTUS_DIR/arrangements/TestEinsteinEngine" ]
 then
-    echo "'$CACTUS_DIR/arrangements/TestEmitCactus' is not a symlink"
+    echo "'$CACTUS_DIR/arrangements/TestEinsteinEngine' is not a symlink"
     exit 6
 fi
-P1=$(realpath "$CACTUS_DIR/arrangements/TestEmitCactus")
-P2=$(realpath "TestEmitCactus")
+P1=$(realpath "$CACTUS_DIR/arrangements/TestEinsteinEngine")
+P2=$(realpath "TestEinsteinEngine")
 if [ "$P1" != "$P2" ]
 then
-    echo "Bad symlink: '$CACTUS_DIR/arrangements/TestEmitCactus'"
+    echo "Bad symlink: '$CACTUS_DIR/arrangements/TestEinsteinEngine'"
     exit 7
 fi
 cd "$CACTUS_DIR"
 cat "$THORNLIST" > .pre_newradx_weq.th
-echo TestEmitCactus/NewRadXWeq >> .pre_newradx_weq.th
+echo TestEinsteinEngine/NewRadXWeq >> .pre_newradx_weq.th
 
 set -e
 
