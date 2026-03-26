@@ -2,11 +2,11 @@ from typing import Literal
 
 from sympy import Expr, IndexedBase, Symbol
 
-from EmitCactus import *
-from EmitCactus.dsl.eqnlist import DXI
-from EmitCactus.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
+from EinsteinEngine import *
+from EinsteinEngine.dsl.eqnlist import DXI
+from EinsteinEngine.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
     do_div, x, one, y
-from EmitCactus.dsl.dimension import get_dimension
+from EinsteinEngine.dsl.dimension import get_dimension
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 

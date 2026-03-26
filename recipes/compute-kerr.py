@@ -1,8 +1,8 @@
 if __name__ == "__main__":
-    from EmitCactus.dsl.use_indices import *
-    from EmitCactus.dsl.sympywrap import mkMatrix, inv, sympify
+    from EinsteinEngine.dsl.use_indices import *
+    from EinsteinEngine.dsl.sympywrap import mkMatrix, inv, sympify
     from sympy import Expr, cos, sin
-    from EmitCactus.emit.tree import Centering
+    from EinsteinEngine.emit.tree import Centering
 
     set_dimension(4)
 
