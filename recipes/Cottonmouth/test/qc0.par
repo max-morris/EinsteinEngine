@@ -2,10 +2,8 @@ ActiveThorns = "
   ADMBaseX
   CarpetX
   CottonmouthBSSNOK
-  CanudaX_NPScalars
   CoordinatesX
   IOUtil
-  Multipole
   NewRadX
   ODESolvers
   TmunuBaseX
@@ -78,26 +76,6 @@ CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
 CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
 CottonmouthBSSNOK::dissipation_epsilon    = 0.3
 
-# Wave extraction
-CanudaX_NPScalars::NP_order           = 4
-CanudaX_NPScalars::calculate_NP_every = $out_every
-
-Multipole::verbose   = yes
-Multipole::nradii    = 2
-Multipole::radius[0] = 1.0
-Multipole::radius[1] = 3.0
-Multipole::radius[2] = 5.0
-Multipole::ntheta    = 120
-Multipole::nphi      = 240
-
-Multipole::variables         = "
-  CanudaX_NPScalars::psi4re{sw=-2 cmplx='CanudaX_NPScalars::psi4im' name='NP_Psi4'}
-"
-
-Multipole::out_every         = $out_every
-Multipole::l_max             = 4
-Multipole::interpolator_pars = "order=1"
-
 # Output
 IO::out_dir   = $parfile
 IO::out_every = $out_every
@@ -119,6 +97,4 @@ CarpetX::out_tsv_vars = "
   CottonmouthBSSNOK::shift_B
   CottonmouthBSSNOK::HamCons
   CottonmouthBSSNOK::MomCons
-  CanudaX_NPScalars::NPPsi4R_group
-  CanudaX_NPScalars::NPPsi4I_group
 "
