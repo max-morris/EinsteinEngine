@@ -31,6 +31,7 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 import sympy as sy
 
 from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
 from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.functions import *
@@ -397,6 +398,7 @@ class EqnList:
         self.been_baked: bool = False
         self.parent = parent
         self.complexity: dict[Symbol, int] = dict()
+        self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -662,25 +664,8 @@ class EqnList:
         for k in self.params:
             complete[k] = 0
 
-        def minimize_memory_pressure(eqns: dict[Symbol, Expr]) -> Iterator[Symbol]:
-            if len(eqns) == 0:
-                return
-
-            eqns_remaining = eqns.copy()
-            in_memory: set[Symbol] = set()
-
-            disambiguation = sorted(eqns_remaining.keys(), key=str, reverse=True)
-
-            lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (self.complexity[kv[0]], disambiguation.index(kv[0])))
-            del eqns_remaining[lhs]
-            in_memory.update(free_symbols(rhs))
-            yield lhs
-
-            while len(eqns_remaining) > 0:
-                lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (len(free_symbols(kv[1]).intersection(in_memory)), self.complexity[kv[0]], disambiguation.index(kv[0])))
-                del eqns_remaining[lhs]
-                in_memory.update(free_symbols(rhs))
-                yield lhs
+        ordering_fn = self.ordering_fn
+        myself = self
 
         class Ord:
             def __init__(self, eqns: dict[Symbol, Expr]) -> None:
@@ -689,14 +674,14 @@ class EqnList:
             def add(self, sym: Symbol) -> None:
                 if sym in complete:
                     return
-                for dep in minimize_memory_pressure({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}):
+                for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
                     self.add(dep)
                 self.ord.append(sym)
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
 
-        for sym in minimize_memory_pressure(self.eqns):
+        for sym in ordering_fn(self.eqns, self):
             ord.add(sym)
         self.order = ord.ord
 
@@ -887,12 +872,12 @@ class EqnList:
         self.order_builder(complete)
         vprint(colorize("Order:", "green"), self.order)
 
-        memory_footprint = self._score_memory_footprint()
-        vprint(colorize("Memory Footprint:", "magenta"))
-        vprint(f"  Total: {sorted(memory_footprint.items(), key=lambda kv: kv[1], reverse=True)}")
-        vprint(f"  Mean: {mean(memory_footprint.values())}")
-        vprint(f"  Median: {median(memory_footprint.values())}")
-        vprint(f"  Max: {max(memory_footprint.items(), key=lambda kv: kv[1])}")
+        memory_pressure = self._score_memory_pressure()
+        vprint(colorize("Memory Pressure:", "magenta"))
+        vprint(f"  Total: {sorted(memory_pressure.items(), key=lambda kv: kv[1], reverse=True)}")
+        vprint(f"  Mean: {mean(memory_pressure.values())}")
+        vprint(f"  Median: {median(memory_pressure.values())}")
+        vprint(f"  Max: {max(memory_pressure.items(), key=lambda kv: kv[1])}")
 
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"
@@ -952,7 +937,7 @@ class EqnList:
 
         self.eqns = new_eqns
 
-    def _score_memory_footprint(self) -> Dict[Symbol, int]:
+    def _score_memory_pressure(self) -> Dict[Symbol, int]:
         assert len(self.order) > 0
 
         first_read: Dict[Symbol, int] = dict()

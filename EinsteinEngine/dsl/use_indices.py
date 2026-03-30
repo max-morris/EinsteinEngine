@@ -44,6 +44,7 @@ from EinsteinEngine.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnCo
 from EinsteinEngine.dsl.intent_override import IntentOverride
 from EinsteinEngine.dsl.symm import Sym
 from EinsteinEngine.dsl.sympywrap import *
+from EinsteinEngine.dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
     TwoPassTemporaryPromotionStrategy, TemporaryPromotionStrategy, TemporaryPromotionPredicate, promote_none
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
@@ -1357,6 +1358,7 @@ class ThornFunctionBakeOptions(TypedDict, total=False):
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
     splitmaxxing: bool
+    ordering_fn: EqnOrderingFn
 
 
 class CseOptimizationLevel(Enum):
@@ -1374,6 +1376,7 @@ class ThornDefBakeOptions(TypedDict, total=False):
     do_recycle_temporaries: bool
     do_split_output_eqns: bool
     splitmaxxing: bool
+    ordering_fn: EqnOrderingFn
 
     # Overrides for ThornFunction default opts
     functions: dict[str, ThornFunctionBakeOptions]
@@ -1580,7 +1583,10 @@ class ThornFunction:
     def dump(self) -> None:
         self.eqn_complex.dump()
 
-    def eqn_bake(self) -> None:
+    def eqn_bake(self, ordering_fn: EqnOrderingFn) -> None:
+        for eqn_list in self.eqn_complex.eqn_lists:
+            eqn_list.ordering_fn = ordering_fn
+
         self.eqn_complex.bake()
 
     def recycle_temporaries(self) -> None:
@@ -1596,7 +1602,8 @@ class ThornFunction:
             'do_madd': False,
             'do_recycle_temporaries': True,
             'do_split_output_eqns': False,
-            'splitmaxxing': False
+            'splitmaxxing': False,
+            'ordering_fn': maximize_symbol_reuse
         }
 
     def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
@@ -1614,7 +1621,7 @@ class ThornFunction:
         if options['do_madd']:
             self.madd()
 
-        self.eqn_bake()
+        self.eqn_bake(options['ordering_fn'])
 
         if options['do_split_output_eqns']:
             self.split_output_eqns()
@@ -1788,6 +1795,7 @@ class ThornDef:
             'do_cse': True,
             'cse_optimization_level': CseOptimizationLevel.Optimal,
             'temporary_promotion_strategy': promote_none(),
+            'ordering_fn': maximize_symbol_reuse,
             'functions': dict()
         }
 
@@ -1802,7 +1810,7 @@ class ThornDef:
         my_tf_opts: dict[str, ThornFunctionBakeOptions] = dict()
 
         for tf in self.thorn_functions.values():
-            tf_opts = typing.cast(ThornFunctionBakeOptions, my_opts.copy())  # Strict subset of ThornDefBakeOptions
+            tf_opts = typing.cast(ThornFunctionBakeOptions, my_opts.copy())  # ThornFunctionBakeOptions is a strict subset of ThornDefBakeOptions
             if 'functions' in my_opts and tf.name in my_opts['functions']:
                 tf_opts.update(my_opts['functions'][tf.name])
             my_tf_opts[tf.name] = tf_opts
