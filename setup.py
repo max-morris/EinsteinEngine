@@ -8,7 +8,8 @@ setup(
     author='Max Morris',
     author_email='mmorris@cct.lsu.edu',
     license='MIT',
-    packages=find_packages(include='EinsteinEngine.*'),
+    packages=find_packages(include=['EinsteinEngine', 'EinsteinEngine.*']),
+    package_data={'EinsteinEngine': ['py.typed']},
     install_requires=[
         'mypy==1.16.1',
         'nrpy==2.0.18',
