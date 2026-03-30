@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from .dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols
 from .emit.tree import Identifier, String, Centering
 from .generators.cpp_carpetx_generator import CppCarpetXGenerator
 from .dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
@@ -52,4 +53,5 @@ __all__ = [
     "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
-    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind"]
+    "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols"]

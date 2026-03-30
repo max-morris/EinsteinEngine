@@ -1,3 +1,5 @@
+import functools
+
 from EinsteinEngine import *
 from sympy import Rational
 
@@ -890,7 +892,8 @@ cottonmouth_bssnok.bake(
     do_madd=False,
     do_recycle_temporaries=True,
     do_split_output_eqns=False,
-    cse_optimization_level=CseOptimizationLevel.Fast
+    cse_optimization_level=CseOptimizationLevel.Fast,
+    ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###
