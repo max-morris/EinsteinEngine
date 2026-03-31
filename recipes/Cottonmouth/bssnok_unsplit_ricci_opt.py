@@ -2,6 +2,7 @@ import functools
 
 from EinsteinEngine import *
 from sympy import Rational
+import functools
 
 ###
 # Thorn definitions
@@ -640,9 +641,6 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
-fun_bssn_rhs.split_loop()
-# loop 1
-
 # Aux. equations
 fun_bssn_rhs.add_eqn(
     cdphi2[la, lb],
@@ -720,6 +718,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(trK, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
     ConfConnect_rhs_tmp[ua],
     - 2 * At[ua, ub] * D(evo_lapse, lb)
@@ -738,9 +738,6 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ub] * D(ConfConnect[ua], lb)
 )
 fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
-
-fun_bssn_rhs.split_loop()
-# loop 2
 
 fun_bssn_rhs.add_eqn(
     gt_rhs[la, lb],
@@ -762,6 +759,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(w, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 # Everyone likes to do gauge conditions their own way.
 # We will settle on Eqs. (25a) and (25b) of Ref. [4]
 
@@ -773,6 +772,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(evo_lapse, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 # Hyperbolic Gamma Driver shift
 fun_bssn_rhs.add_eqn(
     evo_shift_rhs[ua],
@@ -780,6 +781,8 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection
     + evo_shift[ub] * D(evo_shift[ua], lb)
 )
+
+fun_bssn_rhs.split_loop()
 
 # Gamma driver B vector evolution
 fun_bssn_rhs.add_eqn(
