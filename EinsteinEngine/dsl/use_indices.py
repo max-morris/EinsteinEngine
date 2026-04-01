@@ -6,7 +6,6 @@ import sys
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import auto
 from itertools import chain
 from enum import auto, Enum
 from typing import *
@@ -24,6 +23,7 @@ from sympy.core.relational import Relational
 from EinsteinEngine.dsl.coef import coef
 from EinsteinEngine.dsl.dsl_exception import DslException
 from EinsteinEngine.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
+from EinsteinEngine.dsl.intent_override import IntentOverride
 from EinsteinEngine.dsl.symm import Sym
 from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
@@ -1360,7 +1360,6 @@ class ThornDefBakeOptions(TypedDict, total=False):
     # Overrides for ThornFunction default opts
     functions: dict[str, ThornFunctionBakeOptions]
 
-
 class ThornFunction:
     """
     Represents a function within a Cactus thorn. Important member functions include `add_eqn` for specifying
@@ -1373,16 +1372,16 @@ class ThornFunction:
                  thorn_def: "ThornDef",
                  schedule_before: Optional[Collection[str]],
                  schedule_after: Optional[Collection[str]],
-                 e2e: bool = False) -> None:
+                 intent_override: Optional[IntentOverride] = None) -> None:
         self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
-        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, e2e)
+        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, intent_override)
         self.been_baked: bool = False
         self.been_late_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
-        self.e2e: bool = e2e
+        self.intent_override = intent_override
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -2202,8 +2201,8 @@ class ThornDef:
                         *,
                         schedule_before: Optional[Collection[str]] = None,
                         schedule_after: Optional[Collection[str]] = None,
-                        e2e: bool = False) -> ThornFunction:
-        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, e2e)
+                        intent_override: Optional[IntentOverride] = None) -> ThornFunction:
+        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override)
         self.thorn_functions[name] = tf
         return tf
 
