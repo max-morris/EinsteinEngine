@@ -88,18 +88,6 @@ PROVIDES {self.thorn_def.name}_gen
         with ConditionalFileUpdater(makefile_fname) as fd:
             fd.write(makefile)
 
-        PYTHON = os.path.abspath(sys.executable)
-
-        # We want the currently executing script
-        with open(sys.argv[0], "r") as fd:
-            generate_py = fd.read()
-
-        generate_py_fname = os.path.join(self.base_dir, "bin/generate.py")
-        os.makedirs(os.path.dirname(generate_py_fname), exist_ok=True)
-        if not os.path.exists(generate_py_fname):
-            with open(generate_py_fname, "w") as fd:
-                fd.write(generate_py)
-
         gitignore_filename = os.path.join(self.base_dir, ".gitignore")
         if not os.path.exists(gitignore_filename):
             with open(gitignore_filename, "w") as fd:
