@@ -235,6 +235,7 @@ DeltaCons = cottonmouth_bssnok.decl("DeltaCons", [ua], parity=parity_vector)
 
 # \tilde{R}_{a b}
 Rt = cottonmouth_bssnok.decl("Rt", [la, lb], symmetries=[(la, lb)])
+Rt_tmp = cottonmouth_bssnok.decl("Rt_tmp", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{R}^{\phi}_{a b}
 RPhi = cottonmouth_bssnok.decl("RPhi", [la, lb], symmetries=[(la, lb)])
@@ -645,18 +646,25 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 # loop 0
 
 fun_bssn_rhs.add_eqn(
-    Rt[la, lb],
+    Rt_tmp[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
     + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
     + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
+    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
 )
+
+fun_bssn_rhs.split_loop()
+
+fun_bssn_rhs.add_eqn(
+    Rt[la, lb],
+    Rt_tmp[la,lb]
+    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+)
+
+fun_bssn_rhs.split_loop()
 
 # Aux. equations
 fun_bssn_rhs.add_eqn(
@@ -766,6 +774,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[uc] * D(gt[la, lb], lc)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
     w_rhs,
     Rational(1, 3) * w * (
@@ -775,8 +785,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection: + Upwind[beta[ua], phi, la]
     + evo_shift[ua] * D(w, la)
 )
-
-fun_bssn_rhs.split_loop()
 
 # Everyone likes to do gauge conditions their own way.
 # We will settle on Eqs. (25a) and (25b) of Ref. [4]
@@ -789,8 +797,6 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(evo_lapse, la)
 )
 
-fun_bssn_rhs.split_loop()
-
 # Hyperbolic Gamma Driver shift
 fun_bssn_rhs.add_eqn(
     evo_shift_rhs[ua],
@@ -798,8 +804,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection
     + evo_shift[ub] * D(evo_shift[ua], lb)
 )
-
-fun_bssn_rhs.split_loop()
 
 # Gamma driver B vector evolution
 fun_bssn_rhs.add_eqn(
