@@ -501,7 +501,7 @@ fun_bssn2adm = cottonmouth_bssnok.create_function(
     "bssn2adm",
     post_step_group,
     schedule_after=["enforce_pt2"],
-    e2e=True
+    intent_override=IntentOverride.E2E
 )
 
 fun_bssn2adm.add_eqn(
