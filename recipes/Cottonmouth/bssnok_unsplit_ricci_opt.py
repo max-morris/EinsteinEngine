@@ -654,7 +654,8 @@ fun_bssn_rhs.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
 )
 
 fun_bssn_rhs.split_loop()
@@ -662,9 +663,9 @@ fun_bssn_rhs.split_loop()
 fun_bssn_rhs.add_eqn(
     Rt[la, lb],
     Rt_tmp[la,lb]
-    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
 )
 
 fun_bssn_rhs.split_loop()
