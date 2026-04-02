@@ -557,19 +557,23 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
 )
 
 fun_bssn_cons.add_eqn(
-    Rt[la, lb],
+    Rt_tmp[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Delta[uc] * Gammat[la, lb, lc]
+    + Delta[uc] * Gammat[la, lb, lc])
+
+fun_bssn_cons.split_loop()
+
+fun_bssn_cons.add_eqn(
+    Rt[la,lb],
+    Rt_tmp[la,lb]
     + (
         + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
         + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
         + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
     )
 )
-
-fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     cdphi2[la, lb],
@@ -648,10 +652,9 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 fun_bssn_rhs.add_eqn(
     Rt_tmp[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+    + Delta[uc] * Gammat[la, lb, lc]
 )
 
 fun_bssn_rhs.split_loop()
