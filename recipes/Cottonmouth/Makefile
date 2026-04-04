@@ -1,7 +1,5 @@
 # This Makefile generates Cottonmouth's thorns
 
-export EINSTEINENGINE_VERBOSE=1
-
 source_folder = recipes/Cottonmouth
 target_folder = Cottonmouth
 
