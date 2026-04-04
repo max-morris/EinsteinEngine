@@ -61,8 +61,28 @@ evolved_lapse_floor = cottonmouth_z4.add_param(
 
 dissipation_epsilon = cottonmouth_z4.add_param(
     "dissipation_epsilon",
-    default=0.2,
+    default=0.32,
     desc="The ammount of dissipation to add."
+)
+
+# Following Ref. [4], we introduce a gauge parameter on B^i
+shift_B_f = cottonmouth_z4.add_param(
+    "shift_B_f",
+    default=0.75,
+    desc="B^i gauge parameter. 3/4 = 0.75 is the standard for BSSN."
+)
+
+eta_B = cottonmouth_z4.add_param(
+    "eta_B",
+    default=2,
+    desc="Standard Gamma driver \eta gauge parameter. Must be of order 2 / M_ADM"
+)
+
+# The default is set according to Ref. [3]
+kappa = cottonmouth_z4.add_param(
+    "kappa",
+    default=0.02,
+    desc="Constraint damping parameter. Must be of order 1 / L wehre L is the typical simulation scale."
 )
 
 # TODO: Set range in [0,1]
@@ -77,12 +97,6 @@ par_c = cottonmouth_z4.add_param(
     "c",
     default=0,
     desc="TODO: Give this a better desc"
-)
-
-kappa = cottonmouth_z4.add_param(
-    "kappa",
-    default=1,
-    desc="Constraint damping parameter. Must be of order 1 / L wehre L is the typical simulation scale."
 )
 
 ###
@@ -943,20 +957,21 @@ fun_z4_rhs.add_eqn(
     + evo_shift[ui] * D(evo_lapse, li)
 )
 
-# Hyperbolic Gamma Driver shift, Eq. (2.27) of [1]
+# Hyperbolic Gamma Driver shift, Eq. (2.27) of [1], Eq. (21) of [4]
 fun_z4_rhs.add_eqn(
     evo_shift_rhs[ui],
-    Rational(3, 4) * shift_B[ui]
+    shift_B_f * shift_B[ui]
     # TODO: Advection
     + evo_shift[uj] * D(evo_shift[ui], lj)
 )
 
+# Eq. (2.27) of [1], Eq. (22) of [4]
 fun_z4_rhs.add_eqn(
     shift_B_rhs[ui],
     GammaHat_rhs_tmp[ui]
     # TODO: Advection
     - evo_shift[uj] * D(GammaHat[ui], lj)
-    - shift_B[ui]
+    - eta_B * shift_B[ui]
     # TODO: Advection
     + evo_shift[uj] * D(shift_B[ui], lj)
 )
@@ -1095,3 +1110,4 @@ CppCarpetXWizard(
 # [1] https://arxiv.org/pdf/1810.12346
 # [2] https://arxiv.org/pdf/0912.2920
 # [3] https://arxiv.org/pdf/1212.2901 (typo in constraints)
+# [4] https://arxiv.org/abs/1106.2254
