@@ -75,7 +75,7 @@ shift_B_f = cottonmouth_z4.add_param(
 eta_B = cottonmouth_z4.add_param(
     "eta_B",
     default=2,
-    desc="Standard Gamma driver \eta gauge parameter. Must be of order 2 / M_ADM"
+    desc="Standard Gamma driver eta gauge parameter. Must be of order 2 / M_ADM"
 )
 
 # The default is set according to Ref. [3]
