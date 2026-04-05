@@ -49,13 +49,13 @@ def_max = cottonmouth_z4.decl_fun("max", args=2, is_stencil=False)
 ###
 chi_floor = cottonmouth_z4.add_param(
     "chi_floor",
-    default=1.0e-4,
+    default=1.0e-6,
     desc="Chi will never be smaller than this value"
 )
 
 evolved_lapse_floor = cottonmouth_z4.add_param(
     "evolved_lapse_floor",
-    default=1.0e-4,
+    default=1.0e-8,
     desc="The evolved lapse will never be smaller than this value"
 )
 
