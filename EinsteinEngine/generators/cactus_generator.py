@@ -36,6 +36,7 @@ class SyncMode(Enum):
     """
 
     EmulatePresync = auto()
+    HandsOff = auto()
 
 
 class CactusGeneratorOptions(TypedDict, total=False):
