@@ -88,14 +88,14 @@ kappa = cottonmouth_z4.add_param(
 # TODO: Set range in [0,1]
 par_s = cottonmouth_z4.add_param(
     "s",
-    default=1,
+    default=1.0,
     desc="TODO: Give this a better desc"
 )
 
 # TODO: Set range in [0,1]
 par_c = cottonmouth_z4.add_param(
     "c",
-    default=0,
+    default=0.0,
     desc="TODO: Give this a better desc"
 )
 
@@ -610,7 +610,7 @@ fun_z4_enforce_pt1.add_eqn(
 fun_z4_enforce_pt2 = cottonmouth_z4.create_function(
     "z4_enforce_pt2",
     post_step_group,
-    schedule_after=["enforce_pt1"]
+    schedule_after=["z4_enforce_pt1"]
 )
 
 # Enforce \tilde{\gamma}^{i j} \tilde{A}_{ij} = 0 (A)
@@ -627,7 +627,7 @@ fun_z4_enforce_pt2.add_eqn(
 fun_z4_to_adm = cottonmouth_z4.create_function(
     "z4_to_adm",
     post_step_group,
-    schedule_after=["enforce_pt2"],
+    schedule_after=["z4_enforce_pt2"],
     intent_override=IntentOverride.E2E
 )
 
@@ -750,7 +750,7 @@ fun_z4_constraints.add_eqn(
 sync_monitored_constraints = ExplicitSyncBatch(
     [HamCons, MomCons, ZtCons],
     analysis_group,
-    schedule_after=["constraints"],
+    schedule_after=["z4_constraints"],
     name="sync_z4_monitored_constraints"
 )
 
@@ -1110,4 +1110,4 @@ CppCarpetXWizard(
 # [1] https://arxiv.org/pdf/1810.12346
 # [2] https://arxiv.org/pdf/0912.2920
 # [3] https://arxiv.org/pdf/1212.2901 (typo in constraints)
-# [4] https://arxiv.org/abs/1106.2254
+# [4] https://arxiv.org/pdf/1106.2254
