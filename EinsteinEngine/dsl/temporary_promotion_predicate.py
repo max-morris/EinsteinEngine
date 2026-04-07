@@ -14,6 +14,21 @@
 #
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+#  This file is part of the Einstein Engine (EinsteinEngine).
+#
+#  EinsteinEngine is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  EinsteinEngine is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from abc import ABC, abstractmethod
 from bisect import bisect_left
@@ -214,12 +229,12 @@ class RankPromotionPredicate:
         self.max_promotions = max_promotions
         self.tile_max_promotions = tile_max_promotions
         self.local_max_promotions = local_max_promotions
-        if self.max_promotions is not None and self.max_promotions < 1:
-            raise DslException(f"max_promotions must be at least 1, got {max_promotions}")
-        if self.tile_max_promotions is not None and self.tile_max_promotions < 1:
-            raise DslException(f"tile_max_promotions must be at least 1, got {self.tile_max_promotions}")
-        if self.local_max_promotions is not None and self.local_max_promotions < 1:
-            raise DslException(f"local_max_promotions must be at least 1, got {self.local_max_promotions}")
+        if self.max_promotions is not None and self.max_promotions < 0:
+            raise DslException(f"max_promotions must be at least 0, got {max_promotions}")
+        if self.tile_max_promotions is not None and self.tile_max_promotions < 0:
+            raise DslException(f"tile_max_promotions must be at least 0, got {self.tile_max_promotions}")
+        if self.local_max_promotions is not None and self.local_max_promotions < 0:
+            raise DslException(f"local_max_promotions must be at least 0, got {self.local_max_promotions}")
         ordered_symbols = _get_complexity_ordered_symbols(complexities)
         self.complexity_ordered_global_symbols = list(filter(lambda kv: self.temp_kinds.get(kv[0]) is TempKind.Global, ordered_symbols))
         self.complexity_ordered_tile_symbols = list(filter(lambda kv: self.temp_kinds.get(kv[0]) is TempKind.Tile, ordered_symbols))
