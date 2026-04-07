@@ -29,6 +29,21 @@
 #
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#
+#  This file is part of the Einstein Engine (EinsteinEngine).
+#
+#  EinsteinEngine is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  EinsteinEngine is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
@@ -104,10 +119,7 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     def eqn_score(lhs: Symbol) -> float:
         return (complexity_factor * eqn_list.complexity[lhs]) + sum(symbol_score(sym, lhs) for sym in free_symbols(eqns[lhs]))
 
-    eqns_remaining = eqns.copy()
-    disambiguation = sorted(eqns_remaining.keys(), key=str, reverse=True)
+    disambiguation = sorted(eqns.keys(), key=str, reverse=True)
+    ordered = sorted(eqns.keys(), key=lambda lhs: (eqn_score(lhs), eqn_list.complexity[lhs], disambiguation.index(lhs)), reverse=True)
 
-    while len(eqns_remaining) > 0:
-        lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (eqn_score(kv[0]), eqn_list.complexity[kv[0]], disambiguation.index(kv[0])))
-        del eqns_remaining[lhs]
-        yield lhs
+    yield from ordered.__iter__()
