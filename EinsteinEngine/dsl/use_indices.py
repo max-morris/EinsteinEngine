@@ -15,7 +15,6 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
 """
 Use the Sympy Indexed type for relativity expressions.
 """
@@ -24,12 +23,11 @@ import sys
 import typing
 from collections import defaultdict
 from dataclasses import dataclass
-from itertools import chain
 from enum import auto, Enum
+from itertools import chain
 from typing import *
 
 import sympy.logic.boolalg
-from EinsteinEngine import util
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
@@ -38,22 +36,23 @@ from sympy import Integer, Eq, Symbol, Indexed, IndexedBase, Matrix, Idx, Basic,
     ImmutableDenseMatrix, Expr
 from sympy.core.relational import Relational
 
+from EinsteinEngine import util
 from EinsteinEngine.dsl.coef import coef
+from EinsteinEngine.dsl.dimension import get_dimension, set_dimension
 from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
+from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
 from EinsteinEngine.dsl.symm import Sym
 from EinsteinEngine.dsl.sympywrap import *
-from EinsteinEngine.dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
     TwoPassTemporaryPromotionStrategy, TemporaryPromotionStrategy, TemporaryPromotionPredicate, promote_none
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleBlock, GroupOrFunction
 from EinsteinEngine.emit.tree import Centering, Identifier
-from EinsteinEngine.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency, pprint, vprint, verbose, wprint
-
-from EinsteinEngine.dsl.dimension import get_dimension, set_dimension
-from EinsteinEngine.dsl.functions import *
+from EinsteinEngine.util import OrderedSet, ScheduleBinEnum, get_or_compute, ScheduleFrequency, pprint, vprint, verbose, \
+    wprint
 
 __all__ = ["D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin",
            "ThornDef",
