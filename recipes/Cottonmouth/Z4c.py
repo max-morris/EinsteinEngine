@@ -1,5 +1,25 @@
-from EinsteinEngine import *
+#  Copyright (C) 2024-2026 Lucas T. Sanches, Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#
+#  This file is part of the Einstein Engine (EinsteinEngine).
+#
+#  EinsteinEngine is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU Affero General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  EinsteinEngine is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+import functools
+
 from sympy import Rational
+
+from EinsteinEngine import *
 
 ###
 # Thorn definitions
@@ -980,7 +1000,8 @@ cottonmouth_Z4c.bake(
     do_madd=False,
     do_recycle_temporaries=True,
     do_split_output_eqns=False,  # NOTE: This is broken, never turn on
-    cse_optimization_level=CseOptimizationLevel.Fast
+    cse_optimization_level=CseOptimizationLevel.Fast,
+    ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###
