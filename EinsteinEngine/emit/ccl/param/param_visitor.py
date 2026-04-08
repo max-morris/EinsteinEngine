@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Max Morris and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -15,9 +15,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from multimethod import multimethod
-
 from typing import Any, cast
+
+from multimethod import multimethod
 
 from EinsteinEngine.emit.ccl.param.param_tree import ParamNode, ParamRoot, Param, ParamAccess, IntParamDescWildcard, \
     IntParamDescSingle, IntParamClosedLowerBound, IntParamOpenLowerBound, IntParamClosedUpperBound, \

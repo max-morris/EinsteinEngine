@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -16,10 +16,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from typing import Union
-from sympy import Expr, Add, Mul, Symbol, Idx, Rational, Integer
-from EinsteinEngine.dsl.sympywrap import sympify, simplify, mkSymbol, mkIdx
 
 from multimethod import multimethod
+from sympy import Expr, Add, Mul, Symbol, Idx, Rational, Integer
+
+from EinsteinEngine.dsl.sympywrap import sympify, simplify, mkSymbol, mkIdx
+
 zero = sympify(0)
 one  = sympify(1)
 

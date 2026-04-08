@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Lucas T. Sanches, Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #

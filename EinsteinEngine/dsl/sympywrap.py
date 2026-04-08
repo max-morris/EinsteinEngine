@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Iterable, Collection
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
 
 import sympy.core.numbers
 from sympy import Expr, Matrix, Piecewise
@@ -77,8 +77,6 @@ import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
 from EinsteinEngine.dsl.dsl_exception import DslException
-
-from EinsteinEngine.util import OrderedSet
 
 from multimethod import multimethod
 

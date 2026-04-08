@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -15,11 +15,13 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Set, Tuple, List, Dict, Optional
-from EinsteinEngine.dsl.sympywrap import *
+from typing import Set, Dict, Optional
+
 import sympy as sy
-from sympy import Symbol
 from multimethod import multimethod
+from sympy import Symbol
+
+from EinsteinEngine.dsl.sympywrap import *
 
 x = mkSymbol("x")
 y = mkSymbol("y")

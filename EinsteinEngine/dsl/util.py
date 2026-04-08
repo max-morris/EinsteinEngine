@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Max Morris and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -16,12 +16,12 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from functools import wraps, partial
-from typing import overload, Optional, Callable, cast, Collection, List, Any
+from typing import overload, Optional, Callable, cast, Collection, List
 
 from sympy import Function, Symbol, Expr
 
-from EinsteinEngine.dsl.functions import stencil
 from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.dsl.functions import stencil
 from EinsteinEngine.dsl.sympywrap import cse_return, cse
 
 

@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -15,10 +15,11 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Set, Any
-from sympy import NumberSymbol, Number, Symbol, Function, Indexed, IndexedBase, Idx, Basic, Expr, Mul, Add, Pow
-from EinsteinEngine.dsl.sympywrap import *
 from multimethod import multimethod
+from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow
+
+from EinsteinEngine.dsl.sympywrap import *
+
 
 @multimethod
 def symbify(a:Number)->Expr:

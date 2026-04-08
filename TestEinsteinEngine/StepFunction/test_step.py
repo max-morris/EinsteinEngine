@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -22,7 +22,6 @@ if __name__ == "__main__":
     """
 
     from EinsteinEngine import *
-    import nrpy.helpers.conditional_file_updater as cfu
 
     # Create a set of grid functions
     gf = ThornDef("TestEinsteinEngine", "TestStep")

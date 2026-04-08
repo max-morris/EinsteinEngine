@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Lucas T. Sanches, Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Lucas Timotheo Sanches, Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -17,9 +17,9 @@
 
 import functools
 
-from EinsteinEngine import *
 from sympy import Rational
-import functools
+
+from EinsteinEngine import *
 
 ###
 # Thorn definitions

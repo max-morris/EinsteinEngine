@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Max Morris and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -19,14 +19,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Generic, NoReturn, Iterable, Any
+from typing import TypeVar
 
-from EinsteinEngine.emit.tree import CommonNode
 from EinsteinEngine import util
-
+from EinsteinEngine.emit.tree import CommonNode
 # noinspection PyUnresolvedReferences
 # MyPy needs these
 from EinsteinEngine.emit.tree import Node
-from typing import TypeVar
 
 N = TypeVar('N', bound=Node)
 

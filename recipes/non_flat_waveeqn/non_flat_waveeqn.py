@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -17,8 +17,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from EinsteinEngine import *
 import nrpy.helpers.conditional_file_updater as cfu
+
+from EinsteinEngine import *
 
 # If we change our configuration, this will show us diffs of the
 # new output and the old.

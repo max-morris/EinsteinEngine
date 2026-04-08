@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Max Morris, Lucas Timotheo Sanches, Steven R. Brandt, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     """
 
     from EinsteinEngine import *
-    from sympy import Expr, Idx, sin, Indexed
+    from sympy import Expr, sin, Indexed
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 

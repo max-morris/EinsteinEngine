@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2024-2026 Steven R. Brandt, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -17,13 +17,13 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from typing import Tuple, Any, Optional
-import os, sys
+
 import matplotlib.pyplot as plt
-from kuibit.simdir import SimDir
-import kuibit.visualize_matplotlib as viz
+import matplotlib.pyplot as plt
 import numpy as np
-import matplotlib.pyplot as plt
+from kuibit.simdir import SimDir
 
 num = np.typing.NDArray[np.float64]
 
