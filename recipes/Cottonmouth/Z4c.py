@@ -321,6 +321,13 @@ Rt = cottonmouth_Z4c.decl(
     parity=parity_sym2ten
 )
 
+Rt_tmp = cottonmouth_Z4c.decl(
+    "Rt_tmp",
+    [li, lj],
+    symmetries=[(li, lj)],
+    parity=parity_sym2ten
+)
+
 ###
 # Matter terms.
 ###
@@ -674,7 +681,7 @@ fun_z4c_constraints.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_constraints.add_eqn(
-    Rt[li, lj],
+    Rt_tmp[li, lj],
     - Rational(1, 2) * gt[ul, um] * D(gt[li, lj], ll, lm)
     + Rational(1, 2) * (
         + gt[lk, li] * D(evo_Gammat[uk], lj)
@@ -684,6 +691,13 @@ fun_z4c_constraints.add_eqn(
         + Gammatd[uk] * Gammat[li, lj, lk]
         + Gammatd[uk] * Gammat[lj, li, lk]
     )
+)
+
+fun_z4c_constraints.split_loop()
+
+fun_z4c_constraints.add_eqn(
+    Rt[li, lj],
+    Rt_tmp[li, lj]
     + gt[ul, um] * Gammat[uk, ll, li] * Gammat[lj, lk, lm]
     + gt[ul, um] * Gammat[uk, ll, lj] * Gammat[li, lk, lm]
     + gt[ul, um] * Gammat[uk, li, lm] * Gammat[lk, ll, lj]
@@ -759,7 +773,7 @@ fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
-    Rt[li, lj],
+    Rt_tmp[li, lj],
     - Rational(1, 2) * gt[ul, um] * D(gt[li, lj], ll, lm)
     + Rational(1, 2) * (
         + gt[lk, li] * D(evo_Gammat[uk], lj)
@@ -769,6 +783,13 @@ fun_z4c_rhs.add_eqn(
         + Gammatd[uk] * Gammat[li, lj, lk]
         + Gammatd[uk] * Gammat[lj, li, lk]
     )
+)
+
+fun_z4c_rhs.split_loop()
+
+fun_z4c_rhs.add_eqn(
+    Rt[li, lj],
+    Rt_tmp[li, lj]
     + gt[ul, um] * Gammat[uk, ll, li] * Gammat[lj, lk, lm]
     + gt[ul, um] * Gammat[uk, ll, lj] * Gammat[li, lk, lm]
     + gt[ul, um] * Gammat[uk, li, lm] * Gammat[lk, ll, lj]
