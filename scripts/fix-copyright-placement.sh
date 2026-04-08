@@ -59,10 +59,43 @@ fix_one_file() {
     tmp="$(mktemp)"
 
     awk '
+    function strip_hash_prefix(s,    t) {
+        t = s
+        sub(/^[[:space:]]*#[[:space:]]*/, "", t)
+        return t
+    }
+
     function trim_header(    k) {
         # Drop trailing empty entries and trailing separator-only comment lines.
         while (hcount > 0 && header[hcount] ~ /^[[:space:]]*$/) hcount--
         while (hcount > 0 && header[hcount] ~ /^#[[:space:]]*$/) hcount--
+    }
+
+    function dedupe_einstein_notice(    i, k, txt, notice_count) {
+        k = 0
+        notice_count = 0
+        for (i = 1; i <= hcount; i++) {
+            txt = strip_hash_prefix(header[i])
+
+            if (txt ~ /^This file is part of the Einstein Engine \(EinsteinEngine\)\.$/) {
+                notice_count++
+                if (notice_count > 1) {
+                    i++
+                    while (i <= hcount) {
+                        txt = strip_hash_prefix(header[i])
+                        if (txt ~ /^If not, see <https:\/\/www\.gnu\.org\/licenses\/>\.$/) break
+                        i++
+                    }
+                    while (i < hcount && strip_hash_prefix(header[i + 1]) == "") i++
+                    continue
+                }
+            }
+
+            kept[++k] = header[i]
+        }
+
+        hcount = k
+        for (i = 1; i <= hcount; i++) header[i] = kept[i]
     }
 
     {
@@ -84,11 +117,6 @@ fix_one_file() {
         while (first <= n && line[first] ~ /^[[:space:]]*$/) first++
 
         cp_is_comment = (line[cp] ~ /^[[:space:]]*#.*Copyright \(C\)/)
-        already_top = cp_is_comment && (cp == first)
-        if (already_top) {
-            for (i = 1; i <= n; i++) print line[i]
-            exit
-        }
 
         inline = !cp_is_comment
 
@@ -149,6 +177,8 @@ fix_one_file() {
         }
 
         trim_header()
+        dedupe_einstein_notice()
+        trim_header()
 
         # Emit file with shebang preserved at line 1 (if present), then header.
         if (shebang) {
@@ -158,12 +188,22 @@ fix_one_file() {
 
         for (i = 1; i <= hcount; i++) print header[i]
 
-        # Ensure one blank line after inserted header before code.
-        print ""
-
         start_body = shebang ? 2 : 1
+        body_first = 0
         for (i = start_body; i <= n; i++) {
             if (i >= remove_start && i <= remove_end) continue
+            body_first = i
+            break
+        }
+
+        # Ensure exactly one blank line between header and body.
+        if (body_first > 0) print ""
+
+        body_started = 0
+        for (i = start_body; i <= n; i++) {
+            if (i >= remove_start && i <= remove_end) continue
+            if (!body_started && line[i] ~ /^[[:space:]]*$/) continue
+            body_started = 1
             print line[i]
         }
     }' "$file" > "$tmp"
