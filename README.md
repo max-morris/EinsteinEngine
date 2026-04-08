@@ -17,6 +17,11 @@ It can generate complete CarpetX thorns from simple recipes written in Python.
    ```bash
    python -m pip install .
    ```
+
+4. (Optional; recommended for development) Install repository git hooks for this clone.
+   ```bash
+   bash scripts/install-git-hooks.sh
+   ```
    
 ## How to generate a thorn:
 

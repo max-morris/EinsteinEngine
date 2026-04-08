@@ -1,0 +1,33 @@
+name: Copyright Headers
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  enforce:
+    name: Enforce Copyright Headers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Normalize Copyright Placement
+        run: |
+          mapfile -t files < <(git ls-files '*.py' '*.sh')
+          if [ "${#files[@]}" -gt 0 ]; then
+            bash scripts/fix-copyright-placement.sh "${files[@]}"
+          fi
+
+      - name: Fail If Fixer Made Changes
+        run: |
+          if ! git diff --quiet; then
+            echo "Copyright placement fixer produced changes."
+            echo "Run: bash scripts/fix-copyright-placement.sh"
+            echo "Then commit the result."
+            git --no-pager diff --name-only
+            exit 1
+          fi
+
+      - name: Validate Copyright Headers
+        run: bash scripts/check-copyright-headers.sh
