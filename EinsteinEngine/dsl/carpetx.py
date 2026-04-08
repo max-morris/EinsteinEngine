@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2025-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #

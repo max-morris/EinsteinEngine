@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -15,8 +15,8 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import cast
 from collections import OrderedDict
+from typing import cast
 
 from multimethod import multimethod
 from sympy import (Symbol, Expr, Basic, Pow, IndexedBase, Function, Piecewise)
@@ -24,8 +24,8 @@ from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Ratio
 from sympy.core.operations import AssocOp
 from sympy.core.relational import Relational
 
-from EinsteinEngine.dsl.sympywrap import mkSymbol
 from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.dsl.sympywrap import mkSymbol
 
 
 class SplitMaxxer:

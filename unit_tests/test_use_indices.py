@@ -1,4 +1,4 @@
-#  Copyright (C) 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2025-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -17,14 +17,14 @@
 
 from typing import Literal
 
+from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Expr, IndexedBase, Symbol
 
 from EinsteinEngine import *
+from EinsteinEngine.dsl.dimension import get_dimension
 from EinsteinEngine.dsl.eqnlist import DXI
 from EinsteinEngine.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
     do_div, x, one, y
-from EinsteinEngine.dsl.dimension import get_dimension
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 
 def assert_eq(a: Expr, b: Expr) -> None:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-#  Copyright (C) 2024-2026 Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
+#  Copyright (C) 2025-2026 Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
