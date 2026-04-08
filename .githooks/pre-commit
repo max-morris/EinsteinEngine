@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+mapfile -t staged_files < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [[ "${#staged_files[@]}" -gt 0 ]]; then
+    bash scripts/fix-copyright-placement.sh "${staged_files[@]}"
+    git add -- "${staged_files[@]}"
+fi
+
+if ! bash scripts/check-copyright-headers.sh; then
+    cat <<'MSG'
+
+Commit blocked: one or more Python files are missing a valid top-of-file copyright header.
+Run `bash scripts/check-copyright-headers.sh` for details.
+MSG
+    exit 1
+fi
