@@ -561,7 +561,9 @@ fun_bssn_cons.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Delta[uc] * Gammat[la, lb, lc])
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+)
 
 fun_bssn_cons.split_loop()
 
