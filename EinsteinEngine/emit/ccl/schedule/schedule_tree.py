@@ -15,10 +15,11 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Union, List
 from dataclasses import dataclass
 from enum import auto, Enum
 from typing import TypedDict, Optional
+from typing import Union, List
+
 from typing_extensions import Unpack
 
 from EinsteinEngine.emit.tree import Node, Identifier, Integer, String, Language
@@ -38,11 +39,6 @@ class StorageDecl(ScheduleNode):
 @dataclass
 class StorageLine(ScheduleNode):
     decls: List[StorageDecl]
-
-
-@dataclass
-class StorageSection(ScheduleNode):
-    lines: List[StorageLine]
 
 
 class AtOrIn(ReprEnum):
@@ -135,12 +131,16 @@ class ScheduleBlock(ScheduleNode):
         return hash(self.name)
 
 
+# todo: schedule.ccl supports else-if/else and more complex boolean predicates,
+#       but this is sufficient for our current purposes. We ought to extend this functionality later.
 @dataclass
-class ScheduleSection(ScheduleNode):
-    schedule_blocks: List[ScheduleBlock]
+class IfStatement(ScheduleNode):
+    cond: Identifier
+    then: List['ScheduleStatement']
 
+
+ScheduleStatement = ScheduleBlock | StorageLine | IfStatement
 
 @dataclass
 class ScheduleRoot(ScheduleNode):
-    storage_section: StorageSection
-    schedule_section: ScheduleSection
+    statements: List[ScheduleStatement]

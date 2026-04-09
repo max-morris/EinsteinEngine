@@ -28,14 +28,16 @@ from EinsteinEngine.dsl.eqnlist import stencil
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering
 from EinsteinEngine.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EinsteinEngine.dsl.util import require
-from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
+from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, \
+    FunctionSection, \
     VariableSection, UsesInclude
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
     KeywordParamRange, StringParamRange, IntParamRange, IntParamDescWildcard, IntParamDescRange, IntParamOpenLowerBound, \
     IntParamOpenUpperBound, RealParamRange, RealParamDescWildcard, RealParamDescRange, RealParamOpenLowerBound, \
     RealParamOpenUpperBound
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, Intent, \
-    GroupOrFunction, AtOrIn, StorageSection, ScheduleSection, IntentRegion
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, \
+    Intent, \
+    GroupOrFunction, AtOrIn, IntentRegion
 from EinsteinEngine.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
@@ -424,8 +426,7 @@ class CppCarpetXGenerator(CactusGenerator):
             ))
 
         return ScheduleRoot(
-            storage_section=StorageSection(storage_lines),
-            schedule_section=ScheduleSection(schedule_blocks)
+            statements=[*storage_lines, *schedule_blocks]
         )
 
     def _resolve_schedule_target(self, schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
