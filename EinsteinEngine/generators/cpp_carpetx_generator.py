@@ -35,6 +35,7 @@ from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot, Param, ParamAcce
     KeywordParamRange, StringParamRange, IntParamRange, IntParamDescWildcard, IntParamDescRange, IntParamOpenLowerBound, \
     IntParamOpenUpperBound, RealParamRange, RealParamDescWildcard, RealParamDescRange, RealParamOpenLowerBound, \
     RealParamOpenUpperBound
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import IfStatement as ScheduleIfStatement
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, \
     Intent, \
     GroupOrFunction, AtOrIn, IntentRegion
@@ -147,7 +148,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
     def generate_schedule_ccl(self) -> ScheduleRoot:
         storage_lines: list[StorageLine] = list()
-        schedule_blocks: list[ScheduleBlock] = list()
+        schedule_blocks: list[ScheduleBlock | ScheduleIfStatement] = list()
 
         for group in self.variable_groups.keys():
             storage_lines.append(StorageLine([
@@ -355,7 +356,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     for rhs_name in rhs_names
                 )
 
-                schedule_blocks.append(ScheduleBlock(
+                sch_block: ScheduleBlock | ScheduleIfStatement = ScheduleBlock(
                     group_or_function=GroupOrFunction.Function,
                     name=Identifier(batch.name),
                     at_or_in=at_or_in,
@@ -366,7 +367,15 @@ class CppCarpetXGenerator(CactusGenerator):
                     writes=list(writes),
                     before=[Identifier(f'{s}_group') for s in batch.schedule_before],
                     after=[Identifier(f'{s}_group') for s in batch.schedule_after]
-                ))
+                )
+
+                if batch.cond is not None:
+                    sch_block = ScheduleIfStatement(
+                        cond=Identifier(batch.cond),
+                        then=[sch_block]
+                    )
+
+                schedule_blocks.append(sch_block)
 
         post_post_init_bin, post_post_init_at_in = self._resolve_schedule_target(ScheduleBin.PostPostInit)
 

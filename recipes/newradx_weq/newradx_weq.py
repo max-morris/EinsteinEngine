@@ -129,7 +129,8 @@ newradx_rho = NewRadXBoundaryBatch(
     sympify(1),
     sympify(1),
     ScheduleBin.Evolve,
-    schedule_after=["test_newradx_rhs"]
+    schedule_after=["test_newradx_rhs"],
+    cond='my_cond'
 )
 
 newradx_weq.bake()
