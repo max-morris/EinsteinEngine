@@ -97,6 +97,62 @@ kappa_2 = cottonmouth_Z4c.add_param(
     desc="Constraint damping parameter kappa_2."
 )
 
+# Controls if NewRadX should be applied
+cottonmouth_Z4c.add_param(
+    "apply_NewRadX",
+    default=False,
+    desc="Apply NewRadX boundary conditions"
+)
+
+# NewRadX powers
+radpower_Theta = cottonmouth_Z4c.add_param(
+    "radpower_Theta",
+    default=1.0,
+    desc="NewRadX radpower for Theta"
+)
+
+radpower_chi = cottonmouth_Z4c.add_param(
+    "radpower_chi",
+    default=1.0,
+    desc="NewRadX radpower for chi"
+)
+
+radpower_trK = cottonmouth_Z4c.add_param(
+    "radpower_trK",
+    default=1.0,
+    desc="NewRadX radpower the trace of K_ij"
+)
+
+radpower_evo_Gammat = cottonmouth_Z4c.add_param(
+    "radpower_evo_Gammat",
+    default=1.0,
+    desc="NewRadX radpower Gamma^i"
+)
+
+radpower_gt = cottonmouth_Z4c.add_param(
+    "radpower_gt",
+    default=1.0,
+    desc="NewRadX radpower for gt_ij"
+)
+
+radpower_At = cottonmouth_Z4c.add_param(
+    "radpower_At",
+    default=1.0,
+    desc="NewRadX radpower for At_ij"
+)
+
+radpower_evo_lapse = cottonmouth_Z4c.add_param(
+    "radpower_evo_lapse",
+    default=1.0,
+    desc="NewRadX radpower for the lapse, alpha"
+)
+
+radpower_evo_shift = cottonmouth_Z4c.add_param(
+    "radpower_evo_shift",
+    default=1.0,
+    desc="NewRadX radpower for the shift, beta^i"
+)
+
 ###
 # Tensor parities
 ###
@@ -1013,6 +1069,152 @@ fun_z4c_diss.add_eqn(
 )
 
 ###
+# Apply NewRadX
+###
+nrx_Theta = NewRadXBoundaryBatch(
+    Theta,
+    sympify(0),
+    sympify(1),
+    radpower_Theta,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_Theta",
+)
+
+nrx_chi = NewRadXBoundaryBatch(
+    chi,
+    sympify(1),
+    sympify(1),
+    radpower_chi,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_chi",
+)
+
+nrx_trK = NewRadXBoundaryBatch(
+    trK,
+    sympify(0),
+    sympify(1),
+    radpower_trK,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_trK",
+)
+
+nrx_evo_Gammat = NewRadXBoundaryBatch(
+    evo_Gammat,
+    sympify(0),
+    sympify(1),
+    radpower_evo_Gammat,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_evo_Gammat",
+)
+
+nrx_gt_xx = NewRadXBoundaryBatch(
+    gt[l0, l0],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_xx",
+)
+
+nrx_gt_xy = NewRadXBoundaryBatch(
+    gt[l0, l1],
+    sympify(0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_xy",
+)
+
+nrx_gt_xz = NewRadXBoundaryBatch(
+    gt[l0, l2],
+    sympify(-0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_xz",
+)
+
+nrx_gt_yy = NewRadXBoundaryBatch(
+    gt[l1, l1],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_yy",
+)
+
+nrx_gt_yz = NewRadXBoundaryBatch(
+    gt[l1, l2],
+    sympify(0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_yz",
+)
+
+nrx_gt_zz = NewRadXBoundaryBatch(
+    gt[l2, l2],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_gt_zz",
+)
+
+nrx_At = NewRadXBoundaryBatch(
+    At,
+    sympify(0),
+    sympify(1),
+    radpower_At,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_At",
+)
+
+nrx_evo_lapse = NewRadXBoundaryBatch(
+    evo_lapse,
+    sympify(1),
+    sympify(1),
+    radpower_evo_lapse,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_evo_lapse",
+)
+
+nrx_evo_shift = NewRadXBoundaryBatch(
+    evo_shift,
+    sympify(0),
+    sympify(1),
+    radpower_evo_shift,
+    rhs_group,
+    schedule_after=["z4c_apply_dissipation"],
+    cond="apply_NewRadX",
+    name="z4c_apply_NewRadX_evo_shift",
+)
+
+###
 # Bake the cake
 ###
 cottonmouth_Z4c.bake(
@@ -1022,7 +1224,8 @@ cottonmouth_Z4c.bake(
     do_recycle_temporaries=True,
     do_split_output_eqns=False,  # NOTE: This is broken, never turn on
     cse_optimization_level=CseOptimizationLevel.Fast,
-    ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
+    ordering_fn=functools.partial(
+        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###
@@ -1042,6 +1245,21 @@ CppCarpetXWizard(
         ],
         explicit_syncs=[
             sync_monitored_constraints
+        ],
+        new_rad_x_boundary_fns=[
+            nrx_Theta,
+            nrx_chi,
+            nrx_trK,
+            nrx_evo_Gammat,
+            nrx_gt_xx,
+            nrx_gt_xy,
+            nrx_gt_xz,
+            nrx_gt_yy,
+            nrx_gt_yz,
+            nrx_gt_zz,
+            nrx_At,
+            nrx_evo_lapse,
+            nrx_evo_shift,
         ]
     )
 ).generate_thorn()

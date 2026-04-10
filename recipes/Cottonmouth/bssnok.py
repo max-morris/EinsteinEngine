@@ -15,6 +15,8 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import functools
+
 from sympy import Rational
 
 from EinsteinEngine import *
@@ -73,6 +75,61 @@ dissipation_epsilon = cottonmouth_bssnok.add_param(
     "dissipation_epsilon",
     default=0.2,
     desc="The ammount of dissipation to add. Should be in the [0, 1/3[ range"
+)
+
+# Controls if NewRadX should be applied
+cottonmouth_bssnok.add_param(
+    "apply_NewRadX",
+    default=False,
+    desc="Apply NewRadX boundary conditions"
+)
+
+# NewRadX powers
+radpower_w = cottonmouth_bssnok.add_param(
+    "radpower_chi",
+    default=1.0,
+    desc="NewRadX radpower for w"
+)
+
+radpower_gt = cottonmouth_bssnok.add_param(
+    "radpower_gt",
+    default=1.0,
+    desc="NewRadX radpower for gt_ij"
+)
+radpower_At = cottonmouth_bssnok.add_param(
+    "radpower_At",
+    default=1.0,
+    desc="NewRadX radpower for At_ij"
+)
+
+radpower_trK = cottonmouth_bssnok.add_param(
+    "radpower_trK",
+    default=1.0,
+    desc="NewRadX radpower for the trace of K_ij"
+)
+
+radpower_ConfConnect = cottonmouth_bssnok.add_param(
+    "radpower_ConfConnect",
+    default=1.0,
+    desc="NewRadX radpower Gamma^i"
+)
+
+radpower_evo_lapse = cottonmouth_bssnok.add_param(
+    "radpower_evo_lapse",
+    default=1.0,
+    desc="NewRadX radpower for the lapse, alpha"
+)
+
+radpower_evo_shift = cottonmouth_bssnok.add_param(
+    "radpower_evo_shift",
+    default=1.0,
+    desc="NewRadX radpower for the shift, beta^i"
+)
+
+radpower_shift_B = cottonmouth_bssnok.add_param(
+    "radpower_shiftB",
+    default=1.0,
+    desc="NewRadX radpower for the aux. shift vector B^i"
 )
 
 ###
@@ -229,12 +286,11 @@ DeltaCons = cottonmouth_bssnok.decl("DeltaCons", [ua], parity=parity_vector)
 
 ###
 # Ricci tensor.
-# We single out the Ricci tensor and compute it on its own function in order
-# to increase efficiency
 ###
 
 # \tilde{R}_{a b}
 Rt = cottonmouth_bssnok.decl("Rt", [la, lb], symmetries=[(la, lb)])
+Rt_tmp = cottonmouth_bssnok.decl("Rt_tmp", [la, lb], symmetries=[(la, lb)])
 
 # \tilde{R}^{\phi}_{a b}
 RPhi = cottonmouth_bssnok.decl("RPhi", [la, lb], symmetries=[(la, lb)])
@@ -385,25 +441,6 @@ rhs_group = ScheduleBlock(
     at_or_in=AtOrIn.In,
     schedule_bin=Identifier("ODESolvers_RHS"),
     description=String("BSSNOK equations RHS computation"),
-)
-
-# Ricci tensor
-ricci_group_rhs = ScheduleBlock(
-    group_or_function=GroupOrFunction.Group,
-    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
-    at_or_in=AtOrIn.In,
-    schedule_bin=Identifier("ODESolvers_RHS"),
-    before=[Identifier("CottonmouthBSSNOK_RHSGroup")],
-    description=String("BSSNOK Ricci tensor computation"),
-)
-
-ricci_group_analysis = ScheduleBlock(
-    group_or_function=GroupOrFunction.Group,
-    name=Identifier("CottonmouthBSSNOK_RicciGroup"),
-    at_or_in=AtOrIn.At,
-    schedule_bin=Identifier("analysis"),
-    before=[Identifier("CottonmouthBSSNOK_AnalysisGroup")],
-    description=String("BSSNOK Ricci tensor computation"),
 )
 
 # Analysis
@@ -567,19 +604,33 @@ fun_bssn2adm.add_eqn(
 )
 
 ###
-# Compute the Ricci tensor
-# Note that we schedule it in ricci_group_rhs.
-# Because ricci_group_analysis is the same group,
-# only with a different python handle, we don't need to
-# explicitly schedule it there.
+# Compute monitored constraints
 ###
-fun_bssn_ricci = cottonmouth_bssnok.create_function(
-    "compute_ricci",
-    ricci_group_rhs
+fun_bssn_cons = cottonmouth_bssnok.create_function(
+    "constraints",
+    analysis_group
 )
 
-# Aux. equations
-fun_bssn_ricci.add_eqn(
+fun_bssn_cons.add_eqn(
+    Rt_tmp[la, lb],
+    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
+    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+    + Delta[uc] * Gammat[la, lb, lc])
+
+fun_bssn_cons.split_loop()
+
+fun_bssn_cons.add_eqn(
+    Rt[la, lb],
+    Rt_tmp[la, lb]
+    + (
+        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+    )
+)
+
+fun_bssn_cons.add_eqn(
     cdphi2[la, lb],
     -Rational(1, 2) * (1 / w) * (
         D(w, la, lb)
@@ -588,21 +639,7 @@ fun_bssn_ricci.add_eqn(
     + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
 )
 
-fun_bssn_ricci.add_eqn(
-    Rt[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
-)
-
-fun_bssn_ricci.add_eqn(
+fun_bssn_cons.add_eqn(
     RPhi[la, lb],
     - 2 * cdphi2[lb, la]
     - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
@@ -610,19 +647,9 @@ fun_bssn_ricci.add_eqn(
     - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
 )
 
-# Ricci tensor
-fun_bssn_ricci.add_eqn(
+fun_bssn_cons.add_eqn(
     R[la, lb],
     Rt[la, lb] + RPhi[la, lb]
-)
-
-
-###
-# Compute monitored constraints
-###
-fun_bssn_cons = cottonmouth_bssnok.create_function(
-    "constraints",
-    analysis_group
 )
 
 # Hamiltonian constraint
@@ -675,8 +702,52 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
     rhs_group
 )
+# loop 0
+
+fun_bssn_rhs.add_eqn(
+    Rt_tmp[la, lb],
+    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
+    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+)
+
+fun_bssn_rhs.split_loop()
+
+fun_bssn_rhs.add_eqn(
+    Rt[la, lb],
+    Rt_tmp[la, lb]
+    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+)
+
+fun_bssn_rhs.split_loop()
 
 # Aux. equations
+fun_bssn_rhs.add_eqn(
+    cdphi2[la, lb],
+    -Rational(1, 2) * (1 / w) * (
+        D(w, la, lb)
+        - Gammat[uc, la, lb] * D(w, lc)
+    )
+    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+)
+
+fun_bssn_rhs.add_eqn(
+    RPhi[la, lb],
+    - 2 * cdphi2[lb, la]
+    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
+    + 4 * cdphi[la] * cdphi[lb]
+    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+)
+
+fun_bssn_rhs.add_eqn(
+    R[la, lb],
+    Rt[la, lb] + RPhi[la, lb]
+)
+
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
     (
@@ -691,26 +762,6 @@ fun_bssn_rhs.add_eqn(
 )
 
 # Evolution equations
-fun_bssn_rhs.add_eqn(
-    gt_rhs[la, lb],
-    - 2 * evo_lapse * At[la, lb]
-    + gt[la, lc] * D(evo_shift[uc], lb)
-    + gt[lb, lc] * D(evo_shift[uc], la)
-    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
-    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * D(gt[la, lb], lc)
-)
-
-fun_bssn_rhs.add_eqn(
-    w_rhs,
-    Rational(1, 3) * w * (
-        evo_lapse * trK
-        - D(evo_shift[ua], la)
-    )
-    # TODO: Advection: + Upwind[beta[ua], phi, la]
-    + evo_shift[ua] * D(w, la)
-)
-
 fun_bssn_rhs.add_eqn(
     At_rhs[la, lb],
     (w**2) * (
@@ -751,6 +802,8 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(trK, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
     ConfConnect_rhs_tmp[ua],
     - 2 * At[ua, ub] * D(evo_lapse, lb)
@@ -769,6 +822,28 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ub] * D(ConfConnect[ua], lb)
 )
 fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
+
+fun_bssn_rhs.add_eqn(
+    gt_rhs[la, lb],
+    - 2 * evo_lapse * At[la, lb]
+    + gt[la, lc] * D(evo_shift[uc], lb)
+    + gt[lb, lc] * D(evo_shift[uc], la)
+    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
+    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
+    + evo_shift[uc] * D(gt[la, lb], lc)
+)
+
+fun_bssn_rhs.split_loop()
+
+fun_bssn_rhs.add_eqn(
+    w_rhs,
+    Rational(1, 3) * w * (
+        evo_lapse * trK
+        - D(evo_shift[ua], la)
+    )
+    # TODO: Advection: + Upwind[beta[ua], phi, la]
+    + evo_shift[ua] * D(w, la)
+)
 
 # Everyone likes to do gauge conditions their own way.
 # We will settle on Eqs. (25a) and (25b) of Ref. [4]
@@ -827,16 +902,6 @@ fun_bssn_diss.add_eqn(
     )
 )
 
-At_rhs_diss = cottonmouth_bssnok.overwrite(At_rhs)
-fun_bssn_diss.add_eqn(
-    At_rhs_diss[la, lb],
-    At_rhs[la, lb] + dissipation_epsilon * (
-        div_diss(At[la, lb], l0)
-        + div_diss(At[la, lb], l1)
-        + div_diss(At[la, lb], l2)
-    )
-)
-
 trK_rhs_diss = cottonmouth_bssnok.overwrite(trK_rhs)
 fun_bssn_diss.add_eqn(
     trK_rhs_diss,
@@ -844,6 +909,18 @@ fun_bssn_diss.add_eqn(
         div_diss(trK, l0)
         + div_diss(trK, l1)
         + div_diss(trK, l2)
+    )
+)
+
+fun_bssn_diss.split_loop()
+
+At_rhs_diss = cottonmouth_bssnok.overwrite(At_rhs)
+fun_bssn_diss.add_eqn(
+    At_rhs_diss[la, lb],
+    At_rhs[la, lb] + dissipation_epsilon * (
+        div_diss(At[la, lb], l0)
+        + div_diss(At[la, lb], l1)
+        + div_diss(At[la, lb], l2)
     )
 )
 
@@ -856,6 +933,8 @@ fun_bssn_diss.add_eqn(
         + div_diss(ConfConnect[ua], l2)
     )
 )
+
+fun_bssn_diss.split_loop()
 
 evo_lapse_rhs_diss = cottonmouth_bssnok.overwrite(evo_lapse_rhs)
 fun_bssn_diss.add_eqn(
@@ -888,6 +967,153 @@ fun_bssn_diss.add_eqn(
 )
 
 ###
+# Apply NewRadX
+###
+nrx_w = NewRadXBoundaryBatch(
+    w,
+    sympify(1),
+    sympify(1),
+    radpower_w,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_w"
+)
+
+nrx_gt_xx = NewRadXBoundaryBatch(
+    gt[l0, l0],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_xx"
+)
+
+nrx_gt_xy = NewRadXBoundaryBatch(
+    gt[l0, l1],
+    sympify(0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_xy"
+)
+
+nrx_gt_xz = NewRadXBoundaryBatch(
+    gt[l0, l2],
+    sympify(-0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_xz"
+)
+
+nrx_gt_yy = NewRadXBoundaryBatch(
+    gt[l1, l1],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_yy"
+)
+
+nrx_gt_yz = NewRadXBoundaryBatch(
+    gt[l1, l2],
+    sympify(0),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_yz"
+)
+
+nrx_gt_zz = NewRadXBoundaryBatch(
+    gt[l2, l2],
+    sympify(1),
+    sympify(1),
+    radpower_gt,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_gt_zz"
+)
+
+nrx_At = NewRadXBoundaryBatch(
+    At,
+    sympify(0),
+    sympify(1),
+    radpower_At,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_At"
+)
+
+nrx_trK = NewRadXBoundaryBatch(
+    trK,
+    sympify(0),
+    sympify(1),
+    radpower_trK,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_trK"
+)
+
+nrx_ConfConnect = NewRadXBoundaryBatch(
+    ConfConnect,
+    sympify(0),
+    sympify(1),
+    radpower_ConfConnect,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_ConfConnect"
+)
+
+
+nrx_evo_lapse = NewRadXBoundaryBatch(
+    evo_lapse,
+    sympify(1),
+    sympify(1),
+    radpower_evo_lapse,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_evo_lapse"
+)
+
+nrx_evo_shift = NewRadXBoundaryBatch(
+    evo_shift,
+    sympify(0),
+    sympify(1),
+    radpower_evo_shift,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_evo_shift"
+)
+
+nrx_shift_B = NewRadXBoundaryBatch(
+    shift_B,
+    sympify(0),
+    sympify(1),
+    radpower_shift_B,
+    rhs_group,
+    schedule_after=["apply_dissipation"],
+    cond="apply_NewRadX",
+    name="bssnok_apply_NewRadX_shift_B"
+)
+
+###
 # Bake the cake
 ###
 cottonmouth_bssnok.bake(
@@ -896,7 +1122,9 @@ cottonmouth_bssnok.bake(
     do_madd=False,
     do_recycle_temporaries=True,
     do_split_output_eqns=False,
-    cse_optimization_level=CseOptimizationLevel.Fast
+    cse_optimization_level=CseOptimizationLevel.Fast,
+    ordering_fn=functools.partial(
+        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###
@@ -907,16 +1135,30 @@ CppCarpetXWizard(
     CppCarpetXGenerator(
         cottonmouth_bssnok,
         sync_mode=SyncMode.EmulatePresync,
+        interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
             post_step_group,
             rhs_group,
-            ricci_group_rhs,
-            ricci_group_analysis,
             analysis_group,
         ],
         explicit_syncs=[
             sync_monitored_constraints
+        ],
+        new_rad_x_boundary_fns=[
+            nrx_w,
+            nrx_gt_xx,
+            nrx_gt_xy,
+            nrx_gt_xz,
+            nrx_gt_yy,
+            nrx_gt_yz,
+            nrx_gt_zz,
+            nrx_At,
+            nrx_trK,
+            nrx_ConfConnect,
+            nrx_evo_lapse,
+            nrx_evo_shift,
+            nrx_shift_B
         ]
     )
 ).generate_thorn()
