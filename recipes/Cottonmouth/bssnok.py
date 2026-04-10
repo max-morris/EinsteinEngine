@@ -55,25 +55,25 @@ def_max = cottonmouth_bssnok.decl_fun("max", args=2, is_stencil=False)
 ###
 eta_B = cottonmouth_bssnok.add_param(
     "eta_b",
-    default=1.0,
-    desc="Mass dependent damping coefficient for the hyperbolic gamma driver shift"
+    default=2.0,
+    desc="Standard Gamma driver eta gauge parameter. Must be of order 2 / M_ADM"
 )
 
 conformal_factor_floor = cottonmouth_bssnok.add_param(
     "conformal_factor_floor",
-    default=1.0e-10,
+    default=1.0e-6,
     desc="The conformal factor W will never be smaller than this value"
 )
 
 evolved_lapse_floor = cottonmouth_bssnok.add_param(
     "evolved_lapse_floor",
-    default=0.0,
+    default=1.0e-8,
     desc="The evolved lapse will never be smaller than this value"
 )
 
 dissipation_epsilon = cottonmouth_bssnok.add_param(
     "dissipation_epsilon",
-    default=0.2,
+    default=0.32,
     desc="The ammount of dissipation to add. Should be in the [0, 1/3[ range"
 )
 

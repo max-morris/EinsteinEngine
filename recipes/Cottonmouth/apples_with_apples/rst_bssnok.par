@@ -1,0 +1,101 @@
+#################################
+# See ref https://arxiv.org/abs/1810.12346
+# for Details
+#################################
+$rho            = 1   # Refinement factor. Should be 1, 2, 4
+$base_cells     = 50  # Initial number of cells to use
+$crossing_times = 1   # Run for this ammount of crossing times
+$out_every      = 1   # Output frequency
+$dtfac          = 0.1 # CFL
+$diss_eps       = 0.0 # Ammount of dissipation
+#################################
+
+$num_cells  = $base_cells * $rho
+$dx = 1.0 / $num_cells
+$dt = $dtfac * $dx
+$crossing_time_it = ceil(1.0 / $dt)
+$itlast = $crossing_times * $crossing_time_it
+
+ActiveThorns = "
+  ADMBaseX
+  TmunuBaseX
+  CarpetX
+  CottonmouthBSSNOK
+  IOUtil
+  ODESolvers
+  TmunuBaseX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "presync-only"
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = yes
+
+# Run Termination
+Cactus::terminate   = "iteration"
+Cactus::cctk_itlast = $itlast
+
+# Grid setup
+CarpetX::xmin = -0.5
+CarpetX::ymin = -0.5
+CarpetX::zmin = -0.5
+
+CarpetX::xmax = 0.5
+CarpetX::ymax = 0.5
+CarpetX::zmax = 0.5
+
+CarpetX::ncells_x = $num_cells
+CarpetX::ncells_y = 3
+CarpetX::ncells_z = 3
+
+CarpetX::blocking_factor_x = 1
+CarpetX::blocking_factor_y = 1
+CarpetX::blocking_factor_z = 1
+
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 4
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::periodic   = yes
+CarpetX::periodic_x = yes
+CarpetX::periodic_y = yes
+CarpetX::periodic_z = yes
+
+# Initial data
+ADMBaseX::initial_data    = "Cartesian Minkowski"
+ADMBaseX::noise_amplitude = 1.0e-10 / ($rho * $rho)
+
+# Time Integration
+ODESolvers::verbose = yes
+CarpetX::dtfac      = $dtfac
+ODESolvers::method  = "RK4"
+
+# Spacetime evolution
+CottonmouthBSSNOK::dissipation_epsilon = $diss_eps
+
+# Output
+IO::out_dir   = $parfile
+IO::out_every = $out_every
+
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars  = "
+  CottonmouthBSSNOK::gt
+  CottonmouthBSSNOK::w
+  CottonmouthBSSNOK::At
+  CottonmouthBSSNOK::trK
+  CottonmouthBSSNOK::ConfConnect
+  CottonmouthBSSNOK::evo_lapse
+  CottonmouthBSSNOK::evo_shift
+  CottonmouthBSSNOK::shift_B
+  CottonmouthBSSNOK::HamCons
+  CottonmouthBSSNOK::MomCons
+"
+
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = ""
+
+CarpetX::out_metadata    = no
+CarpetX::out_performance = no
