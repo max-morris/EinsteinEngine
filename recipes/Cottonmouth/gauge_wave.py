@@ -1,20 +1,3 @@
-#  Copyright (C) 2025-2026 Steven R. Brandt, Lucas Timotheo Sanches, Max Morris, and other Einstein Engine contributors.
-#
-#  This file is part of the Einstein Engine (EinsteinEngine).
-#
-#  EinsteinEngine is free software: you can redistribute it and/or modify
-#  it under the terms of the GNU Affero General Public License as published by
-#  the Free Software Foundation, either version 3 of the License, or
-#  (at your option) any later version.
-#
-#  EinsteinEngine is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU Affero General Public License for more details.
-#
-#  You should have received a copy of the GNU Affero General Public License
-#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 if __name__ == "__main__":
     from EinsteinEngine import *
     from sympy import Rational
@@ -22,21 +5,21 @@ if __name__ == "__main__":
     ###
     # Thorn definition
     ###
-    cottonmouth_linear_wave_id = ThornDef(
+    gauge_wave_id = ThornDef(
         "Cottonmouth",
-        "CottonmouthLinearWaveID"
+        "CottonmouthGaugeWaveID"
     )
 
     ###
     # Thorn parameters
     ###
-    amplitude = cottonmouth_linear_wave_id.add_param(
+    amplitude = gauge_wave_id.add_param(
         "amplitude",
-        default=1.0e-8,
+        default=1.0,
         desc="Linear wave amplitude"
     )
 
-    wavelength = cottonmouth_linear_wave_id.add_param(
+    wavelength = gauge_wave_id.add_param(
         "wavelength",
         default=1.0,
         desc="Linear wave wavelength"
@@ -46,46 +29,46 @@ if __name__ == "__main__":
     # ADMBaseX vars.
     ###
     # Variables
-    g = cottonmouth_linear_wave_id.decl(
+    g = gauge_wave_id.decl(
         "g",
         [li, lj],
         symmetries=[(li, lj)],
         from_thorn="ADMBaseX"
     )
 
-    k = cottonmouth_linear_wave_id.decl(
+    k = gauge_wave_id.decl(
         "k",
         [li, lj],
         symmetries=[(li, lj)],
         from_thorn="ADMBaseX"
     )
 
-    alp = cottonmouth_linear_wave_id.decl(
+    alp = gauge_wave_id.decl(
         "alp",
         [],
         from_thorn="ADMBaseX"
     )
 
-    beta = cottonmouth_linear_wave_id.decl(
+    beta = gauge_wave_id.decl(
         "beta",
         [ua],
         from_thorn="ADMBaseX"
     )
 
     # First derivatives
-    dtalp = cottonmouth_linear_wave_id.decl(
+    dtalp = gauge_wave_id.decl(
         "dtalp",
         [],
         from_thorn="ADMBaseX"
     )
 
-    dtbeta = cottonmouth_linear_wave_id.decl(
+    dtbeta = gauge_wave_id.decl(
         "dtbeta",
         [ua],
         from_thorn="ADMBaseX"
     )
 
-    dtk = cottonmouth_linear_wave_id.decl(
+    dtk = gauge_wave_id.decl(
         "dtk",
         [la, lb],
         symmetries=[(la, lb)],
@@ -93,13 +76,13 @@ if __name__ == "__main__":
     )
 
     # Second derivatives
-    dt2alp = cottonmouth_linear_wave_id.decl(
+    dt2alp = gauge_wave_id.decl(
         "dt2alp",
         [],
         from_thorn="ADMBaseX"
     )
 
-    dt2beta = cottonmouth_linear_wave_id.decl(
+    dt2beta = gauge_wave_id.decl(
         "dt2beta",
         [ua],
         from_thorn="ADMBaseX"
@@ -118,17 +101,15 @@ if __name__ == "__main__":
 
     ###
     # Base quantities
-    # See:
-    #   https://arxiv.org/abs/gr-qc/0305023
-    #   https://arxiv.org/abs/0709.3559
+    # See Appendix A.3 of https://arxiv.org/abs/0709.3559
     ###
-    t, x, y, z = cottonmouth_linear_wave_id.mk_coords(with_time=True)
+    t, x, y, z = gauge_wave_id.mk_coords(with_time=True)
 
     pi = sympify(3.141592653589793)
     H = amplitude * sin((2 * pi * (x - t)) / wavelength)
 
     # \alpha
-    lapse = sympify(1)
+    lapse = sqrt(1 - H)
 
     # \beta^{i}
     shift_x = sympify(0)
@@ -136,20 +117,20 @@ if __name__ == "__main__":
     shift_z = sympify(0)
 
     # h_{ij}
-    hxx = sympify(1)
+    hxx = 1 - H
     hxy = sympify(0)
     hxz = sympify(0)
-    hyy = 1 + H
+    hyy = sympify(1)
     hyz = sympify(0)
-    hzz = 1 - H
+    hzz = sympify(1)
 
     # K_{ij}
-    Kxx = sympify(0)
+    Kxx = Rational(1, 2) * diff(H, t) / sqrt(1 - H)
     Kxy = sympify(0)
     Kxz = sympify(0)
-    Kyy = -Rational(1, 2) * diff(H, t)
+    Kyy = sympify(0)
     Kyz = sympify(0)
-    Kzz = Rational(1, 2) * diff(H, t)
+    Kzz = sympify(0)
 
     # Matrices
     hij = mkMatrix([
@@ -196,7 +177,7 @@ if __name__ == "__main__":
     ###
     # Write initial data
     ###
-    fun_fill_id = cottonmouth_linear_wave_id.create_function(
+    fun_fill_id = gauge_wave_id.create_function(
         "cottonmouth_linear_wave_fill_id",
         adm_id_group
     )
@@ -213,15 +194,15 @@ if __name__ == "__main__":
     fun_fill_id.add_eqn(dt2alp, dt2_lapse)
     fun_fill_id.add_eqn(dt2beta[ua], dt2_shift)
 
-    cottonmouth_linear_wave_id.bake()
+    gauge_wave_id.bake()
 
     ###
     # Thorn creation
     ###
     CppCarpetXWizard(
-        cottonmouth_linear_wave_id,
+        gauge_wave_id,
         CppCarpetXGenerator(
-            cottonmouth_linear_wave_id,
+            gauge_wave_id,
             sync_mode=SyncMode.EmulatePresync,
             extra_schedule_blocks=[adm_id_group]
         )

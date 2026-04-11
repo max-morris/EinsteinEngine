@@ -1,0 +1,101 @@
+
+#################################
+# See refs
+# https://arxiv.org/abs/1810.12346,
+# https://arxiv.org/abs/0709.3559
+# for Details
+#################################
+$num_cells               = 200
+$dtfac                   = 0.25
+$crossing_times          = 1000
+$out_every_crossing_time = 10
+#################################
+
+$dx = 1.0 / $num_cells
+$dt = $dtfac * $dx
+$crossing_time_it = ceil(1.0 / $dt)
+$itlast = $crossing_times * $crossing_time_it
+$out_every = $out_every_crossing_time * $crossing_time_it
+
+ActiveThorns = "
+  ADMBaseX
+  TmunuBaseX
+  CarpetX
+  CottonmouthZ4c
+  IOUtil
+  CottonmouthLinearWaveID
+  ODESolvers
+  TmunuBaseX
+"
+
+# Driver
+Cactus::cctk_show_schedule       = yes
+Cactus::presync_mode             = "presync-only"
+CarpetX::verbose                 = yes
+CarpetX::poison_undefined_values = yes
+
+# Run Termination
+Cactus::terminate   = "iteration"
+Cactus::cctk_itlast = $itlast
+
+# Grid setup
+CarpetX::xmin = -0.5
+CarpetX::ymin = -0.5
+CarpetX::zmin = -0.5
+
+CarpetX::xmax = 0.5
+CarpetX::ymax = 0.5
+CarpetX::zmax = 0.5
+
+CarpetX::ncells_x = $num_cells
+CarpetX::ncells_y = 3
+CarpetX::ncells_z = 3
+
+CarpetX::blocking_factor_x = 1
+CarpetX::blocking_factor_y = 1
+CarpetX::blocking_factor_z = 1
+
+CarpetX::ghost_size          = 3
+CarpetX::interpolation_order = 4
+CarpetX::prolongation_type   = "ddf"
+CarpetX::prolongation_order  = 5
+
+# Boundary conditions
+CarpetX::periodic   = yes
+CarpetX::periodic_x = yes
+CarpetX::periodic_y = yes
+CarpetX::periodic_z = yes
+
+# Initial data
+ADMBaseX::initial_data    = "none"
+ADMBaseX::initial_lapse   = "none"
+ADMBaseX::initial_shift   = "none"
+ADMBaseX::initial_dtlapse = "none"
+ADMBaseX::initial_dtshift = "none"
+
+# Time Integration
+ODESolvers::verbose = yes
+CarpetX::dtfac      = 0.25
+ODESolvers::method  = "RK4"
+
+# Output
+IO::out_dir   = $parfile
+IO::out_every = $out_every
+
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = "
+  CottonmouthZ4c::gt
+  CottonmouthZ4c::HamCons
+  CottonmouthZ4c::MomCons
+  CottonmouthZ4c::ZtCons
+  CottonmouthZ4c::Theta
+"
+
+CarpetX::out_tsv      = no
+CarpetX::out_tsv_vars = "
+  CottonmouthZ4c::gt
+  CottonmouthZ4c::HamCons
+  CottonmouthZ4c::MomCons
+  CottonmouthZ4c::ZtCons
+  CottonmouthZ4c::Theta
+"
