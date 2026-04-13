@@ -15,34 +15,34 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from functools import cache
 import typing
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from dataclasses import dataclass
+from functools import cache
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Tuple, Optional, Set, Iterator
+from typing import cast, Dict, List, Tuple, Optional, Set
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer
-import sympy as sy
 
+from EinsteinEngine import prioritize_rare_symbols
+from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.dsl.dsl_exception import DslException
 from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
-from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
+from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
+from EinsteinEngine.dsl.symbify import symbify
+from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor, calculate_complexities
-from EinsteinEngine.util import OrderedSet, incr_and_get, consolidate, vprint, wprint, ProgressBarImpl, ProgressBar
+from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
+from EinsteinEngine.util import OrderedSet, incr_and_get, consolidate, vprint, wprint
 from EinsteinEngine.util import get_or_compute
-from EinsteinEngine.dsl.symbify import symbify
-from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -658,14 +658,14 @@ class EqnList:
                 result.append(v)
         return result
 
-    def order_builder(self, complete: Dict[Symbol, int]) -> None:
+    def order_builder(self, complete: Dict[Symbol, int], override_ordering_fn: Optional[EqnOrderingFn] = None) -> None:
         for k in self.inputs:
             complete[k] = 0
         for k in self.params:
             complete[k] = 0
 
-        ordering_fn = self.ordering_fn
-        myself = self
+        ordering_fn = override_ordering_fn or self.ordering_fn
+        total_order: list[Symbol] = list(ordering_fn(self.eqns, self))
 
         class Ord:
             def __init__(self, eqns: dict[Symbol, Expr]) -> None:
@@ -674,14 +674,17 @@ class EqnList:
             def add(self, sym: Symbol) -> None:
                 if sym in complete:
                     return
-                for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
+                for dep in sorted(
+                        (dep for dep in free_symbols(self.eqns[sym]) if dep in self.eqns),
+                        key=lambda dep: total_order.index(dep) if dep in total_order else len(total_order)
+                ):
                     self.add(dep)
                 self.ord.append(sym)
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
 
-        for sym in ordering_fn(self.eqns, self):
+        for sym in total_order:
             ord.add(sym)
         self.order = ord.ord
 
@@ -869,7 +872,16 @@ class EqnList:
 
         self._run_main_complexity_analysis()
 
-        self.order_builder(complete)
+        if (
+            hasattr(self.ordering_fn, 'func')
+            and 'ask_cthulhu' in self.ordering_fn.func.__name__
+            and not force_rebake
+        ):
+            # Simple stopgap to prevent wasteful LLM calls before CSE
+            # todo: maybe make this check less hacky?
+            self.order_builder(complete, override_ordering_fn=prioritize_rare_symbols)
+        else:
+            self.order_builder(complete)
         vprint(colorize("Order:", "green"), self.order)
 
         memory_pressure = self._score_memory_pressure()
