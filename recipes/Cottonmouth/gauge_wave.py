@@ -15,14 +15,14 @@ if __name__ == "__main__":
     ###
     amplitude = gauge_wave_id.add_param(
         "amplitude",
-        default=1.0,
-        desc="Linear wave amplitude"
+        default=0.5,
+        desc="Gauge wave amplitude"
     )
 
     wavelength = gauge_wave_id.add_param(
         "wavelength",
         default=1.0,
-        desc="Linear wave wavelength"
+        desc="Gauge wave wavelength"
     )
 
     ###
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     # Write initial data
     ###
     fun_fill_id = gauge_wave_id.create_function(
-        "cottonmouth_linear_wave_fill_id",
+        "cottonmouth_gauge_wave_fill_id",
         adm_id_group
     )
 

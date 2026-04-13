@@ -65,6 +65,7 @@ cd "$CACTUS_DIR"
 cat "$THORNLIST" > .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthBSSNOK >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthDiagLinearWaveID >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthGaugeWaveID >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthLinearWaveID >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthZ4c >> .pre_cottonmouth.th
 
@@ -74,7 +75,11 @@ parfiles=(
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave.par"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0.par"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/linear_wave_bssnok.par"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/linear_wave_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/rst_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/rst_z4c.par"
 )
 
 perl ./utils/Scripts/MakeThornList -o cottonmouth.th --master .pre_cottonmouth.th "${parfiles[@]}"
