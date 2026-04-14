@@ -272,6 +272,32 @@ Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 # and read in the gamma driver shift evolution
 ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
 
+# Temporary storage for extracted rhs subexpressions
+ConfConnect_lapse_geom_tmp = cottonmouth_bssnok.decl(
+    "ConfConnect_lapse_geom_tmp",
+    [ua]
+)
+gt_lapse_geom_tmp = cottonmouth_bssnok.decl(
+    "gt_lapse_geom_tmp",
+    [la, lb],
+    symmetries=[(la, lb)]
+)
+ConfConnect_shift_drv_tmp = cottonmouth_bssnok.decl(
+    "ConfConnect_shift_drv_tmp",
+    [ua]
+)
+gt_shift_drv_tmp = cottonmouth_bssnok.decl(
+    "gt_shift_drv_tmp",
+    [la, lb],
+    symmetries=[(la, lb)]
+)
+ConfConnect_adv_tmp = cottonmouth_bssnok.decl("ConfConnect_adv_tmp", [ua])
+gt_adv_tmp = cottonmouth_bssnok.decl(
+    "gt_adv_tmp",
+    [la, lb],
+    symmetries=[(la, lb)]
+)
+
 # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
 # When \tilde{\Gamma}^{i} when it appears and its derivative are not needed,
 # the substitution \tilde{\Gamma}^{i} \rightarrow \tilde{gamma}^{ij} \tilde{\Gamma}^{i}_{jk} = \Delta^i
@@ -649,8 +675,8 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
     rhs_group
 )
-# loop 0
 
+# loop 1
 fun_bssn_rhs.add_eqn(
     Rt_tmp[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
@@ -662,6 +688,7 @@ fun_bssn_rhs.add_eqn(
 
 fun_bssn_rhs.split_loop()
 
+# loop 1
 fun_bssn_rhs.add_eqn(
     Rt[la, lb],
     Rt_tmp[la,lb]
@@ -672,6 +699,7 @@ fun_bssn_rhs.add_eqn(
 
 fun_bssn_rhs.split_loop()
 
+# loop 3
 # Aux. equations
 fun_bssn_rhs.add_eqn(
     cdphi2[la, lb],
@@ -707,6 +735,9 @@ fun_bssn_rhs.add_eqn(
     )
     + evo_lapse * R[la, lb]
 )
+
+fun_bssn_rhs.split_loop()
+
 
 # Evolution equations
 fun_bssn_rhs.add_eqn(
@@ -751,37 +782,66 @@ fun_bssn_rhs.add_eqn(
 
 fun_bssn_rhs.split_loop()
 
+# loop 4
 fun_bssn_rhs.add_eqn(
-    ConfConnect_rhs_tmp[ua],
-    - 2 * At[ua, ub] * D(evo_lapse, lb)
-    + 2 * evo_lapse * (
+    ConfConnect_lapse_geom_tmp[ua],
+    2 * evo_lapse * (
         + Gammat[ua, lb, lc] * At[ub, uc]
         - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
         + 6 * At[ua, ub] * cdphi[lb]
     )
+)
+fun_bssn_rhs.add_eqn(
+    gt_lapse_geom_tmp[la, lb],
+    - 2 * evo_lapse * At[la, lb]
+)
+fun_bssn_rhs.add_eqn(
+    ConfConnect_shift_drv_tmp[ua],
     + gt[ub, uc] * D(evo_shift[ua], lb, lc)
     + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
-    - Delta[ub] * D(evo_shift[ua], lb)
-    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
-    # Matter
-    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
-    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
-    + evo_shift[ub] * D(ConfConnect[ua], lb)
 )
-fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
-
 fun_bssn_rhs.add_eqn(
-    gt_rhs[la, lb],
-    - 2 * evo_lapse * At[la, lb]
+    gt_shift_drv_tmp[la, lb],
     + gt[la, lc] * D(evo_shift[uc], lb)
     + gt[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
+)
+fun_bssn_rhs.add_eqn(
+    ConfConnect_adv_tmp[ua],
+    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
+    evo_shift[ub] * D(ConfConnect[ua], lb)
+)
+fun_bssn_rhs.add_eqn(
+    gt_adv_tmp[la, lb],
     # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * D(gt[la, lb], lc)
+    evo_shift[uc] * D(gt[la, lb], lc)
 )
 
 fun_bssn_rhs.split_loop()
 
+fun_bssn_rhs.add_eqn(
+    ConfConnect_rhs_tmp[ua],
+    - 2 * At[ua, ub] * D(evo_lapse, lb)
+    + ConfConnect_lapse_geom_tmp[ua]
+    + ConfConnect_shift_drv_tmp[ua]
+    - Delta[ub] * D(evo_shift[ua], lb)
+    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
+    # Matter
+    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
+    + ConfConnect_adv_tmp[ua]
+)
+fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
+#fun_bssn_rhs.split_loop()
+fun_bssn_rhs.add_eqn(
+    gt_rhs[la, lb],
+    gt_lapse_geom_tmp[la, lb]
+    + gt_shift_drv_tmp[la, lb]
+    + gt_adv_tmp[la, lb]
+)
+
+fun_bssn_rhs.split_loop()
+
+# loop 5
 fun_bssn_rhs.add_eqn(
     w_rhs,
     Rational(1, 3) * w * (

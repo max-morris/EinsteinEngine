@@ -29,10 +29,9 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
-from EinsteinEngine import prioritize_rare_symbols
 from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn
+from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, prioritize_rare_symbols
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
