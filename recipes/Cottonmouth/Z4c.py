@@ -510,7 +510,6 @@ cottonmouth_Z4c.add_substitution_rule(
 )
 
 # Covariant derivatives with respect to the physical metric
-# TODO: Check
 cottonmouth_Z4c.add_substitution_rule(
     covd2_alpha[lj, lk],
     D(evo_lapse, lj, lk)
@@ -911,18 +910,18 @@ fun_z4c_rhs.add_eqn(
         + Gammat[ui, lj, lk] * At[uj, uk]
         - Rational(3, 2) * At[ui, uj] * (1 / chi) * D(chi, lj)
         - Rational(2, 3) * gt[ui, uj] * D(trK, lj)
-        - Rational(4, 3) * gt[ui, uj] * D(Theta, lj)
+        - Rational(1, 3) * gt[ui, uj] * D(Theta, lj)
     )
     + gt[uj, uk] * D(evo_shift[ui], lj, lk)
     + Rational(1, 3) * gt[ui, uj] * D(evo_shift[uk], lj, lk)
     - Gammatd[uj] * D(evo_shift[ui], lj)
     + Rational(2, 3) * Gammatd[ui] * D(evo_shift[uj], lj)
     # Damping
-    - evo_lapse * kappa_1 * (evo_Gammat[ui] - Gammatd[ui])
+    - 2 * evo_lapse * kappa_1 * (evo_Gammat[ui] - Gammatd[ui])
     # Advection
     + evo_shift[uj] * D(evo_Gammat[ui], lj)
     # Matter
-    - 16 * pi * evo_lapse * chi * gt[ui, uj] * Svec[lj]
+    - 16 * pi * evo_lapse * gt[ui, uj] * Svec[lj]
 )
 
 # Eq. (2) of [1]
