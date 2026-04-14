@@ -17,17 +17,95 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
+from dataclasses import dataclass
+from itertools import chain
+from statistics import mean
 from typing import Iterator, Callable, TYPE_CHECKING
 
+from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr
 
-from EinsteinEngine.dsl.sympywrap import free_symbols
+from util import pprint
 
 if TYPE_CHECKING:
     from EinsteinEngine.dsl.eqnlist import EqnList
 
 EqnOrderingFn = Callable[[dict[Symbol, Expr], 'EqnList'], Iterator[Symbol]]
+
+@dataclass(frozen=True)
+class _LifetimesData:
+    lifetimes: dict[Symbol, tuple[int, int]]
+    births: dict[int, set[Symbol]]
+    deaths: dict[int, set[Symbol]]
+
+def _get_lifetimes(eqns: dict[Symbol, Expr], order: list[Symbol]) -> _LifetimesData:
+    if len(eqns) == 0 or len(order) == 0:
+        return _LifetimesData(dict(), dict(), dict())
+
+    assert len(eqns) == len(order), f"eqns and order must have the same length, but got {len(eqns)} and {len(order)}"
+
+    first_read: dict[Symbol, int] = dict()
+    last_read: dict[Symbol, int] = dict()
+
+    for idx, (_, rhs) in enumerate(sorted(eqns.items(), key=lambda eqn: order.index(eqn[0]))):
+        for sym in rhs.free_symbols:
+            if sym not in first_read:
+                first_read[sym] = idx
+            last_read[sym] = idx
+
+    lifetimes = {sym: (first_read[sym], last_read[sym]) for sym in first_read}
+    births = defaultdict(set)
+    deaths = defaultdict(set)
+
+    for sym, (birth, death) in lifetimes.items():
+        births[birth].add(sym)
+        deaths[death].add(sym)
+
+    return _LifetimesData(lifetimes, births, deaths)
+
+def _score_memory_pressure(lifetimes: dict[Symbol, tuple[int, int]]) -> dict[Symbol, int]:
+    return {sym: 1 + lifetime[1] - lifetime[0] for (sym, lifetime) in lifetimes.items()}
+
+def score_memory_pressure(eqns: dict[Symbol, Expr], order: list[Symbol]) -> dict[Symbol, int]:
+    return _score_memory_pressure(_get_lifetimes(eqns, order).lifetimes)
+
+def _score_peak_liveness(lifetimes: dict[Symbol, tuple[int, int]], n_eqns: int) -> int:
+    peak = 0
+    liveness = 0
+
+    for idx in range(n_eqns):
+        for (birth, death) in lifetimes.values():
+            if birth == idx:
+                liveness += 1
+            elif death == idx - 1:
+                liveness -= 1
+
+        assert liveness >= 0, f"Negative liveness at index {idx}"
+        peak = max(peak, liveness)
+
+    return peak
+
+def score_peak_liveness(eqns: dict[Symbol, Expr], order: list[Symbol]) -> int:
+    return _score_peak_liveness(_get_lifetimes(eqns, order).lifetimes, len(order))
+
+def _score_symbol_reuse(lifetimes_data: _LifetimesData, eqns: dict[Symbol, Expr], order: list[Symbol]) -> int:
+    if len(eqns) == 0:
+        return 0
+
+    births, deaths = lifetimes_data.births, lifetimes_data.deaths
+
+    in_memory: set[Symbol] = set()
+    score = 0
+
+    for idx, (_, rhs) in enumerate(sorted(eqns.items(), key=lambda eqn: order.index(eqn[0]))):
+        in_memory.update(births[idx])
+        if idx > 0:
+            in_memory.difference_update(deaths[idx - 1])
+        score += len(in_memory.intersection(rhs.free_symbols))
+
+    return score
+
 
 def maximize_symbol_reuse(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
     """
@@ -45,16 +123,72 @@ def maximize_symbol_reuse(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterat
 
     lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (eqn_list.complexity[kv[0]], disambiguation.index(kv[0])))
     del eqns_remaining[lhs]
-    in_memory.update(free_symbols(rhs))
+    in_memory.update(rhs.free_symbols)
     yield lhs
 
     while len(eqns_remaining) > 0:
         lhs, rhs = max(eqns_remaining.items(),
-                       key=lambda kv: (len(free_symbols(kv[1]).intersection(in_memory)), eqn_list.complexity[kv[0]],
+                       key=lambda kv: (len(kv[1].free_symbols.intersection(in_memory)), eqn_list.complexity[kv[0]],
                                        disambiguation.index(kv[0])))
         del eqns_remaining[lhs]
-        in_memory.update(free_symbols(rhs))
+        in_memory.update(rhs.free_symbols)
         yield lhs
+
+
+def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bool = True) -> Callable[[Symbol], float]:
+    if len(eqns) == 0:
+        return lambda _: 0.0
+
+    reciprocal_rarity: dict[Symbol, float] = defaultdict(int)
+    frequency_by_eqn: dict[Symbol, dict[Symbol, float]] = defaultdict(dict)  # {lhs: {sym: freq}}
+    for lhs, rhs in eqns.items():
+        for sym in rhs.free_symbols:
+            reciprocal_rarity[sym] += 1
+            frequency_by_eqn[lhs][sym] = rhs.count(sym)  # type: ignore[no-untyped-call]
+
+    def symbol_rarity(sym: Symbol) -> float:
+        return 1 / reciprocal_rarity[sym]
+
+    def symbol_score(sym: Symbol, lhs: Symbol) -> float:
+        return frequency_by_eqn[lhs][sym] * symbol_rarity(sym) if consider_frequency else symbol_rarity(sym)
+
+    def eqn_score(lhs: Symbol) -> float:
+        return sum(symbol_score(sym, lhs) for sym in eqns[lhs].free_symbols)
+
+    return eqn_score
+
+
+def _get_eqn_score_fn_by_complexity(eqn_list: EqnList) -> Callable[[Symbol], float]:
+    return lambda lhs: eqn_list.complexity[lhs]
+
+
+def _score_eqn_by_symbol_reuse(eqn_rhs: Expr, previous_rhses: set[Expr]) -> int:
+    if len(previous_rhses) == 0:
+        return 0
+
+    return len(eqn_rhs.free_symbols.intersection(chain(*(rhs.free_symbols for rhs in previous_rhses))))
+
+
+def _get_symbol_distances(eqn_rhs: Expr, previous_rhses: list[Expr]) -> dict[Symbol, int]:
+    if len(previous_rhses) == 0:
+        return dict()
+
+    my_pos = len(previous_rhses)
+    reused_symbols: dict[Symbol, int] = dict()
+
+    for idx, rhs in enumerate(previous_rhses):
+        reused_symbols.update((sym, my_pos - idx) for sym in rhs.free_symbols.intersection(eqn_rhs.free_symbols))
+    return reused_symbols
+
+
+def _score_eqn_by_peak_symbol_distance(eqn_rhs: Expr, previous_rhses: list[Expr]) -> int:
+    return max(_get_symbol_distances(eqn_rhs, previous_rhses).values(), default=0)
+
+
+def _score_eqn_by_avg_symbol_distance(eqn_rhs: Expr, previous_rhses: list[Expr]) -> float:
+    reused_symbols = _get_symbol_distances(eqn_rhs, previous_rhses)
+    return mean(reused_symbols.values()) if len(reused_symbols) > 0 else 0
+
 
 def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
                             eqn_list: EqnList,
@@ -73,23 +207,88 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     if len(eqns) == 0:
         return
 
-    reciprocal_rarity: dict[Symbol, float] = defaultdict(int)
-    frequency_by_eqn: dict[Symbol, dict[Symbol, float]] = defaultdict(dict)  # {lhs: {sym: freq}}
-    for lhs, rhs in eqns.items():
-        for sym in free_symbols(rhs):
-            reciprocal_rarity[sym] += 1
-            frequency_by_eqn[lhs][sym] = rhs.count(sym)  # type: ignore[no-untyped-call]
-
-    def symbol_rarity(sym: Symbol) -> float:
-        return 1 / reciprocal_rarity[sym]
-
-    def symbol_score(sym: Symbol, lhs: Symbol) -> float:
-        return frequency_by_eqn[lhs][sym] * symbol_rarity(sym) if consider_frequency else symbol_rarity(sym)
-
-    def eqn_score(lhs: Symbol) -> float:
-        return (complexity_factor * eqn_list.complexity[lhs]) + sum(symbol_score(sym, lhs) for sym in free_symbols(eqns[lhs]))
+    raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency)
+    eqn_score = lambda lhs: raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
 
     disambiguation = sorted(eqns.keys(), key=str, reverse=True)
     ordered = sorted(eqns.keys(), key=lambda lhs: (eqn_score(lhs), eqn_list.complexity[lhs], disambiguation.index(lhs)), reverse=True)
 
     yield from ordered.__iter__()
+
+def bayesian_optimization(eqns: dict[Symbol, Expr],
+                          eqn_list: EqnList,
+                          memory_pressure_factor: float = 0.0,
+                          peak_liveness_factor: float = -1.0,
+                          symbol_reuse_factor: float = 0.0) -> Iterator[Symbol]:
+    rarity_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency=True)
+
+    cache: dict[tuple[tuple[str, float], ...], OrderedDict[Symbol, Expr]] = dict()
+    def put_cache(val: OrderedDict[Symbol, Expr], **kwargs: float) -> None:
+        key = tuple(sorted(kwargs.items()))
+        cache[key] = val
+
+    def get_cache(**kwargs: float) -> OrderedDict[Symbol, Expr]:
+        key = tuple(sorted(kwargs.items()))
+        return cache[key]
+
+    def black_box_order(complexity_weight: float,
+                        rarity_weight: float,
+                        peak_symbol_distance_weight: float,
+                        avg_symbol_distance_weight: float,
+                        symbol_reuse_weight: float) -> OrderedDict[Symbol, Expr]:
+        eqns_remaining = eqns.copy()
+        disambiguation = sorted(eqns_remaining.keys(), key=str, reverse=True)
+
+        order: OrderedDict[Symbol, Expr] = OrderedDict()
+
+        while len(eqns_remaining) > 0:
+            def score(lhs: Symbol) -> float:
+                return (
+                    complexity_weight * eqn_list.complexity[lhs]
+                    + rarity_weight * rarity_score(lhs)
+                    + peak_symbol_distance_weight * _score_eqn_by_peak_symbol_distance(eqns[lhs], list(order.values()))
+                    + avg_symbol_distance_weight * _score_eqn_by_avg_symbol_distance(eqns[lhs], list(order.values()))
+                    + symbol_reuse_weight * _score_eqn_by_symbol_reuse(eqns[lhs], set(order.values()))
+                )
+
+            lhs = max(eqns_remaining.keys(), key=lambda lhs: (score(lhs), disambiguation.index(lhs)))
+            rhs = eqns_remaining[lhs]
+            del eqns_remaining[lhs]
+            order[lhs] = rhs
+
+        put_cache(order, complexity_weight=complexity_weight, rarity_weight=rarity_weight,
+                  peak_symbol_distance_weight=peak_symbol_distance_weight, avg_symbol_distance_weight=avg_symbol_distance_weight,
+                  symbol_reuse_weight=symbol_reuse_weight)
+        return order
+
+    def black_box_score(complexity_weight: float,
+                        rarity_weight: float,
+                        peak_symbol_distance_weight: float,
+                        avg_symbol_distance_weight: float,
+                        symbol_reuse_weight: float) -> float:
+        order = black_box_order(complexity_weight, rarity_weight, peak_symbol_distance_weight, avg_symbol_distance_weight, symbol_reuse_weight)
+        lifetime_data = _get_lifetimes(eqns, list(order.keys()))
+        return (
+            memory_pressure_factor * sum(_score_memory_pressure(lifetime_data.lifetimes).values())
+            + peak_liveness_factor * _score_peak_liveness(lifetime_data.lifetimes, len(order))
+            + symbol_reuse_factor * _score_symbol_reuse(lifetime_data, eqns, list(order.keys()))
+        )
+
+    optimizer = BayesianOptimization(
+        f=black_box_score,
+        pbounds={
+            "complexity_weight": (-5.0, 5.0),
+            "rarity_weight": (-0.0, 5.0),
+            "peak_symbol_distance_weight": (-5.0, 0.0),
+            "avg_symbol_distance_weight": (-5.0, 0.0),
+            "symbol_reuse_weight": (0.0, 5.0)
+        }
+    )
+
+    optimizer.maximize(init_points=5, n_iter=10)
+    assert optimizer.max is not None
+    pprint(f'Bayesian Optimization result: {optimizer.max}')
+
+    opt_order = get_cache(**optimizer.max['params'])
+    yield from opt_order.keys()
+
