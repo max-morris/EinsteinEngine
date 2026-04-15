@@ -889,7 +889,11 @@ class EqnList:
                 hasattr(self.ordering_fn, 'func')
                 and 'bayesian' in self.ordering_fn.func.__name__
                 and not force_rebake
-        ) or 'bayesian' in self.ordering_fn.__name__ and not force_rebake:
+        ) or (
+                hasattr(self.ordering_fn, '__name__')
+                and 'bayesian' in self.ordering_fn.__name__
+                and not force_rebake
+        ):
             # Simple stopgap to prevent wasteful bayesian optimization calls before CSE
             # todo: maybe make this check less hacky?
             self.order_builder(complete, override_ordering_fn=prioritize_rare_symbols)
