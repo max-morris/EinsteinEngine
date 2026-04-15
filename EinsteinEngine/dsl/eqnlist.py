@@ -659,6 +659,8 @@ class EqnList:
         return result
 
     def order_builder(self, complete: Dict[Symbol, int], override_ordering_fn: Optional[EqnOrderingFn] = None) -> None:
+        TOTAL_ORDER = True
+
         for k in self.inputs:
             complete[k] = 0
         for k in self.params:
@@ -667,6 +669,9 @@ class EqnList:
         ordering_fn = override_ordering_fn or self.ordering_fn
         myself = self
 
+        if TOTAL_ORDER:
+            total_order: list[Symbol] = list(ordering_fn(self.eqns, self))
+
         class Ord:
             def __init__(self, eqns: dict[Symbol, Expr]) -> None:
                 self.ord: list[Symbol] = list()
@@ -674,15 +679,26 @@ class EqnList:
             def add(self, sym: Symbol) -> None:
                 if sym in complete:
                     return
-                for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
-                    self.add(dep)
+                if TOTAL_ORDER:
+                    for dep in sorted(
+                            (dep for dep in free_symbols(self.eqns[sym]) if dep in self.eqns),
+                            key=lambda dep: total_order.index(dep) if dep in total_order else len(total_order)
+                    ):
+                        self.add(dep)
+                else:
+                    for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
+                        self.add(dep)
                 self.ord.append(sym)
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
 
-        for sym in ordering_fn(self.eqns, self):
-            ord.add(sym)
+        if TOTAL_ORDER:
+            for sym in total_order:
+                ord.add(sym)
+        else:
+            for sym in ordering_fn(self.eqns, self):
+                ord.add(sym)
         self.order = ord.ord
 
     def _run_preliminary_complexity_analysis(self) -> None:
