@@ -631,11 +631,12 @@ fun_bssn_cons.add_eqn(
 # We will explicitly sync the monitored constraints, because they are
 # written on the interior only, and It would be nice to have them available
 # everywhere, for monitoring, debuging, etc
-sync_monitored_constraints = ExplicitSyncBatch(
-    [HamCons, MomCons, DeltaCons],
-    analysis_group,
-    schedule_after=["constraints"],
-    name="sync_monitored_constraints"
+sync_state = ExplicitSyncBatch(
+    cottonmouth_bssnok.get_state(),
+    ScheduleBin.PostSubStep, # "ODESolvers_PostStep",
+    schedule_before=["ADMBaseX_SetADMVars"],
+    name="sync_state",
+    # IN ODESolvers_PostStep BEFORE ADMBaseX_SetADMVars
 )
 
 
@@ -656,8 +657,6 @@ fun_bssn_rhs.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
 )
 
 fun_bssn_rhs.split_loop()
@@ -665,6 +664,8 @@ fun_bssn_rhs.split_loop()
 fun_bssn_rhs.add_eqn(
     Rt[la, lb],
     Rt_tmp[la,lb]
+        + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
         + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
         + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
         + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
@@ -913,6 +914,11 @@ fun_bssn_diss.add_eqn(
     )
 )
 
+#class Sorter:
+#    def __init__(self):
+#        pass
+#    def sort(self, eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+
 ###
 # Bake the cake
 ###
@@ -933,7 +939,7 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        sync_mode=SyncMode.EmulatePresync,
+        sync_mode=SyncMode.HandsOff,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
@@ -942,7 +948,7 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_monitored_constraints
+            sync_state
         ]
     )
 ).generate_thorn()

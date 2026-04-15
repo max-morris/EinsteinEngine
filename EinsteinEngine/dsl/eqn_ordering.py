@@ -23,6 +23,7 @@ from typing import Iterator, Callable, TYPE_CHECKING
 from sympy import Symbol, Expr
 
 from EinsteinEngine.dsl.sympywrap import free_symbols
+from random import seed, random
 
 if TYPE_CHECKING:
     from EinsteinEngine.dsl.eqnlist import EqnList
@@ -41,7 +42,9 @@ def maximize_symbol_reuse(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterat
     eqns_remaining = eqns.copy()
     in_memory: set[Symbol] = set()
 
-    disambiguation = sorted(eqns_remaining.keys(), key=str, reverse=True)
+    seed(4)
+    rand_scores = {k: random() for k in eqns.keys()}
+    disambiguation = sorted(eqns_remaining.keys(), key=lambda a : rand_scores[a])
 
     lhs, rhs = max(eqns_remaining.items(), key=lambda kv: (eqn_list.complexity[kv[0]], disambiguation.index(kv[0])))
     del eqns_remaining[lhs]
