@@ -925,7 +925,7 @@ cottonmouth_bssnok.bake(
     cse_optimization_level=CseOptimizationLevel.Fast,
     #ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
     ordering_fn=functools.partial(
-        bayesian_optimization, exploration_iter=10, optimization_iter=20,
+        bayesian_optimization, exploration_iter=20, optimization_iter=100,
         memory_pressure_factor=0.0,
         peak_liveness_factor=-1.0,
         symbol_reuse_factor=0.0,
