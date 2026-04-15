@@ -21,8 +21,9 @@ from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 from itertools import chain
 from statistics import mean
-from typing import Iterator, Callable, TYPE_CHECKING
+from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple
 
+import line_profiler
 from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr
 
@@ -169,25 +170,22 @@ def _score_eqn_by_symbol_reuse(eqn_rhs: Expr, previous_rhses: set[Expr]) -> int:
     return len(eqn_rhs.free_symbols.intersection(chain(*(rhs.free_symbols for rhs in previous_rhses))))
 
 
-def _get_symbol_distances(eqn_rhs: Expr, previous_rhses: list[Expr]) -> dict[Symbol, int]:
-    if len(previous_rhses) == 0:
+@line_profiler.profile
+def _get_reused_symbol_distances(eqn_rhs: Expr, in_memory: dict[Symbol, int], my_pos: int) -> dict[Symbol, int]:
+    if len(in_memory) == 0:
         return dict()
 
-    my_pos = len(previous_rhses)
-    reused_symbols: dict[Symbol, int] = dict()
+    return {sym: my_pos - in_memory[sym] for sym in eqn_rhs.free_symbols.intersection(in_memory.keys())}
 
-    for idx, rhs in enumerate(previous_rhses):
-        reused_symbols.update((sym, my_pos - idx) for sym in rhs.free_symbols.intersection(eqn_rhs.free_symbols))
-    return reused_symbols
+class _SymbolDistanceData(NamedTuple):
+    peak: float
+    avg: float
 
-
-def _score_eqn_by_peak_symbol_distance(eqn_rhs: Expr, previous_rhses: list[Expr]) -> int:
-    return max(_get_symbol_distances(eqn_rhs, previous_rhses).values(), default=0)
-
-
-def _score_eqn_by_avg_symbol_distance(eqn_rhs: Expr, previous_rhses: list[Expr]) -> float:
-    reused_symbols = _get_symbol_distances(eqn_rhs, previous_rhses)
-    return mean(reused_symbols.values()) if len(reused_symbols) > 0 else 0
+def _score_eqn_by_symbol_distance(reused_symbols: dict[Symbol, int]) -> _SymbolDistanceData:
+    return _SymbolDistanceData(
+        max(reused_symbols.values(), default=0),
+        mean(reused_symbols.values()) if len(reused_symbols) > 0 else 0
+    )
 
 
 def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
@@ -215,6 +213,8 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
 
     yield from ordered.__iter__()
 
+
+@line_profiler.profile
 def bayesian_optimization(eqns: dict[Symbol, Expr],
                           eqn_list: EqnList,
                           memory_pressure_factor: float = 0.0,
@@ -222,15 +222,16 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
                           symbol_reuse_factor: float = 0.0) -> Iterator[Symbol]:
     rarity_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency=True)
 
-    cache: dict[tuple[tuple[str, float], ...], OrderedDict[Symbol, Expr]] = dict()
+    order_cache: dict[tuple[tuple[str, float], ...], OrderedDict[Symbol, Expr]] = dict()
     def put_cache(val: OrderedDict[Symbol, Expr], **kwargs: float) -> None:
         key = tuple(sorted(kwargs.items()))
-        cache[key] = val
+        order_cache[key] = val
 
     def get_cache(**kwargs: float) -> OrderedDict[Symbol, Expr]:
         key = tuple(sorted(kwargs.items()))
-        return cache[key]
+        return order_cache[key]
 
+    @line_profiler.profile
     def black_box_order(complexity_weight: float,
                         rarity_weight: float,
                         peak_symbol_distance_weight: float,
@@ -240,27 +241,34 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
         disambiguation = sorted(eqns_remaining.keys(), key=str, reverse=True)
 
         order: OrderedDict[Symbol, Expr] = OrderedDict()
+        in_memory: dict[Symbol, int] = dict()  # symbol -> index in order
 
-        while len(eqns_remaining) > 0:
+        for idx in range(len(eqns)):
+            @line_profiler.profile
             def score(lhs: Symbol) -> float:
+                symbol_distances = _get_reused_symbol_distances(eqns[lhs], in_memory, idx)
+                peak_symbol_distance, avg_symbol_distance = _score_eqn_by_symbol_distance(symbol_distances)
+
                 return (
                     complexity_weight * eqn_list.complexity[lhs]
                     + rarity_weight * rarity_score(lhs)
-                    + peak_symbol_distance_weight * _score_eqn_by_peak_symbol_distance(eqns[lhs], list(order.values()))
-                    + avg_symbol_distance_weight * _score_eqn_by_avg_symbol_distance(eqns[lhs], list(order.values()))
-                    + symbol_reuse_weight * _score_eqn_by_symbol_reuse(eqns[lhs], set(order.values()))
+                    + peak_symbol_distance_weight * peak_symbol_distance
+                    + avg_symbol_distance_weight * avg_symbol_distance
+                    + symbol_reuse_weight * len(symbol_distances)
                 )
 
             lhs = max(eqns_remaining.keys(), key=lambda lhs: (score(lhs), disambiguation.index(lhs)))
             rhs = eqns_remaining[lhs]
             del eqns_remaining[lhs]
             order[lhs] = rhs
+            in_memory.update({sym: idx for sym in rhs.free_symbols})
 
         put_cache(order, complexity_weight=complexity_weight, rarity_weight=rarity_weight,
                   peak_symbol_distance_weight=peak_symbol_distance_weight, avg_symbol_distance_weight=avg_symbol_distance_weight,
                   symbol_reuse_weight=symbol_reuse_weight)
         return order
 
+    @line_profiler.profile
     def black_box_score(complexity_weight: float,
                         rarity_weight: float,
                         peak_symbol_distance_weight: float,
@@ -269,9 +277,10 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
         order = black_box_order(complexity_weight, rarity_weight, peak_symbol_distance_weight, avg_symbol_distance_weight, symbol_reuse_weight)
         lifetime_data = _get_lifetimes(eqns, list(order.keys()))
         return (
-            memory_pressure_factor * sum(_score_memory_pressure(lifetime_data.lifetimes).values())
-            + peak_liveness_factor * _score_peak_liveness(lifetime_data.lifetimes, len(order))
-            + symbol_reuse_factor * _score_symbol_reuse(lifetime_data, eqns, list(order.keys()))
+                peak_liveness_factor * _score_peak_liveness(lifetime_data.lifetimes, len(order))
+            #memory_pressure_factor * sum(_score_memory_pressure(lifetime_data.lifetimes).values())
+            #+ peak_liveness_factor * _score_peak_liveness(lifetime_data.lifetimes, len(order))
+            #+ symbol_reuse_factor * _score_symbol_reuse(lifetime_data, eqns, list(order.keys()))
         )
 
     optimizer = BayesianOptimization(
@@ -282,7 +291,8 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
             "peak_symbol_distance_weight": (-5.0, 0.0),
             "avg_symbol_distance_weight": (-5.0, 0.0),
             "symbol_reuse_weight": (0.0, 5.0)
-        }
+        },
+        #verbose=0
     )
 
     optimizer.maximize(init_points=5, n_iter=10)

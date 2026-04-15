@@ -17,7 +17,7 @@
 
 from typing import NamedTuple
 
-from EinsteinEngine import Centering
+from ..emit.tree import Centering
 
 
 class StencilIdx(NamedTuple):
