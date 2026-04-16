@@ -31,7 +31,7 @@ from ..util import pprint
 if TYPE_CHECKING:
     from EinsteinEngine.dsl.eqnlist import EqnList
 
-EqnOrderingFn = Callable[[dict[Symbol, Expr], 'EqnList'], Iterator[Symbol]]
+EqnOrderingFn = Callable[[dict[Symbol, Expr], 'EqnList'], Iterator[Symbol | tuple[Symbol, str]]]
 
 @dataclass(frozen=True)
 class _LifetimesData:
@@ -211,7 +211,7 @@ def _get_symbol_reuse_stats(free_symbols: set[Symbol], in_memory: dict[Symbol, i
 def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
                             eqn_list: EqnList,
                             consider_frequency: bool = True,
-                            complexity_factor: float = 0.0) -> Iterator[Symbol]:
+                            complexity_factor: float = 0.0) -> Iterator[tuple[Symbol, str]]:
     """
     Orders equations based on symbol rarity.
     Equations which use symbols that are less common in other equations are given higher priority.
@@ -228,10 +228,12 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency)
     def eqn_score(lhs: Symbol) -> float: return raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
 
-    disambiguation = sorted(eqns.keys(), key=str, reverse=True)
-    ordered = sorted(eqns.keys(), key=lambda lhs: (eqn_score(lhs), eqn_list.complexity[lhs], disambiguation.index(lhs)), reverse=True)
+    scores = {lhs: eqn_score(lhs) for lhs in eqns.keys()}
 
-    yield from ordered.__iter__()
+    disambiguation = sorted(eqns.keys(), key=str, reverse=True)
+    ordered = sorted(eqns.keys(), key=lambda lhs: (scores[lhs], eqn_list.complexity[lhs], disambiguation.index(lhs)), reverse=True)
+
+    yield from ((lhs, f'Symbol rarity score = {scores[lhs]}') for lhs in ordered.__iter__())
 
 @cache
 def _free_symbols(expr: Expr) -> set[Symbol]:

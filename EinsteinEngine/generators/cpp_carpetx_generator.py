@@ -900,6 +900,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
 
             eqns: list[tuple[sy.Symbol, Expr]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
+            annotations: dict[sy.Symbol, str] = {lhs: ann for lhs, ann in thorn_fn.source_annotations.eqns[loop_idx].items()}
             temporaries = [
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
                 if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries - eqn_list.tile_temporaries) and str(lhs) not in self.var_names
@@ -915,9 +916,10 @@ class CppCarpetXGenerator(CactusGenerator):
                     CarpetXGridLoopLambda(
                         preceding=xyz_decls+stencil_idx_decls,  # type: ignore[operator]
                         equations=eqns,
+                        annotations=annotations,
                         succeeding=[],
                         temporaries=temporaries,
-                        reassigned_lhses=subst_result.substituted_lhs_idxes
+                        reassigned_lhses={subst.eqn_idx: subst for subst in subst_result.substitutions}
                     )
                 )
             )

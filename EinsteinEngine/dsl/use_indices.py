@@ -1382,7 +1382,7 @@ class ThornDefBakeOptions(TypedDict, total=False):
 
 class SourceAnnotations:
     loops: dict[int, str]
-    eqns: dict[int, dict[int, str]]
+    eqns: dict[int, dict[Symbol, str]]
 
     def __init__(self) -> None:
         self.loops = defaultdict(str)
@@ -1404,14 +1404,18 @@ class ThornFunction:
         self.schedule_target = schedule_target
         self.name = name
         self.thorn_def = thorn_def
-        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, intent_override)
+        self.source_annotations: SourceAnnotations = SourceAnnotations()
+        self.source_annotations.loops[0] = f'{self.name} loop 0'
+
+        def set_eqn_annotation(loop_idx: int, key: Symbol, annotation: str) -> None:
+            self.source_annotations.eqns[loop_idx][key] = annotation
+
+        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, intent_override, set_eqn_annotation)
         self.been_baked: bool = False
         self.been_late_baked: bool = False
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
         self.intent_override = intent_override
-        self.source_annotations: SourceAnnotations = SourceAnnotations()
-        self.source_annotations.loops[0] = f'{self.name} loop 0'
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")

@@ -24,14 +24,20 @@ from EinsteinEngine.dsl.eqnlist import TemporaryReplacement, EqnList
 
 
 @dataclass(frozen=True)
+class RecycledTemporarySubstitution:
+    eqn_idx: int
+    old: sy.Symbol
+    new: sy.Symbol
+
+@dataclass(frozen=True)
 class SubstituteRecycledTemporariesResult:
     eqns: list[tuple[sy.Symbol, sy.Expr]]
-    substituted_lhs_idxes: set[int]
+    substitutions: set[RecycledTemporarySubstitution]
 
 
 def substitute_recycled_temporaries(eqn_list: EqnList) -> SubstituteRecycledTemporariesResult:
     eqns: list[tuple[sy.Symbol, sy.Expr]] = list()
-    substituted_lhs_idxes: set[int] = set()
+    substitutions: set[RecycledTemporarySubstitution] = set()
 
     for eqn_idx, (lhs, rhs) in enumerate(eqn_list.sorted_eqns):
         active_replacements = list(filter(
@@ -48,8 +54,8 @@ def substitute_recycled_temporaries(eqn_list: EqnList) -> SubstituteRecycledTemp
         if current_line_replacement:
             assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"
             lhs = current_line_replacement.new
-            substituted_lhs_idxes.add(eqn_idx)
+            substitutions.add(RecycledTemporarySubstitution(eqn_idx, current_line_replacement.old, current_line_replacement.new))
 
         eqns.append((lhs, rhs))
 
-    return SubstituteRecycledTemporariesResult(eqns, substituted_lhs_idxes)
+    return SubstituteRecycledTemporariesResult(eqns, substitutions)
