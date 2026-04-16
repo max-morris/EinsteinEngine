@@ -29,7 +29,7 @@ from EinsteinEngine.emit.code.code_tree import CodeNode, StandardizedFunctionCal
     UsingNamespace, Using, UsingAlias, DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, ConstAssignDecl, \
     ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl, IfElseExpr, IfElseStmt
 from EinsteinEngine.emit.code.sympy_visitor import SympyExprVisitor
-from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
+from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float, LineComment, BlockComment
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
@@ -99,6 +99,14 @@ class CppVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: Verbatim) -> str:
         return n.text
+
+    @visit.register
+    def _(self, n: LineComment) -> str:
+        return f'// {n.text}'
+
+    @visit.register
+    def _(self, n: BlockComment) -> str:
+        return f'/* {n.text} */'
 
     @visit.register
     def _(self, n: String) -> str:

@@ -1380,6 +1380,14 @@ class ThornDefBakeOptions(TypedDict, total=False):
     # Overrides for ThornFunction default opts
     functions: dict[str, ThornFunctionBakeOptions]
 
+class SourceAnnotations:
+    loops: dict[int, str]
+    eqns: dict[int, dict[int, str]]
+
+    def __init__(self) -> None:
+        self.loops = defaultdict(str)
+        self.eqns = defaultdict(lambda: defaultdict(str))
+
 class ThornFunction:
     """
     Represents a function within a Cactus thorn. Important member functions include `add_eqn` for specifying
@@ -1402,6 +1410,8 @@ class ThornFunction:
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
         self.intent_override = intent_override
+        self.source_annotations: SourceAnnotations = SourceAnnotations()
+        self.source_annotations.loops[0] = f'{self.name} loop 0'
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -1453,9 +1463,17 @@ class ThornFunction:
         it = check_indices(expr, self.thorn_def.defn)
         return it.free
 
-    def split_loop(self) -> None:
+    def split_loop(self, annotation: Optional[str] = None) -> None:
         if self.been_baked:
             raise DslException("Cannot split loop because the EqnComplex has already been baked.")
+
+        loop_idx = len(self.eqn_complex.eqn_lists)
+        if annotation is None:
+            annotation = f'{self.name} loop {loop_idx}'
+
+        if annotation.strip() != '':
+            self.source_annotations.loops[loop_idx] = annotation
+
         self.eqn_complex.new_eqn_list()
 
     def _do_splitmaxxing(self) -> None:

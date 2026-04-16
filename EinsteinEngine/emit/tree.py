@@ -15,10 +15,10 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Union
 from abc import ABC
 from dataclasses import dataclass
 from enum import auto
+from typing import Union
 
 from EinsteinEngine.util import ReprEnum, CenteringEnum
 
@@ -44,6 +44,16 @@ class Identifier(CommonNode):
 
 @dataclass
 class Verbatim(CommonNode):
+    text: str
+
+
+@dataclass
+class LineComment(CommonNode):
+    text: str
+
+
+@dataclass
+class BlockComment(CommonNode):
     text: str
 
 

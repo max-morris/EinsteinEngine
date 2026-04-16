@@ -902,12 +902,15 @@ class EqnList:
 
         vprint(colorize("Order:", "green"), self.order)
 
-        memory_pressure = score_memory_pressure(self.eqns, self.order)
-        vprint(colorize("Memory Pressure:", "magenta"))
-        vprint(f"  Total: {sorted(memory_pressure.items(), key=lambda kv: kv[1], reverse=True)}")
-        vprint(f"  Mean: {mean(memory_pressure.values())}")
-        vprint(f"  Median: {median(memory_pressure.values())}")
-        vprint(f"  Max: {max(memory_pressure.items(), key=lambda kv: kv[1])}")
+        try:
+            memory_pressure = score_memory_pressure(self.eqns, self.order)
+            vprint(colorize("Memory Pressure:", "magenta"))
+            vprint(f"  Total: {sorted(memory_pressure.items(), key=lambda kv: kv[1], reverse=True)}")
+            vprint(f"  Mean: {mean(memory_pressure.values())}")
+            vprint(f"  Median: {median(memory_pressure.values())}")
+            vprint(f"  Max: {max(memory_pressure.items(), key=lambda kv: kv[1])}")
+        except:
+            pass
 
         for k in self.temporaries:
             assert k in read, f"Temporary variable '{k}' is never read"

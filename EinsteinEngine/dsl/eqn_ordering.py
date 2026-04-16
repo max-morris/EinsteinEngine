@@ -26,7 +26,7 @@ from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast
 from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr
 
-from util import pprint
+from ..util import pprint
 
 if TYPE_CHECKING:
     from EinsteinEngine.dsl.eqnlist import EqnList
@@ -226,7 +226,7 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
         return
 
     raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency)
-    eqn_score = lambda lhs: raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
+    def eqn_score(lhs: Symbol) -> float: return raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
 
     disambiguation = sorted(eqns.keys(), key=str, reverse=True)
     ordered = sorted(eqns.keys(), key=lambda lhs: (eqn_score(lhs), eqn_list.complexity[lhs], disambiguation.index(lhs)), reverse=True)
