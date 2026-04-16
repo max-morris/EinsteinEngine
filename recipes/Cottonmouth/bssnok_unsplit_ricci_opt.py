@@ -271,6 +271,7 @@ Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 # This is required because this quantity is both written to ConfConnect_rhs
 # and read in the gamma driver shift evolution
 ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
+ConfConnect_rhs_tmp2 = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp2", [ua])
 
 # \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
 # When \tilde{\Gamma}^{i} when it appears and its derivative are not needed,
@@ -561,8 +562,6 @@ fun_bssn_cons.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
 )
 
 fun_bssn_cons.split_loop()
@@ -570,6 +569,8 @@ fun_bssn_cons.split_loop()
 fun_bssn_cons.add_eqn(
     Rt[la,lb],
     Rt_tmp[la,lb]
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
     + (
         + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
         + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
@@ -593,6 +594,8 @@ fun_bssn_cons.add_eqn(
     + 4 * cdphi[la] * cdphi[lb]
     - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
 )
+
+fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     R[la, lb],
@@ -660,6 +663,7 @@ fun_bssn_rhs.add_eqn(
 )
 
 fun_bssn_rhs.split_loop()
+# loop 2
 
 fun_bssn_rhs.add_eqn(
     Rt[la, lb],
@@ -672,6 +676,7 @@ fun_bssn_rhs.add_eqn(
 )
 
 fun_bssn_rhs.split_loop()
+# loop 3
 
 # Aux. equations
 fun_bssn_rhs.add_eqn(
@@ -731,6 +736,9 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[uc] * D(At[la, lb], lc)
 )
 
+fun_bssn_rhs.split_loop()
+# loop 4
+
 fun_bssn_rhs.add_eqn(
     trK_rhs,
     - (w**2) * (
@@ -750,8 +758,6 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(trK, la)
 )
 
-fun_bssn_rhs.split_loop()
-
 fun_bssn_rhs.add_eqn(
     ConfConnect_rhs_tmp[ua],
     - 2 * At[ua, ub] * D(evo_lapse, lb)
@@ -760,6 +766,13 @@ fun_bssn_rhs.add_eqn(
         - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
         + 6 * At[ua, ub] * cdphi[lb]
     )
+)
+
+fun_bssn_rhs.split_loop()
+# loop 5
+
+fun_bssn_rhs.add_eqn(
+    ConfConnect_rhs_tmp2[ua], 0
     + gt[ub, uc] * D(evo_shift[ua], lb, lc)
     + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
     - Delta[ub] * D(evo_shift[ua], lb)
@@ -768,8 +781,16 @@ fun_bssn_rhs.add_eqn(
     - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
     # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
     + evo_shift[ub] * D(ConfConnect[ua], lb)
+    - Delta[ub] * D(evo_shift[ua], lb)
+    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
+    # Matter
+    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
+    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
+    + evo_shift[ub] * D(ConfConnect[ua], lb)
 )
-fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
+
+
+fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua] + ConfConnect_rhs_tmp2[ua])
 
 fun_bssn_rhs.add_eqn(
     gt_rhs[la, lb],
@@ -780,8 +801,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
     + evo_shift[uc] * D(gt[la, lb], lc)
 )
-
-fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     w_rhs,

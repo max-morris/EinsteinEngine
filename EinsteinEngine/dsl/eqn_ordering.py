@@ -21,6 +21,7 @@ from collections import defaultdict
 from typing import Iterator, Callable, TYPE_CHECKING
 
 from sympy import Symbol, Expr
+from math import sqrt
 
 from EinsteinEngine.dsl.sympywrap import free_symbols
 from random import seed, random
@@ -84,7 +85,7 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
             frequency_by_eqn[lhs][sym] = rhs.count(sym)  # type: ignore[no-untyped-call]
 
     def symbol_rarity(sym: Symbol) -> float:
-        return 1 / reciprocal_rarity[sym]
+        return sqrt(1 / reciprocal_rarity[sym])
 
     def symbol_score(sym: Symbol, lhs: Symbol) -> float:
         return frequency_by_eqn[lhs][sym] * symbol_rarity(sym) if consider_frequency else symbol_rarity(sym)
