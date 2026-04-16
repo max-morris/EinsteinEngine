@@ -22,7 +22,7 @@ from typing import Optional, Union, List, Collection, Tuple
 import sympy as sy
 
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering
+from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering, BlockComment, LineComment
 from EinsteinEngine.util import ReprEnum
 
 
@@ -119,6 +119,9 @@ class Directive(CodeNode):
     pass
 
 
+TopLevelNode = Stmt | Directive | LineComment | BlockComment | Verbatim
+
+
 @dataclass
 class DeclareCarpetXArgs(Directive):
     fn_name: Identifier
@@ -158,8 +161,8 @@ class ExprStmt(Stmt):
 @dataclass
 class IfElseStmt(Stmt):
     cond: Expr
-    then: List[Stmt]
-    else_: List[Stmt]
+    then: List[TopLevelNode]
+    else_: List[TopLevelNode]
 
 
 @dataclass
@@ -217,7 +220,7 @@ CodeElem = Union[Stmt, Expr, Directive, Verbatim]
 @dataclass
 class ThornFunctionDecl(Decl):
     name: Identifier
-    body: List[CodeElem]
+    body: List[TopLevelNode]
 
 
 @dataclass

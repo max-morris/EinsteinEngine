@@ -42,9 +42,11 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, Storage
 from EinsteinEngine.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt
+    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt, \
+    TopLevelNode
 from EinsteinEngine.emit.code.sympy_visitor import SympyExprVisitor
-from EinsteinEngine.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering
+from EinsteinEngine.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering, \
+    LineComment
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.generators.cactus_generator import CactusGenerator, CactusGeneratorOptions, SyncMode
 from EinsteinEngine.generators.generator_exception import GeneratorException
@@ -720,7 +722,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
         # for the div macros to work; layout here really means centering.
 
-        layout_decls: list[CodeElem] = list()
+        layout_decls: list[TopLevelNode] = list()
         declared_layouts: set[Centering] = set()
         var_centerings: dict[str, Centering] = dict()
 
@@ -887,7 +889,7 @@ class CppCarpetXGenerator(CactusGenerator):
             centering_fn=lambda vn: self.thorn_def.get_centering_from_var_name(vn)
         )
 
-        carpetx_loops: list[Stmt] = list()
+        carpetx_loops: list[TopLevelNode] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             output_centering = final_loop_centerings[loop_idx]
             output_region = loop_to_output_region[loop_idx]
@@ -902,6 +904,9 @@ class CppCarpetXGenerator(CactusGenerator):
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
                 if lhs in (eqn_list.temporaries - self.thorn_def.global_temporaries - eqn_list.tile_temporaries) and str(lhs) not in self.var_names
             ]
+
+            if (loop_annotation := thorn_fn.source_annotations.loops[loop_idx]) != '':
+                carpetx_loops.append(LineComment(loop_annotation))
 
             carpetx_loops.append(
                 CarpetXGridLoopCall(
@@ -1024,8 +1029,8 @@ class CppCarpetXGenerator(CactusGenerator):
         return sympy_visitor
 
     @staticmethod
-    def _generate_tile_temp_setup(tile_temps_by_centering: dict[Centering, set[sy.Symbol]]) -> list[CodeElem]:
-        tile_temp_setup: list[CodeElem] = list()
+    def _generate_tile_temp_setup(tile_temps_by_centering: dict[Centering, set[sy.Symbol]]) -> list[TopLevelNode]:
+        tile_temp_setup: list[TopLevelNode] = list()
         
         for centering, temps in tile_temps_by_centering.items():
             tile_temp_setup.append(
