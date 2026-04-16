@@ -23,7 +23,6 @@ from functools import cache
 from itertools import chain
 from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast
 
-import line_profiler
 from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr
 
@@ -177,7 +176,6 @@ def _score_eqn_by_symbol_reuse(eqn_rhs: Expr, previous_rhses: set[Expr]) -> int:
     return len(_free_symbols(eqn_rhs).intersection(chain(*(_free_symbols(rhs) for rhs in previous_rhses))))
 
 
-@line_profiler.profile
 def _get_reused_symbol_distances(eqn_rhs: Expr, in_memory: dict[Symbol, int], my_pos: int) -> dict[Symbol, int]:
     if len(in_memory) == 0:
         return dict()
@@ -239,7 +237,6 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
 def _free_symbols(expr: Expr) -> set[Symbol]:
     return cast(set[Symbol], expr.free_symbols)
 
-@line_profiler.profile
 def bayesian_optimization(eqns: dict[Symbol, Expr],
                           eqn_list: EqnList,
                           exploration_iter: int = 5,
@@ -258,7 +255,6 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
         key = tuple(sorted(kwargs.items()))
         return order_cache[key]
 
-    @line_profiler.profile
     def black_box_order(complexity_weight: float,
                         rarity_weight: float,
                         peak_symbol_distance_weight: float,
@@ -271,7 +267,6 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
         in_memory: dict[Symbol, int] = dict()  # symbol -> index in order
 
         for idx in range(len(eqns)):
-            @line_profiler.profile
             def score(lhs: Symbol) -> float:
                 symbol_reuse_count, peak_symbol_distance, avg_symbol_distance = _get_symbol_reuse_stats(
                     _free_symbols(eqns[lhs]), in_memory, idx
@@ -296,7 +291,6 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
                   symbol_reuse_weight=symbol_reuse_weight)
         return order
 
-    @line_profiler.profile
     def black_box_score(complexity_weight: float,
                         rarity_weight: float,
                         peak_symbol_distance_weight: float,
