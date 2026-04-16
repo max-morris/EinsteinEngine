@@ -18,11 +18,11 @@
 import typing
 from collections import OrderedDict
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, partial
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Tuple, Optional, Set
+from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -104,15 +104,19 @@ class EqnComplex:
     _write_decls: dict[Symbol, IntentRegion]
     _variables: set[Symbol]
 
-    def __init__(self, is_stencil: Dict[UFunc, bool], intent_override: Optional[IntentOverride] = None) -> None:
+    def __init__(self,
+                 is_stencil: Dict[UFunc, bool],
+                 intent_override: Optional[IntentOverride] = None,
+                 set_eqn_annotation: Optional[Callable[[int, Symbol, str], None]] = None) -> None:
         self.is_stencil = is_stencil
         self.intent_override = intent_override
-        self.eqn_lists = [EqnList(self, is_stencil)]
+        self.set_eqn_annotation = set_eqn_annotation
+        self.eqn_lists = [EqnList(self, is_stencil, partial(self.set_eqn_annotation, 0) if self.set_eqn_annotation else None)]
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
 
     def new_eqn_list(self) -> 'EqnList':
-        new_list = EqnList(self, self.is_stencil)
+        new_list = EqnList(self, self.is_stencil, partial(self.set_eqn_annotation, len(self.eqn_lists)) if self.set_eqn_annotation else None)
         self.eqn_lists.append(new_list)
         return new_list
 
@@ -374,7 +378,10 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self, parent: EqnComplex, is_stencil: Dict[UFunc, bool]) -> None:
+    def __init__(self,
+                 parent: EqnComplex,
+                 is_stencil: Dict[UFunc, bool],
+                 set_eqn_annotation: Optional[Callable[[Symbol, str], None]] = None) -> None:
         self.eqns: Dict[Symbol, Expr] = dict()
         self.params: Set[Symbol] = OrderedSet()
         self.inputs: Set[Symbol] = OrderedSet()
@@ -399,6 +406,7 @@ class EqnList:
         self.parent = parent
         self.complexity: dict[Symbol, int] = dict()
         self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
+        self.set_eqn_annotation = set_eqn_annotation
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -658,8 +666,10 @@ class EqnList:
                 result.append(v)
         return result
 
-    def order_builder(self, complete: Dict[Symbol, int], override_ordering_fn: Optional[EqnOrderingFn] = None) -> None:
-        TOTAL_ORDER = True
+    def order_builder(self,
+                      complete: Dict[Symbol, int],
+                      override_ordering_fn: Optional[EqnOrderingFn] = None) -> None:
+        TOTAL_ORDER = True  # todo: expose this as a bake option
 
         for k in self.inputs:
             complete[k] = 0
@@ -667,10 +677,13 @@ class EqnList:
             complete[k] = 0
 
         ordering_fn = override_ordering_fn or self.ordering_fn
+        set_eqn_annotation = self.set_eqn_annotation
         myself = self
 
         if TOTAL_ORDER:
-            total_order: list[Symbol] = list(ordering_fn(self.eqns, self))
+            total_order: list[Symbol | tuple[Symbol, str]] = list(ordering_fn(self.eqns, self))
+            total_order_symbols: list[Symbol] = [(sym[0] if isinstance(sym, tuple) else sym) for sym in total_order]
+            total_order_annotations: dict[Symbol, str] = {t[0]: t[1] for t in total_order if isinstance(t, tuple)}
 
         class Ord:
             def __init__(self, eqns: dict[Symbol, Expr]) -> None:
@@ -680,25 +693,40 @@ class EqnList:
                 if sym in complete:
                     return
                 if TOTAL_ORDER:
-                    for dep in sorted(
+                    for s_dep in sorted(
                             (dep for dep in free_symbols(self.eqns[sym]) if dep in self.eqns),
-                            key=lambda dep: total_order.index(dep) if dep in total_order else len(total_order)
+                            key=lambda dep: total_order_symbols.index(dep) if dep in total_order_symbols else len(total_order_symbols)
                     ):
-                        self.add(dep)
+                        self.add(s_dep)
+                        if set_eqn_annotation and s_dep in total_order_annotations:
+                            set_eqn_annotation(s_dep, total_order_annotations[s_dep])
                 else:
                     for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
-                        self.add(dep)
+                        if isinstance(dep, tuple):
+                            self.add(dep[0])
+                            if set_eqn_annotation:
+                                set_eqn_annotation(*dep)
+                        else:
+                            self.add(dep)
                 self.ord.append(sym)
                 complete[sym] = len(self.ord)
 
         ord = Ord(self.eqns)
 
+        order_it: Iterable[Symbol | tuple[Symbol, str]]
         if TOTAL_ORDER:
-            for sym in total_order:
-                ord.add(sym)
+            order_it = total_order
         else:
-            for sym in ordering_fn(self.eqns, self):
+            order_it = ordering_fn(self.eqns, self)
+
+        for sym in order_it:
+            if isinstance(sym, tuple):
+                ord.add(sym[0])
+                if set_eqn_annotation:
+                    set_eqn_annotation(*sym)
+            else:
                 ord.add(sym)
+
         self.order = ord.ord
 
     def _run_preliminary_complexity_analysis(self) -> None:
@@ -885,6 +913,10 @@ class EqnList:
 
         self._run_main_complexity_analysis()
 
+        order_builder_kwargs = dict()
+
+        # Simple stopgap to prevent wasteful bayesian optimization calls before CSE
+        # todo: maybe make this check less hacky?
         if (
                 hasattr(self.ordering_fn, 'func')
                 and 'bayesian' in self.ordering_fn.func.__name__
@@ -894,11 +926,9 @@ class EqnList:
                 and 'bayesian' in self.ordering_fn.__name__
                 and not force_rebake
         ):
-            # Simple stopgap to prevent wasteful bayesian optimization calls before CSE
-            # todo: maybe make this check less hacky?
-            self.order_builder(complete, override_ordering_fn=prioritize_rare_symbols)
-        else:
-            self.order_builder(complete)
+            order_builder_kwargs['override_ordering_fn'] = prioritize_rare_symbols
+
+        self.order_builder(complete, **order_builder_kwargs)
 
         vprint(colorize("Order:", "green"), self.order)
 

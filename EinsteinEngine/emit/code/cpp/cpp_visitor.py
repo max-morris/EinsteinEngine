@@ -222,6 +222,8 @@ class CppVisitor(Visitor[CodeNode]):
 
         equations_list = list()
         for i, (lhs, rhs) in enumerate(n.equations):
+            annotation_key = str(n.reassigned_lhses[i].old if i in n.reassigned_lhses else lhs)
+
             if str(lhs) in n.temporaries:
                 if i in n.reassigned_lhses:
                     equations_list.append(f'{lhs} = {self.visit(rhs)};')
@@ -238,6 +240,9 @@ class CppVisitor(Visitor[CodeNode]):
                 )
 
                 equations_list.append(f'store({lhs}, {self.visit(stencil_idx_node)}, {self.visit(rhs)});')
+
+            if lhs in n.annotations:
+                equations_list[-1] += f' {self.visit(LineComment(f"{annotation_key}: {n.annotations[lhs]}"))}'
 
         equations = '\n'.join(equations_list)
 

@@ -23,6 +23,7 @@ import sympy as sy
 
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering, BlockComment, LineComment
+from EinsteinEngine.generators.substitute_recycled_temporaries import RecycledTemporarySubstitution
 from EinsteinEngine.util import ReprEnum
 
 
@@ -259,9 +260,10 @@ class StandardizedFunctionCall(Expr):
 class CarpetXGridLoopLambda(Expr):
     preceding: Collection[CodeElem]
     equations: List[Tuple[sy.Symbol, Expr]]
+    annotations: dict[sy.Symbol, str]
     succeeding: Collection[CodeElem]
     temporaries: Collection[str]
-    reassigned_lhses: Collection[int]
+    reassigned_lhses: dict[int, RecycledTemporarySubstitution]
 
 
 @dataclass
