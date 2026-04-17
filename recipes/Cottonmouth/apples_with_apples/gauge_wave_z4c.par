@@ -1,16 +1,18 @@
-
 #################################
 # See refs
-# https://arxiv.org/abs/0709.3559
+# https://arxiv.org/abs/1111.2177v1
 # https://arxiv.org/abs/1810.12346,
+# https://arxiv.org/abs/0709.3559
 # for Details
 #################################
-$num_cells               = 200
-$dtfac                   = 0.25
-$crossing_times          = 1000
-$out_every_crossing_time = 10
+$rho                     = 4    # Refinement factor. Should be 1, 2, 4 
+$base_cells              = 50   # Initial number of cells to use
+$dtfac                   = 0.5  # CFL
+$crossing_times          = 14   # Run for this ammount of crossing times
+$out_every_crossing_time = 1    # Output frequency
 #################################
 
+$num_cells  = $base_cells * $rho
 $dx = 1.0 / $num_cells
 $dt = $dtfac * $dx
 $crossing_time_it = ceil(1.0 / $dt)
@@ -27,6 +29,8 @@ ActiveThorns = "
   ODESolvers
   TmunuBaseX
 "
+
+CottonmouthZ4c::dissipation_epsilon = 0.02
 
 # Driver
 Cactus::cctk_show_schedule       = yes
@@ -48,17 +52,14 @@ CarpetX::ymax = 0.5
 CarpetX::zmax = 0.5
 
 CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = 3
-CarpetX::ncells_z = 3
+CarpetX::ncells_y = 5
+CarpetX::ncells_z = 5
 
 CarpetX::blocking_factor_x = 1
 CarpetX::blocking_factor_y = 1
 CarpetX::blocking_factor_z = 1
 
-CarpetX::ghost_size          = 3
-CarpetX::interpolation_order = 4
-CarpetX::prolongation_type   = "ddf"
-CarpetX::prolongation_order  = 5
+CarpetX::ghost_size = 3
 
 # Boundary conditions
 CarpetX::periodic   = yes

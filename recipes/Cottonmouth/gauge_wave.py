@@ -12,10 +12,11 @@ if __name__ == "__main__":
 
     ###
     # Thorn parameters
+    # This amplitude is set following https://arxiv.org/abs/1111.2177v1
     ###
     amplitude = gauge_wave_id.add_param(
         "amplitude",
-        default=0.5,
+        default=0.01,
         desc="Gauge wave amplitude"
     )
 

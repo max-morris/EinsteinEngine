@@ -2,7 +2,7 @@
 # See ref https://arxiv.org/abs/1810.12346
 # for Details
 #################################
-$rho            = 0   # Refinement factor. Should be 1, 2, 4
+$rho            = 1   # Refinement factor. Should be 1, 2, 4
 $base_cells     = 50  # Initial number of cells to use
 $crossing_times = 1   # Run for this ammount of crossing times
 $out_every      = 1   # Output frequency
@@ -46,17 +46,14 @@ CarpetX::ymax = 0.5
 CarpetX::zmax = 0.5
 
 CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = 3
-CarpetX::ncells_z = 3
+CarpetX::ncells_y = 5
+CarpetX::ncells_z = 5
 
 CarpetX::blocking_factor_x = 1
 CarpetX::blocking_factor_y = 1
 CarpetX::blocking_factor_z = 1
 
-CarpetX::ghost_size          = 3
-CarpetX::interpolation_order = 4
-CarpetX::prolongation_type   = "ddf"
-CarpetX::prolongation_order  = 5
+CarpetX::ghost_size = 3
 
 # Boundary conditions
 CarpetX::periodic   = yes
@@ -66,7 +63,7 @@ CarpetX::periodic_z = yes
 
 # Initial data
 ADMBaseX::initial_data    = "Cartesian Minkowski"
-ADMBaseX::noise_amplitude = 1.0e-10 / ($rho * $rho)
+ADMBaseX::noise_amplitude = 1.0e-10 # Normalizing this by rho^2 is not necessary.
 
 # Time Integration
 ODESolvers::verbose = yes
