@@ -121,7 +121,7 @@ then
         ln -s $test_dir $TARGET_TEST_DIR_Z4c
     done
 fi
-exit 0
+
 if [ -d $HOME/simulations/cottonmouth-testsuite ]; then
     rm -r $HOME/simulations/cottonmouth-testsuite
 fi

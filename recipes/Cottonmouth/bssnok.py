@@ -694,7 +694,7 @@ sync_monitored_constraints = ExplicitSyncBatch(
 
 ###
 # BSSN Evolution equations
-# Following [1], we will replace \tilde{\Gamma}^i with
+# Following [1,2], we will replace \tilde{\Gamma}^i with
 # \Delta^i \equiv \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk}
 # whenever \tilde{\Gamma}^i are needed without derivatives.
 ###
@@ -702,7 +702,6 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
     rhs_group
 )
-# loop 0
 
 fun_bssn_rhs.add_eqn(
     Rt_tmp[la, lb],
@@ -846,7 +845,7 @@ fun_bssn_rhs.add_eqn(
 )
 
 # Everyone likes to do gauge conditions their own way.
-# We will settle on Eqs. (25a) and (25b) of Ref. [4]
+# We will settle on Eqs. (25a) and (25b) of Ref. [5]
 
 # 1 + log lapse.
 fun_bssn_rhs.add_eqn(
@@ -1079,7 +1078,6 @@ nrx_ConfConnect = NewRadXBoundaryBatch(
     name="bssnok_apply_NewRadX_ConfConnect"
 )
 
-
 nrx_evo_lapse = NewRadXBoundaryBatch(
     evo_lapse,
     sympify(1),
@@ -1124,7 +1122,8 @@ cottonmouth_bssnok.bake(
     do_split_output_eqns=False,
     cse_optimization_level=CseOptimizationLevel.Fast,
     ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
+        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    )
 )
 
 ###
@@ -1165,8 +1164,9 @@ CppCarpetXWizard(
 
 # References
 # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
-# [2] https://github.com/nrpy/nrpy/blob/main/nrpy/equations/general_relativity/nrpylatex/test_parse_BSSN.py
-# [3] https://arxiv.org/abs/gr-qc/9810065
-# [4] https://arxiv.org/pdf/0910.3803
-# [5] https://arxiv.org/abs/gr-qc/0605030.
-# [6] https://arxiv.org/abs/1212.2901
+# [2] https://bitbucket.org/einsteintoolkit/mclachlan/src/46157bbd3a716dc36c31fde08b1eaea6cabb1ca4/m/McLachlan_BSSN.m
+# [3] https://github.com/nrpy/nrpy/blob/main/nrpy/equations/general_relativity/nrpylatex/test_parse_BSSN.py
+# [4] https://arxiv.org/abs/gr-qc/9810065
+# [5] https://arxiv.org/pdf/0910.3803
+# [6] https://arxiv.org/abs/gr-qc/0605030.
+# [7] https://arxiv.org/abs/1212.2901
