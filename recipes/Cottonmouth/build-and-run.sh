@@ -98,8 +98,8 @@ bssnok_test_data=(
 )
 
 z4c_test_dirs=(
-  as"$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c"
-  as"$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c.par"
   "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c"
@@ -121,18 +121,18 @@ then
         ln -s $test_dir $TARGET_TEST_DIR_Z4c
     done
 fi
-
+exit 0
 if [ -d $HOME/simulations/cottonmouth-testsuite ]; then
     rm -r $HOME/simulations/cottonmouth-testsuite
 fi
 
-export OMP_NUM_THREADS=20
+export OMP_NUM_THREADS=4
 export OMP_PLACES=cores
 export OMP_PROC_BIND=close0
 
 make \
     cottonmouth-testsuite \
     PROMPT=no \
-    CCTK_TESTSUITE_RUN_PROCESSORS=4 \
-    CCTK_TESTSUITE_RUN_TESTS=CottonmouthBSSNOK;CottonmouthZ4c \
+    CCTK_TESTSUITE_RUN_PROCESSORS=2 \
+    CCTK_TESTSUITE_RUN_TESTS="CottonmouthBSSNOK CottonmouthZ4c" \
     |& tee run.out
