@@ -241,8 +241,8 @@ class CppVisitor(Visitor[CodeNode]):
 
                 equations_list.append(f'store({lhs}, {self.visit(stencil_idx_node)}, {self.visit(rhs)});')
 
-            if lhs in n.annotations:
-                equations_list[-1] += f' {self.visit(LineComment(f"{annotation_key}: {n.annotations[lhs]}"))}'
+            if annotation_key in n.annotations:
+                equations_list[-1] += f' {self.visit(LineComment(f"{annotation_key}: {n.annotations[annotation_key]}"))}'
 
         equations = '\n'.join(equations_list)
 

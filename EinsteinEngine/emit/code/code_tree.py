@@ -260,7 +260,7 @@ class StandardizedFunctionCall(Expr):
 class CarpetXGridLoopLambda(Expr):
     preceding: Collection[CodeElem]
     equations: List[Tuple[sy.Symbol, Expr]]
-    annotations: dict[sy.Symbol, str]
+    annotations: dict[str, str]
     succeeding: Collection[CodeElem]
     temporaries: Collection[str]
     reassigned_lhses: dict[int, RecycledTemporarySubstitution]

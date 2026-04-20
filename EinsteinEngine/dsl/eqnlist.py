@@ -32,7 +32,7 @@ from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.dsl.dsl_exception import DslException
 from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
-    prioritize_rare_symbols
+    prioritize_rare_symbols, respects_dependency_order
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
@@ -680,6 +680,23 @@ class EqnList:
         set_eqn_annotation = self.set_eqn_annotation
         myself = self
 
+        if respects_dependency_order(ordering_fn):
+            order: list[Symbol] = list()
+
+            for sym in ordering_fn(self.eqns, self):
+                if isinstance(sym, tuple):
+                    order.append(sym[0])
+                    complete[sym[0]] = len(order)
+                    if set_eqn_annotation:
+                        set_eqn_annotation(*sym)
+                else:
+                    order.append(sym)
+                    complete[sym] = len(order)
+
+            self.order = order
+            return
+
+
         if TOTAL_ORDER:
             total_order: list[Symbol | tuple[Symbol, str]] = list(ordering_fn(self.eqns, self))
             total_order_symbols: list[Symbol] = [(sym[0] if isinstance(sym, tuple) else sym) for sym in total_order]
@@ -689,9 +706,11 @@ class EqnList:
             def __init__(self, eqns: dict[Symbol, Expr]) -> None:
                 self.ord: list[Symbol] = list()
                 self.eqns = eqns
-            def add(self, sym: Symbol) -> None:
+
+            def add(self, sym: Symbol) -> bool:
                 if sym in complete:
-                    return
+                    return False
+
                 if TOTAL_ORDER:
                     for s_dep in sorted(
                             (dep for dep in free_symbols(self.eqns[sym]) if dep in self.eqns),
@@ -699,17 +718,19 @@ class EqnList:
                     ):
                         self.add(s_dep)
                         if set_eqn_annotation and s_dep in total_order_annotations:
-                            set_eqn_annotation(s_dep, total_order_annotations[s_dep])
+                            set_eqn_annotation(s_dep, f'Dependency! {total_order_annotations[s_dep]}')
                 else:
                     for dep in ordering_fn({dep: self.eqns[dep] for dep in free_symbols(self.eqns[sym]) if dep in self.eqns}, myself):
                         if isinstance(dep, tuple):
                             self.add(dep[0])
                             if set_eqn_annotation:
-                                set_eqn_annotation(*dep)
+                                set_eqn_annotation(dep[0], f'Dependency! {dep[1]}')
                         else:
                             self.add(dep)
                 self.ord.append(sym)
                 complete[sym] = len(self.ord)
+
+                return True
 
         ord = Ord(self.eqns)
 
@@ -721,8 +742,7 @@ class EqnList:
 
         for sym in order_it:
             if isinstance(sym, tuple):
-                ord.add(sym[0])
-                if set_eqn_annotation:
+                if ord.add(sym[0]) and set_eqn_annotation:
                     set_eqn_annotation(*sym)
             else:
                 ord.add(sym)
