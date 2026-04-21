@@ -41,8 +41,7 @@ from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
-from EinsteinEngine.util import OrderedSet, incr_and_get, consolidate, vprint, wprint
-from EinsteinEngine.util import get_or_compute
+from EinsteinEngine.util import OrderedSet, incr_and_get, consolidate, vprint, wprint, pprint, get_or_compute
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -104,6 +103,10 @@ class EqnComplex:
     _write_decls: dict[Symbol, IntentRegion]
     _variables: set[Symbol]
 
+    # Contains indices of EqnLists that are the first element in a kernel, i.e., the EqnList generated after a call to split_loop().
+    # This set should NOT contain index 0; it is always the first element of the first kernel, so storing it would be redundant.
+    _hard_splits: set[int]
+
     def __init__(self,
                  is_stencil: Dict[UFunc, bool],
                  intent_override: Optional[IntentOverride] = None,
@@ -114,10 +117,15 @@ class EqnComplex:
         self.eqn_lists = [EqnList(self, is_stencil, partial(self.set_eqn_annotation, 0) if self.set_eqn_annotation else None)]
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
+        self._hard_splits = set()
 
-    def new_eqn_list(self) -> 'EqnList':
+    def new_eqn_list(self, soft_split: bool = False) -> 'EqnList':
         new_list = EqnList(self, self.is_stencil, partial(self.set_eqn_annotation, len(self.eqn_lists)) if self.set_eqn_annotation else None)
         self.eqn_lists.append(new_list)
+
+        if not soft_split:
+            self._hard_splits.add(len(self.eqn_lists) - 1)
+
         return new_list
 
     def bake(self) -> None:
@@ -235,6 +243,68 @@ class EqnComplex:
     def split_output_eqns(self) -> None:
         for eqn_list in self.eqn_lists:
             eqn_list.split_output_eqns()
+
+    def needs_merge(self) -> bool:
+        return len(self._hard_splits) < len(self.eqn_lists) - 1
+
+    def merge_soft_splits(self) -> None:
+        hard_splits = list(sorted({0, *self._hard_splits, len(self.eqn_lists)}))
+        soft_ranges: list[tuple[int, int]] = list()
+
+        name_mangle_counter = 0
+        def mangle(name: str) -> str:
+            nonlocal name_mangle_counter
+            s = f'{name}_ss{name_mangle_counter}'
+            name_mangle_counter += 1
+            return s
+
+        def mangle_sym(sym: Symbol) -> Symbol:
+            return Symbol(mangle(str(sym)))  # type: ignore[no-untyped-call]
+
+        for idx, hard_split in enumerate(hard_splits[1:], start=1):
+            first, last = hard_splits[idx - 1], hard_split - 1
+            if last - first > 0:
+                soft_ranges.append((first, last))
+
+        if len(soft_ranges) == 0:
+            return
+
+        els_to_delete: list[int] = list()
+
+        for first_el, last_el in soft_ranges:
+            local_temps: list[Symbol] = list(sorted(set(chain(*[el.local_temporaries for el in self.eqn_lists[first_el:last_el + 1]])), key=str))
+            new_eqns: dict[Symbol, Expr] = dict()
+            recipient_el = self.eqn_lists[first_el]
+
+            for el_idx in range(first_el + 1, last_el + 1):
+                eqn_list = self.eqn_lists[el_idx]
+                subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in zip(local_temps, map(mangle_sym, local_temps))}
+
+                for lhs, rhs in eqn_list.eqns.items():
+                    lhs = subst.get(lhs, lhs)
+                    assert lhs not in new_eqns, f"Duplicate lhs {lhs} in new_eqns encountered during soft split"
+                    assert lhs not in recipient_el.eqns, f"Duplicate lhs {lhs} in recipient_el.eqns encountered during soft split"
+                    new_eqns[lhs] = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
+
+                els_to_delete.append(el_idx)
+                recipient_el.params.update(eqn_list.params)
+
+            for lhs, rhs in new_eqns.items():
+                recipient_el.add_eqn(lhs, rhs)
+
+        for el_idx in reversed(els_to_delete):
+            del self.eqn_lists[el_idx]
+
+        for el_idx, el in enumerate(self.eqn_lists):
+            el.set_eqn_annotation = partial(self.set_eqn_annotation, el_idx) if self.set_eqn_annotation else None
+
+        pprint(f'Rebaking loops after merge_soft_splits...')
+        # Rebaking all loops instead of just recipients because CSE will have rebaked with force_fast=True.
+        # This also realigns ordering annotations for us.
+        for el in self.eqn_lists:
+            el.bake(force_rebake=True)
+
+        self._hard_splits = set(range(1, len(self.eqn_lists)))
 
     @cache
     def _calc_tile_temps(self) -> None:
@@ -387,9 +457,6 @@ class EqnList:
         self.inputs: Set[Symbol] = OrderedSet()
         self.outputs: Set[Symbol] = OrderedSet()
         self.order: List[Symbol] = list()
-        self.order_clumping: dict[int, set[Symbol]] = dict()
-        self.order_clumping_counter: int = 0
-        self.sublists: List[List[Symbol]] = list()
         self.read_decls: Dict[Symbol, IntentRegion] = OrderedDict()
         self.write_decls: Dict[Symbol, IntentRegion] = OrderedDict()
         # TODO: need a better default
@@ -414,14 +481,13 @@ class EqnList:
         self.add_param(DYI)
         self.add_param(DZI)
 
-    def _order_tag(self) -> int:
-        x = self.order_clumping_counter
-        self.order_clumping_counter += 1
-        return x
-
     @property
     def tile_temporaries(self) -> set[Symbol]:
         return self.uninitialized_tile_temporaries.union(self.preinitialized_tile_temporaries)
+
+    @property
+    def local_temporaries(self) -> set[Symbol]:
+        return self.temporaries - self.tile_temporaries
 
     #@cached_property
     @property
@@ -765,7 +831,7 @@ class EqnList:
         for lhs in lhses:
             self.complexity[lhs] = complexity_visitor.complexity(self.eqns[lhs])
 
-    def bake(self, *, force_rebake: bool = False) -> None:
+    def bake(self, *, force_rebake: bool = False, force_fast: bool = False) -> None:
         """ Discover inconsistencies and errors in the param/input/output/equation sets. """
         if self.been_baked and not force_rebake:
             raise DslException("Can't bake an EqnList that has already been baked.")
@@ -940,11 +1006,11 @@ class EqnList:
         if (
                 hasattr(self.ordering_fn, 'func')
                 and 'bayesian' in self.ordering_fn.func.__name__
-                and not force_rebake
+                and (not force_rebake or force_fast)
         ) or (
                 hasattr(self.ordering_fn, '__name__')
                 and 'bayesian' in self.ordering_fn.__name__
-                and not force_rebake
+                and (not force_rebake or force_fast)
         ):
             order_builder_kwargs['override_ordering_fn'] = prioritize_rare_symbols
 
