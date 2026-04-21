@@ -50,12 +50,12 @@ CarpetX::ymax = 0.5
 CarpetX::zmax = 0.5
 
 CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = 5
-CarpetX::ncells_z = 5
+CarpetX::ncells_y = 8
+CarpetX::ncells_z = 8
 
-CarpetX::blocking_factor_x = 1
-CarpetX::blocking_factor_y = 1
-CarpetX::blocking_factor_z = 1
+CarpetX::blocking_factor_x = 2
+CarpetX::blocking_factor_y = 2
+CarpetX::blocking_factor_z = 2
 
 CarpetX::ghost_size = 3
 
@@ -80,6 +80,9 @@ ODESolvers::method  = "RK4"
 # Output
 IO::out_dir   = $parfile
 IO::out_every = $out_every
+
+CarpetX::out_metadata    = no
+CarpetX::out_performance = no
 
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
