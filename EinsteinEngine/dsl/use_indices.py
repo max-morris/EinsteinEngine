@@ -1420,6 +1420,15 @@ class ThornFunction:
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
 
+    def needs_merge(self) -> bool:
+        return self.eqn_complex.needs_merge()
+
+    def merge_soft_splits(self) -> None:
+        self.eqn_complex.merge_soft_splits()
+
+        for el_idx in range(len(self.eqn_complex.eqn_lists)):
+            self.source_annotations.loops[el_idx] = f'{self.name} loop {el_idx}'
+
     @property
     def _eqn_list(self) -> EqnList:
         return self.eqn_complex.get_active_eqn_list()
@@ -1480,6 +1489,19 @@ class ThornFunction:
 
         self.eqn_complex.new_eqn_list()
 
+    def soft_split(self, annotation: Optional[str] = None) -> None:
+        if self.been_baked:
+            raise DslException("Cannot split loop because the EqnComplex has already been baked.")
+
+        loop_idx = len(self.eqn_complex.eqn_lists)
+        if annotation is None:
+            annotation = f'{self.name} loop {loop_idx} (soft split)'
+
+        if annotation.strip() != '':
+            self.source_annotations.loops[loop_idx] = annotation
+
+        self.eqn_complex.new_eqn_list(True)
+
     def _do_splitmaxxing(self) -> None:
         assert self.been_baked, "Cannot perform splitmaxxing because the EqnComplex has not been baked."
         assert not self.been_late_baked, "Cannot perform splitmaxxing because the EqnComplex has already been late-baked."
@@ -1516,7 +1538,6 @@ class ThornFunction:
         if self.get_free_indices(lhs) != self.get_free_indices(rhs):
             raise DslException(f"Free indices of '{lhs}' and '{rhs}' do not match.")
         count = 0
-        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, _ = tup
@@ -1528,7 +1549,6 @@ class ThornFunction:
             rhs0 = rhs
             rhs2 = self.thorn_def.do_subs(rhs0, idxs)
             self._add_eqn2(lhs2, rhs2)
-            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
         if count == 0:
             for ind in lhs.args[1:]:
                 assert isinstance(ind, Idx)
@@ -1555,7 +1575,6 @@ class ThornFunction:
             raise DslException("add_eqn should not be called on a baked ThornFunction")
 
         count = 0
-        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, _ = tup
@@ -1566,7 +1585,6 @@ class ThornFunction:
             rhs2 = self.thorn_def.do_subs(rhs0, idxs)
             assert isinstance(lhs2, Symbol)
             self._add_eqn2(lhs2, rhs2)
-            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
         assert count > 0
 
     @add_eqn.register
@@ -1582,7 +1600,6 @@ class ThornFunction:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
         count = 0
-        tag = self._eqn_list._order_tag()
         for tup in expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, idx = tup
@@ -1591,7 +1608,6 @@ class ThornFunction:
             lhs2 = lhs2_
             rhs2 = rhs[num_idx]
             assert isinstance(lhs2, Symbol)
-            self._eqn_list.order_clumping.setdefault(tag, set()).add(lhs2)
             self._add_eqn2(lhs2, rhs2)
         assert count > 0
 
@@ -1843,6 +1859,11 @@ class ThornDef:
         if my_opts['do_cse']:
             pprint("Performing CSE...")
             self._do_global_cse(my_opts['temporary_promotion_strategy'], my_opts['cse_optimization_level'])
+
+        for tf in self.thorn_functions.values():
+            if tf.needs_merge():
+                pprint(f"Merging soft splits in {tf.name}...")
+                tf.merge_soft_splits()
 
         for tf in self.thorn_functions.values():
             if tf.name not in my_tf_opts:  # Must be a synthetic function
@@ -2171,7 +2192,10 @@ class ThornDef:
         for tf in self.thorn_functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
                 pprint(f'Rebaking {tf.name} loop {idx} after CSE...')
-                eqn_list.bake(force_rebake=True)
+
+                # If the tf needs a merge, set force_fast because another (slow) rebake will succeed CSE.
+                eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
+
                 if verbose():
                     eqn_list.dump()
 
