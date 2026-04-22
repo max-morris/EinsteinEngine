@@ -22,6 +22,7 @@ from collections import defaultdict, OrderedDict
 from dataclasses import dataclass
 from functools import cache
 from itertools import chain
+from math import sqrt
 from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast, Optional, Any
 
 from bayes_opt import BayesianOptimization
@@ -167,10 +168,17 @@ def maximize_symbol_reuse(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterat
         in_memory.update(_free_symbols_with_dummies(rhs))
         yield lhs
 
+class _EqnScoreByRarity(NamedTuple):
+    linear: Callable[[Symbol], float]
+    sqrt: Callable[[Symbol], float]
 
-def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bool = True) -> Callable[[Symbol], float]:
+    @classmethod
+    def get_unit(cls) -> '_EqnScoreByRarity':
+        return cls(lambda _: 0.0, lambda _: 0.0)
+
+def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bool = True) -> _EqnScoreByRarity:
     if len(eqns) == 0:
-        return lambda _: 0.0
+        return _EqnScoreByRarity.get_unit()
 
     reciprocal_rarity: dict[Symbol, float] = defaultdict(int)
     free_symbols_by_eqn: dict[Symbol, set[Symbol]] = dict()
@@ -187,9 +195,16 @@ def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bo
             frequency_by_eqn[lhs] = {sym: symbol_frequency[sym] for sym in free_symbols}
 
     symbol_rarity: dict[Symbol, float] = {sym: 1.0 / reciprocal for sym, reciprocal in reciprocal_rarity.items()}
+    symbol_rarity_sqrt: dict[Symbol, float] = {sym: 1.0 / sqrt(reciprocal) for sym, reciprocal in reciprocal_rarity.items()}
+
     if consider_frequency:
         scores = {
             lhs: sum(frequency_by_eqn[lhs][sym] * symbol_rarity[sym] for sym in free_symbols_by_eqn[lhs])
+            for lhs in eqns.keys()
+        }
+
+        sqrt_scores = {
+            lhs: sum(frequency_by_eqn[lhs][sym] * symbol_rarity_sqrt[sym] for sym in free_symbols_by_eqn[lhs])
             for lhs in eqns.keys()
         }
     else:
@@ -198,7 +213,12 @@ def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bo
             for lhs in eqns.keys()
         }
 
-    return lambda lhs: scores[lhs]
+        sqrt_scores = {
+            lhs: sum(symbol_rarity_sqrt[sym] for sym in free_symbols_by_eqn[lhs])
+            for lhs in eqns.keys()
+        }
+
+    return _EqnScoreByRarity(lambda lhs: scores[lhs], lambda lhs: sqrt_scores[lhs])
 
 
 def _get_eqn_score_fn_by_complexity(eqn_list: EqnList) -> Callable[[Symbol], float]:
@@ -261,7 +281,7 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     if len(eqns) == 0:
         return
 
-    raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency)
+    raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency).linear
     def eqn_score(lhs: Symbol) -> float: return raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
 
     scores = {lhs: eqn_score(lhs) for lhs in eqns.keys()}
@@ -311,7 +331,7 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
                           memory_pressure_factor: float = 0.0,
                           peak_liveness_factor: float = -1.0,
                           symbol_reuse_factor: float = 0.0) -> Iterator[tuple[Symbol, str]]:
-    rarity_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency=True)
+    linear_rarity_score, sqrt_rarity_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency=True)
     free_symbols_by_lhs = {lhs: _free_symbols_with_dummies(rhs) for lhs, rhs in eqns.items()}
     dependencies = Dependencies(eqns, free_symbols=_free_symbols)
     dummy_dependencies = Dependencies(eqns, free_symbols=_free_symbols_with_dummies)
@@ -331,6 +351,7 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
 
     def black_box_order(complexity_weight: float,
                         rarity_weight: float,
+                        sqrt_rarity_weight: float,
                         peak_symbol_distance_weight: float,
                         avg_symbol_distance_weight: float,
                         symbol_reuse_weight: float,
@@ -369,7 +390,8 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
 
                 return (
                     complexity_weight * eqn_list.complexity[lhs]
-                    + rarity_weight * rarity_score(lhs)
+                    + rarity_weight * linear_rarity_score(lhs)
+                    + sqrt_rarity_weight * sqrt_rarity_score(lhs)
                     + peak_symbol_distance_weight * peak_symbol_distance
                     + avg_symbol_distance_weight * avg_symbol_distance
                     + symbol_reuse_weight * symbol_reuse_count
@@ -384,6 +406,7 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
                     dep_dict = {lhs: eqns[lhs] for lhs in dep_set}
                     for dep in black_box_order(complexity_weight,
                                                rarity_weight,
+                                               sqrt_rarity_weight,
                                                peak_symbol_distance_weight,
                                                avg_symbol_distance_weight,
                                                symbol_reuse_weight,
@@ -400,17 +423,18 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
             in_memory[lhs] = idx
             idx += 1
 
-        put_cache(order, complexity_weight=complexity_weight, rarity_weight=rarity_weight,
+        put_cache(order, complexity_weight=complexity_weight, rarity_weight=rarity_weight, sqrt_rarity_weight=sqrt_rarity_weight,
                   peak_symbol_distance_weight=peak_symbol_distance_weight, avg_symbol_distance_weight=avg_symbol_distance_weight,
                   symbol_reuse_weight=symbol_reuse_weight)
         return order
 
     def black_box_score(complexity_weight: float,
                         rarity_weight: float,
+                        sqrt_rarity_weight: float,
                         peak_symbol_distance_weight: float,
                         avg_symbol_distance_weight: float,
                         symbol_reuse_weight: float) -> float:
-        order = black_box_order(complexity_weight, rarity_weight, peak_symbol_distance_weight, avg_symbol_distance_weight, symbol_reuse_weight)
+        order = black_box_order(complexity_weight, rarity_weight, sqrt_rarity_weight, peak_symbol_distance_weight, avg_symbol_distance_weight, symbol_reuse_weight)
         lifetime_data = _get_lifetimes(eqns, list(order.keys()))
         return (
             memory_pressure_factor * _score_memory_pressure_fast(lifetime_data.lifetimes)
@@ -423,6 +447,7 @@ def bayesian_optimization(eqns: dict[Symbol, Expr],
         pbounds={
             "complexity_weight": (-5.0, 5.0),
             "rarity_weight": (-0.0, 5.0),
+            "sqrt_rarity_weight": (-5.0, 5.0),
             "peak_symbol_distance_weight": (-5.0, 0.0),
             "avg_symbol_distance_weight": (-5.0, 0.0),
             "symbol_reuse_weight": (0.0, 5.0)
