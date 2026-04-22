@@ -64,6 +64,7 @@ class _TileTempCenteringData:
 class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
     new_rad_x_boundary_fns: Collection[NewRadXBoundaryBatch]
+    simd: bool
 
 class _HasName(Protocol):
     name: str
@@ -111,12 +112,26 @@ class CppCarpetXGenerator(CactusGenerator):
     #  specify a header file with these
     #  or alternate defs.
     _boilerplate_setup: str = "#define CARPETX_GF3D5"
-    _boilerplate_div_macros: str = """
+
+    _simd_boilerplate_div_macros: str = """
         #define access(GF, IDX) (GF(p.mask, IDX))
         #define store(GF, IDX, VAL) (GF.store(p.mask, IDX, VAL))
         #define stencil(GF, IDX) (GF(p.mask, IDX))
         #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
     """.strip().replace('    ', '')
+
+    _normal_boilerplate_div_macros: str = """
+        #define access(GF, IDX) (GF(IDX))
+        #define store(GF, IDX, VAL) (GF.store(IDX, VAL))
+        #define stencil(GF, IDX) (GF(IDX))
+        #define CCTK_ASSERT(X) if(!(X)) { CCTK_Error(__LINE__, __FILE__, CCTK_THORNSTRING, "Assertion Failure: " #X); }
+    """.strip().replace('    ', '')
+
+    def _get_boilerplate_div_macros(self) -> str:
+        if self.options.get('simd', False):
+            return self._simd_boilerplate_div_macros
+        else:
+            return self._normal_boilerplate_div_macros
 
     options: CppCarpetXGeneratorOptions
 
@@ -634,9 +649,19 @@ class CppCarpetXGenerator(CactusGenerator):
                 [
                     DeclareCarpetXArgs(Identifier(batch.name)),
                     DeclareCarpetParams(),
-                    UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
-                    ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'),
-                                        VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    UsingAlias(
+                        Identifier('vreal'),
+                        VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))
+                        if self.options.get('simd', False) else
+                        VerbatimExpr(Verbatim('CCTK_REAL'))
+                    ),
+                    ConstExprAssignDecl(
+                        Identifier('std::size_t'),
+                        Identifier('vsize'),
+                        VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))
+                        if self.options.get('simd', False) else
+                        VerbatimExpr(Verbatim('0'))
+                    ),
                     Verbatim(self._boilerplate_nv_tools_init(batch.name)),
                     *apply_calls,
                     Verbatim(self._boilerplate_nv_tools_destructor)
@@ -711,7 +736,7 @@ class CppCarpetXGenerator(CactusGenerator):
         nodes.append(Verbatim(self._boilerplate_nv_tools_include))
 
         # div{x,y,z} macros
-        nodes.append(Verbatim(self._boilerplate_div_macros))
+        nodes.append(Verbatim(self._get_boilerplate_div_macros()))
 
         for ns in self._boilerplate_namespace_usings:
             nodes.append(UsingNamespace(ns))
@@ -920,7 +945,8 @@ class CppCarpetXGenerator(CactusGenerator):
                         succeeding=[],
                         temporaries=temporaries,
                         reassigned_lhses={subst.eqn_idx: subst for subst in subst_result.substitutions}
-                    )
+                    ),
+                    simd=self.options.get('simd', False)
                 )
             )
         
@@ -944,8 +970,19 @@ class CppCarpetXGenerator(CactusGenerator):
                 [
                     DeclareCarpetXArgs(Identifier(fn_name)),
                     DeclareCarpetParams(),
-                    UsingAlias(Identifier('vreal'), VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))),
-                    ConstExprAssignDecl(Identifier('std::size_t'), Identifier('vsize'), VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))),
+                    UsingAlias(
+                        Identifier('vreal'),
+                        VerbatimExpr(Verbatim('Arith::simd<CCTK_REAL>'))
+                        if self.options.get('simd', False) else
+                        VerbatimExpr(Verbatim('CCTK_REAL'))
+                    ),
+                    ConstExprAssignDecl(
+                        Identifier('std::size_t'),
+                        Identifier('vsize'),
+                        VerbatimExpr(Verbatim('std::tuple_size_v<vreal>'))
+                        if self.options.get('simd', False) else
+                        VerbatimExpr(Verbatim('0'))
+                    ),
                     Verbatim(self._boilerplate_nv_tools_init(fn_name)),
                     *layout_decls,
                     *di_decls,

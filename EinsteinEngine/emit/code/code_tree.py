@@ -271,6 +271,7 @@ class CarpetXGridLoopCall(Stmt):
     centering: Centering
     write_destination: IntentRegion
     fn: CarpetXGridLoopLambda
+    simd: bool
 
 
 @dataclass
