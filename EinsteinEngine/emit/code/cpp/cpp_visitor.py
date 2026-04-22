@@ -213,7 +213,10 @@ class CppVisitor(Visitor[CodeNode]):
             assert n.write_destination is IntentRegion.Boundary
             loop_kind = 'bnd'
 
-        return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}, vsize>(grid.nghostzones, {self.visit(n.fn)});"
+        if n.simd:
+            return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}, vsize>(grid.nghostzones, {self.visit(n.fn)});"
+        else:
+            return f"grid.loop_{loop_kind}_device<{', '.join(centering_args)}>(grid.nghostzones, {self.visit(n.fn)});"
 
     @visit.register
     def _(self, n: CarpetXGridLoopLambda) -> str:
