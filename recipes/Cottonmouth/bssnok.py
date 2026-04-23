@@ -327,10 +327,9 @@ Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 # and read in the gamma driver shift evolution
 ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
 
-# \tilde{\gamma}^{i, j} \tilde{\Gamma}^a_{a b}
-# When \tilde{\Gamma}^{i} when it appears and its derivative are not needed,
-# the substitution \tilde{\Gamma}^{i} \rightarrow \tilde{gamma}^{ij} \tilde{\Gamma}^{i}_{jk} = \Delta^i
-# is made
+# \Delta^i = \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk}
+# When \tilde{\Gamma}^{i} appears without derivatives, we replace it by
+# \Delta^i = \tilde{\gamma}^{jk} \tilde{\Gamma}^{i}_{jk}
 Delta = cottonmouth_bssnok.decl("Delta", [ua])
 
 # -D_a D_b \alpha + \alpha R_{a b}
@@ -616,19 +615,21 @@ fun_bssn_cons.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Delta[uc] * Gammat[la, lb, lc])
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+)
 
 fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     Rt[la, lb],
     Rt_tmp[la, lb]
-    + (
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    )
+    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
 )
+
+fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     cdphi2[la, lb],
@@ -673,7 +674,7 @@ fun_bssn_cons.add_eqn(
     + 6 * At[ua, ub] * cdphi[lb]
     - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
     # Matter
-    - 8 * pi * w**2 * gt[ua, ub] * S[lb]
+    - 8 * pi * gt[ua, ub] * S[lb]
 )
 
 fun_bssn_cons.add_eqn(

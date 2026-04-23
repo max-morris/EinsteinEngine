@@ -1,13 +1,14 @@
 #################################
-# See ref https://arxiv.org/abs/1810.12346
-# for Details
+# See
+# https://arxiv.org/pdf/1111.2177
+# https://arxiv.org/abs/1810.12346
 #################################
-$rho            = 1   # Refinement factor. Should be 1, 2, 4
-$base_cells     = 50  # Initial number of cells to use
-$crossing_times = 1   # Run for this ammount of crossing times
-$out_every      = 1   # Output frequency
-$dtfac          = 0.1 # CFL
-$diss_eps       = 0.0 # Ammount of dissipation
+$rho            = 1    # Refinement factor. Should be 1, 2, 4
+$base_cells     = 50   # Initial number of cells to use
+$crossing_times = 1    # Run for this ammount of crossing times
+$out_every      = 1    # Output frequency
+$dtfac          = 0.1  # CFL
+$diss_eps       = 0.0  # Ammount of dissipation
 #################################
 
 $num_cells  = $base_cells * $rho
@@ -46,8 +47,8 @@ CarpetX::ymax = 0.5
 CarpetX::zmax = 0.5
 
 CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = 5
-CarpetX::ncells_z = 5
+CarpetX::ncells_y = 8
+CarpetX::ncells_z = 8
 
 CarpetX::blocking_factor_x = 1
 CarpetX::blocking_factor_y = 1
@@ -63,7 +64,7 @@ CarpetX::periodic_z = yes
 
 # Initial data
 ADMBaseX::initial_data    = "Cartesian Minkowski"
-ADMBaseX::noise_amplitude = 1.0e-10 # Normalizing this by rho^2 is not necessary.
+ADMBaseX::noise_amplitude = 1.0e-10 / ($rho * $rho)
 
 # Time Integration
 ODESolvers::verbose = yes
@@ -79,14 +80,13 @@ IO::out_every = $out_every
 
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars  = "
-  CottonmouthBSSNOK::gt
   CottonmouthBSSNOK::w
-  CottonmouthBSSNOK::At
   CottonmouthBSSNOK::trK
   CottonmouthBSSNOK::ConfConnect
+  CottonmouthBSSNOK::gt
+  CottonmouthBSSNOK::At
   CottonmouthBSSNOK::evo_lapse
   CottonmouthBSSNOK::evo_shift
-  CottonmouthBSSNOK::shift_B
   CottonmouthBSSNOK::HamCons
   CottonmouthBSSNOK::MomCons
 "

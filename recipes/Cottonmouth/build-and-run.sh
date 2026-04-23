@@ -44,7 +44,7 @@ then
     exit 4
 fi
 EMIT_CACTUS_DIR="$PWD"
-make -j4 -f recipes/Cottonmouth/Makefile
+#make -j4 -f recipes/Cottonmouth/Makefile
 if [ ! -L "$CACTUS_DIR/arrangements/Cottonmouth" ]
 then
     ln -s "$PWD/Cottonmouth" "$CACTUS_DIR/arrangements/Cottonmouth" 

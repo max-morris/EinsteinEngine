@@ -5,12 +5,12 @@
 # https://arxiv.org/abs/0709.3559
 # for Details
 #################################
-$rho                     = 1    # Refinement factor. Should be 1, 2, 4 
+$rho                     = 1    # Refinement factor. Should be 1, 2, 4
 $base_cells              = 50   # Initial number of cells to use
 $dtfac                   = 0.5  # CFL
-$crossing_times          = 10   # Run for this ammount of crossing times
+$crossing_times          = 1    # Run for this ammount of crossing times
 $out_every_crossing_time = 1    # Output frequency
-$diss_eps                = 0.02 # Ammount of dissipation
+$diss_eps                = 0.02 # Dissipation strength
 #################################
 
 $num_cells  = $base_cells * $rho
@@ -51,14 +51,16 @@ CarpetX::ymax = 0.5
 CarpetX::zmax = 0.5
 
 CarpetX::ncells_x = $num_cells
-CarpetX::ncells_y = 5
-CarpetX::ncells_z = 5
+CarpetX::ncells_y = 8
+CarpetX::ncells_z = 8
 
 CarpetX::blocking_factor_x = 1
 CarpetX::blocking_factor_y = 1
 CarpetX::blocking_factor_z = 1
 
 CarpetX::ghost_size = 3
+
+CottonmouthZ4c::dissipation_epsilon = $diss_eps
 
 # Boundary conditions
 CarpetX::periodic   = yes
@@ -85,11 +87,16 @@ IO::out_every = $out_every
 CarpetX::out_metadata    = no
 CarpetX::out_performance = no
 
+CarpetX::out_norm_omit_unstable = no
+CarpetX::out_norm_vars          = "
+  CottonmouthZ4c::gt
+  CottonmouthZ4c::HamCons
+  CottonmouthZ4c::MomCons
+"
+
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
   CottonmouthZ4c::gt
   CottonmouthZ4c::HamCons
   CottonmouthZ4c::MomCons
-  CottonmouthZ4c::ZtCons
-  CottonmouthZ4c::Theta
 "
