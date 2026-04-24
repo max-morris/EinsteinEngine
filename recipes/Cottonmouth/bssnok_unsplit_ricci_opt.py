@@ -17,7 +17,7 @@
 
 import functools
 
-from sympy import Rational
+from sympy import Rational, Idx
 
 from EinsteinEngine import *
 
@@ -662,7 +662,7 @@ fun_bssn_rhs.add_eqn(
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
 )
 
-def add_gt_rhs(la,lb):
+def add_gt_rhs(la: Idx, lb: Idx) -> None:
     fun_bssn_rhs.add_eqn(
         gt_rhs[la, lb],
         - 2 * evo_lapse * At[la, lb]
@@ -672,9 +672,10 @@ def add_gt_rhs(la,lb):
         # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
         + evo_shift[uc] * D(gt[la, lb], lc)
     )
-add_gt_rhs(l0,l0)
-add_gt_rhs(l0,l1)
-add_gt_rhs(l0,l2)
+
+add_gt_rhs(l0, l0)
+add_gt_rhs(l0, l1)
+add_gt_rhs(l0, l2)
 
 fun_bssn_rhs.soft_split()
 # kernel 1
@@ -975,12 +976,17 @@ else:
         do_split_output_eqns=False,
         cse_optimization_level=CseOptimizationLevel.Fast,
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0),
-        functions={"rhs":{"ordering_fn": functools.partial(
-            bayesian_optimization, exploration_iter=200, optimization_iter=100,
-            memory_pressure_factor=0.0,
-            peak_liveness_factor=-1.0,
-            symbol_reuse_factor=0.0,
-        )}}
+        functions={
+            "rhs": {
+                "ordering_fn": functools.partial(
+                    bayesian_optimization, exploration_iter=50, optimization_iter=100,
+                    memory_pressure_factor=-1.0,
+                    peak_liveness_factor=0.0,
+                    symbol_reuse_factor=0.0
+                ),
+                "soft_split_retainment_strategy": retain_percentile(0.7)
+            },
+        }
     # functions={"apply_dissipation":{"ordering_fn":different_sorting_fun}}
     )
 
