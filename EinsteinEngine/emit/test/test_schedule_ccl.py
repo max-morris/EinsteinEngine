@@ -15,8 +15,8 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageSection, StorageLine, StorageDecl, \
-    ScheduleSection, ScheduleBlock, GroupOrFunction, AtOrIn, Intent, IntentRegion
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, StorageDecl, \
+    ScheduleBlock, GroupOrFunction, AtOrIn, Intent, IntentRegion, IfStatement
 from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, String, Language
 
@@ -24,15 +24,13 @@ if __name__ == '__main__':
     v = ScheduleVisitor()
 
     s = ScheduleRoot(
-        storage_section=StorageSection([
+        statements=[
             StorageLine([
                 StorageDecl(
                     Identifier('evol_group'),
                     Integer(2)
                 )
-            ])
-        ]),
-        schedule_section=ScheduleSection([
+            ]),
             ScheduleBlock(
                 group_or_function=GroupOrFunction.Function,
                 name=Identifier('HeatEqn_Initialize'),
@@ -61,20 +59,23 @@ if __name__ == '__main__':
                     Intent(Identifier('U_p'), IntentRegion.Everywhere)
                 ]
             ),
-            ScheduleBlock(
-                group_or_function=GroupOrFunction.Function,
-                name=Identifier('HeatEqn_Boundary'),
-                at_or_in=AtOrIn.At,
-                schedule_bin=Identifier('CCTK_EVOL'),
-                description=String('Heat equation BC'),
-                after=[Identifier('HeatEqn_Update')],
-                lang=Language.C,
-                writes=[
-                    Intent(Identifier('U'), IntentRegion.Boundary)
-                ],
-                sync=[Identifier('evol_group')]
+            IfStatement(
+                cond=Identifier('boundary_condition'),
+                then=[ScheduleBlock(
+                    group_or_function=GroupOrFunction.Function,
+                    name=Identifier('HeatEqn_Boundary'),
+                    at_or_in=AtOrIn.At,
+                    schedule_bin=Identifier('CCTK_EVOL'),
+                    description=String('Heat equation BC'),
+                    after=[Identifier('HeatEqn_Update')],
+                    lang=Language.C,
+                    writes=[
+                        Intent(Identifier('U'), IntentRegion.Boundary)
+                    ],
+                    sync=[Identifier('evol_group')]
+                )]
             )
-        ])
+        ]
     )
 
     print(v.visit(s))

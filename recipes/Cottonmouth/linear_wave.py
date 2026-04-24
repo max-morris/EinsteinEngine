@@ -32,7 +32,7 @@ if __name__ == "__main__":
     ###
     amplitude = cottonmouth_linear_wave_id.add_param(
         "amplitude",
-        default=1.0,
+        default=1.0e-8,
         desc="Linear wave amplitude"
     )
 
@@ -147,9 +147,9 @@ if __name__ == "__main__":
     Kxx = sympify(0)
     Kxy = sympify(0)
     Kxz = sympify(0)
-    Kyy = -Rational(1, 2) * diff(H, t)
+    Kyy = Rational(1, 2) * diff(H, t)
     Kyz = sympify(0)
-    Kzz = Rational(1, 2) * diff(H, t)
+    Kzz = -Rational(1, 2) * diff(H, t)
 
     # Matrices
     hij = mkMatrix([

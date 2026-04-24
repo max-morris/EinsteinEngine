@@ -44,7 +44,7 @@ then
     exit 4
 fi
 EMIT_CACTUS_DIR="$PWD"
-make -f recipes/Cottonmouth/Makefile
+make -j4 -f recipes/Cottonmouth/Makefile
 if [ ! -L "$CACTUS_DIR/arrangements/Cottonmouth" ]
 then
     ln -s "$PWD/Cottonmouth" "$CACTUS_DIR/arrangements/Cottonmouth" 
@@ -62,29 +62,77 @@ then
     exit 7
 fi
 cd "$CACTUS_DIR"
-cat "$THORNLIST" > .pre_bssn.th
-echo Cottonmouth/CottonmouthBSSNOK >> .pre_bssn.th
-echo Cottonmouth/CottonmouthDiagLinearWaveID >> .pre_bssn.th
-echo Cottonmouth/CottonmouthLinearWaveID >> .pre_bssn.th
+cat "$THORNLIST" > .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthBSSNOK >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthGaugeWaveID >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthLinearWaveID >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthZ4c >> .pre_cottonmouth.th
 
 set -e
 
-PAR_FILE1="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave.par"
-PAR_FILE2="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0.par"
-PAR_FILE3="$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV.par"
+parfiles=(
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
+)
 
-perl ./utils/Scripts/MakeThornList -o bssn.th --master .pre_bssn.th "$PAR_FILE1" "$PAR_FILE2" "$PAR_FILE3"
+perl ./utils/Scripts/MakeThornList -o cottonmouth.th --master .pre_cottonmouth.th "${parfiles[@]}"
 
 CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
-./simfactory/bin/sim build bssn -j$(($CPUS / 4)) --thornlist bssn.th |& tee make.out
+./simfactory/bin/sim build cottonmouth -j$(($CPUS / 4)) --thornlist cottonmouth.th |& tee make.out
 
-SOURCE_TEST_DIR=$EMIT_CACTUS_DIR/recipes/Cottonmouth/test
-TARGET_TEST_DIR=arrangements/Cottonmouth/CottonmouthBSSNOK/test
+TARGET_TEST_DIR_BSSNOK=arrangements/Cottonmouth/CottonmouthBSSNOK/test
+TARGET_TEST_DIR_Z4c=arrangements/Cottonmouth/CottonmouthZ4c/test
 
-if [ ! -d $TARGET_TEST_DIR ]
+bssnok_test_data=(
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok.par"
+)
+
+z4c_test_dirs=(
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c.par"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c"
+  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c.par"
+)
+
+if [ ! -d $TARGET_TEST_DIR_BSSNOK ]
 then
-    ln -s $SOURCE_TEST_DIR $TARGET_TEST_DIR
+    mkdir $TARGET_TEST_DIR_BSSNOK
+    for test_dir in "${bssnok_test_data[@]}"; do
+        ln -s $test_dir $TARGET_TEST_DIR_BSSNOK
+    done
+fi
+
+if [ ! -d $TARGET_TEST_DIR_Z4c ]
+then
+    mkdir $TARGET_TEST_DIR_Z4c
+    for test_dir in "${z4c_test_dirs[@]}"; do
+        ln -s $test_dir $TARGET_TEST_DIR_Z4c
+    done
+fi
+
+if [ -d $HOME/simulations/cottonmouth-testsuite ]; then
+    rm -r $HOME/simulations/cottonmouth-testsuite
 fi
 
 export OMP_NUM_THREADS=4
-make bssn-testsuite PROMPT=no CCTK_TESTSUITE_RUN_PROCESSORS=1 CCTK_TESTSUITE_RUN_TESTS=CottonmouthBSSNOK |& tee run.out
+export OMP_PLACES=cores
+export OMP_PROC_BIND=close0
+
+make \
+    cottonmouth-testsuite \
+    PROMPT=no \
+    CCTK_TESTSUITE_RUN_PROCESSORS=2 \
+    CCTK_TESTSUITE_RUN_TESTS="CottonmouthBSSNOK CottonmouthZ4c" \
+    |& tee run.out

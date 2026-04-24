@@ -61,6 +61,7 @@ class NewRadXBoundaryBatch:
     schedule_before: Collection[str]
     schedule_after: Collection[str]
     name: str
+    cond: Optional[str]
 
     _name_counter: int = 0
 
@@ -74,7 +75,8 @@ class NewRadXBoundaryBatch:
                  *,
                  schedule_before: Optional[Collection[str]] = None,
                  schedule_after: Optional[Collection[str]] = None,
-                 name: Optional[str] = None):
+                 name: Optional[str] = None,
+                 cond: Optional[str] = None):
         self.var = var
         self.val_at_infinity = val_at_infinity
         self.propagation_speed = propagation_speed
@@ -82,6 +84,7 @@ class NewRadXBoundaryBatch:
         self.schedule_target = schedule_target
         self.schedule_before = schedule_before or list()
         self.schedule_after = schedule_after or list()
+        self.cond = cond
 
         if name is None:
             self.name = f'NewRadXBoundaryFn_{NewRadXBoundaryBatch._name_counter}'

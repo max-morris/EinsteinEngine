@@ -19,11 +19,11 @@ from typing import Any
 
 from multimethod import multimethod
 
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleNode, ScheduleRoot, StorageSection, StorageLine, \
-    StorageDecl, ScheduleSection, ScheduleBlock, GroupOrFunction, Intent
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.util import indent
+from .schedule_tree import ScheduleNode, ScheduleRoot, StorageLine, \
+    StorageDecl, ScheduleBlock, GroupOrFunction, Intent, IfStatement
 
 
 class ScheduleVisitor(Visitor[ScheduleNode]):
@@ -58,11 +58,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
 
     @visit.register
     def _(self, n: ScheduleRoot) -> str:
-        return '\n'.join(visit_each(self, [n.storage_section, n.schedule_section]))
-
-    @visit.register
-    def _(self, n: StorageSection) -> str:
-        return '\n'.join(visit_each(self, n.lines))
+        return '\n'.join(visit_each(self, n.statements))
 
     @visit.register
     def _(self, n: StorageLine) -> str:
@@ -71,10 +67,6 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
     @visit.register
     def _(self, n: StorageDecl) -> str:
         return f'{self.visit(n.group)}[{self.visit(n.time_levels)}]'
-
-    @visit.register
-    def _(self, n: ScheduleSection) -> str:
-        return '\n\n'.join(visit_each(self, n.schedule_blocks))
 
     @visit.register
     def _(self, n: ScheduleBlock) -> str:
@@ -140,3 +132,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
         if n.region is None:
             return f'{self.visit(n.name)}'
         return f'{self.visit(n.name)}({n.region.representation})'
+
+    @visit.register
+    def _(self, n: IfStatement) -> str:
+        return f'if ({self.visit(n.cond)}) {{\n{indent("\n".join(visit_each(self, n.then)))}\n}}'

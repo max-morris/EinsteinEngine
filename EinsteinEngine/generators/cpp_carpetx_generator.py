@@ -28,14 +28,17 @@ from EinsteinEngine.dsl.eqnlist import stencil
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering
 from EinsteinEngine.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
 from EinsteinEngine.dsl.util import require
-from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, FunctionSection, \
+from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, \
+    FunctionSection, \
     VariableSection, UsesInclude
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot, Param, ParamAccess, ParamType, ParamRange, \
     KeywordParamRange, StringParamRange, IntParamRange, IntParamDescWildcard, IntParamDescRange, IntParamOpenLowerBound, \
     IntParamOpenUpperBound, RealParamRange, RealParamDescWildcard, RealParamDescRange, RealParamOpenLowerBound, \
     RealParamOpenUpperBound
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, Intent, \
-    GroupOrFunction, AtOrIn, StorageSection, ScheduleSection, IntentRegion
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import IfStatement as ScheduleIfStatement
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, \
+    Intent, \
+    GroupOrFunction, AtOrIn, IntentRegion
 from EinsteinEngine.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
     ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
     DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
@@ -145,7 +148,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
     def generate_schedule_ccl(self) -> ScheduleRoot:
         storage_lines: list[StorageLine] = list()
-        schedule_blocks: list[ScheduleBlock] = list()
+        schedule_blocks: list[ScheduleBlock | ScheduleIfStatement] = list()
 
         for group in self.variable_groups.keys():
             storage_lines.append(StorageLine([
@@ -353,7 +356,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     for rhs_name in rhs_names
                 )
 
-                schedule_blocks.append(ScheduleBlock(
+                sch_block: ScheduleBlock | ScheduleIfStatement = ScheduleBlock(
                     group_or_function=GroupOrFunction.Function,
                     name=Identifier(batch.name),
                     at_or_in=at_or_in,
@@ -364,7 +367,15 @@ class CppCarpetXGenerator(CactusGenerator):
                     writes=list(writes),
                     before=[Identifier(f'{s}_group') for s in batch.schedule_before],
                     after=[Identifier(f'{s}_group') for s in batch.schedule_after]
-                ))
+                )
+
+                if batch.cond is not None:
+                    sch_block = ScheduleIfStatement(
+                        cond=Identifier(batch.cond),
+                        then=[sch_block]
+                    )
+
+                schedule_blocks.append(sch_block)
 
         post_post_init_bin, post_post_init_at_in = self._resolve_schedule_target(ScheduleBin.PostPostInit)
 
@@ -424,8 +435,7 @@ class CppCarpetXGenerator(CactusGenerator):
             ))
 
         return ScheduleRoot(
-            storage_section=StorageSection(storage_lines),
-            schedule_section=ScheduleSection(schedule_blocks)
+            statements=[*storage_lines, *schedule_blocks]
         )
 
     def _resolve_schedule_target(self, schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
