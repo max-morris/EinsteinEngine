@@ -27,7 +27,7 @@ from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
-from sympy import Basic, IndexedBase, Expr, Symbol, Integer
+from sympy import Basic, IndexedBase, Expr, Symbol, Integer, srepr
 
 from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.dsl.dsl_exception import DslException
@@ -35,6 +35,7 @@ from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn
     prioritize_rare_symbols, respects_dependency_order
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
+from EinsteinEngine.dsl.soft_split_retainment_predicate import SoftSplitRetainmentPredicate, SoftSplitRetainmentStrategy
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
 from EinsteinEngine.dsl.symbify import symbify
 from EinsteinEngine.dsl.sympywrap import *
@@ -247,7 +248,7 @@ class EqnComplex:
     def needs_merge(self) -> bool:
         return len(self._hard_splits) < len(self.eqn_lists) - 1
 
-    def merge_soft_splits(self) -> None:
+    def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> None:
         hard_splits = list(sorted({0, *self._hard_splits, len(self.eqn_lists)}))
         soft_ranges: list[tuple[int, int]] = list()
 
@@ -272,19 +273,46 @@ class EqnComplex:
         els_to_delete: list[int] = list()
 
         for first_el, last_el in soft_ranges:
-            local_temps: list[Symbol] = list(sorted(set(chain(*[el.local_temporaries for el in self.eqn_lists[first_el:last_el + 1]])), key=str))
+            local_temp_set: set[Symbol] = set()
+            local_temp_complexities: dict[Symbol, int] = dict()
+
+            for el in self.eqn_lists[first_el:last_el + 1]:
+                lt = el.local_temporaries
+                local_temp_set.update(lt)
+                local_temp_complexities.update(
+                    (sym, complexity) for sym, complexity in el.complexity.items()
+                    if sym in lt and complexity > local_temp_complexities.get(sym, 0)
+                )
+
+            should_retain: SoftSplitRetainmentPredicate = soft_split_retainment_strategy(local_temp_complexities)
+
+            candidates = sorted(filter(lambda s: not should_retain(s), local_temp_set), key=str)
+
             new_eqns: dict[Symbol, Expr] = dict()
             recipient_el = self.eqn_lists[first_el]
 
             for el_idx in range(first_el + 1, last_el + 1):
                 eqn_list = self.eqn_lists[el_idx]
-                subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in zip(local_temps, map(mangle_sym, local_temps))}
+                subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in zip(candidates, map(mangle_sym, candidates))}
 
                 for lhs, rhs in eqn_list.eqns.items():
-                    lhs = subst.get(lhs, lhs)
-                    assert lhs not in new_eqns, f"Duplicate lhs {lhs} in new_eqns encountered during soft split"
-                    assert lhs not in recipient_el.eqns, f"Duplicate lhs {lhs} in recipient_el.eqns encountered during soft split"
-                    new_eqns[lhs] = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
+                    new_lhs = subst.get(lhs, lhs)
+                    new_rhs = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
+
+                    if new_lhs in new_eqns:
+                        assert srepr(new_rhs) == srepr(new_eqns[new_lhs]), (
+                            f"RHSs don't match for lhs {new_lhs} in new_eqns during soft split. "
+                            f"RHSs: {new_rhs} vs {new_eqns[new_lhs]}"
+                        )
+                    elif new_lhs in recipient_el.eqns:
+                        # In this case, we compare the old rhs instead of the new rhs, because `lhs` represents a
+                        # retained symbol defined in the recipient, thus we want it to only use the recipient's symbols.
+                        assert srepr(rhs) == srepr(recipient_el.eqns[new_lhs]), (
+                            f"RHSs don't match for lhs {new_lhs} in recipient_el.eqns during soft split. "
+                            f"RHSs: {rhs} vs {recipient_el.eqns[new_lhs]}"
+                        )
+                    else:
+                        new_eqns[new_lhs] = new_rhs
 
                 els_to_delete.append(el_idx)
                 recipient_el.params.update(eqn_list.params)

@@ -23,6 +23,7 @@ from .dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
 from .dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization
 from .dsl.functions import *
 from .dsl.intent_override import IntentOverride
+from .dsl.soft_split_retainment_predicate import *
 from .dsl.sympywrap import cbrt, sqrt, mkMatrix, log, cos, sin, tan, cot, sec, csc, cosh, sinh, tanh, sech, csch, coth, \
     erf, pi, atan
 from .dsl.temp_kind import TempKind
@@ -73,6 +74,7 @@ __all__ = [
     "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
     "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
+    "retain_percentile", "retain_rank", "retain_threshold",
     "NewRadXBoundaryBatch", "TempKind",
     "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "promote_all", "promote_none", "promote_rank",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
