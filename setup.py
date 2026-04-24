@@ -21,10 +21,10 @@ setup(
     name='EinsteinEngine',
     version='0.1.0',
     description='DSL and toolset for creating Cactus thorns',
-    url='https://github.com/mmor115/EinsteinEngine',
+    url='https://github.com/max-morris/EinsteinEngine',
     author='Max Morris',
     author_email='mmorris@cct.lsu.edu',
-    license='MIT',
+    license='AGPL-3.0-or-later',
     packages=find_packages(include=['EinsteinEngine', 'EinsteinEngine.*']),
     package_data={'EinsteinEngine': ['py.typed']},
     install_requires=[

@@ -3,6 +3,7 @@ The Einstein Engine is a DSL and toolkit for creating Cactus thorns.
 It can generate complete CarpetX thorns from simple recipes written in Python.
 
 ## How to set up EinsteinEngine:
+0. Ensure you have the minimum required Python version. Currently, this is `3.13`.
 
 1. Create a venv and activate it. 
    ```bash
