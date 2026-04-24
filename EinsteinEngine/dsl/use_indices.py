@@ -44,6 +44,7 @@ from EinsteinEngine.dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.dsl.eqnlist import EqnList, DXI, DYI, DZI, DX, DY, DZ, EqnComplex
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
+from EinsteinEngine.dsl.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
 from EinsteinEngine.dsl.symm import Sym
 from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.temporary_promotion_predicate import OnePassTemporaryPromotionStrategy, promote_all, \
@@ -1358,6 +1359,7 @@ class ThornFunctionBakeOptions(TypedDict, total=False):
     do_split_output_eqns: bool
     splitmaxxing: bool
     ordering_fn: EqnOrderingFn
+    soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
 
 class CseOptimizationLevel(Enum):
@@ -1376,6 +1378,7 @@ class ThornDefBakeOptions(TypedDict, total=False):
     do_split_output_eqns: bool
     splitmaxxing: bool
     ordering_fn: EqnOrderingFn
+    soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
     # Overrides for ThornFunction default opts
     functions: dict[str, ThornFunctionBakeOptions]
@@ -1423,8 +1426,8 @@ class ThornFunction:
     def needs_merge(self) -> bool:
         return self.eqn_complex.needs_merge()
 
-    def merge_soft_splits(self) -> None:
-        self.eqn_complex.merge_soft_splits()
+    def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> None:
+        self.eqn_complex.merge_soft_splits(soft_split_retainment_strategy)
 
         for el_idx in range(len(self.eqn_complex.eqn_lists)):
             self.source_annotations.loops[el_idx] = f'{self.name} loop {el_idx}'
@@ -1640,7 +1643,8 @@ class ThornFunction:
             'do_recycle_temporaries': True,
             'do_split_output_eqns': False,
             'splitmaxxing': False,
-            'ordering_fn': maximize_symbol_reuse
+            'ordering_fn': maximize_symbol_reuse,
+            'soft_split_retainment_strategy': retain_none()
         }
 
     def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
@@ -1863,7 +1867,7 @@ class ThornDef:
         for tf in self.thorn_functions.values():
             if tf.needs_merge():
                 pprint(f"Merging soft splits in {tf.name}...")
-                tf.merge_soft_splits()
+                tf.merge_soft_splits(my_tf_opts[tf.name]['soft_split_retainment_strategy'])
 
         for tf in self.thorn_functions.values():
             if tf.name not in my_tf_opts:  # Must be a synthetic function
