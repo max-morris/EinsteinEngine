@@ -326,6 +326,7 @@ Gammat = cottonmouth_bssnok.decl("Gammat", [la, lb, lc], symmetries=[(lb, lc)])
 # This is required because this quantity is both written to ConfConnect_rhs
 # and read in the gamma driver shift evolution
 ConfConnect_rhs_tmp = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp", [ua])
+ConfConnect_rhs_tmp2 = cottonmouth_bssnok.decl("ConfConnect_rhs_tmp2", [ua])
 
 # \Delta^i = \tilde{\gamma}^{jk} \tilde{\Gamma}^i_{jk}
 # When \tilde{\Gamma}^{i} appears without derivatives, we replace it by
@@ -615,8 +616,6 @@ fun_bssn_cons.add_eqn(
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
 )
 
 fun_bssn_cons.split_loop()
@@ -624,12 +623,12 @@ fun_bssn_cons.split_loop()
 fun_bssn_cons.add_eqn(
     Rt[la, lb],
     Rt_tmp[la, lb]
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
     + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
     + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
     + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
 )
-
-fun_bssn_cons.split_loop()
 
 fun_bssn_cons.add_eqn(
     cdphi2[la, lb],
@@ -652,6 +651,8 @@ fun_bssn_cons.add_eqn(
     R[la, lb],
     Rt[la, lb] + RPhi[la, lb]
 )
+
+fun_bssn_cons.split_loop()
 
 # Hamiltonian constraint
 fun_bssn_cons.add_eqn(
@@ -703,27 +704,34 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
     rhs_group
 )
-
+# --begin--
+# loop 0
 fun_bssn_rhs.add_eqn(
     Rt_tmp[la, lb],
     - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
     + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
 )
 
-fun_bssn_rhs.split_loop()
+def add_gt_rhs(la, lb):
+    fun_bssn_rhs.add_eqn(
+        gt_rhs[la, lb],
+        - 2 * evo_lapse * At[la, lb]
+        + gt[la, lc] * D(evo_shift[uc], lb)
+        + gt[lb, lc] * D(evo_shift[uc], la)
+        - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
+        # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
+        + evo_shift[uc] * D(gt[la, lb], lc)
+    )
+add_gt_rhs(l0,l0)
+add_gt_rhs(l0,l1)
+add_gt_rhs(l0,l2)
 
-fun_bssn_rhs.add_eqn(
-    Rt[la, lb],
-    Rt_tmp[la, lb]
-    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-)
-
-fun_bssn_rhs.split_loop()
+#fun_bssn_rhs.soft_split()
+# kernel 1
+add_gt_rhs(l1,l1)
+add_gt_rhs(l1,l2)
+add_gt_rhs(l2,l2)
 
 # Aux. equations
 fun_bssn_rhs.add_eqn(
@@ -735,18 +743,63 @@ fun_bssn_rhs.add_eqn(
     + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
 )
 
+#fun_bssn_rhs.soft_split()
+# kernel 2
+
+# Hyperbolic Gamma Driver shift
 fun_bssn_rhs.add_eqn(
-    RPhi[la, lb],
+    evo_shift_rhs[ua],
+    Rational(3, 4) * evo_lapse * shift_B[ua]
+    # TODO: Advection
+    + evo_shift[ub] * D(evo_shift[ua], lb)
+)
+
+# 1 + log lapse.
+fun_bssn_rhs.add_eqn(
+    evo_lapse_rhs,
+    - 2 * evo_lapse * trK
+    # TODO: Advection: Upwind[beta[ua], alpha, la]
+    + evo_shift[ua] * D(evo_lapse, la)
+)
+
+fun_bssn_rhs.add_eqn(
+    w_rhs,
+    Rational(1, 3) * w * (
+        evo_lapse * trK
+        - D(evo_shift[ua], la)
+    )
+    # TODO: Advection: + Upwind[beta[ua], phi, la]
+    + evo_shift[ua] * D(w, la)
+)
+
+fun_bssn_rhs.add_eqn(
+    RPhi[la, lb], Rt_tmp[la,lb]
     - 2 * cdphi2[lb, la]
     - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
     + 4 * cdphi[la] * cdphi[lb]
     - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+)
+
+fun_bssn_rhs.split_loop()
+# kernel 3
+
+fun_bssn_rhs.add_eqn(
+    Rt[la, lb],
+    0 #Rt_tmp[la, lb]
+    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
 )
 
 fun_bssn_rhs.add_eqn(
     R[la, lb],
     Rt[la, lb] + RPhi[la, lb]
 )
+
+#fun_bssn_rhs.soft_split()
+# kernel 4
 
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
@@ -783,6 +836,9 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[uc] * D(At[la, lb], lc)
 )
 
+fun_bssn_rhs.split_loop()
+# kernel 5
+
 fun_bssn_rhs.add_eqn(
     trK_rhs,
     - (w**2) * (
@@ -802,69 +858,19 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(trK, la)
 )
 
-fun_bssn_rhs.split_loop()
-
 fun_bssn_rhs.add_eqn(
-    ConfConnect_rhs_tmp[ua],
+    ConfConnect_rhs_tmp[ua], ConfConnect_rhs_tmp2[ua]
     - 2 * At[ua, ub] * D(evo_lapse, lb)
     + 2 * evo_lapse * (
         + Gammat[ua, lb, lc] * At[ub, uc]
         - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
         + 6 * At[ua, ub] * cdphi[lb]
     )
-    + gt[ub, uc] * D(evo_shift[ua], lb, lc)
-    + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
-    - Delta[ub] * D(evo_shift[ua], lb)
-    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
-    # Matter
-    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
-    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
-    + evo_shift[ub] * D(ConfConnect[ua], lb)
-)
-fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
-
-fun_bssn_rhs.add_eqn(
-    gt_rhs[la, lb],
-    - 2 * evo_lapse * At[la, lb]
-    + gt[la, lc] * D(evo_shift[uc], lb)
-    + gt[lb, lc] * D(evo_shift[uc], la)
-    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
-    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-    + evo_shift[uc] * D(gt[la, lb], lc)
 )
 
-fun_bssn_rhs.split_loop()
+#fun_bssn_rhs.soft_split()
+# kernel 6
 
-fun_bssn_rhs.add_eqn(
-    w_rhs,
-    Rational(1, 3) * w * (
-        evo_lapse * trK
-        - D(evo_shift[ua], la)
-    )
-    # TODO: Advection: + Upwind[beta[ua], phi, la]
-    + evo_shift[ua] * D(w, la)
-)
-
-# Everyone likes to do gauge conditions their own way.
-# We will settle on Eqs. (25a) and (25b) of Ref. [5]
-
-# 1 + log lapse.
-fun_bssn_rhs.add_eqn(
-    evo_lapse_rhs,
-    - 2 * evo_lapse * trK
-    # TODO: Advection: Upwind[beta[ua], alpha, la]
-    + evo_shift[ua] * D(evo_lapse, la)
-)
-
-# Hyperbolic Gamma Driver shift
-fun_bssn_rhs.add_eqn(
-    evo_shift_rhs[ua],
-    Rational(3, 4) * evo_lapse * shift_B[ua]
-    # TODO: Advection
-    + evo_shift[ub] * D(evo_shift[ua], lb)
-)
-
-# Gamma driver B vector evolution
 fun_bssn_rhs.add_eqn(
     shift_B_rhs[ua],
     ConfConnect_rhs_tmp[ua]
@@ -874,6 +880,26 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection
     + evo_shift[ub] * D(shift_B[ua], lb)
 )
+
+fun_bssn_rhs.add_eqn(
+    ConfConnect_rhs_tmp2[ua], 0
+    + gt[ub, uc] * D(evo_shift[ua], lb, lc)
+    + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
+    - Delta[ub] * D(evo_shift[ua], lb)
+    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
+    # Matter
+    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
+    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
+    + evo_shift[ub] * D(ConfConnect[ua], lb)
+)
+
+
+fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
+
+# Everyone likes to do gauge conditions their own way.
+# We will settle on Eqs. (25a) and (25b) of Ref. [4]
+
+# --end--
 
 # Dissipation
 fun_bssn_diss = cottonmouth_bssnok.create_function(
