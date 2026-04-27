@@ -455,11 +455,14 @@ class CppCarpetXGenerator(CactusGenerator):
             statements=[*storage_lines, *schedule_blocks]
         )
 
-    def _resolve_schedule_target(self, schedule_target: ScheduleTarget) -> tuple[Identifier, AtOrIn]:
+    def _resolve_schedule_target(self, schedule_target: ScheduleTarget | str) -> tuple[Identifier, AtOrIn]:
         schedule_bin: Identifier
         at_or_in: AtOrIn
 
-        if isinstance(schedule_target, ScheduleBlock):
+        if isinstance(schedule_target, str):
+            schedule_bin = Identifier(schedule_target)
+            at_or_in = AtOrIn.In
+        elif isinstance(schedule_target, ScheduleBlock):
             schedule_bin = schedule_target.name
             at_or_in = AtOrIn.In
         else:

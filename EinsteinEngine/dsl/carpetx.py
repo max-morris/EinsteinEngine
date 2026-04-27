@@ -26,7 +26,7 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleBlock
 
 class ExplicitSyncBatch:
     vars: Collection[IndexedBase]
-    schedule_target: ScheduleBin | ScheduleBlock
+    schedule_target: ScheduleBin | ScheduleBlock | str
     schedule_before: Collection[str]
     schedule_after: Collection[str]
     name: str
@@ -35,7 +35,7 @@ class ExplicitSyncBatch:
 
     def __init__(self,
                  vars: Collection[IndexedBase],
-                 schedule_target: ScheduleBin | ScheduleBlock,
+                 schedule_target: ScheduleBin | ScheduleBlock | str,
                  *,
                  schedule_before: Optional[Collection[str]] = None,
                  schedule_after: Optional[Collection[str]] = None,
