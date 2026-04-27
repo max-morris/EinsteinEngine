@@ -17,7 +17,7 @@
 
 import functools
 
-from sympy import Rational
+from sympy import Rational, Idx
 
 from EinsteinEngine import *
 
@@ -713,7 +713,7 @@ fun_bssn_rhs.add_eqn(
     + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
 )
 
-def add_gt_rhs(la, lb):
+def add_gt_rhs(la: Idx, lb: Idx) -> None:
     fun_bssn_rhs.add_eqn(
         gt_rhs[la, lb],
         - 2 * evo_lapse * At[la, lb]
@@ -723,15 +723,16 @@ def add_gt_rhs(la, lb):
         # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
         + evo_shift[uc] * D(gt[la, lb], lc)
     )
-add_gt_rhs(l0,l0)
-add_gt_rhs(l0,l1)
-add_gt_rhs(l0,l2)
+
+add_gt_rhs(l0, l0)
+add_gt_rhs(l0, l1)
+add_gt_rhs(l0, l2)
 
 #fun_bssn_rhs.soft_split()
 # kernel 1
-add_gt_rhs(l1,l1)
-add_gt_rhs(l1,l2)
-add_gt_rhs(l2,l2)
+add_gt_rhs(l1, l1)
+add_gt_rhs(l1, l2)
+add_gt_rhs(l2, l2)
 
 # Aux. equations
 fun_bssn_rhs.add_eqn(
