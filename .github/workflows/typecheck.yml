@@ -1,0 +1,31 @@
+name: Typecheck
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  typecheck:
+    name: Enforce Type Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Create Virtual Environment
+        run: python -m venv venv
+
+      - name: Install Dependencies
+        run: |
+          . ./venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install .
+
+      - name: Run Typecheck Script
+        run: bash typecheck.sh -c
