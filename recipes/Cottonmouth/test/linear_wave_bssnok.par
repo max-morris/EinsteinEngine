@@ -33,7 +33,7 @@ ActiveThorns = "
 
 # Driver
 Cactus::cctk_show_schedule       = yes
-Cactus::presync_mode             = "presync-only"
+Cactus::presync_mode             = #"presync-only"
 CarpetX::verbose                 = yes
 CarpetX::poison_undefined_values = yes
 
@@ -84,8 +84,9 @@ ODESolvers::method  = "RK4"
 IO::out_dir   = $parfile
 IO::out_every = $out_every
 
-CarpetX::out_metadata    = no
-CarpetX::out_performance = no
+CarpetX::out_metadata           = no
+CarpetX::out_performance        = no
+CarpetX::output_boundary_points = no
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
