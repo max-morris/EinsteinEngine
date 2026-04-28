@@ -683,14 +683,24 @@ fun_bssn_cons.add_eqn(
     ConfConnect[ua] - Delta[ua]
 )
 
-# We will explicitly sync the monitored constraints, because they are
-# written on the interior only, and It would be nice to have them available
-# everywhere, for monitoring, debuging, etc
-sync_monitored_constraints = ExplicitSyncBatch(
-    [HamCons, MomCons, DeltaCons],
-    analysis_group,
-    schedule_after=["constraints"],
-    name="sync_monitored_constraints"
+sync_state = ExplicitSyncBatch(
+    cottonmouth_bssnok.get_state(),
+    ScheduleBin.PostSubStep,
+    schedule_before=["ADMBaseX_SetADMVars"],
+    name="sync_state",
+)
+sync_bssn = ExplicitSyncBatch(
+    [gt, At, evo_lapse, evo_shift, trK, w],
+    "bssn2adm_group",
+    schedule_before=["bssn2adm"],
+    name="sync_bssn",
+)
+sync_bssn_pt2 = ExplicitSyncBatch(
+    [gt],
+    "adm2bssn_pt2_group",
+    schedule_before=["adm2bssn_pt2"],
+    name="sync_bssn_pt2",
+    # IN ODESolvers_PostStep BEFORE ADMBaseX_SetADMVars
 )
 
 
@@ -728,7 +738,7 @@ add_gt_rhs(l0, l0)
 add_gt_rhs(l0, l1)
 add_gt_rhs(l0, l2)
 
-#fun_bssn_rhs.soft_split()
+fun_bssn_rhs.soft_split()
 # kernel 1
 add_gt_rhs(l1, l1)
 add_gt_rhs(l1, l2)
@@ -744,7 +754,7 @@ fun_bssn_rhs.add_eqn(
     + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
 )
 
-#fun_bssn_rhs.soft_split()
+fun_bssn_rhs.soft_split()
 # kernel 2
 
 # Hyperbolic Gamma Driver shift
@@ -799,7 +809,7 @@ fun_bssn_rhs.add_eqn(
     Rt[la, lb] + RPhi[la, lb]
 )
 
-#fun_bssn_rhs.soft_split()
+fun_bssn_rhs.soft_split()
 # kernel 4
 
 fun_bssn_rhs.add_eqn(
@@ -869,7 +879,7 @@ fun_bssn_rhs.add_eqn(
     )
 )
 
-#fun_bssn_rhs.soft_split()
+fun_bssn_rhs.soft_split()
 # kernel 6
 
 fun_bssn_rhs.add_eqn(
@@ -1146,9 +1156,10 @@ cottonmouth_bssnok.bake(
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
-    do_recycle_temporaries=True,
+    do_recycle_temporaries=False,
     do_split_output_eqns=False,
     cse_optimization_level=CseOptimizationLevel.Fast,
+    soft_split_retainment_strategy=retain_percentile(.7),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
     )
@@ -1161,7 +1172,7 @@ CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
         cottonmouth_bssnok,
-        sync_mode=SyncMode.EmulatePresync,
+        sync_mode=SyncMode.HandsOff,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
@@ -1170,7 +1181,9 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_monitored_constraints
+            sync_state,
+            sync_bssn,
+            sync_bssn_pt2
         ],
         new_rad_x_boundary_fns=[
             nrx_w,
