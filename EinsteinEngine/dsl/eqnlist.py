@@ -30,6 +30,7 @@ from sortedcontainers import SortedDict
 from sympy import Basic, IndexedBase, Expr, Symbol, Integer, srepr
 
 from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
+from EinsteinEngine.dsl.dependencies import Dependencies
 from EinsteinEngine.dsl.dsl_exception import DslException
 from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
     prioritize_rare_symbols, respects_dependency_order
@@ -257,6 +258,13 @@ class EqnComplex:
         return len(self._hard_splits) < len(self.eqn_lists) - 1
 
     def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> _MergeSoftSplitsResult:
+        all_eqns: dict[Symbol, Expr] = dict()
+
+        for el in self.eqn_lists:
+            all_eqns.update(el.eqns)
+
+        dependencies = Dependencies(all_eqns)
+
         hard_splits = list(sorted({0, *self._hard_splits, len(self.eqn_lists)}))
         soft_ranges: list[tuple[int, int]] = list()
 
@@ -287,6 +295,10 @@ class EqnComplex:
             local_temp_set: set[Symbol] = set()
             local_temp_complexities: dict[Symbol, int] = dict()
 
+            local_all_subst: dict[Symbol, Symbol] = dict()
+            local_inv_subst: dict[Symbol, Symbol] = dict()
+            local_mangled_reads: set[Symbol] = set()
+
             for el in self.eqn_lists[first_el:last_el + 1]:
                 lt = el.local_temporaries
                 local_temp_set.update(lt)
@@ -302,18 +314,24 @@ class EqnComplex:
             new_eqns: dict[Symbol, Expr] = dict()
             recipient_el = self.eqn_lists[first_el]
 
+            subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in
+                                           zip(candidates, map(mangle_sym, candidates))}
+
+            for sym, mangled in subst.items():
+                all_subst.setdefault(sym, set()).add(mangled)
+                local_all_subst[sym] = mangled
+                assert mangled not in inv_subst, f"Collision in inverse substitution dict: {mangled} already mapped to {inv_subst[mangled]}"
+                inv_subst[mangled] = sym
+                local_inv_subst[mangled] = sym
+
             for el_idx in range(first_el + 1, last_el + 1):
                 eqn_list = self.eqn_lists[el_idx]
-                subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in zip(candidates, map(mangle_sym, candidates))}
-
-                for sym, mangled in subst.items():
-                    all_subst.setdefault(sym, set()).add(mangled)
-                    assert mangled not in inv_subst, f"Collision in inverse substitution dict: {mangled} already mapped to {inv_subst[mangled]}"
-                    inv_subst[mangled] = sym
 
                 for lhs, rhs in eqn_list.eqns.items():
                     new_lhs = subst.get(lhs, lhs)
                     new_rhs = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
+
+                    local_mangled_reads.update(new_rhs.free_symbols.intersection(local_inv_subst.keys()))
 
                     if new_lhs in new_eqns:
                         assert srepr(new_rhs) == srepr(new_eqns[new_lhs]), (
@@ -332,6 +350,16 @@ class EqnComplex:
 
                 els_to_delete.append(el_idx)
                 recipient_el.params.update(eqn_list.params)
+
+            # check if every mangled symbol which is read has a definition somewhere
+            check = list(local_mangled_reads)
+            while len(check) > 0:
+                mangled_sym = check.pop()
+                if mangled_sym not in new_eqns and mangled_sym in inv_subst:
+                    sym = inv_subst[mangled_sym]
+                    new_eqns[mangled_sym] = all_eqns[sym].xreplace(local_all_subst)  # type: ignore[no-untyped-call]
+                    for td in dependencies.get_transitive_dependencies(sym).intersection(local_all_subst.keys()):
+                        check.append(local_all_subst[td])
 
             for lhs, rhs in new_eqns.items():
                 recipient_el.add_eqn(lhs, rhs)
