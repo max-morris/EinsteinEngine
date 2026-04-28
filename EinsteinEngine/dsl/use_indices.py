@@ -1427,7 +1427,14 @@ class ThornFunction:
         return self.eqn_complex.needs_merge()
 
     def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> None:
-        self.eqn_complex.merge_soft_splits(soft_split_retainment_strategy)
+        _, inv_subst = self.eqn_complex.merge_soft_splits(soft_split_retainment_strategy)
+
+        for mangled_sym, sym in inv_subst.items():
+            if (c := self.thorn_def.centering.get(str(sym))) is not None:
+                self.thorn_def.centering[str(mangled_sym)] = c
+            elif (sym_base := self.thorn_def.var2base.get(str(sym))) is not None:
+                if (c := self.thorn_def.centering.get(sym_base)) is not None:
+                    self.thorn_def.centering[str(mangled_sym)] = c
 
         for el_idx in range(len(self.eqn_complex.eqn_lists)):
             self.source_annotations.loops[el_idx] = f'{self.name} loop {el_idx}'
