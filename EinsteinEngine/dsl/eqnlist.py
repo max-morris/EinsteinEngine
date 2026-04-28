@@ -22,7 +22,7 @@ from functools import cache, partial
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable
+from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable, NamedTuple
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -54,6 +54,14 @@ DY = mkSymbol("DY")
 DZ = mkSymbol("DZ")
 
 stencil = mkFunction("stencil")
+
+class _MergeSoftSplitsResult(NamedTuple):
+    subst: dict[Symbol, set[Symbol]]
+    inv_subst: dict[Symbol, Symbol]
+
+    @classmethod
+    def get_unit(cls) -> '_MergeSoftSplitsResult':
+        return cls(dict(), dict())
 
 @dataclass
 class TemporaryLifetime:
@@ -248,9 +256,12 @@ class EqnComplex:
     def needs_merge(self) -> bool:
         return len(self._hard_splits) < len(self.eqn_lists) - 1
 
-    def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> None:
+    def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> _MergeSoftSplitsResult:
         hard_splits = list(sorted({0, *self._hard_splits, len(self.eqn_lists)}))
         soft_ranges: list[tuple[int, int]] = list()
+
+        all_subst: dict[Symbol, set[Symbol]] = dict()
+        inv_subst: dict[Symbol, Symbol] = dict()
 
         name_mangle_counter = 0
         def mangle(name: str) -> str:
@@ -268,7 +279,7 @@ class EqnComplex:
                 soft_ranges.append((first, last))
 
         if len(soft_ranges) == 0:
-            return
+            return _MergeSoftSplitsResult.get_unit()
 
         els_to_delete: list[int] = list()
 
@@ -294,6 +305,11 @@ class EqnComplex:
             for el_idx in range(first_el + 1, last_el + 1):
                 eqn_list = self.eqn_lists[el_idx]
                 subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in zip(candidates, map(mangle_sym, candidates))}
+
+                for sym, mangled in subst.items():
+                    all_subst.setdefault(sym, set()).add(mangled)
+                    assert mangled not in inv_subst, f"Collision in inverse substitution dict: {mangled} already mapped to {inv_subst[mangled]}"
+                    inv_subst[mangled] = sym
 
                 for lhs, rhs in eqn_list.eqns.items():
                     new_lhs = subst.get(lhs, lhs)
@@ -333,6 +349,8 @@ class EqnComplex:
             el.bake(force_rebake=True)
 
         self._hard_splits = set(range(1, len(self.eqn_lists)))
+
+        return _MergeSoftSplitsResult(all_subst, inv_subst)
 
     @cache
     def _calc_tile_temps(self) -> None:
