@@ -27,14 +27,39 @@ from EinsteinEngine import *
 ###
 cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 
+################################
+# BEGIN Generate Options
+###
+
 ###
 # Finite difference stencils
 ###
+stencil_order = 4
 
-# Fourth order centered
-cottonmouth_bssnok.set_derivative_stencil(5)
+###
+# END Generate Options
+################################
+
+cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
+
+####
+####
 
 # Fifth order Kreiss-Oliger disspation stencil
+# This is here for documentation purposes. It will
+# be overwritten shortly.
+#
+# The mk_stencil() function below will generate a
+#    stencil function named div_diss.
+# The noop() function enforces parenthesis in the
+#    output, maintaining user-defined grouping.
+# The argument la describes a generic dimension,
+#    and it will generate code for the x, y, and z directions.
+# DDI(la) is the inverse of the spatial step in the
+#    la direction squared.
+# In the context of mk_stencil,
+#    stencil(la) will apply a +1 in the x, y, or z direction.
+#    stencil(2*la) will apply a +2 in the x, y, or z direction.
 div_diss = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la,
@@ -44,6 +69,13 @@ div_diss = cottonmouth_bssnok.mk_stencil(
         + 15.0 * noop(stencil(-la) + stencil(la))
         - 20.0 * stencil(0)
     )
+)
+
+# Generic KO formula
+div_diss = cottonmouth_bssnok.mk_stencil(
+    "div_diss",
+    la, 
+    kreiss_oliger_stencil(stencil_order + 1, la)
 )
 
 ###
