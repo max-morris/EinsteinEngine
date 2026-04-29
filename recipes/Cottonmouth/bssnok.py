@@ -72,7 +72,7 @@ div_diss = cottonmouth_bssnok.mk_stencil(
 )
 
 # Generic KO formula
-div_diss = cottonmouth_bssnok.mk_stencil(
+div_diss_ = cottonmouth_bssnok.mk_stencil(
     "div_diss",
     la, 
     kreiss_oliger_stencil(stencil_order + 1, la)
