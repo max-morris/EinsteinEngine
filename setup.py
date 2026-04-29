@@ -32,9 +32,10 @@ setup(
         'nrpy==2.0.18',
         'sympy==1.12.1',
         'multimethod>=1.10',
-        'numpy==2.1.0',
+        'numpy>=2.1.0',
         'pdoc==14.6.0',
         'sortedcontainers==2.4.0',
-        'sortedcontainers-stubs==2.4.3'
+        'sortedcontainers-stubs==2.4.3',
+        'bayesian-optimization==3.2.1'
     ]
 )
