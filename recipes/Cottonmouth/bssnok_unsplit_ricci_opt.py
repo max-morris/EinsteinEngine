@@ -16,6 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import functools
+from pathlib import Path
 
 from sympy import Rational, Idx
 
@@ -978,12 +979,12 @@ else:
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0),
         functions={
             "rhs": {
-                "ordering_fn": functools.partial(
-                    bayesian_optimization, exploration_iter=50, optimization_iter=100,
-                    memory_pressure_factor=-1.0,
-                    peak_liveness_factor=0.0,
-                    symbol_reuse_factor=0.0
-                ),
+                # "ordering_fn": functools.partial(
+                #     bayesian_optimization, exploration_iter=50, optimization_iter=100,
+                #     memory_pressure_factor=-1.0,
+                #     peak_liveness_factor=0.0,
+                #     symbol_reuse_factor=0.0
+                # ),
                 "soft_split_retainment_strategy": retain_percentile(0.7)
             },
         }
@@ -993,6 +994,14 @@ else:
 ###
 # Thorn creation
 ###
+recipe_dir = Path(__file__).resolve().parent
+
+with (recipe_dir / 'cottonmouth_agpl3.txt').open('r') as fd:
+    license_file = fd.read()
+
+with (recipe_dir / 'cottonmouth_agpl3_header.txt').open('r') as fd:
+    license_header = fd.read()
+
 CppCarpetXWizard(
     cottonmouth_bssnok,
     CppCarpetXGenerator(
@@ -1008,7 +1017,9 @@ CppCarpetXWizard(
         explicit_syncs=[
             sync_state
         ]
-    )
+    ),
+    license_header=license_header,
+    license_file=license_file
 ).generate_thorn()
 
 # References

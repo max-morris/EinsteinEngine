@@ -18,7 +18,7 @@
 if __name__ == '__main__':
     from EinsteinEngine.dsl.use_indices import *
     from EinsteinEngine.dsl.sympywrap import inv
-    from EinsteinEngine.generators.wizards import CppCarpetXWizard
+    from EinsteinEngine.wizards.thorn_wizards import CppCarpetXWizard
 
     # Create a set of grid functions
     gf = ThornDef("TestAffine", "Affine")

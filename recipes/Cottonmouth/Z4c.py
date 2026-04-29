@@ -16,6 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import functools
+from pathlib import Path
 
 from sympy import Rational
 
@@ -1230,6 +1231,14 @@ cottonmouth_Z4c.bake(
 ###
 # Thorn creation
 ###
+recipe_dir = Path(__file__).resolve().parent
+
+with (recipe_dir / 'cottonmouth_agpl3.txt').open('r') as fd:
+    license_file = fd.read()
+
+with (recipe_dir / 'cottonmouth_agpl3_header.txt').open('r') as fd:
+    license_header = fd.read()
+
 CppCarpetXWizard(
     cottonmouth_Z4c,
     CppCarpetXGenerator(
@@ -1260,7 +1269,9 @@ CppCarpetXWizard(
             nrx_evo_lapse,
             nrx_evo_shift,
         ]
-    )
+    ),
+    license_header=license_header,
+    license_file=license_file
 ).generate_thorn()
 
 # References

@@ -16,6 +16,8 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 if __name__ == "__main__":
+    from pathlib import Path
+
     from EinsteinEngine import *
     from sympy import Rational
 
@@ -217,11 +219,21 @@ if __name__ == "__main__":
     ###
     # Thorn creation
     ###
+    recipe_dir = Path(__file__).resolve().parent
+
+    with (recipe_dir / 'cottonmouth_agpl3.txt').open('r') as fd:
+        license_file = fd.read()
+
+    with (recipe_dir / 'cottonmouth_agpl3_header.txt').open('r') as fd:
+        license_header = fd.read()
+
     CppCarpetXWizard(
         gauge_wave_id,
         CppCarpetXGenerator(
             gauge_wave_id,
             sync_mode=SyncMode.EmulatePresync,
             extra_schedule_blocks=[adm_id_group]
-        )
+        ),
+        license_header=license_header,
+        license_file=license_file
     ).generate_thorn()

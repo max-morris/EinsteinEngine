@@ -39,17 +39,17 @@ from .emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtO
 from .emit.tree import Identifier, String, Centering
 from .generators.cactus_generator import SyncMode
 from .generators.cpp_carpetx_generator import CppCarpetXGenerator
-from .generators.wizards import CppCarpetXWizard
+from .wizards.thorn_wizards import CppCarpetXWizard
 
 _div_names = ["divx", "divy", "divz", "divxx", "divxy", "divxz", "divyy", "divyz", "divzz"]
 for _name in _div_names:
     if hasattr(functions, _name):
         globals()[_name] = getattr(functions, _name)
 
-from .dsl.sympywrap import Applier,sqrt,cbrt,log,exp,Pow,PowType,UFunc,diff,\
-    inv,det,sympify,simplify,cse,mkIdx,mkSymbol,\
-    mkMatrix,do_subs,mkFunction,mkEq,do_replace,mkIndexedBase,mkZeros,\
-    free_indexed,mkIndexed,mkWild,mkIdxs,free_symbols,h_step,mkPiecewise
+from .dsl.sympywrap import Applier, sqrt, cbrt, log, exp, Pow, PowType, UFunc, diff, \
+    inv, det, sympify, simplify, cse, mkIdx, mkSymbol, \
+    mkMatrix, do_subs, mkFunction, mkEq, do_replace, mkIndexedBase, mkZeros, \
+    free_indexed, mkIndexed, mkWild, mkIdxs, free_symbols, h_step, mkPiecewise
 from sympy.core.relational import Relational
 
 __all__ = [
@@ -65,14 +65,14 @@ __all__ = [
     "erf", "atan", "pi",
     "D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "Param", "ThornFunction", "ScheduleBin", "ThornDef",
     "set_dimension", "get_dimension", "lookup_pair", "subst_tensor_xyz", "mk_pair",
-    "noop","stencil","DD","DDI",
+    "noop", "stencil", "DD", "DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
     "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5",
     "divx", "divy", "divz", "divxx", "divxy", "divxz", "divyy", "divyz", "divzz",
-    "Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc","diff",
-    "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
-    "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkZeros",
-    "free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols", "h_step", "ThornFunctionBakeOptions",
+    "Applier", "sqrt", "cbrt", "log", "exp", "Pow", "PowType", "UFunc", "diff",
+    "inv", "det", "sympify", "simplify", "cse", "mkIdx", "mkSymbol",
+    "mkMatrix", "do_subs", "mkFunction", "mkEq", "do_replace", "mkIndexedBase", "mkZeros",
+    "free_indexed", "mkIndexed", "mkWild", "mkIdxs", "free_symbols", "h_step", "ThornFunctionBakeOptions",
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold",
     "NewRadXBoundaryBatch", "TempKind",
