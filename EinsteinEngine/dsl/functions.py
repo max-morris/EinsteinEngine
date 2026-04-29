@@ -1,4 +1,4 @@
-#  Copyright (C) 2026 Max Morris and other Einstein Engine contributors.
+#  Copyright (C) 2026 Max Morris, Steven R. Brandt and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -44,3 +44,16 @@ for i in range(get_dimension()):
 for func in [stencil, DD, DDI, noop, div, D, muladd]:
     if func.__module__ is None:
         func.__module__ = "functions"
+
+def kreiss_oliger_stencil(M:int, la:Idx)->Expr:
+    assert M % 2 == 1
+    N = (M+1)//2
+    sign = (-1) ** (N + 1)
+    formula = [0] * (N + 1)
+    for k in range(2 * N + 1):
+        offset = N - k
+        coeff = sign * (-1) ** k * comb(2 * N, k)
+        formula[abs(offset)] += coeff*stencil(offset*la)
+    prefactor = 2 ** (2 * N)
+    result : Expr = sum([noop(f) for f in formula]) * Rational(1, prefactor) * DDI(la)
+    return result

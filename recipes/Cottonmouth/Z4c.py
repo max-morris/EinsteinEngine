@@ -33,23 +33,27 @@ cottonmouth_Z4c = ThornDef("Cottonmouth", "CottonmouthZ4c")
 ul, ll = mk_pair("l")
 um, lm = mk_pair("m")
 
+################################
+# BEGIN Generate Options
+###
+
+
 ###
 # Finite difference stencils
 ###
+stencil_order = 4
 
-# Fourth order centered
-cottonmouth_Z4c.set_derivative_stencil(5)
+###
+# END Generate Options
+################################
+
+cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
 
 # Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_Z4c.mk_stencil(
     "div_diss",
     li,
-    Rational(1, 64) * DDI(li) * (
-        noop(stencil(-3*li) + stencil(3*li))
-        - 6.0 * noop(stencil(-2*li) + stencil(2*li))
-        + 15.0 * noop(stencil(-li) + stencil(li))
-        - 20.0 * stencil(0)
-    )
+    kreiss_oliger_dissipation(stencil_order+1, li)
 )
 
 ###

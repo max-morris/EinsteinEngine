@@ -78,4 +78,4 @@ __all__ = [
     "NewRadXBoundaryBatch", "TempKind",
     "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "promote_all", "promote_none", "promote_rank",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
-    "IntentRegion", "IntentOverride", "bayesian_optimization"]
+    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil"]
