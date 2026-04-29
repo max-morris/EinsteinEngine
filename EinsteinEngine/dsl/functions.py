@@ -17,6 +17,8 @@
 
 from EinsteinEngine.dsl.dimension import get_dimension
 from EinsteinEngine.dsl.sympywrap import mkFunction
+from sympy import Idx, Expr, Rational
+from math import comb
 
 stencil = mkFunction("stencil")
 DD = mkFunction("DD")

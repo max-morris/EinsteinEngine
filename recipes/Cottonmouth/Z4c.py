@@ -47,13 +47,13 @@ stencil_order = 4
 # END Generate Options
 ################################
 
-cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
+cottonmouth_Z4c.set_derivative_stencil(stencil_order + 1)
 
 # Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_Z4c.mk_stencil(
     "div_diss",
     li,
-    kreiss_oliger_dissipation(stencil_order+1, li)
+    kreiss_oliger_stencil(stencil_order+1, li)
 )
 
 ###
