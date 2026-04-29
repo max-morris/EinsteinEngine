@@ -819,6 +819,8 @@ class CppCarpetXGenerator(CactusGenerator):
                             IdExpr(Identifier('p.dx'))
                         )
                     )
+                    if self.options.get('simd', False) else
+                    IdExpr(Identifier('p.x')),
                 )
             )
 
