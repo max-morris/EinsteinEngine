@@ -41,6 +41,7 @@ jobs:
             libopenmpi-dev \
             openmpi-bin \
             libhdf5-openmpi-dev \
+            libudev-dev \
             perl \
             wget \
             numactl
@@ -60,7 +61,11 @@ jobs:
           ./simfactory/bin/sim setup-silent
 
       - name: Build And Run Cottonmouth
-        run: bash recipes/Cottonmouth/build-and-run.sh
+        env:
+          OMP_NUM_THREADS: "1"
+        run: |
+          export COTTONMOUTH_BUILD_JOBS="$(nproc --all)"
+          bash recipes/Cottonmouth/build-and-run.sh
 
       - name: Upload Build and Test Logs
         if: always()
