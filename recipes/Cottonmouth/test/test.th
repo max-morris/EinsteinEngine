@@ -169,14 +169,6 @@ ExternalLibraries/yaml_cpp
 ExternalLibraries/Boost
 
 
-# Kuibit post-processing tools for simulations
-!TARGET   = $ROOT/utils/Analysis
-!TYPE     = git
-!URL      = https://github.com/Sbozzolo/kuibit
-!REPO_PATH = $2
-!CHECKOUT = kuibit/docs kuibit/examples kuibit/kuibit kuibit/LICENSE kuibit/README.md
-
-
 # Numerical
 !TARGET   = $ARR
 !TYPE     = git
@@ -235,7 +227,6 @@ CarpetX/TmunuBaseX
 CarpetX/WaveToyX
 
 
-
 # SpacetimeX thorns
 !TARGET   = $ARR
 !TYPE     = git
@@ -259,17 +250,6 @@ SpacetimeX/Weyl
 SpacetimeX/WeylScal4
 SpacetimeX/Z4c
 
-
-# CanudaX -- Lean
-!TARGET    = $ARR
-!TYPE      = git
-!URL       = https://bitbucket.org/canuda/canudax_lean
-!REPO_BRANCH = master
-!REPO_PATH = $2
-!CHECKOUT =
-CanudaX_Lean/CanudaX_BSSNMoL
-CanudaX_Lean/CanudaX_ExactID
-CanudaX_Lean/CanudaX_NPScalars
 
 # AsterX thorns
 !TARGET    = $ARR
