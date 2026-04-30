@@ -48,14 +48,25 @@ for func in [stencil, DD, DDI, noop, div, D, muladd]:
         func.__module__ = "functions"
 
 def kreiss_oliger_stencil(M:int, la:Idx)->Expr:
-    assert M % 2 == 1
     N = (M+1)//2
     sign = (-1) ** (N + 1)
-    formula = [0] * (N + 1)
-    for k in range(2 * N + 1):
-        offset = N - k
-        coeff = sign * (-1) ** k * comb(2 * N, k)
-        formula[abs(offset)] += coeff*stencil(offset*la)
-    prefactor = 2 ** (2 * N)
-    result : Expr = sum([noop(f) for f in formula]) * Rational(1, prefactor) * DDI(la)
+    formula = 0
+    k = N
+    coef = comb(2 * N, N)
+    formula = (-1)**k * coef * stencil(0)
+    for k in range(N):
+        k1 = k
+        k2 = 2*N - k
+        offset1 = N - k1
+        offset2 = N - k2
+        coef = comb(2 * N, k1)
+        assert coef == comb(2 * N, k2)
+        s1 = (-1)**k1
+        s2 = (-1)**k2
+        if s1 > 0:
+            formula += coef * noop(stencil(la*offset1) + s2*stencil(la*offset2))
+        else:
+            formula += s1 * coef * noop(stencil(la*offset1) + s1*s2*stencil(la*offset2))
+    prefactor = sign * 2 ** (2 * N)
+    result : Expr = formula * sign * Rational(1, prefactor) * DDI(la)
     return result
