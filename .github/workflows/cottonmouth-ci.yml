@@ -9,13 +9,17 @@ jobs:
     name: Build Cactus And Run Cottonmouth Tests
     runs-on: ubuntu-latest
     timeout-minutes: 360
-    env:
-      CACTUS_PARENT_DIR: ${{ runner.temp }}
-      CACTUS_DIR: ${{ runner.temp }}/Cactus
-      THORNLIST: ${{ runner.temp }}/Cactus/thornlists/cottonmouth-ci.th
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Initialize Cactus Paths
+        id: cactus-paths
+        run: |
+          echo "CACTUS_PARENT_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CACTUS_DIR=$RUNNER_TEMP/Cactus" >> "$GITHUB_ENV"
+          echo "THORNLIST=$RUNNER_TEMP/Cactus/thornlists/cottonmouth-ci.th" >> "$GITHUB_ENV"
+          echo "cactus_dir=$RUNNER_TEMP/Cactus" >> "$GITHUB_OUTPUT"
 
       - name: Set Up Python
         uses: actions/setup-python@v5
@@ -64,6 +68,6 @@ jobs:
         with:
           name: cottonmouth-logs
           path: |
-            ${{ env.CACTUS_DIR }}/make.out
-            ${{ env.CACTUS_DIR }}/run.out
-            ${{ env.CACTUS_DIR }}/configs/cottonmouth/build.log
+            ${{ steps.cactus-paths.outputs.cactus_dir }}/make.out
+            ${{ steps.cactus-paths.outputs.cactus_dir }}/run.out
+            ${{ steps.cactus-paths.outputs.cactus_dir }}/configs/cottonmouth/build.log
