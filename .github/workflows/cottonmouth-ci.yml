@@ -10,8 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      CACTUS_DIR: ${{ github.workspace }}/Cactus
-      THORNLIST: ${{ github.workspace }}/Cactus/thornlists/cottonmouth-ci.th
+      CACTUS_PARENT_DIR: ${{ runner.temp }}
+      CACTUS_DIR: ${{ runner.temp }}/Cactus
+      THORNLIST: ${{ runner.temp }}/Cactus/thornlists/cottonmouth-ci.th
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,11 +43,11 @@ jobs:
 
       - name: Bootstrap Cactus Sources
         run: |
-          mkdir -p "$CACTUS_DIR/thornlists"
+          mkdir -p "$(dirname "$THORNLIST")"
           cp recipes/Cottonmouth/test/test.th "$THORNLIST"
-          wget -O "$CACTUS_DIR/GetComponents" https://raw.githubusercontent.com/gridaphobe/CRL/master/GetComponents
-          chmod +x "$CACTUS_DIR/GetComponents"
-          cd "$CACTUS_DIR"
+          wget -O "$CACTUS_PARENT_DIR/GetComponents" https://raw.githubusercontent.com/gridaphobe/CRL/master/GetComponents
+          chmod +x "$CACTUS_PARENT_DIR/GetComponents"
+          cd "$CACTUS_PARENT_DIR"
           ./GetComponents "$THORNLIST"
 
       - name: Configure SimFactory
@@ -63,6 +64,6 @@ jobs:
         with:
           name: cottonmouth-logs
           path: |
-            Cactus/make.out
-            Cactus/run.out
-            Cactus/configs/cottonmouth/build.log
+            ${{ env.CACTUS_DIR }}/make.out
+            ${{ env.CACTUS_DIR }}/run.out
+            ${{ env.CACTUS_DIR }}/configs/cottonmouth/build.log
