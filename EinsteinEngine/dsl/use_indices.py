@@ -1497,9 +1497,9 @@ class ThornFunction:
         if annotation.strip() != '':
             self.source_annotations.loops[loop_idx] = annotation
 
-        self.eqn_complex.new_eqn_list()
+        self.eqn_complex._new_eqn_list()
 
-    def soft_split(self, annotation: Optional[str] = None) -> None:
+    def soft_split(self, retainment_strategy: Optional[SoftSplitRetainmentStrategy] = None, annotation: Optional[str] = None) -> None:
         if self.been_baked:
             raise DslException("Cannot split loop because the EqnComplex has already been baked.")
 
@@ -1510,7 +1510,7 @@ class ThornFunction:
         if annotation.strip() != '':
             self.source_annotations.loops[loop_idx] = annotation
 
-        self.eqn_complex.new_eqn_list(True)
+        self.eqn_complex._new_eqn_list(True, soft_split_retainment_strategy=retainment_strategy)
 
     def _do_splitmaxxing(self) -> None:
         assert self.been_baked, "Cannot perform splitmaxxing because the EqnComplex has not been baked."
