@@ -20,4 +20,4 @@ jobs:
           cancel_others: "false"
           skip_after_successful_duplicate: "true"
           concurrent_skipping: "same_content_newer"
-          do_not_skip: '["pull_request","merge_group","workflow_dispatch","schedule"]'
+          do_not_skip: '["workflow_dispatch","schedule"]'
