@@ -39,14 +39,12 @@ jobs:
             const deadlineMs = Date.now() + 110 * 60 * 1000;
             const pollIntervalMs = 30 * 1000;
 
-            function summarize(checkRuns) {
+            function runsByName(checkRuns) {
               const byName = new Map();
+              for (const name of requiredChecks) byName.set(name, []);
               for (const run of checkRuns) {
                 if (!requiredChecks.includes(run.name)) continue;
-                const prev = byName.get(run.name);
-                if (!prev || new Date(run.started_at || run.created_at) > new Date(prev.started_at || prev.created_at)) {
-                  byName.set(run.name, run);
-                }
+                byName.get(run.name).push(run);
               }
               return byName;
             }
@@ -61,34 +59,54 @@ jobs:
               const seenNames = [...new Set(resp.data.check_runs.map(run => run.name))].sort();
               core.info(`Visible check runs (${seenNames.length}): ${seenNames.join(", ")}`);
 
-              const selected = summarize(resp.data.check_runs);
-              const missing = requiredChecks.filter(name => !selected.has(name));
+              const selected = runsByName(resp.data.check_runs);
+              const missing = requiredChecks.filter(name => selected.get(name).length === 0);
               const pending = [];
               const failed = [];
+              const withoutSuccess = [];
 
               for (const name of requiredChecks) {
-                const run = selected.get(name);
-                if (!run) continue;
-                if (run.status !== "completed") {
-                  pending.push(`${name} (status=${run.status})`);
+                const runs = selected.get(name);
+                if (!runs || runs.length === 0) continue;
+
+                const inFlight = runs.filter(run => run.status !== "completed");
+                if (inFlight.length > 0) {
+                  pending.push(`${name} (${inFlight.length} pending)`);
+                }
+
+                const completed = runs.filter(run => run.status === "completed");
+                const hasSuccess = completed.some(run => run.conclusion === "success");
+                const disallowed = completed.filter(
+                  run =>
+                    run.conclusion !== "success" &&
+                    run.conclusion !== "skipped"
+                );
+
+                if (disallowed.length > 0) {
+                  const disallowedConclusions = [...new Set(disallowed.map(run => run.conclusion))];
+                  failed.push(`${name} (conclusion=${disallowedConclusions.join("|")})`);
                   continue;
                 }
-                if (run.conclusion !== "success") {
-                  failed.push(`${name} (conclusion=${run.conclusion})`);
+
+                if (!hasSuccess) {
+                  withoutSuccess.push(name);
                 }
               }
 
               core.info(`Observed checks for ${ref} (event=${eventName}):`);
               for (const name of requiredChecks) {
-                const run = selected.get(name);
-                if (!run) {
+                const runs = selected.get(name);
+                if (!runs || runs.length === 0) {
                   core.info(`- ${name}: missing`);
                 } else {
-                  core.info(`- ${name}: status=${run.status}, conclusion=${run.conclusion}`);
+                  const summary = runs
+                    .map(run => `${run.status}/${run.conclusion ?? "null"}`)
+                    .join(", ");
+                  core.info(`- ${name}: ${summary}`);
                 }
               }
 
-              if (missing.length === 0 && pending.length === 0) {
+              if (missing.length === 0 && pending.length === 0 && withoutSuccess.length === 0) {
                 if (failed.length === 0) {
                   core.info("All required checks passed.");
                   return;
@@ -97,7 +115,15 @@ jobs:
                 return;
               }
 
+              if (failed.length > 0) {
+                core.setFailed(`Required checks did not pass: ${failed.join(", ")}`);
+                return;
+              }
+
               core.info(`Waiting: missing=[${missing.join("; ")}], pending=[${pending.join("; ")}]`);
+              if (withoutSuccess.length > 0) {
+                core.info(`Waiting for at least one success from: [${withoutSuccess.join("; ")}]`);
+              }
               await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
             }
 
