@@ -5,34 +5,27 @@ on:
   pull_request:
 
 jobs:
+  dedupe:
+    uses: ./.github/workflows/skip-duplicate.yml
+
   typecheck:
     name: Enforce Type Checks
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - id: dedupe
-        name: Skip Duplicate Runs
-        uses: fkirc/skip-duplicate-actions@v5.3.1
-        with:
-          cancel_others: "false"
-          skip_after_successful_duplicate: "true"
-          concurrent_skipping: "same_content_newer"
-          do_not_skip: '["workflow_dispatch","schedule"]'
-
       - name: Set Up Python
-        if: steps.dedupe.outputs.should_skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Create Virtual Environment
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: python -m venv venv
 
       - name: Install Dependencies
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: |
           . ./venv/bin/activate
           python -m pip install --upgrade pip
@@ -40,5 +33,4 @@ jobs:
           python -m pip install .
 
       - name: Run Typecheck Script
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: bash typecheck.sh -c

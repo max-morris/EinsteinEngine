@@ -5,25 +5,20 @@ on:
   pull_request:
 
 jobs:
+  dedupe:
+    uses: ./.github/workflows/skip-duplicate.yml
+
   cottonmouth:
     name: Build Cactus And Run Cottonmouth Tests
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - id: dedupe
-        name: Skip Duplicate Runs
-        uses: fkirc/skip-duplicate-actions@v5.3.1
-        with:
-          cancel_others: "false"
-          skip_after_successful_duplicate: "true"
-          concurrent_skipping: "same_content_newer"
-          do_not_skip: '["workflow_dispatch","schedule"]'
-
       - name: Initialize Cactus Paths
-        if: steps.dedupe.outputs.should_skip != 'true'
         id: cactus-paths
         run: |
           echo "CACTUS_PARENT_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
@@ -32,20 +27,17 @@ jobs:
           echo "cactus_dir=$RUNNER_TEMP/Cactus" >> "$GITHUB_OUTPUT"
 
       - name: Set Up Python
-        if: steps.dedupe.outputs.should_skip != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       - name: Install Python Dependencies
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
           python -m pip install .
 
       - name: Install System Dependencies
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -60,7 +52,6 @@ jobs:
             numactl
 
       - name: Bootstrap Cactus Sources
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: |
           mkdir -p "$(dirname "$THORNLIST")"
           cp recipes/Cottonmouth/test/test.th "$THORNLIST"
@@ -70,13 +61,11 @@ jobs:
           ./GetComponents "$THORNLIST"
 
       - name: Configure SimFactory
-        if: steps.dedupe.outputs.should_skip != 'true'
         run: |
           cd "$CACTUS_DIR"
           ./simfactory/bin/sim setup-silent
 
       - name: Build And Run Cottonmouth
-        if: steps.dedupe.outputs.should_skip != 'true'
         env:
           OMP_NUM_THREADS: "1"
         run: |
@@ -84,7 +73,7 @@ jobs:
           bash recipes/Cottonmouth/build-and-run.sh
 
       - name: Upload Build and Test Logs
-        if: always() && steps.dedupe.outputs.should_skip != 'true'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cottonmouth-logs
