@@ -6,13 +6,7 @@ on:
 
 jobs:
   dedupe:
-    name: Skip Duplicate Runs
-    runs-on: ubuntu-latest
-    outputs:
-      should_skip: ${{ steps.skip.outputs.should_skip }}
-    steps:
-      - id: skip
-        uses: ./.github/actions/skip-duplicate
+    uses: ./.github/workflows/skip-duplicate.yml
 
   typecheck:
     name: Enforce Type Checks
