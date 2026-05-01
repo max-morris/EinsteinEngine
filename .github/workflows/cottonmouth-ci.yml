@@ -4,13 +4,20 @@ on:
   push:
   pull_request:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
-  cancel-in-progress: true
-
 jobs:
+  dedupe:
+    name: Skip Duplicate Runs
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip.outputs.should_skip }}
+    steps:
+      - id: skip
+        uses: ./.github/actions/skip-duplicate
+
   cottonmouth:
     name: Build Cactus And Run Cottonmouth Tests
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
