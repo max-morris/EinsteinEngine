@@ -22,11 +22,6 @@ from sympy import Rational, Idx
 
 from EinsteinEngine import *
 
-###
-# Thorn definitions
-###
-cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
-
 ################################
 # BEGIN Generate Options
 ###
@@ -36,14 +31,23 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 ###
 stencil_order = 4
 
+use_matter_terms = 1
+
 ###
 # END Generate Options
 ################################
 
-cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
+#suffix = f"{stencil_order}{'m' if use_matter_terms == 1 else ''}"
+
+###
+# Thorn definitions
+###
+cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 
 ####
 ####
+
+cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
 
 # Fifth order Kreiss-Oliger disspation stencil
 # This is here for documentation purposes. It will
