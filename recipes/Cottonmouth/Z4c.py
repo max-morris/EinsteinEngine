@@ -801,14 +801,24 @@ fun_z4c_constraints.add_eqn(
     - 8 * pi * chi * gt[ui, uj] * Svec[lj]
 )
 
-# We will explicitly sync the monitored constraints, because they are
-# written on the interior only, and It would be nice to have them available
-# everywhere, for monitoring, debuging, etc
-sync_monitored_constraints = ExplicitSyncBatch(
-    [HamCons, MomCons, ZtCons],
-    analysis_group,
-    schedule_after=["z4c_constraints"],
-    name="sync_z4_monitored_constraints"
+sync_state = ExplicitSyncBatch(
+    cottonmouth_Z4c.get_state(),
+    ScheduleBin.PostSubStep,
+    schedule_before=["ADMBaseX_SetADMVars"],
+    name="sync_state",
+)
+sync_z4c = ExplicitSyncBatch(
+    [At, gt, chi, evo_lapse, evo_shift, trK],
+    "z4c_to_adm_group",
+    schedule_before=["z4c_to_adm"],
+    name="sync_z4c",
+)
+sync_z4c_pt2 = ExplicitSyncBatch(
+    [gt],
+    "adm_to_z4c_pt2_group",
+    schedule_before=["adm_to_z4c_pt2"],
+    name="sync_z4c_pt2",
+    # IN ODESolvers_PostStep BEFORE ADMBaseX_SetADMVars
 )
 
 ###
@@ -845,7 +855,7 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-fun_z4c_rhs.split_loop()
+fun_z4c_rhs.soft_split()
 
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
@@ -855,7 +865,7 @@ fun_z4c_rhs.add_eqn(
     + gt[ul, um] * Gammat[uk, li, lm] * Gammat[lk, ll, lj]
 )
 
-fun_z4c_rhs.split_loop()
+fun_z4c_rhs.soft_split() 
 
 fun_z4c_rhs.add_eqn(
     R[li, lj],
@@ -876,6 +886,17 @@ fun_z4c_rhs.add_eqn(
     + evo_shift[ui] * D(Theta, li)
     # Matter
     - evo_lapse * 8 * pi * rho
+)
+
+# Eq. (4) of [1]
+fun_z4c_rhs.add_eqn(
+    AtTF[li, lj],
+    - covd2_alpha[li, lj]
+    + evo_lapse * (
+        + R[li, lj]
+        # Matter
+        - 8 * pi * S[li, lj]
+    )
 )
 
 # Eq. (1) of [1]
@@ -907,6 +928,8 @@ fun_z4c_rhs.add_eqn(
     + 4 * pi * evo_lapse * (trS + rho)
 )
 
+fun_z4c_rhs.split_loop()
+
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
     evo_Gammat_rhs[ui],
@@ -929,6 +952,8 @@ fun_z4c_rhs.add_eqn(
     - 16 * pi * evo_lapse * gt[ui, uj] * Svec[lj]
 )
 
+fun_z4c_rhs.soft_split()
+
 # Eq. (2) of [1]
 fun_z4c_rhs.add_eqn(
     gt_rhs[li, lj],
@@ -938,17 +963,6 @@ fun_z4c_rhs.add_eqn(
     - Rational(2, 3) * gt[li, lj] * D(evo_shift[uk], lk)
     # Advection
     + evo_shift[uk] * D(gt[li, lj], lk)
-)
-
-# Eq. (4) of [1]
-fun_z4c_rhs.add_eqn(
-    AtTF[li, lj],
-    - covd2_alpha[li, lj]
-    + evo_lapse * (
-        + R[li, lj]
-        # Matter
-        - 8 * pi * S[li, lj]
-    )
 )
 
 fun_z4c_rhs.add_eqn(
@@ -1228,6 +1242,7 @@ cottonmouth_Z4c.bake(
     do_recycle_temporaries=True,
     do_split_output_eqns=False,  # NOTE: This is broken, never turn on
     cse_optimization_level=CseOptimizationLevel.Fast,
+    soft_split_retainment_strategy=retain_percentile(.7),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
@@ -1247,7 +1262,7 @@ CppCarpetXWizard(
     cottonmouth_Z4c,
     CppCarpetXGenerator(
         cottonmouth_Z4c,
-        sync_mode=SyncMode.EmulatePresync,
+        sync_mode=SyncMode.HandsOff,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
             initial_group,
@@ -1256,7 +1271,9 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_monitored_constraints
+            sync_state,
+            sync_z4c,
+            sync_z4c_pt2
         ],
         new_rad_x_boundary_fns=[
             nrx_Theta,
