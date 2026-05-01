@@ -29,7 +29,13 @@ jobs:
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const ref = context.sha;
+            const eventName = context.eventName;
+            const ref =
+              eventName === "pull_request"
+                ? context.payload.pull_request.head.sha
+                : eventName === "merge_group"
+                  ? context.payload.merge_group?.head_sha || context.sha
+                  : context.sha;
             const deadlineMs = Date.now() + 110 * 60 * 1000;
             const pollIntervalMs = 30 * 1000;
 
@@ -52,6 +58,8 @@ jobs:
                 ref,
                 per_page: 100,
               });
+              const seenNames = [...new Set(resp.data.check_runs.map(run => run.name))].sort();
+              core.info(`Visible check runs (${seenNames.length}): ${seenNames.join(", ")}`);
 
               const selected = summarize(resp.data.check_runs);
               const missing = requiredChecks.filter(name => !selected.has(name));
@@ -70,7 +78,7 @@ jobs:
                 }
               }
 
-              core.info(`Observed checks for ${ref}:`);
+              core.info(`Observed checks for ${ref} (event=${eventName}):`);
               for (const name of requiredChecks) {
                 const run = selected.get(name);
                 if (!run) {
