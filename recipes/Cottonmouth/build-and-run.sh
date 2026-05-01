@@ -158,3 +158,23 @@ make \
     CCTK_TESTSUITE_RUN_PROCESSORS="$TESTSUITE_RUN_PROCESSORS" \
     CCTK_TESTSUITE_RUN_TESTS="$TESTSUITE_RUN_TESTS" \
     |& tee run.out
+
+mapfile -t failed_lines < <(grep -E 'Number[[:space:]]+failed[[:space:]]*->[[:space:]]*[0-9]+' run.out || true)
+if [ "${#failed_lines[@]}" -ne 1 ]
+then
+    echo "Expected exactly one 'Number failed -> N' line, found ${#failed_lines[@]}" >&2
+    exit 9
+fi
+
+FAILED_COUNT=$(printf '%s\n' "${failed_lines[0]}" | sed -E 's/.*Number[[:space:]]+failed[[:space:]]*->[[:space:]]*([0-9]+).*/\1/')
+if ! [[ "$FAILED_COUNT" =~ ^[0-9]+$ ]]
+then
+    echo "Could not parse failure count from testsuite output" >&2
+    exit 10
+fi
+
+if [ "$FAILED_COUNT" -ne 0 ]
+then
+    echo "Testsuite reported failures: $FAILED_COUNT" >&2
+    exit 11
+fi
