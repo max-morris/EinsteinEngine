@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import typing
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from functools import cache, partial
 from functools import cached_property
@@ -36,7 +36,7 @@ from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn
     prioritize_rare_symbols, respects_dependency_order
 from EinsteinEngine.dsl.functions import *
 from EinsteinEngine.dsl.intent_override import IntentOverride
-from EinsteinEngine.dsl.soft_split_retainment_predicate import SoftSplitRetainmentPredicate, SoftSplitRetainmentStrategy
+from EinsteinEngine.dsl.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
 from EinsteinEngine.dsl.symbify import symbify
 from EinsteinEngine.dsl.sympywrap import *
@@ -117,6 +117,9 @@ class EqnComplex:
     # This set should NOT contain index 0; it is always the first element of the first kernel, so storing it would be redundant.
     _hard_splits: set[int]
 
+    # Maps EqnList indices to their corresponding SoftSplitRetainmentStrategies as set by soft_split()
+    _soft_split_retainment_strategies: dict[int, SoftSplitRetainmentStrategy]
+
     def __init__(self,
                  is_stencil: Dict[UFunc, bool],
                  intent_override: Optional[IntentOverride] = None,
@@ -128,13 +131,17 @@ class EqnComplex:
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
         self._hard_splits = set()
+        self._soft_split_retainment_strategies = dict()
 
-    def new_eqn_list(self, soft_split: bool = False) -> 'EqnList':
+    def _new_eqn_list(self, soft_split: bool = False, soft_split_retainment_strategy: Optional[SoftSplitRetainmentStrategy] = None) -> 'EqnList':
         new_list = EqnList(self, self.is_stencil, partial(self.set_eqn_annotation, len(self.eqn_lists)) if self.set_eqn_annotation else None)
         self.eqn_lists.append(new_list)
 
         if not soft_split:
             self._hard_splits.add(len(self.eqn_lists) - 1)
+
+        if soft_split_retainment_strategy is not None:
+            self._soft_split_retainment_strategies[len(self.eqn_lists) - 1] = soft_split_retainment_strategy
 
         return new_list
 
@@ -293,45 +300,80 @@ class EqnComplex:
 
         for first_el, last_el in soft_ranges:
             local_temp_set: set[Symbol] = set()
+            local_temp_last_read: dict[Symbol, int] = dict()
+            local_temp_first_write: dict[Symbol, int] = dict()
             local_temp_complexities: dict[Symbol, int] = dict()
 
-            local_all_subst: dict[Symbol, Symbol] = dict()
-            local_inv_subst: dict[Symbol, Symbol] = dict()
-            local_mangled_reads: set[Symbol] = set()
+            candidate_set_by_kernel: dict[int, set[Symbol]] = {i: set() for i in range(first_el, last_el + 1)}
 
-            for el in self.eqn_lists[first_el:last_el + 1]:
+            local_mangled_reads_by_kernel: dict[int, set[Symbol]] = defaultdict(set)
+
+            for el_idx, el in enumerate(self.eqn_lists[first_el:last_el + 1], start=first_el):
                 lt = el.local_temporaries
+
+                writes = set(el.eqns.keys())
+                for t in lt:
+                    local_temp_last_read[t] = el_idx
+                    if t in writes and t not in local_temp_first_write:
+                        local_temp_first_write[t] = el_idx
+
                 local_temp_set.update(lt)
                 local_temp_complexities.update(
                     (sym, complexity) for sym, complexity in el.complexity.items()
                     if sym in lt and complexity > local_temp_complexities.get(sym, 0)
                 )
 
-            should_retain: SoftSplitRetainmentPredicate = soft_split_retainment_strategy(local_temp_complexities)
+            for t in local_temp_set:
+                # Symbols are candidates for being "forgotten" in a certain kernel iff:
+                # 1) They were written to in a previous kernel.
+                # 2) Their last read is in the current or a later kernel.
+                candidate_start, candidate_end = local_temp_first_write[t] + 1, local_temp_last_read[t]
+                if candidate_start > candidate_end:
+                    continue
+                for el_idx in range(candidate_start, candidate_end + 1):
+                    candidate_set_by_kernel[el_idx].add(t)
 
-            candidates = sorted(filter(lambda s: not should_retain(s), local_temp_set), key=str)
+            # We can choose to forget a symbol in more than one kernel. Each time a symbol is forgotten, we mangle its
+            # name and recompute it along with any forgotten dependencies. If a symbol that has previously been forgotten
+            # in one kernel is retained in a future kernel, we use the most recent mangling of the name.
+            forgotten_by_kernel: dict[int, set[Symbol]] = dict()
+            subst_by_kernel: dict[int, dict[Symbol, Symbol]] = dict()
+            most_recent_mangling: dict[Symbol, Symbol] = dict()
+
+            for el_idx, candidate_set in candidate_set_by_kernel.items():
+                candidate_complexities = {sym: c for sym, c in local_temp_complexities.items() if sym in candidate_set}
+                should_retain = self._soft_split_retainment_strategies.get(el_idx, soft_split_retainment_strategy)(candidate_complexities)
+                forgotten = {sym for sym in candidate_set if not should_retain(sym)}
+                forgotten_by_kernel[el_idx] = forgotten
+
+                subst_by_kernel[el_idx] = dict(most_recent_mangling)
+
+                # When mangling, we sort the symbols by their string representation to ensure deterministic code generation.
+                for sym in sorted(forgotten, key=str):
+                    mangled = mangle_sym(sym)
+                    subst_by_kernel[el_idx][sym] = mangled
+                    most_recent_mangling[sym] = mangled
+
+                    all_subst.setdefault(sym, set()).add(mangled)
+                    inv_subst[mangled] = sym
 
             new_eqns: dict[Symbol, Expr] = dict()
             recipient_el = self.eqn_lists[first_el]
 
-            subst: dict[Symbol, Symbol] = {old: mangled for old, mangled in
-                                           zip(candidates, map(mangle_sym, candidates))}
-
-            for sym, mangled in subst.items():
-                all_subst.setdefault(sym, set()).add(mangled)
-                local_all_subst[sym] = mangled
-                assert mangled not in inv_subst, f"Collision in inverse substitution dict: {mangled} already mapped to {inv_subst[mangled]}"
-                inv_subst[mangled] = sym
-                local_inv_subst[mangled] = sym
-
+            completed_syms: set[Symbol] = set()
             for el_idx in range(first_el + 1, last_el + 1):
                 eqn_list = self.eqn_lists[el_idx]
+                subst = subst_by_kernel[el_idx]
+
+                local_mangled_reads: set[Symbol] = set()
+                local_mangled_reads_by_kernel[el_idx] = local_mangled_reads
 
                 for lhs, rhs in eqn_list.eqns.items():
                     new_lhs = subst.get(lhs, lhs)
                     new_rhs = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
 
-                    local_mangled_reads.update(new_rhs.free_symbols.intersection(local_inv_subst.keys()))
+                    eqn_mangled_reads = new_rhs.free_symbols.intersection(inv_subst.keys())
+                    local_mangled_reads.update(eqn_mangled_reads)
 
                     if new_lhs in new_eqns:
                         assert srepr(new_rhs) == srepr(new_eqns[new_lhs]), (
@@ -348,18 +390,21 @@ class EqnComplex:
                     else:
                         new_eqns[new_lhs] = new_rhs
 
+                # Make sure all mangled symbols have definitions
+                check = list(local_mangled_reads)
+                while len(check) > 0:
+                    mangled_sym = check.pop()
+                    if mangled_sym in completed_syms:
+                        continue
+                    if mangled_sym not in new_eqns and mangled_sym in inv_subst:
+                        completed_syms.add(mangled_sym)
+                        sym = inv_subst[mangled_sym]
+                        new_eqns[mangled_sym] = all_eqns[sym].xreplace(subst)  # type: ignore[no-untyped-call]
+                        for td in dependencies.get_transitive_dependencies(sym).intersection(subst.keys()):
+                            check.append(subst[td])
+
                 els_to_delete.append(el_idx)
                 recipient_el.params.update(eqn_list.params)
-
-            # check if every mangled symbol which is read has a definition somewhere
-            check = list(local_mangled_reads)
-            while len(check) > 0:
-                mangled_sym = check.pop()
-                if mangled_sym not in new_eqns and mangled_sym in inv_subst:
-                    sym = inv_subst[mangled_sym]
-                    new_eqns[mangled_sym] = all_eqns[sym].xreplace(local_all_subst)  # type: ignore[no-untyped-call]
-                    for td in dependencies.get_transitive_dependencies(sym).intersection(local_all_subst.keys()):
-                        check.append(local_all_subst[td])
 
             for lhs, rhs in new_eqns.items():
                 recipient_el.add_eqn(lhs, rhs)
