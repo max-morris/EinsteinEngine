@@ -1,5 +1,9 @@
 Copyright (C) 2026 Lucas Timotheo Sanches, Max Morris, and Steven R. Brandt.
 This file is part of Cottonmouth, a suite of astrophysics codes for the Einstein Toolkit.
+Cottonmouth was created with the Einstein Engine.
+
+Cottonmouth is hosted at: https://github.com/EinsteinToolkit/cottonmouth
+The Einstein Engine is hosted at: https://github.com/max-morris/EinsteinEngine
 
 Cottonmouth is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published by
