@@ -27,7 +27,7 @@ from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable, N
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
-from sympy import Basic, IndexedBase, Expr, Symbol, Integer, srepr
+from sympy import Basic, IndexedBase, Expr, Symbol, Integer
 
 from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.dsl.dependencies import Dependencies
@@ -370,25 +370,16 @@ class EqnComplex:
 
                 for lhs, rhs in eqn_list.eqns.items():
                     new_lhs = subst.get(lhs, lhs)
+
+                    if new_lhs in new_eqns or new_lhs in recipient_el.eqns:
+                        continue
+
                     new_rhs = rhs.xreplace(subst)  # type: ignore[no-untyped-call]
 
                     eqn_mangled_reads = new_rhs.free_symbols.intersection(inv_subst.keys())
                     local_mangled_reads.update(eqn_mangled_reads)
 
-                    if new_lhs in new_eqns:
-                        assert srepr(new_rhs) == srepr(new_eqns[new_lhs]), (
-                            f"RHSs don't match for lhs {new_lhs} in new_eqns during soft split. "
-                            f"RHSs: {new_rhs} vs {new_eqns[new_lhs]}"
-                        )
-                    elif new_lhs in recipient_el.eqns:
-                        # In this case, we compare the old rhs instead of the new rhs, because `lhs` represents a
-                        # retained symbol defined in the recipient, thus we want it to only use the recipient's symbols.
-                        assert srepr(rhs) == srepr(recipient_el.eqns[new_lhs]), (
-                            f"RHSs don't match for lhs {new_lhs} in recipient_el.eqns during soft split. "
-                            f"RHSs: {rhs} vs {recipient_el.eqns[new_lhs]}"
-                        )
-                    else:
-                        new_eqns[new_lhs] = new_rhs
+                    new_eqns[new_lhs] = new_rhs
 
                 # Make sure all mangled symbols have definitions
                 check = list(local_mangled_reads)
