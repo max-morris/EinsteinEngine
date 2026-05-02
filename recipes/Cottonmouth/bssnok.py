@@ -931,6 +931,8 @@ fun_bssn_diss.add_eqn(
     )
 )
 
+fun_bssn_diss.split_loop()
+
 w_rhs_diss = cottonmouth_bssnok.overwrite(w_rhs)
 fun_bssn_diss.add_eqn(
     w_rhs_diss,
@@ -941,6 +943,8 @@ fun_bssn_diss.add_eqn(
     )
 )
 
+fun_bssn_diss.split_loop()
+
 trK_rhs_diss = cottonmouth_bssnok.overwrite(trK_rhs)
 fun_bssn_diss.add_eqn(
     trK_rhs_diss,
@@ -950,6 +954,8 @@ fun_bssn_diss.add_eqn(
         + div_diss(trK, l2)
     )
 )
+
+#fun_bssn_diss.split_loop()
 
 fun_bssn_diss.split_loop()
 
@@ -963,6 +969,8 @@ fun_bssn_diss.add_eqn(
     )
 )
 
+fun_bssn_diss.split_loop()
+
 ConfConnect_rhs_diss = cottonmouth_bssnok.overwrite(ConfConnect_rhs)
 fun_bssn_diss.add_eqn(
     ConfConnect_rhs_diss[ua],
@@ -975,6 +983,8 @@ fun_bssn_diss.add_eqn(
 
 fun_bssn_diss.split_loop()
 
+#fun_bssn_diss.split_loop()
+
 evo_lapse_rhs_diss = cottonmouth_bssnok.overwrite(evo_lapse_rhs)
 fun_bssn_diss.add_eqn(
     evo_lapse_rhs_diss,
@@ -985,6 +995,8 @@ fun_bssn_diss.add_eqn(
     )
 )
 
+fun_bssn_diss.split_loop()
+
 evo_shift_rhs_diss = cottonmouth_bssnok.overwrite(evo_shift_rhs)
 fun_bssn_diss.add_eqn(
     evo_shift_rhs_diss[ua],
@@ -994,6 +1006,8 @@ fun_bssn_diss.add_eqn(
         + div_diss(evo_shift[ua], l2)
     )
 )
+
+fun_bssn_diss.split_loop()
 
 shift_B_rhs_diss = cottonmouth_bssnok.overwrite(shift_B_rhs)
 fun_bssn_diss.add_eqn(
