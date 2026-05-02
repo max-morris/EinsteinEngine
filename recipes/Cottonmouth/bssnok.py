@@ -684,11 +684,11 @@ fun_bssn_cons.add_eqn(
     ConfConnect[ua] - Delta[ua]
 )
 
-sync_state = ExplicitSyncBatch(
+sync_state_bssn = ExplicitSyncBatch(
     cottonmouth_bssnok.get_state(),
     ScheduleBin.PostSubStep,
     schedule_before=["ADMBaseX_SetADMVars"],
-    name="sync_state",
+    name="sync_state_bssn",
 )
 sync_bssn = ExplicitSyncBatch(
     [gt, At, evo_lapse, evo_shift, trK, w],
@@ -713,7 +713,8 @@ sync_bssn_pt2 = ExplicitSyncBatch(
 ###
 fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
-    rhs_group
+    rhs_group,
+    intent_override=IntentOverride.WriteInterior
 )
 # --begin--
 # loop 0
@@ -793,7 +794,7 @@ fun_bssn_rhs.add_eqn(
     + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
 )
 
-fun_bssn_rhs.split_loop()
+fun_bssn_rhs.soft_split(retain_none()) #split_loop()
 # kernel 3
 
 fun_bssn_rhs.add_eqn(
@@ -1190,7 +1191,7 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_state,
+            sync_state_bssn,
             sync_bssn,
             sync_bssn_pt2
         ],
