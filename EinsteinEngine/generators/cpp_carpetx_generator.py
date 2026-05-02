@@ -1197,7 +1197,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
             if len(output_regions) > 1:
                 raise GeneratorException(
-                    f"In {thorn_fn.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}"
+                    f"In {thorn_fn.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}\n\n"
+                    f"Hint: You can normalize the write regions to Interior by supplying intent_override=IntentOverride.WriteInterior to create_function()."
                 )
 
             [output_region] = output_regions
