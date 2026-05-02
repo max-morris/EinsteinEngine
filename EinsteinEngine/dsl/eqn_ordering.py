@@ -289,9 +289,18 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     disambiguation_rank: dict[Symbol, int] = {
         lhs: idx for idx, lhs in enumerate(sorted(eqns.keys(), key=str, reverse=True))
     }
-    ordered = sorted(eqns.keys(), key=lambda lhs: (scores[lhs], eqn_list.complexity[lhs], disambiguation_rank[lhs]), reverse=True)
 
-    yield from ((lhs, f'Symbol rarity score = {scores[lhs]}') for lhs in ordered.__iter__())
+    ordered = sorted(eqns.keys(), key=lambda lhs: (scores[lhs], eqn_list.complexity[lhs], disambiguation_rank[lhs]), reverse=True)
+    ordered_dict: OrderedDict[Symbol, Expr] = OrderedDict()
+    for lhs in ordered:
+        ordered_dict[lhs] = eqns[lhs]
+
+    ordered_liveness = _score_all_liveness(_get_lifetimes(eqns, ordered), ordered_dict)
+
+    yield from (
+        (lhs, f'Liveness = {len(ordered_liveness[lhs])}; {sorted(ordered_liveness[lhs], key=str)}')
+        for lhs in ordered.__iter__()
+    )
 
 @cache
 def _dummy_stencil_symbol(call: Basic) -> Symbol:
