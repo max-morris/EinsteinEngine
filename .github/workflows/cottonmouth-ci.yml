@@ -13,18 +13,16 @@ jobs:
     needs: dedupe
     if: needs.dedupe.outputs.should_skip != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    container:
+      image: stevenrbrandt/ee-tester
+    timeout-minutes: 180
+    env:
+      CACTUS_DIR: /home/etuser/Cactus
+      THORNLIST: /home/etuser/Cactus/thornlists/test.th
+      COTTONMOUTH_SIM_CONFIG: sim
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Initialize Cactus Paths
-        id: cactus-paths
-        run: |
-          echo "CACTUS_PARENT_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "CACTUS_DIR=$RUNNER_TEMP/Cactus" >> "$GITHUB_ENV"
-          echo "THORNLIST=$RUNNER_TEMP/Cactus/thornlists/cottonmouth-ci.th" >> "$GITHUB_ENV"
-          echo "cactus_dir=$RUNNER_TEMP/Cactus" >> "$GITHUB_OUTPUT"
 
       - name: Set Up Python
         uses: actions/setup-python@v5
@@ -37,40 +35,17 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install .
 
-      - name: Install System Dependencies
+      - name: Verify Prebuilt Cactus
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            gfortran \
-            libopenmpi-dev \
-            openmpi-bin \
-            libhdf5-openmpi-dev \
-            libudev-dev \
-            perl \
-            wget \
-            numactl
-
-      - name: Bootstrap Cactus Sources
-        run: |
-          mkdir -p "$(dirname "$THORNLIST")"
-          cp recipes/Cottonmouth/test/test.th "$THORNLIST"
-          wget -O "$CACTUS_PARENT_DIR/GetComponents" https://raw.githubusercontent.com/gridaphobe/CRL/master/GetComponents
-          chmod +x "$CACTUS_PARENT_DIR/GetComponents"
-          cd "$CACTUS_PARENT_DIR"
-          ./GetComponents "$THORNLIST"
-
-      - name: Configure SimFactory
-        run: |
-          cd "$CACTUS_DIR"
-          ./simfactory/bin/sim setup-silent
+          test -x "$CACTUS_DIR/simfactory/bin/sim"
+          test -r "$THORNLIST"
 
       - name: Build And Run Cottonmouth
         env:
           OMP_NUM_THREADS: "1"
         run: |
           export COTTONMOUTH_BUILD_JOBS="$(nproc --all)"
-          bash recipes/Cottonmouth/build-and-run.sh
+          bash recipes/Cottonmouth/ci-build-and-test.sh
 
       - name: Upload Build and Test Logs
         if: always()
@@ -78,6 +53,6 @@ jobs:
         with:
           name: cottonmouth-logs
           path: |
-            ${{ steps.cactus-paths.outputs.cactus_dir }}/make.out
-            ${{ steps.cactus-paths.outputs.cactus_dir }}/run.out
-            ${{ steps.cactus-paths.outputs.cactus_dir }}/configs/cottonmouth/build.log
+            ${{ env.CACTUS_DIR }}/make.out
+            ${{ env.CACTUS_DIR }}/run.out
+            ${{ env.CACTUS_DIR }}/configs/${{ env.COTTONMOUTH_SIM_CONFIG }}/build.log
