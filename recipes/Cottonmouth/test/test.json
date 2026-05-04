@@ -1,0 +1,17 @@
+{
+  "tests": [
+    "CottonmouthBSSNOK/linear_wave_bssnok",
+    "CottonmouthBSSNOK/mag_TOV_bssnok",
+    "CottonmouthBSSNOK/qc0_bssnok",
+    "CottonmouthZ4c/linear_wave_z4c",
+    "CottonmouthZ4c/mag_TOV_z4c",
+    "CottonmouthZ4c/qc0_z4c"
+  ],
+  "extra_thorns": [
+    "CottonmouthGaugeWaveID",
+    "CottonmouthLinearWaveID"
+  ],
+  "extra_parfiles": [
+    "apples_with_apples/gauge_wave_z4c.par"
+  ]
+}

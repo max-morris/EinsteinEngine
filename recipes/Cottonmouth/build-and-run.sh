@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-set -e
+set -euo pipefail
 
 # Build and Run
 if [ "${THORNLIST}" = "" ]
@@ -43,11 +43,17 @@ then
     echo "Cannot find '${CACTUS_DIR}/simfactory/etc/defs.local.ini'" >&2
     exit 4
 fi
-EMIT_CACTUS_DIR="$PWD"
+EINSTEIN_ENGINE_DIR="$PWD"
 make -j4 -f recipes/Cottonmouth/Makefile
+GENERATED_COTTONMOUTH_DIR="$PWD/generated/Cottonmouth"
+if [ ! -d "$GENERATED_COTTONMOUTH_DIR" ]
+then
+    echo "Cannot find generated arrangement dir '$GENERATED_COTTONMOUTH_DIR'" >&2
+    exit 5
+fi
 if [ ! -L "$CACTUS_DIR/arrangements/Cottonmouth" ]
 then
-    ln -s "$PWD/Cottonmouth" "$CACTUS_DIR/arrangements/Cottonmouth" 
+    ln -s "$GENERATED_COTTONMOUTH_DIR" "$CACTUS_DIR/arrangements/Cottonmouth"
 fi
 if [ ! -L "$CACTUS_DIR/arrangements/Cottonmouth" ]
 then
@@ -55,7 +61,7 @@ then
     exit 6
 fi
 P1=$(realpath "$CACTUS_DIR/arrangements/Cottonmouth")
-P2=$(realpath "Cottonmouth")
+P2=$(realpath "$GENERATED_COTTONMOUTH_DIR")
 if [ "$P1" != "$P2" ]
 then
     echo "Bad symlink: '$CACTUS_DIR/arrangements/Cottonmouth'"
@@ -71,39 +77,60 @@ echo Cottonmouth/CottonmouthZ4c >> .pre_cottonmouth.th
 set -e
 
 parfiles=(
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
 )
 
 perl ./utils/Scripts/MakeThornList -o cottonmouth.th --master .pre_cottonmouth.th "${parfiles[@]}"
 
-CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
-./simfactory/bin/sim build cottonmouth -j$(($CPUS / 4)) --thornlist cottonmouth.th |& tee make.out
+if command -v nproc >/dev/null 2>&1
+then
+    CPUS=$(nproc --all)
+else
+    CPUS=$(lscpu | grep "^CPU(s):" | awk '{print $2}')
+fi
+
+DEFAULT_BUILD_JOBS=$(($CPUS / 4))
+if [ "$DEFAULT_BUILD_JOBS" -lt 1 ]
+then
+    DEFAULT_BUILD_JOBS=1
+fi
+
+BUILD_JOBS=${COTTONMOUTH_BUILD_JOBS:-$DEFAULT_BUILD_JOBS}
+if ! [[ "$BUILD_JOBS" =~ ^[0-9]+$ ]] || [ "$BUILD_JOBS" -lt 1 ]
+then
+    echo "COTTONMOUTH_BUILD_JOBS must be a positive integer" >&2
+    exit 8
+fi
+
+./simfactory/bin/sim build cottonmouth -j"$BUILD_JOBS" --thornlist cottonmouth.th |& tee make.out
 
 TARGET_TEST_DIR_BSSNOK=arrangements/Cottonmouth/CottonmouthBSSNOK/test
 TARGET_TEST_DIR_Z4c=arrangements/Cottonmouth/CottonmouthZ4c/test
 
 bssnok_test_data=(
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_bssnok.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_bssnok.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
 )
 
 z4c_test_dirs=(
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/linear_wave_z4c.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/mag_TOV_z4c.par"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c"
-  "$EMIT_CACTUS_DIR/recipes/Cottonmouth/test/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
 )
 
 if [ ! -d $TARGET_TEST_DIR_BSSNOK ]
@@ -126,13 +153,36 @@ if [ -d $HOME/simulations/cottonmouth-testsuite ]; then
     rm -r $HOME/simulations/cottonmouth-testsuite
 fi
 
-export OMP_NUM_THREADS=4
-export OMP_PLACES=cores
-export OMP_PROC_BIND=close0
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-4}
+export OMP_PLACES=${OMP_PLACES:-cores}
+export OMP_PROC_BIND=${OMP_PROC_BIND:-close}
+
+TESTSUITE_RUN_PROCESSORS=${COTTONMOUTH_TESTSUITE_RUN_PROCESSORS:-2}
+TESTSUITE_RUN_TESTS=${COTTONMOUTH_TESTSUITE_RUN_TESTS:-"CottonmouthBSSNOK CottonmouthZ4c"}
 
 make \
     cottonmouth-testsuite \
     PROMPT=no \
-    CCTK_TESTSUITE_RUN_PROCESSORS=2 \
-    CCTK_TESTSUITE_RUN_TESTS="CottonmouthBSSNOK CottonmouthZ4c" \
+    CCTK_TESTSUITE_RUN_PROCESSORS="$TESTSUITE_RUN_PROCESSORS" \
+    CCTK_TESTSUITE_RUN_TESTS="$TESTSUITE_RUN_TESTS" \
     |& tee run.out
+
+mapfile -t failed_lines < <(grep -E 'Number[[:space:]]+failed[[:space:]]*->[[:space:]]*[0-9]+' run.out || true)
+if [ "${#failed_lines[@]}" -ne 1 ]
+then
+    echo "Expected exactly one 'Number failed -> N' line, found ${#failed_lines[@]}" >&2
+    exit 9
+fi
+
+FAILED_COUNT=$(printf '%s\n' "${failed_lines[0]}" | sed -E 's/.*Number[[:space:]]+failed[[:space:]]*->[[:space:]]*([0-9]+).*/\1/')
+if ! [[ "$FAILED_COUNT" =~ ^[0-9]+$ ]]
+then
+    echo "Could not parse failure count from testsuite output" >&2
+    exit 10
+fi
+
+if [ "$FAILED_COUNT" -ne 0 ]
+then
+    echo "Testsuite reported failures: $FAILED_COUNT" >&2
+    exit 11
+fi

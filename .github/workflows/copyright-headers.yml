@@ -5,8 +5,13 @@ on:
   pull_request:
 
 jobs:
+  dedupe:
+    uses: ./.github/workflows/skip-duplicate.yml
+
   enforce:
     name: Enforce Copyright Headers
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
