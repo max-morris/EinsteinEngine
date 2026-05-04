@@ -1174,8 +1174,8 @@ cottonmouth_bssnok.bake(
     do_madd=False,
     do_recycle_temporaries=False,
     do_split_output_eqns=False,
-    cse_optimization_level=CseOptimizationLevel.Fast,
-    soft_split_retainment_strategy=retain_percentile(.7),
+    cse_optimization_level=CseOptimizationLevel.Optimal,
+    soft_split_retainment_strategy=retain_rank(100),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
     )
