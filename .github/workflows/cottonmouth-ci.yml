@@ -19,7 +19,8 @@ jobs:
     env:
       CACTUS_DIR: /home/etuser/Cactus
       THORNLIST: /home/etuser/Cactus/thornlists/test.th
-      COTTONMOUTH_SIM_CONFIG: sim
+      CI_TEST_CONFIG: recipes/Cottonmouth/test/test.json
+      CI_SIM_CONFIG: sim
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,8 +45,8 @@ jobs:
         env:
           OMP_NUM_THREADS: "1"
         run: |
-          export COTTONMOUTH_BUILD_JOBS="$(nproc --all)"
-          bash recipes/Cottonmouth/ci-build-and-test.sh
+          export CI_BUILD_JOBS="$(nproc --all)"
+          bash ci/build-and-test.sh
 
       - name: Upload Build and Test Logs
         if: always()
@@ -55,4 +56,4 @@ jobs:
           path: |
             ${{ env.CACTUS_DIR }}/make.out
             ${{ env.CACTUS_DIR }}/run.out
-            ${{ env.CACTUS_DIR }}/configs/${{ env.COTTONMOUTH_SIM_CONFIG }}/build.log
+            ${{ env.CACTUS_DIR }}/configs/${{ env.CI_SIM_CONFIG }}/build.log

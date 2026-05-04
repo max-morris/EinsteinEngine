@@ -1,0 +1,110 @@
+Recipe CI Conventions
+==========================
+
+This repo uses `ci/build-and-test.sh` as a generic Cactus CI runner.
+
+Terminology
+-----------
+
+- **Arrangement**: Cactus concept that owns thorns.
+- **Recipe Group**: EinsteinEngine repo concept that owns recipe code, test data, and generation logic.
+
+These are related but not identical. In practice they are often named the same, and the runner
+defaults to that, but this is an inference, not a strict identity.
+
+The runner is driven by a per-recipe-group test config at `recipes/<RecipeGroup>/test/test.json`.
+
+
+Required Recipe Layout
+----------------------
+
+For a recipe group named `<RecipeGroup>`, the runner assumes:
+
+- `recipes/<RecipeGroup>/Makefile`
+  - Builds/generates thorns for that recipe group.
+- `generated/<Arrangement>/`
+  - Generated arrangement source tree; populated by the Makefile and symlinked into
+    `Cactus/arrangements/<Arrangement>`.
+- `recipes/<RecipeGroup>/test/`
+  - Contains thorn-scoped test data, test `.par` files, and `test.json`.
+
+
+Test Entries
+---------------
+
+- `test.json` has a required `tests` array.
+- Each `tests` entry must be `ThornName/test_name`.
+- For each entry `ThornName/TestName`, the runner requires:
+  - A directory containing control output: `recipes/<RecipeGroup>/test/ThornName/TestName`
+  - A parfile: `recipes/<RecipeGroup>/test/ThornName/TestName.par`
+- The owning thorn is taken directly from the entry prefix (`ThornName`).
+- After tests run, the runner parses the final `Tests passed:` block in the Cactus output.
+  - The set of passed `(thorn, test)` pairs must match `tests` exactly.
+  - The number of failed tests must be zero.
+
+
+Config JSON
+-------------------------------------
+
+`recipes/<RecipeGroup>/test/test.json` supports:
+
+- `tests` (required): list of `ThornName/test_name` entries.
+- `extra_thorns` (optional): list of extra thorn names to force into the generated thornlist
+  - Added as `<Arrangement>/<thorn>` lines to the pre-thornlist before `MakeThornList`.
+- `extra_parfiles` (optional): list of extra `.par` files for thornlist generation
+  - Absolute path: used as-is.
+  - Relative path starting with `recipes/`: resolved from repo root.
+  - Other relative path: resolved from `recipes/<RecipeGroup>/`.
+- `arrangement_name` (optional): overrides arrangement name derivation.
+- `suite_name` (optional): overrides suite name derivation.
+
+The runner does not require thorn lists in config. It relies on
+`utils/Scripts/MakeThornList` reading `ActiveThorns` from the selected parfiles.
+
+Derivations by convention:
+
+- `arrangement_name` default: `recipe_group_name`
+- `suite_name` default: lowercase arrangement name
+
+
+Example Config
+----------------------
+
+```json
+{
+  "tests": [
+    "CottonmouthBSSNOK/linear_wave_bssnok",
+    "CottonmouthBSSNOK/mag_TOV_bssnok",
+    "CottonmouthBSSNOK/qc0_bssnok",
+    "CottonmouthZ4c/linear_wave_z4c",
+    "CottonmouthZ4c/mag_TOV_z4c",
+    "CottonmouthZ4c/qc0_z4c"
+  ],
+  "extra_thorns": [
+    "CottonmouthGaugeWaveID",
+    "CottonmouthLinearWaveID"
+  ],
+  "extra_parfiles": [
+    "apples_with_apples/gauge_wave_z4c.par"
+  ]
+}
+```
+
+
+Workflow / Environment Inputs
+-----------------------------
+
+`ci/build-and-test.sh` expects:
+
+- `CI_TEST_CONFIG` (required): path to `test.json` (absolute or repo-relative)
+- `THORNLIST` (required): base cactus thornlist file
+- `CACTUS_DIR` (optional): defaults to parent of `THORNLIST` (`.../Cactus`)
+- `CI_SIM_CONFIG` (optional): SimFactory config name (default `sim`)
+- `CI_BUILD_JOBS` (optional): build parallelism (default `max(1, nproc/4)`)
+- `CI_TESTSUITE_RUN_PROCESSORS` (optional): testsuite processors (default `2`)
+- `CI_TESTSUITE_RUN_TESTS` (optional): explicit testsuite thorns
+  - Default is all unique owning thorns listed in `tests`.
+
+Compatibility aliases currently supported:
+
+- `COTTONMOUTH_*` variants for sim config/build jobs/testsuite knobs are still honored as fallbacks.
