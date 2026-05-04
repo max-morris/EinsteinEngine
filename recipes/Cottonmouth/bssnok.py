@@ -684,14 +684,8 @@ fun_bssn_cons.add_eqn(
     ConfConnect[ua] - Delta[ua]
 )
 
-sync_state_bssn = ExplicitSyncBatch(
-    cottonmouth_bssnok.get_state(),
-    ScheduleBin.PostSubStep,
-    schedule_before=["ADMBaseX_SetADMVars"],
-    name="sync_state_bssn",
-)
 sync_bssn = ExplicitSyncBatch(
-    [gt, At, evo_lapse, evo_shift, trK, w],
+    cottonmouth_bssnok.get_state(),
     "bssn2adm_group",
     schedule_before=["bssn2adm"],
     name="sync_bssn",
@@ -1175,7 +1169,12 @@ cottonmouth_bssnok.bake(
     do_recycle_temporaries=False,
     do_split_output_eqns=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
-    soft_split_retainment_strategy=retain_rank(100),
+    soft_split_retainment_strategy=retain_rank(50),
+    functions = {
+        "rhs":{
+            "soft_split_retainment_strategy":retain_rank(100)
+        }
+    },
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
     )
@@ -1205,7 +1204,6 @@ CppCarpetXWizard(
             analysis_group,
         ],
         explicit_syncs=[
-            sync_state_bssn,
             sync_bssn,
             sync_bssn_pt2
         ],
