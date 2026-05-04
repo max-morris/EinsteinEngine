@@ -818,10 +818,10 @@ fun_z4c_rhs = cottonmouth_Z4c.create_function(
 # Eq (8) of [1]
 fun_z4c_rhs.add_eqn(
     Rchi[li, lj],
-    + Rational(1, 2) * (1 / chi) * covdt2_chi[li, lj]
-    + Rational(1, 2) * (1 / chi) * gt[li, lj] * gt[uk, ul] * covdt2_chi[lk, ll]
+    + Rational(1, 200) * (1 / chi) * covdt2_chi[li, lj]
+    + Rational(12, 2) * (1 / chi) * gt[li, lj] * gt[uk, ul] * covdt2_chi[lk, ll]
     - Rational(1, 4) * (1 / (chi**2)) * D(chi, li) * D(chi, lj)
-    - Rational(3, 4) * (1 / (chi**2)) *
+    - Rational(33, 4) * (1 / (chi**2)) *
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
 
