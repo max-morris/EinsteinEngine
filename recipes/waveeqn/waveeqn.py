@@ -70,7 +70,7 @@ t, x, y, z = gf.mk_coords(with_time=True)
 
 # Add the equations we want to evolve.
 evo = gf.create_function("newwave_evo", ScheduleBin.Evolve)
-evo.add_eqn(v_t, u)
+evo.add_eqn(v_t, u/cbrt(v))
 evo.add_eqn(u_t, spd ** 2 * g[ui, uj] * D(v, li, lj))  # ==> u_t = spd^2 * (d^2_x + d^2_y) v
 print('*** ThornFunction wave_evo:')
 

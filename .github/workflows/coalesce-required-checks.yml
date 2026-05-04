@@ -1,0 +1,130 @@
+name: Coalesce Required Checks
+
+on:
+  pull_request:
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  report-status:
+    name: Report Required Check Status
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait For Required Checks And Coalesce Result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const requiredChecks = [
+              "Build Cactus And Run Cottonmouth Tests",
+              "Enforce Type Checks",
+              "Enforce Copyright Headers",
+            ];
+
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const eventName = context.eventName;
+            const ref =
+              eventName === "pull_request"
+                ? context.payload.pull_request.head.sha
+                : eventName === "merge_group"
+                  ? context.payload.merge_group?.head_sha || context.sha
+                  : context.sha;
+            const deadlineMs = Date.now() + 110 * 60 * 1000;
+            const pollIntervalMs = 30 * 1000;
+
+            function runsByName(checkRuns) {
+              const byName = new Map();
+              for (const name of requiredChecks) byName.set(name, []);
+              for (const run of checkRuns) {
+                if (!requiredChecks.includes(run.name)) continue;
+                byName.get(run.name).push(run);
+              }
+              return byName;
+            }
+
+            while (Date.now() < deadlineMs) {
+              const resp = await github.rest.checks.listForRef({
+                owner,
+                repo,
+                ref,
+                per_page: 100,
+              });
+              const seenNames = [...new Set(resp.data.check_runs.map(run => run.name))].sort();
+              core.info(`Visible check runs (${seenNames.length}): ${seenNames.join(", ")}`);
+
+              const selected = runsByName(resp.data.check_runs);
+              const missing = requiredChecks.filter(name => selected.get(name).length === 0);
+              const pending = [];
+              const failed = [];
+              const withoutSuccess = [];
+
+              for (const name of requiredChecks) {
+                const runs = selected.get(name);
+                if (!runs || runs.length === 0) continue;
+
+                const inFlight = runs.filter(run => run.status !== "completed");
+                if (inFlight.length > 0) {
+                  pending.push(`${name} (${inFlight.length} pending)`);
+                }
+
+                const completed = runs.filter(run => run.status === "completed");
+                const hasSuccess = completed.some(run => run.conclusion === "success");
+                const disallowed = completed.filter(
+                  run =>
+                    run.conclusion !== "success" &&
+                    run.conclusion !== "skipped"
+                );
+
+                if (disallowed.length > 0) {
+                  const disallowedConclusions = [...new Set(disallowed.map(run => run.conclusion))];
+                  failed.push(`${name} (conclusion=${disallowedConclusions.join("|")})`);
+                  continue;
+                }
+
+                if (!hasSuccess) {
+                  withoutSuccess.push(name);
+                }
+              }
+
+              core.info(`Observed checks for ${ref} (event=${eventName}):`);
+              for (const name of requiredChecks) {
+                const runs = selected.get(name);
+                if (!runs || runs.length === 0) {
+                  core.info(`- ${name}: missing`);
+                } else {
+                  const summary = runs
+                    .map(run => `${run.status}/${run.conclusion ?? "null"}`)
+                    .join(", ");
+                  core.info(`- ${name}: ${summary}`);
+                }
+              }
+
+              if (missing.length === 0 && pending.length === 0 && withoutSuccess.length === 0) {
+                if (failed.length === 0) {
+                  core.info("All required checks passed.");
+                  return;
+                }
+                core.setFailed(`Required checks did not pass: ${failed.join(", ")}`);
+                return;
+              }
+
+              if (failed.length > 0) {
+                core.setFailed(`Required checks did not pass: ${failed.join(", ")}`);
+                return;
+              }
+
+              core.info(`Waiting: missing=[${missing.join("; ")}], pending=[${pending.join("; ")}]`);
+              if (withoutSuccess.length > 0) {
+                core.info(`Waiting for at least one success from: [${withoutSuccess.join("; ")}]`);
+              }
+              await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+            }
+
+            core.setFailed("Timed out waiting for required checks to complete.");

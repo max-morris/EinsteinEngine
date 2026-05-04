@@ -1,0 +1,59 @@
+name: Cottonmouth Cactus CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dedupe:
+    uses: ./.github/workflows/skip-duplicate.yml
+
+  cottonmouth:
+    name: Build Cactus And Run Cottonmouth Tests
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: stevenrbrandt/ee-tester
+    timeout-minutes: 180
+    env:
+      CACTUS_DIR: /home/etuser/Cactus
+      THORNLIST: /home/etuser/Cactus/thornlists/test.th
+      CI_TEST_CONFIG: recipes/Cottonmouth/test/test.json
+      CI_SIM_CONFIG: sim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install .
+
+      - name: Verify Prebuilt Cactus
+        run: |
+          test -x "$CACTUS_DIR/simfactory/bin/sim"
+          test -r "$THORNLIST"
+
+      - name: Build And Run Cottonmouth
+        env:
+          OMP_NUM_THREADS: "1"
+        run: |
+          export CI_BUILD_JOBS="$(nproc --all)"
+          bash ci/build-and-test.sh
+
+      - name: Upload Build and Test Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cottonmouth-logs
+          path: |
+            ${{ env.CACTUS_DIR }}/make.out
+            ${{ env.CACTUS_DIR }}/run.out
+            ${{ env.CACTUS_DIR }}/configs/${{ env.CI_SIM_CONFIG }}/build.log

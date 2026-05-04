@@ -1,0 +1,25 @@
+name: Skip Duplicate
+
+on:
+  workflow_call:
+    outputs:
+      should_skip:
+        description: Whether caller should skip its main job
+        value: ${{ jobs.dedupe.outputs.should_skip }}
+
+jobs:
+  dedupe:
+    name: Skip Duplicate Runs
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5.3.1
+        with:
+          cancel_others: "false"
+          # Only suppress concurrent duplicate runs (e.g., push + pull_request
+          # for the same content), not future reruns with the same file set.
+          skip_after_successful_duplicate: "false"
+          concurrent_skipping: "same_content_newer"
+          do_not_skip: '["workflow_dispatch","schedule"]'
