@@ -612,48 +612,51 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
     analysis_group
 )
 
-fun_bssn_cons.add_eqn(
-    Rt_tmp[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-)
-
-fun_bssn_cons.split_loop()
-
-fun_bssn_cons.add_eqn(
-    Rt[la, lb],
-    Rt_tmp[la, lb]
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-)
-
-fun_bssn_cons.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
+def add_ricci(fun, la, lb):
+    fun.add_eqn(
+        Rt_tmp[la, lb],
+        - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
+        + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+        + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
     )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
 
-fun_bssn_cons.add_eqn(
-    RPhi[la, lb],
-    - 2 * cdphi2[lb, la]
-    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
-    + 4 * cdphi[la] * cdphi[lb]
-    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
-)
+    fun.split_loop()
 
-fun_bssn_cons.add_eqn(
-    R[la, lb],
-    Rt[la, lb] + RPhi[la, lb]
-)
+    fun.add_eqn(
+        Rt[la, lb],
+        Rt_tmp[la, lb]
+        + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
+        + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
+        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+    )
 
-fun_bssn_cons.split_loop()
+
+    fun.add_eqn(
+        cdphi2[la, lb],
+        -Rational(1, 2) * (1 / w) * (
+            D(w, la, lb)
+            - Gammat[uc, la, lb] * D(w, lc)
+        )
+        + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
+    )
+
+    #fun.split_loop()
+
+    fun.add_eqn(
+        RPhi[la, lb],
+        - 2 * cdphi2[lb, la]
+        - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
+        + 4 * cdphi[la] * cdphi[lb]
+        - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
+    )
+
+    fun.add_eqn(
+        R[la, lb],
+        Rt[la, lb] + RPhi[la, lb]
+    )
+add_ricci(fun_bssn_cons, la, lb)
 
 # Hamiltonian constraint
 fun_bssn_cons.add_eqn(
@@ -664,6 +667,7 @@ fun_bssn_cons.add_eqn(
     # Matter
     - 16 * pi * rho
 )
+fun_bssn_cons.split_loop()
 
 # Momentum constraint
 fun_bssn_cons.add_eqn(
@@ -710,48 +714,22 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
     rhs_group,
     intent_override=IntentOverride.WriteInterior
 )
-# --begin--
-# loop 0
+
+
+add_ricci(fun_bssn_rhs, la, lb)
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
-    Rt_tmp[la, lb],
-    - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-    + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-    + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+    gt_rhs[la, lb],
+    - 2 * evo_lapse * At[la, lb]
+    + gt[la, lc] * D(evo_shift[uc], lb)
+    + gt[lb, lc] * D(evo_shift[uc], la)
+    - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
+    # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
+    + evo_shift[uc] * D(gt[la, lb], lc)
 )
 
-def add_gt_rhs(la: Idx, lb: Idx) -> None:
-    fun_bssn_rhs.add_eqn(
-        gt_rhs[la, lb],
-        - 2 * evo_lapse * At[la, lb]
-        + gt[la, lc] * D(evo_shift[uc], lb)
-        + gt[lb, lc] * D(evo_shift[uc], la)
-        - Rational(2, 3) * gt[la, lb] * D(evo_shift[uc], lc)
-        # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
-        + evo_shift[uc] * D(gt[la, lb], lc)
-    )
 
-add_gt_rhs(l0, l0)
-add_gt_rhs(l0, l1)
-add_gt_rhs(l0, l2)
-
-fun_bssn_rhs.soft_split()
-# kernel 1
-add_gt_rhs(l1, l1)
-add_gt_rhs(l1, l2)
-add_gt_rhs(l2, l2)
-
-# Aux. equations
-fun_bssn_rhs.add_eqn(
-    cdphi2[la, lb],
-    -Rational(1, 2) * (1 / w) * (
-        D(w, la, lb)
-        - Gammat[uc, la, lb] * D(w, lc)
-    )
-    + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
-)
-
-fun_bssn_rhs.soft_split()
-# kernel 2
 
 # Hyperbolic Gamma Driver shift
 fun_bssn_rhs.add_eqn(
@@ -779,34 +757,7 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(w, la)
 )
 
-fun_bssn_rhs.add_eqn(
-    RPhi[la, lb], Rt_tmp[la,lb]
-    - 2 * cdphi2[lb, la]
-    - 2 * gt[la, lb] * gt[uc, ud] * cdphi2[lc, ld]
-    + 4 * cdphi[la] * cdphi[lb]
-    - 4 * gt[la, lb] * gt[uc, ud] * cdphi[lc] * cdphi[ld]
-    + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-)
-
-fun_bssn_rhs.soft_split(retain_none()) #split_loop()
-# kernel 3
-
-fun_bssn_rhs.add_eqn(
-    Rt[la, lb],
-    0 #Rt_tmp[la, lb]
-    + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
-    + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-    + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
-    + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-)
-
-fun_bssn_rhs.add_eqn(
-    R[la, lb],
-    Rt[la, lb] + RPhi[la, lb]
-)
-
 fun_bssn_rhs.soft_split()
-# kernel 4
 
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
@@ -844,7 +795,6 @@ fun_bssn_rhs.add_eqn(
 )
 
 fun_bssn_rhs.split_loop()
-# kernel 5
 
 fun_bssn_rhs.add_eqn(
     trK_rhs,
@@ -876,7 +826,6 @@ fun_bssn_rhs.add_eqn(
 )
 
 fun_bssn_rhs.soft_split()
-# kernel 6
 
 fun_bssn_rhs.add_eqn(
     shift_B_rhs[ua],
@@ -905,8 +854,6 @@ fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
 
 # Everyone likes to do gauge conditions their own way.
 # We will settle on Eqs. (25a) and (25b) of Ref. [4]
-
-# --end--
 
 # Dissipation
 fun_bssn_diss = cottonmouth_bssnok.create_function(
@@ -949,8 +896,6 @@ fun_bssn_diss.add_eqn(
     )
 )
 
-#fun_bssn_diss.split_loop()
-
 fun_bssn_diss.split_loop()
 
 At_rhs_diss = cottonmouth_bssnok.overwrite(At_rhs)
@@ -976,8 +921,6 @@ fun_bssn_diss.add_eqn(
 )
 
 fun_bssn_diss.split_loop()
-
-#fun_bssn_diss.split_loop()
 
 evo_lapse_rhs_diss = cottonmouth_bssnok.overwrite(evo_lapse_rhs)
 fun_bssn_diss.add_eqn(
