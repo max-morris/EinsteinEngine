@@ -194,14 +194,7 @@ def _get_eqn_score_fn_by_rarity(eqns: dict[Symbol, Expr], consider_frequency: bo
             symbol_frequency = _symbol_frequency(rhs)
             frequency_by_eqn[lhs] = {sym: symbol_frequency[sym] for sym in free_symbols}
 
-    def bonus(sym):
-        #if "rhs_tmp" in str(sym):
-        #    return 10
-        #if "ConfConnect" in str(sym):
-        #    return 5
-        return 0
-
-    symbol_rarity: dict[Symbol, float] = {sym: (bonus(sym) + 1.0 / reciprocal) for sym, reciprocal in reciprocal_rarity.items()}
+    symbol_rarity: dict[Symbol, float] = {sym: (1.0 / reciprocal) for sym, reciprocal in reciprocal_rarity.items()}
     symbol_rarity_sqrt: dict[Symbol, float] = {sym: 1.0 / sqrt(reciprocal) for sym, reciprocal in reciprocal_rarity.items()}
 
     if consider_frequency:
