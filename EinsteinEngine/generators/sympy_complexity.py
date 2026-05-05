@@ -43,7 +43,7 @@ class SympyComplexityVisitor:
 
     @multimethod
     def complexity(self, _n: sy.Atom) -> int:
-        return 1.0
+        return 1
 
     @complexity.register
     def _(self, n: sy.Add) -> int:
@@ -55,26 +55,26 @@ class SympyComplexityVisitor:
 
     @complexity.register
     def _(self, n: sy.Pow) -> int:
-        c: int = 15.01
+        c: int = 15
         if (power := n.args[1]).is_Integer:
             c = max(2, int(log2(abs(power.evalf()))))  # type: ignore[no-untyped-call]
         return int(c + sum([self.complexity(arg) for arg in n.args]))
 
     @complexity.register
     def _(self, n: sy.Symbol) -> int:
-        return 10.001 if self.is_grid_variable(n) else 1
+        return 10 if self.is_grid_variable(n) else 1
 
     @complexity.register
     def _(self, _n: sy.IndexedBase) -> int:
-        return 1.005
+        return 1
 
     @complexity.register
     def _(self, _n: sy.Indexed) -> int:
-        return 1.01
+        return 1
 
     @complexity.register
     def _(self, _n: sy.Number) -> int:
-        return .99
+        return 1
 
     def _complexity_undefined_fn(self, n: sy.Function) -> int:
         assert isinstance(n.func, UndefinedFunction)
@@ -86,11 +86,11 @@ class SympyComplexityVisitor:
             assert isinstance(z, sy.Number)
 
             if y.evalf() != 0 or z.evalf() != 0:  # type: ignore[no-untyped-call]
-                return 100.0
+                return 100
             elif x.evalf() != 0:  # type: ignore[no-untyped-call]
-                return 40.0
+                return 40
             else:
-                return 10.0
+                return 10
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
         return args_complexity
@@ -103,6 +103,6 @@ class SympyComplexityVisitor:
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
 
         if n in [sy.sin, sy.cos, sy.exp, sy.log, sy.sqrt, sy.cbrt]:
-            return 14.9 + args_complexity
+            return 15 + args_complexity
         else:
             return args_complexity
