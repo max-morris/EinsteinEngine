@@ -1,11 +1,11 @@
 {
   "tests": [
-    "CottonmouthBSSNOK/linear_wave_bssnok",
-    "CottonmouthBSSNOK/mag_TOV_bssnok",
-    "CottonmouthBSSNOK/qc0_bssnok",
-    "CottonmouthZ4c/linear_wave_z4c",
-    "CottonmouthZ4c/mag_TOV_z4c",
-    "CottonmouthZ4c/qc0_z4c"
+    "CottonmouthBSSNOK4m/linear_wave_bssnok",
+    "CottonmouthBSSNOK4m/mag_TOV_bssnok",
+    "CottonmouthBSSNOK4m/qc0_bssnok",
+    "CottonmouthZ4c4m/linear_wave_z4c",
+    "CottonmouthZ4c4m/mag_TOV_z4c",
+    "CottonmouthZ4c4m/qc0_z4c"
   ],
   "extra_thorns": [
     "CottonmouthGaugeWaveID",
