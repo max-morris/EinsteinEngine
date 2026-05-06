@@ -15,17 +15,14 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import functools
+import sys
 from pathlib import Path
 
 from sympy import Rational
 
 from EinsteinEngine import *
-
-###
-# Thorn definitions
-###
-cottonmouth_Z4c = ThornDef("Cottonmouth", "CottonmouthZ4c")
 
 ###
 # Some more indices
@@ -41,11 +38,25 @@ um, lm = mk_pair("m")
 ###
 # Finite difference stencils
 ###
-stencil_order = 4
+
+parser = argparse.ArgumentParser(prog='Cottonmouth Z4c', description='A code generator for the Z4c equations')
+parser.add_argument('--vacuum', action='store_true', default=False, help='Whether to generate matter terms.')
+parser.add_argument('--fd-order', type=int, default=4, help='Order of the finite difference equations to use.')
+pres=parser.parse_args(sys.argv[1:])
+
+stencil_order = pres.fd_order
+use_matter_terms = 0 if pres.vacuum else 1
+
+suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 
 ###
 # END Generate Options
 ################################
+
+###
+# Thorn definitions
+###
+cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}")
 
 cottonmouth_Z4c.set_derivative_stencil(stencil_order + 1)
 
@@ -786,7 +797,7 @@ fun_z4c_constraints.add_eqn(
     - At[li, lj] * At[ui, uj]
     + Rational(2, 3) * (trK + 2 * Theta)**2
     # Matter.
-    - 16 * pi * rho
+    + use_matter_terms * (-16) * pi * rho
 )
 
 # Eq. (15) of [1] with corrections from Eq. (24) of [2]
@@ -798,7 +809,7 @@ fun_z4c_constraints.add_eqn(
     - Rational(4, 3) * gt[ui, uj] * D(Theta, lj)
     - Rational(3, 2) * At[ui, uj] * (1 / chi) * D(chi, lj)
     # Matter.
-    - 8 * pi * chi * gt[ui, uj] * Svec[lj]
+    + use_matter_terms * (-8) * pi * chi * gt[ui, uj] * Svec[lj]
 )
 
 sync_state = ExplicitSyncBatch(
@@ -885,7 +896,7 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[ui] * D(Theta, li)
     # Matter
-    - evo_lapse * 8 * pi * rho
+    + use_matter_terms * (-evo_lapse) * 8 * pi * rho
 )
 
 # Eq. (4) of [1]
@@ -895,7 +906,7 @@ fun_z4c_rhs.add_eqn(
     + evo_lapse * (
         + R[li, lj]
         # Matter
-        - 8 * pi * S[li, lj]
+        + use_matter_terms * (-8) * pi * S[li, lj]
     )
 )
 
@@ -925,7 +936,7 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[ui] * D(trK, li)
     # Matter
-    + 4 * pi * evo_lapse * (trS + rho)
+    + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
 fun_z4c_rhs.split_loop()
@@ -949,7 +960,7 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[uj] * D(evo_Gammat[ui], lj)
     # Matter
-    - 16 * pi * evo_lapse * gt[ui, uj] * Svec[lj]
+    + use_matter_terms * (-16) * pi * evo_lapse * gt[ui, uj] * Svec[lj]
 )
 
 fun_z4c_rhs.soft_split()

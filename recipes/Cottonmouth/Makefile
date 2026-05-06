@@ -4,10 +4,10 @@ source_folder = recipes/Cottonmouth
 target_folder = generated/Cottonmouth
 generated_root = generated
 
-all: $(target_folder)/CottonmouthBSSNOK/interface.ccl \
+all: $(target_folder)/CottonmouthBSSNOK4m/interface.ccl \
 	 $(target_folder)/CottonmouthGaugeWaveID/interface.ccl \
 	 $(target_folder)/CottonmouthLinearWaveID/interface.ccl \
-	 $(target_folder)/CottonmouthZ4c/interface.ccl \
+	 $(target_folder)/CottonmouthZ4c4m/interface.ccl \
 
 $(target_folder):
 	mkdir -p $(target_folder)

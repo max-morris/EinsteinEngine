@@ -15,7 +15,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import functools
+import sys
 from pathlib import Path
 
 from sympy import Rational, Idx
@@ -29,9 +31,16 @@ from EinsteinEngine import *
 ###
 # Finite difference stencils
 ###
-stencil_order = 4
 
-use_matter_terms = 1
+parser = argparse.ArgumentParser(prog='Cottonmouth BSSNOK', description='A code generator for the BSSNOK equations')
+parser.add_argument('--vacuum', action='store_true', default=False, help='Whether to generate matter terms.')
+parser.add_argument('--fd-order', type=int, default=4, help='Order of the finite difference equations to use.')
+pres=parser.parse_args(sys.argv[1:])
+
+stencil_order = pres.fd_order
+use_matter_terms = 0 if pres.vacuum else 1
+
+suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 
 ###
 # END Generate Options
@@ -40,7 +49,7 @@ use_matter_terms = 1
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
+cottonmouth_bssnok = ThornDef("Cottonmouth", f"CottonmouthBSSNOK{suffix}")
 
 ####
 ####
@@ -670,7 +679,7 @@ fun_bssn_cons.add_eqn(
     - At[ua, lb] * At[ub, la]
     + Rational(2, 3) * (trK**2)
     # Matter
-    - 16 * pi * rho
+    + use_matter_terms * (-16) * pi * rho
 )
 fun_bssn_cons.split_loop()
 
@@ -685,7 +694,7 @@ fun_bssn_cons.add_eqn(
     + 6 * At[ua, ub] * cdphi[lb]
     - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
     # Matter
-    - 8 * pi * gt[ua, ub] * S[lb]
+    + use_matter_terms * (-8) * pi * gt[ua, ub] * S[lb]
 )
 
 fun_bssn_cons.add_eqn(
@@ -792,7 +801,7 @@ fun_bssn_rhs.add_eqn(
     + At[lb, lc] * D(evo_shift[uc], la)
     - Rational(2, 3) * At[la, lb] * D(evo_shift[uc], lc)
     # Matter
-    - 8 * pi * evo_lapse * (
+    + use_matter_terms * (-8) * pi * evo_lapse * (
         w**2 * eTij[la, lb] - Rational(1, 3) * gt[la, lb] * trS
     )
     # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
@@ -815,7 +824,7 @@ fun_bssn_rhs.add_eqn(
         + Rational(1, 3) * (trK**2)
     )
     # Matter
-    + 4 * pi * evo_lapse * (rho + trS)
+    + use_matter_terms * 4 * pi * evo_lapse * (rho + trS)
     # TODO: Advection: + Upwind[beta[ua], trK, la]
     + evo_shift[ua] * D(trK, la)
 )
@@ -849,7 +858,7 @@ fun_bssn_rhs.add_eqn(
     - Delta[ub] * D(evo_shift[ua], lb)
     + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
     # Matter
-    - 16 * pi * evo_lapse * gt[ua, ub] * S[lb]
+    + use_matter_terms * (-16) * pi * evo_lapse * gt[ua, ub] * S[lb]
     # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
     + evo_shift[ub] * D(ConfConnect[ua], lb)
 )
