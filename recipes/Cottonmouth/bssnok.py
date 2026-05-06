@@ -612,7 +612,7 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
     analysis_group
 )
 
-def add_ricci(fun, la, lb):
+def add_ricci(fun:ThornFunction, la:Idx, lb:Idx) -> None:
     fun.add_eqn(
         Rt_tmp[la, lb],
         - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
