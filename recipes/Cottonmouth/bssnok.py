@@ -37,8 +37,6 @@ use_matter_terms = 1
 # END Generate Options
 ################################
 
-#suffix = f"{stencil_order}{'m' if use_matter_terms == 1 else ''}"
-
 ###
 # Thorn definitions
 ###
@@ -620,7 +618,7 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
     analysis_group
 )
 
-def add_ricci(fun:ThornFunction, la:Idx, lb:Idx) -> None:
+def add_ricci(fun: ThornFunction, la: Idx, lb: Idx) -> None:
     fun.add_eqn(
         Rt_tmp[la, lb],
         - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
@@ -650,8 +648,6 @@ def add_ricci(fun:ThornFunction, la:Idx, lb:Idx) -> None:
         + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
     )
 
-    #fun.split_loop()
-
     fun.add_eqn(
         RPhi[la, lb],
         - 2 * cdphi2[lb, la]
@@ -664,6 +660,7 @@ def add_ricci(fun:ThornFunction, la:Idx, lb:Idx) -> None:
         R[la, lb],
         Rt[la, lb] + RPhi[la, lb]
     )
+
 add_ricci(fun_bssn_cons, la, lb)
 
 # Hamiltonian constraint
@@ -1121,9 +1118,9 @@ cottonmouth_bssnok.bake(
     do_split_output_eqns=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
-    functions = {
-        "rhs":{
-            "soft_split_retainment_strategy":retain_rank(100)
+    functions={
+        "rhs": {
+            "soft_split_retainment_strategy": retain_rank(100)
         }
     },
     ordering_fn=functools.partial(
