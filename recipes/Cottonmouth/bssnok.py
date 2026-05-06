@@ -47,34 +47,6 @@ cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
 ####
 ####
 
-cottonmouth_bssnok.set_derivative_stencil(stencil_order + 1)
-
-# Fifth order Kreiss-Oliger disspation stencil
-# This is here for documentation purposes. It will
-# be overwritten shortly.
-#
-# The mk_stencil() function below will generate a
-#    stencil function named div_diss.
-# The noop() function enforces parenthesis in the
-#    output, maintaining user-defined grouping.
-# The argument la describes a generic dimension,
-#    and it will generate code for the x, y, and z directions.
-# DDI(la) is the inverse of the spatial step in the
-#    la direction squared.
-# In the context of mk_stencil,
-#    stencil(la) will apply a +1 in the x, y, or z direction.
-#    stencil(2*la) will apply a +2 in the x, y, or z direction.
-div_diss = cottonmouth_bssnok.mk_stencil(
-    "div_diss",
-    la,
-    Rational(1, 64) * DDI(la) * (
-        noop(stencil(-3*la) + stencil(3*la))
-        - 6.0 * noop(stencil(-2*la) + stencil(2*la))
-        + 15.0 * noop(stencil(-la) + stencil(la))
-        - 20.0 * stencil(0)
-    )
-)
-
 # Generic KO formula
 div_diss = cottonmouth_bssnok.mk_stencil(
     "div_diss",
