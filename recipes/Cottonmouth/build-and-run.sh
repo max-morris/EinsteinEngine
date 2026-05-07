@@ -64,25 +64,25 @@ P1=$(realpath "$CACTUS_DIR/arrangements/Cottonmouth")
 P2=$(realpath "$GENERATED_COTTONMOUTH_DIR")
 if [ "$P1" != "$P2" ]
 then
-    echo "Bad symlink: '$CACTUS_DIR/arrangements/Cottonmouth'"
+    echo "Bad symlink: '$P1' != '$P2'" >& 2
     exit 7
 fi
 cd "$CACTUS_DIR"
 cat "$THORNLIST" > .pre_cottonmouth.th
-echo Cottonmouth/CottonmouthBSSNOK >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthBSSNOK4m >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthGaugeWaveID >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthLinearWaveID >> .pre_cottonmouth.th
-echo Cottonmouth/CottonmouthZ4c >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthZ4c4m >> .pre_cottonmouth.th
 
 set -e
 
 parfiles=(
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/linear_wave_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/linear_wave_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/mag_TOV_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/mag_TOV_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/qc0_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/qc0_z4c.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
 )
 
@@ -110,26 +110,26 @@ fi
 
 ./simfactory/bin/sim build cottonmouth -j"$BUILD_JOBS" --thornlist cottonmouth.th |& tee make.out
 
-TARGET_TEST_DIR_BSSNOK=arrangements/Cottonmouth/CottonmouthBSSNOK/test
-TARGET_TEST_DIR_Z4c=arrangements/Cottonmouth/CottonmouthZ4c/test
+TARGET_TEST_DIR_BSSNOK=arrangements/Cottonmouth/CottonmouthBSSNOK4m/test
+TARGET_TEST_DIR_Z4c=arrangements/Cottonmouth/CottonmouthZ4c4m/test
 
 bssnok_test_data=(
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/linear_wave_bssnok.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/qc0_bssnok.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK/mag_TOV_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/linear_wave_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/linear_wave_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/qc0_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/qc0_bssnok.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/mag_TOV_bssnok"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/mag_TOV_bssnok.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
 )
 
 z4c_test_dirs=(
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/linear_wave_z4c.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/mag_TOV_z4c.par"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c"
-  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/linear_wave_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/linear_wave_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/mag_TOV_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/mag_TOV_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/qc0_z4c"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/qc0_z4c.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
 )
 
@@ -158,7 +158,7 @@ export OMP_PLACES=${OMP_PLACES:-cores}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-close}
 
 TESTSUITE_RUN_PROCESSORS=${COTTONMOUTH_TESTSUITE_RUN_PROCESSORS:-2}
-TESTSUITE_RUN_TESTS=${COTTONMOUTH_TESTSUITE_RUN_TESTS:-"CottonmouthBSSNOK CottonmouthZ4c"}
+TESTSUITE_RUN_TESTS=${COTTONMOUTH_TESTSUITE_RUN_TESTS:-"CottonmouthBSSNOK4m CottonmouthZ4c4m"}
 
 make \
     cottonmouth-testsuite \

@@ -1,7 +1,7 @@
 ActiveThorns = "
   ADMBaseX
   CarpetX
-  CottonmouthZ4c
+  CottonmouthZ4c4m
   CoordinatesX
   IOUtil
   NewRadX
@@ -71,7 +71,7 @@ ODESolvers::verbose = yes
 ODESolvers::method  = "RK4"
 
 # Spacetime evolution
-CottonmouthZ4c::apply_NewRadX = yes
+CottonmouthZ4c4m::apply_NewRadX = yes
 
 # Output
 IO::out_dir   = $parfile
@@ -85,15 +85,15 @@ CarpetX::out_tsv = no
 CarpetX::out_tsv_vars = "
   ADMBaseX::metric
   ADMBaseX::curv
-  CottonmouthZ4c::Theta
-  CottonmouthZ4c::chi
-  CottonmouthZ4c::trK
-  CottonmouthZ4c::evo_Gammat
-  CottonmouthZ4c::gt
-  CottonmouthZ4c::At
-  CottonmouthZ4c::evo_lapse
-  CottonmouthZ4c::evo_shift
-  CottonmouthZ4c::HamCons
-  CottonmouthZ4c::MomCons
-  CottonmouthZ4c::ZtCons
+  CottonmouthZ4c4m::Theta
+  CottonmouthZ4c4m::chi
+  CottonmouthZ4c4m::trK
+  CottonmouthZ4c4m::evo_Gammat
+  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::At
+  CottonmouthZ4c4m::evo_lapse
+  CottonmouthZ4c4m::evo_shift
+  CottonmouthZ4c4m::HamCons
+  CottonmouthZ4c4m::MomCons
+  CottonmouthZ4c4m::ZtCons
 "

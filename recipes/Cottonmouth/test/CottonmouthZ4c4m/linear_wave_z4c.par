@@ -24,7 +24,7 @@ ActiveThorns = "
   ADMBaseX
   TmunuBaseX
   CarpetX
-  CottonmouthZ4c
+  CottonmouthZ4c4m
   IOUtil
   CottonmouthLinearWaveID
   ODESolvers
@@ -60,7 +60,7 @@ CarpetX::blocking_factor_z = 1
 
 CarpetX::ghost_size = 3
 
-CottonmouthZ4c::dissipation_epsilon = $diss_eps
+CottonmouthZ4c4m::dissipation_epsilon = $diss_eps
 
 # Boundary conditions
 CarpetX::periodic   = yes
@@ -90,7 +90,7 @@ CarpetX::output_boundary_points = no
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  CottonmouthZ4c::gt
-  CottonmouthZ4c::HamCons
-  CottonmouthZ4c::MomCons
+  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::HamCons
+  CottonmouthZ4c4m::MomCons
 "

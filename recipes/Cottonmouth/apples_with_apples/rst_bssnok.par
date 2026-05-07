@@ -21,7 +21,7 @@ ActiveThorns = "
   ADMBaseX
   TmunuBaseX
   CarpetX
-  CottonmouthBSSNOK
+  CottonmouthBSSNOK4m
   IOUtil
   ODESolvers
   TmunuBaseX
@@ -72,7 +72,7 @@ CarpetX::dtfac      = $dtfac
 ODESolvers::method  = "RK4"
 
 # Spacetime evolution
-CottonmouthBSSNOK::dissipation_epsilon = $diss_eps
+CottonmouthBSSNOK4m::dissipation_epsilon = $diss_eps
 
 # Output
 IO::out_dir   = $parfile
@@ -80,15 +80,15 @@ IO::out_every = $out_every
 
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars  = "
-  CottonmouthBSSNOK::w
-  CottonmouthBSSNOK::trK
-  CottonmouthBSSNOK::ConfConnect
-  CottonmouthBSSNOK::gt
-  CottonmouthBSSNOK::At
-  CottonmouthBSSNOK::evo_lapse
-  CottonmouthBSSNOK::evo_shift
-  CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
+  CottonmouthBSSNOK4m::w
+  CottonmouthBSSNOK4m::trK
+  CottonmouthBSSNOK4m::ConfConnect
+  CottonmouthBSSNOK4m::gt
+  CottonmouthBSSNOK4m::At
+  CottonmouthBSSNOK4m::evo_lapse
+  CottonmouthBSSNOK4m::evo_shift
+  CottonmouthBSSNOK4m::HamCons
+  CottonmouthBSSNOK4m::MomCons
 "
 
 CarpetX::out_tsv      = no

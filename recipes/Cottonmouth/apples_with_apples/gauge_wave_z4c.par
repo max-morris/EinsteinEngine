@@ -24,7 +24,7 @@ ActiveThorns = "
   ADMBaseX
   TmunuBaseX
   CarpetX
-  CottonmouthZ4c
+  CottonmouthZ4c4m
   IOUtil
   CottonmouthGaugeWaveID
   ODESolvers
@@ -87,16 +87,16 @@ CarpetX::out_performance = no
 
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
-  CottonmouthZ4c::gt
-  CottonmouthZ4c::evo_lapse
-  CottonmouthZ4c::trK
-  CottonmouthZ4c::HamCons
+  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::evo_lapse
+  CottonmouthZ4c4m::trK
+  CottonmouthZ4c4m::HamCons
 "
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  CottonmouthZ4c::gt
-  CottonmouthZ4c::evo_lapse
-  CottonmouthZ4c::trK
-  CottonmouthZ4c::HamCons
+  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::evo_lapse
+  CottonmouthZ4c4m::trK
+  CottonmouthZ4c4m::HamCons
 "
