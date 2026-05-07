@@ -27,7 +27,7 @@ ActiveThorns = "
   AHFinderDirect
   BoxInBox
   CarpetX
-  CottonmouthBSSNOK
+  CottonmouthBSSNOK4m
   CanudaX_NPScalars
   CoordinatesX
   IOUtil
@@ -127,10 +127,10 @@ ODESolvers::verbose = yes
 ODESolvers::method  = $time_stepper
 
 # Spacetime evolution
-CottonmouthBSSNOK::eta_B                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
-CottonmouthBSSNOK::dissipation_epsilon    = $diss_eps
+CottonmouthBSSNOK4m::eta_B                  = 1.0
+CottonmouthBSSNOK4m::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK4m::evolved_lapse_floor    = 1.0e-4
+CottonmouthBSSNOK4m::dissipation_epsilon    = $diss_eps
 
 # Spherical surfaces
 SphericalSurface::nsurfaces = 5
@@ -293,11 +293,11 @@ CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
   ADMBaseX::metric
   ADMBaseX::curv
-  CottonmouthBSSNOK::evo_lapse
-  CottonmouthBSSNOK::evo_shift
-  CottonmouthBSSNOK::w
-  CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
+  CottonmouthBSSNOK4m::evo_lapse
+  CottonmouthBSSNOK4m::evo_shift
+  CottonmouthBSSNOK4m::w
+  CottonmouthBSSNOK4m::HamCons
+  CottonmouthBSSNOK4m::MomCons
 "
 
 CarpetX::out_tsv = no
@@ -310,16 +310,16 @@ CarpetX::out_silo_every = $out_silo_every
 CarpetX::out_silo_vars = "
   ADMBaseX::metric
   ADMBaseX::curv
-  CottonmouthBSSNOK::gt
-  CottonmouthBSSNOK::w
-  CottonmouthBSSNOK::At
-  CottonmouthBSSNOK::trK
-  CottonmouthBSSNOK::ConfConnect
-  CottonmouthBSSNOK::evo_lapse
-  CottonmouthBSSNOK::evo_shift
-  CottonmouthBSSNOK::shift_B
-  CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
+  CottonmouthBSSNOK4m::gt
+  CottonmouthBSSNOK4m::w
+  CottonmouthBSSNOK4m::At
+  CottonmouthBSSNOK4m::trK
+  CottonmouthBSSNOK4m::ConfConnect
+  CottonmouthBSSNOK4m::evo_lapse
+  CottonmouthBSSNOK4m::evo_shift
+  CottonmouthBSSNOK4m::shift_B
+  CottonmouthBSSNOK4m::HamCons
+  CottonmouthBSSNOK4m::MomCons
   CanudaX_NPScalars::NPPsi4R_group
   CanudaX_NPScalars::NPPsi4I_group
 "

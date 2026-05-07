@@ -63,15 +63,15 @@ CanudaX_BSSNMoL::boundary_conditions                = "radiative"
     evolution_thorn_mc_var = "CanudaX_BSSNMoL::mom"
 
 elif USED_EVOLUTION_THORN == EvolutionThorn.COTTONMOUTH:
-    evolution_thorn_name = "CottonmouthBSSNOK"
+    evolution_thorn_name = "CottonmouthBSSNOK4m"
     evolution_thorn_settings = r"""
-CottonmouthBSSNOK::eta_b                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-6
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-8
-CottonmouthBSSNOK::dissipation_epsilon    = 0.32
+CottonmouthBSSNOK4m::eta_b                  = 1.0
+CottonmouthBSSNOK4m::conformal_factor_floor = 1.0e-6
+CottonmouthBSSNOK4m::evolved_lapse_floor    = 1.0e-8
+CottonmouthBSSNOK4m::dissipation_epsilon    = 0.32
 """
-    evolution_thorn_hc_var = "CottonmouthBSSNOK::HamCons"
-    evolution_thorn_mc_var = "CottonmouthBSSNOK::MomCons"
+    evolution_thorn_hc_var = "CottonmouthBSSNOK4m::HamCons"
+    evolution_thorn_mc_var = "CottonmouthBSSNOK4m::MomCons"
 
 elif USED_EVOLUTION_THORN == EvolutionThorn.Z4C:
     evolution_thorn_name = "Z4c"

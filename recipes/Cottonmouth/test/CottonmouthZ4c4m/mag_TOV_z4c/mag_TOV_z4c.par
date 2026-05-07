@@ -7,7 +7,7 @@ ActiveThorns = "
     TmunuBaseX
     AsterX
     AsterSeeds
-    CottonmouthZ4c
+    CottonmouthZ4c4m
     AsterMasks
     TOVSolverX
 "
@@ -71,8 +71,8 @@ ADMBaseX::initial_shift   = "tov"
 ADMBaseX::initial_dtlapse = "zero"
 ADMBaseX::initial_dtshift = "zero"
 
-CottonmouthZ4c::apply_NewRadX = yes
-CottonmouthZ4c::dissipation_epsilon    = 0.3
+CottonmouthZ4c4m::apply_NewRadX = yes
+CottonmouthZ4c4m::dissipation_epsilon    = 0.3
 
 # Hydro
 TOVSolverX::TOV_Rho_Central[0] = 1.28e-3
@@ -137,7 +137,7 @@ CarpetX::out_tsv_vars = "
     TmunuBaseX::eTtt
     TmunuBaseX::eTti
     TmunuBaseX::eTij
-    CottonmouthZ4c::HamCons
-    CottonmouthZ4c::MomCons
-    CottonmouthZ4c::ZtCons
+    CottonmouthZ4c4m::HamCons
+    CottonmouthZ4c4m::MomCons
+    CottonmouthZ4c4m::ZtCons
 "

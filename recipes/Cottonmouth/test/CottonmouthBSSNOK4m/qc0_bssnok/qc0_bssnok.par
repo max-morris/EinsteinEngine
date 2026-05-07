@@ -1,7 +1,7 @@
 ActiveThorns = "
   ADMBaseX
   CarpetX
-  CottonmouthBSSNOK
+  CottonmouthBSSNOK4m
   CoordinatesX
   IOUtil
   NewRadX
@@ -71,7 +71,7 @@ ODESolvers::verbose = yes
 ODESolvers::method  = "RK4"
 
 # Spacetime evolution
-CottonmouthBSSNOK::apply_NewRadX = yes
+CottonmouthBSSNOK4m::apply_NewRadX = yes
 
 # Output
 IO::out_dir   = $parfile
@@ -85,14 +85,14 @@ CarpetX::out_tsv = no
 CarpetX::out_tsv_vars = "
   ADMBaseX::metric
   ADMBaseX::curv
-  CottonmouthBSSNOK::gt
-  CottonmouthBSSNOK::w
-  CottonmouthBSSNOK::At
-  CottonmouthBSSNOK::trK
-  CottonmouthBSSNOK::ConfConnect
-  CottonmouthBSSNOK::evo_lapse
-  CottonmouthBSSNOK::evo_shift
-  CottonmouthBSSNOK::shift_B
-  CottonmouthBSSNOK::HamCons
-  CottonmouthBSSNOK::MomCons
+  CottonmouthBSSNOK4m::gt
+  CottonmouthBSSNOK4m::w
+  CottonmouthBSSNOK4m::At
+  CottonmouthBSSNOK4m::trK
+  CottonmouthBSSNOK4m::ConfConnect
+  CottonmouthBSSNOK4m::evo_lapse
+  CottonmouthBSSNOK4m::evo_shift
+  CottonmouthBSSNOK4m::shift_B
+  CottonmouthBSSNOK4m::HamCons
+  CottonmouthBSSNOK4m::MomCons
 "

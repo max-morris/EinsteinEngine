@@ -16,7 +16,7 @@ ActiveThorns = "
     TmunuBaseX
     AsterX
     AsterSeeds
-    CottonmouthBSSNOK
+    CottonmouthBSSNOK4m
     AsterMasks
     TOVSolverX
     TimerReport
@@ -101,10 +101,10 @@ ADMBaseX::initial_shift   = "tov"
 ADMBaseX::initial_dtlapse = "zero"
 ADMBaseX::initial_dtshift = "zero"
 
-CottonmouthBSSNOK::eta_b                  = 1.0
-CottonmouthBSSNOK::conformal_factor_floor = 1.0e-4
-CottonmouthBSSNOK::evolved_lapse_floor    = 1.0e-4
-CottonmouthBSSNOK::dissipation_epsilon    = 0.3
+CottonmouthBSSNOK4m::eta_b                  = 1.0
+CottonmouthBSSNOK4m::conformal_factor_floor = 1.0e-4
+CottonmouthBSSNOK4m::evolved_lapse_floor    = 1.0e-4
+CottonmouthBSSNOK4m::dissipation_epsilon    = 0.3
 
 # Hydro
 TOVSolverX::TOV_Rho_Central[0] = 1.28e-3
@@ -168,7 +168,7 @@ CarpetX::out_norm_every         = 32
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
   HydroBaseX::rho
-  CottonmouthBSSNOK::HamCons
+  CottonmouthBSSNOK4m::HamCons
 "
 
 CarpetX::out_silo_vars = "
@@ -184,8 +184,8 @@ CarpetX::out_silo_vars = "
     TmunuBaseX::eTtt
     TmunuBaseX::eTti
     TmunuBaseX::eTij
-    CottonmouthBSSNOK::HamCons
-    CottonmouthBSSNOK::MomCons
+    CottonmouthBSSNOK4m::HamCons
+    CottonmouthBSSNOK4m::MomCons
 "
 
 IO::checkpoint_dir = "../checkpoint"
