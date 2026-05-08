@@ -41,8 +41,10 @@ It can generate complete CarpetX thorns from simple recipes written in Python.
    python ./path/to/recipe.py
    ```
 
-# License
-Copyright © 2024--2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+# Licensing and Attribution
+If you use the Einstein Engine in your research, we ask that you cite this repository. When our paper is published, we will update this section accordingly.
+
+Copyright © 2024-2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
