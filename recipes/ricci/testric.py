@@ -73,8 +73,7 @@ fun.add_eqn(ZeroVal, Ric[l0, l0]-b*(a*c**2 + a - 3*b*c **
 gf.bake(
     do_cse=True,
     do_madd=False,
-    do_recycle_temporaries=True,
-    do_split_output_eqns=False
+    do_recycle_temporaries=True
 )
 
 check_zero = ScheduleBlock(

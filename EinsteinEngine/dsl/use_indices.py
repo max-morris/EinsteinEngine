@@ -1356,7 +1356,6 @@ def safe_name(schedule_target: ScheduleTarget) -> str:
 class ThornFunctionBakeOptions(TypedDict, total=False):
     do_madd: bool
     do_recycle_temporaries: bool
-    do_split_output_eqns: bool
     splitmaxxing: bool
     ordering_fn: EqnOrderingFn
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
@@ -1375,7 +1374,6 @@ class ThornDefBakeOptions(TypedDict, total=False):
     # ThornFunction default opts
     do_madd: bool
     do_recycle_temporaries: bool
-    do_split_output_eqns: bool
     splitmaxxing: bool
     ordering_fn: EqnOrderingFn
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
@@ -1640,15 +1638,11 @@ class ThornFunction:
         pprint(f"Recycling temporaries for {self.name}...")
         self.eqn_complex.recycle_temporaries()
 
-    def split_output_eqns(self) -> None:
-        self.eqn_complex.split_output_eqns()
-
     @staticmethod
     def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
         return {
             'do_madd': False,
             'do_recycle_temporaries': True,
-            'do_split_output_eqns': False,
             'splitmaxxing': False,
             'ordering_fn': maximize_symbol_reuse,
             'soft_split_retainment_strategy': retain_none()
@@ -1670,9 +1664,6 @@ class ThornFunction:
             self.madd()
 
         self.eqn_bake(options['ordering_fn'])
-
-        if options['do_split_output_eqns']:
-            self.split_output_eqns()
 
         self.been_baked = True
 
@@ -2172,7 +2163,7 @@ class ThornDef:
 
                 add_deps(new_temp)
 
-                synthetic_fn._early_bake(do_madd=False, do_recycle_temporaries=False, do_split_output_eqns=False)
+                synthetic_fn._early_bake(do_madd=False, do_recycle_temporaries=False)
                 self.synthetic_fns[schedule_target].add(synthetic_fn)
                 return synthetic_fn
 

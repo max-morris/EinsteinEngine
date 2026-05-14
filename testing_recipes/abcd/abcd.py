@@ -23,8 +23,7 @@ opts = {
     "do_cse": True,
     "temporary_promotion_strategy": promote_all(),
     "do_madd": False,
-    "do_recycle_temporaries": True,
-    "do_split_output_eqns": False
+    "do_recycle_temporaries": True
 }
 
 a = thorn.add_param('a', 1.0, 'a')
