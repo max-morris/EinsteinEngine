@@ -1251,7 +1251,6 @@ cottonmouth_Z4c.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=True,
-    do_split_output_eqns=False,  # NOTE: This is broken, never turn on
     cse_optimization_level=CseOptimizationLevel.Fast,
     soft_split_retainment_strategy=retain_percentile(.7),
     ordering_fn=functools.partial(

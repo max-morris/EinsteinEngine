@@ -22,25 +22,29 @@ from EinsteinEngine.dsl.sympywrap import *
 
 
 @multimethod
-def symbify(a:Number)->Expr:
+def symbify(a: Number) -> Expr:
     return a
 
-@symbify.register
-def _(a:NumberSymbol)->Expr:
-    return a
 
 @symbify.register
-def _(a:IndexedBase)->Expr:
+def _(a: NumberSymbol) -> Expr:
+    return a
+
+
+@symbify.register
+def _(a: IndexedBase) -> Symbol:
     r = a.args[0]
     assert isinstance(r, Symbol)
     return r
 
-@symbify.register
-def _(a:Symbol)->Expr:
-    return a
 
 @symbify.register
-def _(a:Function)->Expr:
+def _(a: Symbol) -> Symbol:
+    return a
+
+
+@symbify.register
+def _(a: Function) -> Expr:
     arglist = []
     for b in a.args:
         arglist.append(symbify(b))
@@ -48,22 +52,25 @@ def _(a:Function)->Expr:
     assert isinstance(r, Expr)
     return r
 
+
 @symbify.register
-def _(a:Mul)->Expr:
+def _(a: Mul) -> Expr:
     r = sympify(1)
     for b in a.args:
         r *= symbify(b)
     return r
 
+
 @symbify.register
-def _(a:Add)->Expr:
+def _(a: Add) -> Expr:
     r = sympify(0)
     for b in a.args:
         r += symbify(b)
     return r
 
+
 @symbify.register
-def _(a:Pow)->Expr:
+def _(a: Pow) -> Expr:
     r = Pow(symbify(a.args[0]), a.args[1])
     assert isinstance(r, Expr)
     return r

@@ -20,7 +20,7 @@
 # Export dynamic derivative functions
 import EinsteinEngine.dsl.functions as functions
 from .dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from .dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization
+from .dsl.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order
 from .dsl.functions import *
 from .dsl.intent_override import IntentOverride
 from .dsl.soft_split_retainment_predicate import *
@@ -76,6 +76,6 @@ __all__ = [
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold", "retain_all", "retain_none",
     "NewRadXBoundaryBatch", "TempKind",
-    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "promote_all", "promote_none", "promote_rank",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "promote_all", "promote_none", "promote_rank",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil"]

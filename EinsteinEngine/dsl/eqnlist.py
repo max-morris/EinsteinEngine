@@ -43,7 +43,7 @@ from EinsteinEngine.dsl.sympywrap import *
 from EinsteinEngine.dsl.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
-from EinsteinEngine.util import OrderedSet, incr_and_get, consolidate, vprint, wprint, pprint, get_or_compute
+from EinsteinEngine.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -256,10 +256,6 @@ class EqnComplex:
     def recycle_temporaries(self) -> None:
         for eqn_list in self.eqn_lists:
             eqn_list.recycle_temporaries()
-
-    def split_output_eqns(self) -> None:
-        for eqn_list in self.eqn_lists:
-            eqn_list.split_output_eqns()
 
     def needs_merge(self) -> bool:
         return len(self._hard_splits) < len(self.eqn_lists) - 1
@@ -576,7 +572,6 @@ class EqnList:
         self.uninitialized_tile_temporaries: Set[Symbol] = OrderedSet()
         self.preinitialized_tile_temporaries: Set[Symbol] = OrderedSet()
         self.temporary_replacements: Set[TemporaryReplacement] = OrderedSet()
-        self.split_lhs_prime_count: Dict[Symbol, int] = dict()
         self.provides: Dict[Symbol, Set[Symbol]] = dict()  # vals require key
         self.requires: Dict[Symbol, Set[Symbol]] = dict()  # key requires vals
         self.been_baked: bool = False
@@ -584,6 +579,7 @@ class EqnList:
         self.complexity: dict[Symbol, int] = dict()
         self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
         self.set_eqn_annotation = set_eqn_annotation
+        self.eqn_insertion_order: OrderedDict[Symbol, int] = OrderedDict()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -656,63 +652,8 @@ class EqnList:
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
         # Ensure we only have symbols in eqnlist
-        self.eqns[symbify(lhs)] = symbify(rhs)
-
-    def _prepend_split_subeqn(self, target_lhs: Symbol, new_lhs: Symbol, new_rhs: Expr) -> None:
-        """
-        Insert a new equation into the list. Said equation will represent one subexpression of another equation
-        which it precedes.
-        :param target_lhs: The LHS of the equation of which ``new_rhs`` is a subexpression.
-        :param new_lhs: The LHS of the equation to be inserted.
-        :param new_rhs: The RHS of the equation to be inserted.
-        :return:
-        """
-        assert len(self.order) > 0, "Called prepend_split_subeqn before order was set."
-        assert new_lhs not in self.eqns
-        assert new_lhs not in self.order
-        assert target_lhs in self.eqns
-        assert target_lhs in self.order
-
-        self.eqns[new_lhs] = new_rhs
-        self._run_complexity_analysis(new_lhs)
-        self.order.insert(self.order.index(target_lhs), new_lhs)
-        self.temporaries.add(new_lhs)
-
-    def _split_sympy_expr(self, lhs: Symbol, expr: Expr) -> Tuple[Expr, Dict[Symbol, Expr]]:
-        subexpressions: Dict[Symbol, Expr] = OrderedDict()
-
-        for subexpression in expr.args:
-            subexpression_lhs = f'{lhs}_{incr_and_get(self.split_lhs_prime_count, lhs)}'
-            subexpressions[Symbol(subexpression_lhs)] = typing.cast(Expr, subexpression)  # type: ignore[no-untyped-call]
-
-        new_expr = expr.func(*subexpressions.keys())
-        return new_expr, subexpressions
-
-    def split_eqn(self, target_lhs: Symbol) -> None:
-        assert target_lhs in self.eqns
-
-        expr = self.eqns[target_lhs]
-
-        # Can't split unary expression
-        if len(expr.args) < 2:
-            return
-
-        # Can't split IndexedBase (it appears to have two args, but the second is an empty tuple)
-        if isinstance(expr, IndexedBase):
-            assert len(expr.args) == 2
-            assert expr.args[1] == ()
-            return
-
-        new_rhs, subexpressions = self._split_sympy_expr(target_lhs, expr)
-        self.eqns[target_lhs] = new_rhs
-        self._run_complexity_analysis(target_lhs)
-
-        for sub_lhs, sub_rhs in subexpressions.items():
-            self._prepend_split_subeqn(target_lhs, sub_lhs, sub_rhs)
-
-    def split_output_eqns(self) -> None:
-        for output in self.outputs:
-            self.split_eqn(output)
+        self.eqns[lhs := symbify(lhs)] = symbify(rhs)
+        self.eqn_insertion_order[lhs] = len(self.eqns) - 1
 
     def recycle_temporaries(self) -> None:
         temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()

@@ -958,7 +958,6 @@ if False:
         temporary_promotion_strategy=promote_none(),
         do_madd=False,
         do_recycle_temporaries=False,
-        do_split_output_eqns=False,
         cse_optimization_level=CseOptimizationLevel.Fast,
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
         #functions={"rhs":{"ordering_fn": functools.partial(
@@ -974,7 +973,6 @@ else:
         temporary_promotion_strategy=promote_none(),
         do_madd=False,
         do_recycle_temporaries=False,
-        do_split_output_eqns=False,
         cse_optimization_level=CseOptimizationLevel.Fast,
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0),
         functions={
