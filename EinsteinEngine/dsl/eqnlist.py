@@ -579,6 +579,7 @@ class EqnList:
         self.complexity: dict[Symbol, int] = dict()
         self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
         self.set_eqn_annotation = set_eqn_annotation
+        self.eqn_insertion_order: OrderedDict[Symbol, int] = OrderedDict()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -651,7 +652,8 @@ class EqnList:
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
         assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
         # Ensure we only have symbols in eqnlist
-        self.eqns[symbify(lhs)] = symbify(rhs)
+        self.eqns[lhs := symbify(lhs)] = symbify(rhs)
+        self.eqn_insertion_order[lhs] = len(self.eqns) - 1
 
     def recycle_temporaries(self) -> None:
         temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()

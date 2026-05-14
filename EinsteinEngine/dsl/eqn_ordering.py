@@ -301,6 +301,22 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
         (lhs, f'Liveness = {len(ordered_liveness[lhs])}; {sorted(ordered_liveness[lhs], key=str)}')
         for lhs in ordered.__iter__()
     )
+    
+def lexicographical_order(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Iterator[Symbol]:
+    """
+    Orders equations lexicographically based on their LHS names.
+    """
+
+    yield from sorted(eqns.keys(), key=str)
+
+def insertion_order(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+    """
+    Orders equations based on their insertion order in the EqnList.
+    """
+
+    assert (keyset := set(eqns.keys())).intersection(eqn_list.eqn_insertion_order.keys()) == keyset, "EqnList insertion order dict is missing keys"
+
+    yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns)
 
 @cache
 def _dummy_stencil_symbol(call: Basic) -> Symbol:
