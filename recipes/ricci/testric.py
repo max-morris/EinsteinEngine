@@ -44,7 +44,7 @@ grr = sqrt(1+c**2)*(a+b*x**2)
 gqq = sqrt(1+c**2)/(a+b*x**2)
 gpp = sympify(1)
 Z = sympify(0)
-gmat = mkMatrix([
+gmat = mk_matrix([
     [grr,   c,   Z],
     [c, gqq,   Z],
     [Z,   Z, gpp]])

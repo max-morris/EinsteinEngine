@@ -15,12 +15,12 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections import OrderedDict
 from enum import auto, Enum
 from typing import Set, Optional, TypedDict
 
-from EinsteinEngine.dsl.use_indices import ThornDef, ScheduleTarget
+from EinsteinEngine import ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
     TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot
@@ -28,6 +28,8 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, Schedul
 from EinsteinEngine.emit.code.code_tree import CodeRoot
 from EinsteinEngine.emit.tree import Identifier, String, Bool
 from EinsteinEngine.util import get_or_compute, OrderedSet
+from EinsteinEngine.generators.generator import Generator
+from EinsteinEngine.common.schedule_target import ScheduleTarget
 
 
 class SyncMode(Enum):
@@ -45,16 +47,19 @@ class CactusGeneratorOptions(TypedDict, total=False):
     interior_sync_schedule_target: ScheduleTarget
 
 
-class CactusGenerator(ABC):
-    thorn_def: ThornDef
+class CactusGenerator(Generator[ThornDef]):
     variable_groups: OrderedDict[str, VariableGroup]
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
 
     vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
+    @property
+    def thorn_def(self) -> ThornDef:
+        return self.frontend
+
     def __init__(self, thorn_def: ThornDef, options: CactusGeneratorOptions):
-        self.thorn_def = thorn_def
+        super().__init__(thorn_def)
         self.variable_groups = OrderedDict()
         self.var_names = OrderedSet()
         self.options = options if options is not None else dict()

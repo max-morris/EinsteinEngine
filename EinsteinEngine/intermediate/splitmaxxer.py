@@ -1,4 +1,4 @@
-#  Copyright (C) 2026 Max Morris, Steven R. Brandt, and other Einstein Engine contributors.
+#  Copyright (C) 2026 Max Morris and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
 #
@@ -24,8 +24,8 @@ from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Ratio
 from sympy.core.operations import AssocOp
 from sympy.core.relational import Relational
 
-from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.sympywrap import mkSymbol
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.common.sympywrap import mk_symbol
 
 
 class SplitMaxxer:
@@ -37,7 +37,7 @@ class SplitMaxxer:
 
     def _new_symbol(self) -> Symbol:
         name = f"{self._name_base}_splitmaxxed_{self._name_counter}"
-        s = mkSymbol(name)
+        s = mk_symbol(name)
         self._name_counter += 1
         return s
 

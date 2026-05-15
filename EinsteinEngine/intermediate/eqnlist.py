@@ -22,39 +22,39 @@ from functools import cache, partial
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Tuple, Optional, Set, Callable, Iterable, NamedTuple
+from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
-from sympy import Basic, IndexedBase, Expr, Symbol, Integer
+from sympy import Basic, IndexedBase, Symbol, Integer, Expr
 
-from EinsteinEngine.dsl.analytic_function_checker import AnalyticFunctionChecker
-from EinsteinEngine.dsl.dependencies import Dependencies
-from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
+from EinsteinEngine.intermediate.analytic_function_checker import AnalyticFunctionChecker
+from EinsteinEngine.intermediate.dependencies import Dependencies
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
     prioritize_rare_symbols, respects_dependency_order
-from EinsteinEngine.dsl.functions import *
-from EinsteinEngine.dsl.intent_override import IntentOverride
-from EinsteinEngine.dsl.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithName, StencilIdx
-from EinsteinEngine.dsl.symbify import symbify
-from EinsteinEngine.dsl.sympywrap import *
-from EinsteinEngine.dsl.util import require_baked
+from EinsteinEngine.frontend.definitions import *
+from EinsteinEngine.common.intent_override import IntentOverride
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.common.stencil_idx import StencilIdxWithName, StencilIdx
+from EinsteinEngine.intermediate.symbify import symbify
+from EinsteinEngine.common.sympywrap import *
+from EinsteinEngine.frontend.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
 
 # These symbols represent the inverse of the
 # spatial discretization.
-DXI = mkSymbol("DXI")
-DYI = mkSymbol("DYI")
-DZI = mkSymbol("DZI")
-DX = mkSymbol("DX")
-DY = mkSymbol("DY")
-DZ = mkSymbol("DZ")
-
-stencil = mkFunction("stencil")
+# DXI = mk_symbol("DXI")
+# DYI = mk_symbol("DYI")
+# DZI = mk_symbol("DZI")
+# DX = mk_symbol("DX")
+# DY = mk_symbol("DY")
+# DZ = mk_symbol("DZ")
+#
+# stencil = mk_function("stencil")
 
 class _MergeSoftSplitsResult(NamedTuple):
     subst: dict[Symbol, set[Symbol]]
@@ -892,7 +892,7 @@ class EqnList:
         wr_overwrites: OrderedSet[Symbol] = OrderedSet()
         def process_overwrite(s: Symbol) -> None:
             if "'" in (ss := str(s)):
-                rd = mkSymbol(ss.replace("'", ""))
+                rd = mk_symbol(ss.replace("'", ""))
                 wr = s
                 rd_overwrites.add(rd)
                 wr_overwrites.add(wr)
@@ -1139,9 +1139,9 @@ class EqnList:
 
     def madd(self) -> None:
         """ Insert fused multiply add instructions """
-        p0 = mkWild("p0", exclude=[0, 1, 2, -1, -2])
-        p1 = mkWild("p1", exclude=[0, 1, 2, -1, -2])
-        p2 = mkWild("p2", exclude=[0])
+        p0 = mk_wild("p0", exclude=[0, 1, 2, -1, -2])
+        p1 = mk_wild("p1", exclude=[0, 1, 2, -1, -2])
+        p2 = mk_wild("p2", exclude=[0])
 
         class make_madd:
             def __init__(self) -> None:

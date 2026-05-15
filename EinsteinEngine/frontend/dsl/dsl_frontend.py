@@ -15,16 +15,23 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from dataclasses import dataclass
+from typing import Optional, Set
 
-@dataclass
-class DimensionSingleton:
-    value: int = 3
+from sympy import Indexed, IndexedBase, Expr, Symbol
 
-_dimension_container = DimensionSingleton()
+from EinsteinEngine import mk_symbol
+from EinsteinEngine.frontend.frontend import Frontend
 
-def set_dimension(d: int) -> None:
-    _dimension_container.value = d
 
-def get_dimension() -> int:
-    return _dimension_container.value
+class DslFrontend[ParamData](Frontend):
+    params: dict[str, ParamData]
+
+    def __init__(self, dimensionality: int = 3):
+        super().__init__(dimensionality=dimensionality)
+        self.params = dict()
+
+    def _mk_param_set(self) -> Set[Symbol]:
+        ret: Set[Symbol] = set()
+        for k in self.params:
+            ret.add(mk_symbol(k))
+        return ret

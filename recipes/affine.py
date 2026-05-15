@@ -16,9 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 if __name__ == '__main__':
-    from EinsteinEngine.dsl.use_indices import *
-    from EinsteinEngine.dsl.sympywrap import inv
-    from EinsteinEngine.wizards.thorn_wizards import CppCarpetXWizard
+    from EinsteinEngine import *
 
     # Create a set of grid functions
     gf = ThornDef("TestAffine", "Affine")

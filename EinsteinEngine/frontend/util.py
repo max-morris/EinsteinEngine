@@ -20,9 +20,9 @@ from typing import overload, Optional, Callable, cast, Collection, List
 
 from sympy import Function, Symbol, Expr
 
-from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.functions import stencil
-from EinsteinEngine.dsl.sympywrap import cse_return, cse
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.definitions import stencil
+from EinsteinEngine.common.sympywrap import cse_return, cse
 
 
 @overload

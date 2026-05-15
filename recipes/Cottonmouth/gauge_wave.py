@@ -153,7 +153,7 @@ if __name__ == "__main__":
     Kzz = sympify(0)
 
     # Matrices
-    hij = mkMatrix([
+    hij = mk_matrix([
         [hxx, hxy, hxz],
         [hxy, hyy, hyz],
         [hxz, hyz, hzz],
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         shift_z,
     ]
 
-    Kij = mkMatrix([
+    Kij = mk_matrix([
         [Kxx, Kxy, Kxz],
         [Kxy, Kyy, Kyz],
         [Kxz, Kyz, Kzz],
@@ -180,7 +180,7 @@ if __name__ == "__main__":
         diff(shift_z, t),
     ]
 
-    dt_Kij = mkMatrix([
+    dt_Kij = mk_matrix([
         [diff(Kxx, t), diff(Kxy, t), diff(Kxz, t)],
         [diff(Kxy, t), diff(Kyy, t), diff(Kyz, t)],
         [diff(Kxz, t), diff(Kyz, t), diff(Kzz, t)],

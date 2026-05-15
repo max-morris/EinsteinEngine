@@ -18,7 +18,7 @@
 from multimethod import multimethod
 from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow
 
-from EinsteinEngine.dsl.sympywrap import *
+from EinsteinEngine.common.sympywrap import *
 
 
 @multimethod

@@ -23,11 +23,11 @@ import sympy as sy
 from sympy import IndexedBase, Indexed
 from typing_extensions import Unpack, OrderedDict
 
-from EinsteinEngine.dsl.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.dsl.eqnlist import stencil
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering
-from EinsteinEngine.dsl.use_indices import ThornDef, ThornFunction, ScheduleBin, ScheduleTarget
-from EinsteinEngine.dsl.util import require
+from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
+from EinsteinEngine.intermediate.eqnlist import stencil
+from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering
+from EinsteinEngine import ScheduleBin, ThornFunction, ThornDef
+from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, \
     FunctionSection, \
     VariableSection, UsesInclude
@@ -53,6 +53,7 @@ from EinsteinEngine.generators.generator_exception import GeneratorException
 from EinsteinEngine.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EinsteinEngine.generators.util import VarCenteringFn
 from EinsteinEngine.util import OrderedSet, wprint
+from EinsteinEngine.common.schedule_target import ScheduleTarget
 
 
 @dataclass(frozen=True)

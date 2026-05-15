@@ -15,22 +15,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Union
-
-from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdxWithNameAndCentering
-
-StencilIdxWithCenteringLike = Union[StencilIdxWithCentering, StencilIdxWithNameAndCentering]
+from enum import Enum, auto
 
 
-def encode_stencil_idx(stencil_idx: StencilIdxWithCenteringLike) -> str:
-    encoded = 'stencil_idx'
-
-    for idx in stencil_idx.indices:
-        if idx >= 0:
-            encoded += f'_{idx}'
-        else:
-            encoded += f'_m{-idx}'
-
-    encoded += f'_{stencil_idx.centering.string_repr}'
-
-    return encoded
+class CseOptimizationLevel(Enum):
+    Fast = auto()
+    Optimal = auto()

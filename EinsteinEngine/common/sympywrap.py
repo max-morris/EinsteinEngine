@@ -15,40 +15,42 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional
+from itertools import chain
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Collection
 
 import sympy.core.numbers
 from sympy import Expr, Matrix, Piecewise
 
-cbrt : Callable[[Expr],Expr]
-sqrt : Callable[[Expr],Expr]
-log  : Callable[[Expr],Expr]
-exp  : Callable[[Expr],Expr]
-cos  : Callable[[Expr],Expr]
-sin  : Callable[[Expr],Expr]
-tan  : Callable[[Expr],Expr]
-atan  : Callable[[Expr],Expr]
-cot  : Callable[[Expr],Expr]
-sec  : Callable[[Expr],Expr]
-csc  : Callable[[Expr],Expr]
-cosh : Callable[[Expr],Expr]
-sinh : Callable[[Expr],Expr]
-tanh  : Callable[[Expr],Expr]
-sech  : Callable[[Expr],Expr]
-csch  : Callable[[Expr],Expr]
-coth  : Callable[[Expr],Expr]
-erf  : Callable[[Expr],Expr]
-Pow  : Callable[[Expr,Expr],Expr]
-diff : Callable[[Expr,Expr],Expr]
-simplify : Callable[[Expr],Expr]
-det : Callable[[Matrix],Expr]
+cbrt: Callable[[Expr], Expr]
+sqrt: Callable[[Expr], Expr]
+log: Callable[[Expr], Expr]
+exp: Callable[[Expr], Expr]
+cos: Callable[[Expr], Expr]
+sin: Callable[[Expr], Expr]
+tan: Callable[[Expr], Expr]
+atan: Callable[[Expr], Expr]
+cot: Callable[[Expr], Expr]
+sec: Callable[[Expr], Expr]
+csc: Callable[[Expr], Expr]
+cosh: Callable[[Expr], Expr]
+sinh: Callable[[Expr], Expr]
+tanh: Callable[[Expr], Expr]
+sech: Callable[[Expr], Expr]
+csch: Callable[[Expr], Expr]
+coth: Callable[[Expr], Expr]
+erf: Callable[[Expr], Expr]
+Pow: Callable[[Expr, Expr], Expr]
+diff: Callable[[Expr, Expr], Expr]
+simplify: Callable[[Expr], Expr]
+det: Callable[[Matrix], Expr]
+
 from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, Mul, Indexed, \
-    Function, zeros, Wild, simplify, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
+    Function, zeros, Wild, sqrt as sqrt_, cbrt as cbrt_, log as log_, \
     exp as exp_, Pow as Pow_, Pow as PowType, cos as cos_, sin as sin_, tan as tan_, cot as cot_, \
-    sec as sec_, csc as csc_, diff as diff_, atan as atan_, \
-    simplify as simplify_, det as det_, sympify as sympify_, pi
+    sec as sec_, csc as csc_, diff as diff_, atan as atan_, det as det_, sympify as sympify_, pi
 from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
     sech as sech_, csch as csch_, coth as coth_
+
 sqrt = sqrt_
 cbrt = cbrt_
 log = log_
@@ -69,24 +71,24 @@ sech = sech_
 csch = csch_
 diff = diff_
 erf = erf_
-simplify = simplify_
+simplify = sympy.simplify
 det = det_
-sympify : Callable[[Expr|int|float],Expr] = sympify_
+sympify: Callable[[Expr | int | float], Expr] = sympify_
 
 import re
 from abc import ABC, abstractmethod
 from sympy.core.function import UndefinedFunction as UFunc
-from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 
 from multimethod import multimethod
 
-__all__ = ["Applier","sqrt","cbrt","log","exp","Pow","PowType","UFunc",
-    "sin","cos","tan","cot","sec","csc","sinh","cosh","tanh","coth","sech","csch",
-    "erf", "pi","atan",
-    "inv","det","sympify","simplify","cse","mkIdx","mkSymbol",
-    "mkMatrix","do_subs","mkFunction","mkEq","do_replace","mkIndexedBase","mkPiecewise",
-    "mkZeros","free_indexed","mkIndexed","mkWild","mkIdxs","free_symbols",
-    "do_match", "h_step"]
+__all__ = ["Applier", "sqrt", "cbrt", "log", "exp", "Pow", "PowType", "UFunc",
+           "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "coth", "sech", "csch",
+           "erf", "pi", "atan",
+           "inv", "det", "sympify", "simplify", "cse", "mk_idx", "mk_symbol",
+           "mk_matrix", "do_subs", "mk_function", "mk_eq", "do_replace", "mk_indexed_base", "mk_piecewise",
+           "mk_zeros", "free_indexed", "mk_indexed", "mk_wild", "mk_idxes", "free_symbols",
+           "do_match", "h_step"]
 
 
 class Applier(ABC):
@@ -100,51 +102,65 @@ IndexType = Union[Idx, Mul]
 
 cse_return = Tuple[List[Tuple[Symbol, Expr]], List[Expr]]
 
-def inv(e:Matrix)->Matrix:
-    return cast(Matrix, e.inv()) # type: ignore[no-untyped-call]
 
-cse : Callable[[List[Expr]],cse_return] = cse_
+def inv(e: Matrix) -> Matrix:
+    return cast(Matrix, e.inv())  # type: ignore[no-untyped-call]
 
 
-def mkIdx(name: str) -> Idx:
+cse: Callable[[List[Expr]], cse_return] = cse_
+
+
+def mk_idx(name: str) -> Idx:
     return Idx(name)  # type: ignore[no-untyped-call]
 
 
-def mkSymbol(name: str) -> Symbol:
+def mk_symbol(name: str) -> Symbol:
     return Symbol(name)  # type: ignore[no-untyped-call]
 
-def mkWild(name: str, exclude:List[Any]=list(), properties:List[Any]=list()) -> Wild:
+
+def mk_wild(name: str, exclude: Collection[Any] = (), properties: Collection[Any] = ()) -> Wild:
     return Wild(name, exclude=exclude, properties=properties)  # type: ignore[no-untyped-call]
 
+
 symar = List[List[Expr | int | float]]
-def mkMatrix(array: symar) -> Matrix:
+
+
+def mk_matrix(array: symar) -> Matrix:
     return Matrix(array)  # type: ignore[no-untyped-call]
 
-def mkPiecewise(*args: Tuple[Expr, Expr]) -> Piecewise:
+
+def mk_piecewise(*args: Tuple[Expr, Expr]) -> Piecewise:
     return Piecewise(*args)  # type: ignore[no-untyped-call]
 
-def mkZeros(*tup: int) -> Matrix:
-    res = zeros(*tup) # type: ignore[no-untyped-call]
+
+def mk_zeros(*tup: int) -> Matrix:
+    res = zeros(*tup)  # type: ignore[no-untyped-call]
     assert isinstance(res, Matrix)
     return res
 
-def mkFunction(name: str) -> UFunc:
+
+def mk_function(name: str) -> UFunc:
     return Function(name)  # type: ignore[no-any-return]
 
 
-def mkEq(a: Basic, b: Basic) -> Eq:
+def mk_eq(a: Basic, b: Basic) -> Eq:
     return Eq(a, b)  # type: ignore[no-untyped-call]
 
 
-def mkIdxs(names: str) -> Tuple[Idx, ...]:
+def mk_idxes(names: str) -> Tuple[Idx, ...]:
     return tuple([Idx(name) for name in re.split(r'\s+', names)])  # type: ignore[no-untyped-call]
 
+def mk_coordinate_pairs(dimensionality: int = 3) -> tuple[Idx, ...]:
+    return tuple(
+        chain(*[(mk_idx(f'u{i}'), mk_idx(f'l{i}')) for i in range(dimensionality)])
+    )
 
-def mkIndexedBase(basename: str, shape: Tuple[int, ...]) -> IndexedBase:
+
+def mk_indexed_base(basename: str, shape: Tuple[int, ...]) -> IndexedBase:
     return IndexedBase(basename, shape=shape)  # type: ignore[no-untyped-call]
 
 
-def mkIndexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
+def mk_indexed(base: IndexedBase, *args: Union[int, IndexType]) -> Indexed:
     return Indexed(base, *args)  # type: ignore[no-untyped-call]
 
 
@@ -166,18 +182,21 @@ def do_subs(sym: Expr, *tables: do_subs_table_type) -> Expr:
             result = cast(Expr, result.subs(table))  # type: ignore[no-untyped-call]
     return result
 
-def mat_trans(mat:Matrix, tr:Callable[[Expr],Expr])->Matrix:
-    table : List[List[Expr|int|float]] = list()
+
+def mat_trans(mat: Matrix, tr: Callable[[Expr], Expr]) -> Matrix:
+    table: List[List[Expr | int | float]] = list()
     for i in range(mat.rows):
-        row : List[Expr|int|float] = list()
+        row: List[Expr | int | float] = list()
         for j in range(mat.cols):
-            row += [tr(mat[i,j])]
+            row += [tr(mat[i, j])]
         table += [row]
-    return mkMatrix(table)
+    return mk_matrix(table)
+
 
 def do_matrix_subs(mat: Matrix, *tables: do_subs_table_type) -> Matrix:
-    def do_sub(x:Expr)->Expr:
+    def do_sub(x: Expr) -> Expr:
         return do_subs(x, *tables)
+
     return mat_trans(mat, do_sub)
 
 
@@ -197,51 +216,63 @@ def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> Expr:
     assert isinstance(ret, Expr)
     return ret
 
-#def do_diff(expr:Expr, sym:Symbol)->Expr:
+
+# def do_diff(expr:Expr, sym:Symbol)->Expr:
 #    return cast(Expr, diff(expr, sym)) # type: ignore[no-untyped-call]
 
-def do_match(expr:Expr, pat:Wild)->Optional[Dict[Wild, Expr]]:
-    return cast(Optional[Dict[Wild, Expr]], expr.match(pat)) # type: ignore[no-untyped-call]
+def do_match(expr: Expr, pat: Wild) -> Optional[Dict[Wild, Expr]]:
+    return cast(Optional[Dict[Wild, Expr]], expr.match(pat))  # type: ignore[no-untyped-call]
+
 
 ###
 @multimethod
-def add_free_indexed(arg: IndexedBase, rhs: Set[Idx])->None:
+def add_free_indexed(arg: IndexedBase, rhs: Set[Idx]) -> None:
     pass
 
-@add_free_indexed.register
-def _(arg: Idx, rhs: Set[Idx])->None:
-    rhs.add(arg)
 
 @add_free_indexed.register
-def _(arg: Basic, rhs: Set[Idx])->None:
+def _(arg: Idx, rhs: Set[Idx]) -> None:
+    rhs.add(arg)
+
+
+@add_free_indexed.register
+def _(arg: Basic, rhs: Set[Idx]) -> None:
     for arg in arg.args:
         add_free_indexed(arg, rhs)
+
 
 def free_indexed(expr: Expr) -> Set[Idx]:
     rhs: Set[Idx] = set()
     add_free_indexed(expr, rhs)
     return rhs
+
+
 ###
 @multimethod
-def add_free_symbol(arg: Symbol, rhs: Set[Symbol])->None:
+def add_free_symbol(arg: Symbol, rhs: Set[Symbol]) -> None:
     rhs.add(arg)
 
+
 @add_free_symbol.register
-def _(arg: IndexedBase, rhs: Set[Symbol])->None:
+def _(arg: IndexedBase, rhs: Set[Symbol]) -> None:
     add_free_symbol(arg.args[0], rhs)
 
+
 @add_free_symbol.register
-def _(arg: Indexed, rhs: Set[Symbol])->None:
+def _(arg: Indexed, rhs: Set[Symbol]) -> None:
     raise DslException(f"Not a symbol: {arg}")
 
-@add_free_symbol.register
-def _(arg: Idx, rhs: Set[Symbol])->None:
-    pass #raise DslException(f"Not a symbol: {arg}")
 
 @add_free_symbol.register
-def _(arg: Basic, rhs: Set[Symbol])->None:
+def _(arg: Idx, rhs: Set[Symbol]) -> None:
+    pass  # raise DslException(f"Not a symbol: {arg}")
+
+
+@add_free_symbol.register
+def _(arg: Basic, rhs: Set[Symbol]) -> None:
     for arg in arg.args:
         add_free_symbol(arg, rhs)
+
 
 def free_symbols(expr: Expr) -> Set[Symbol]:
     rhs: Set[Symbol] = set()

@@ -15,16 +15,15 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-if __name__ == "__main__":
-    from EinsteinEngine.dsl.use_indices import *
-    from EinsteinEngine.dsl.sympywrap import mkMatrix, inv, sympify
-    from sympy import Expr, cos, sin
-    from EinsteinEngine.emit.tree import Centering
+from sympy import Expr
 
-    set_dimension(4)
+if __name__ == "__main__":
+    from EinsteinEngine import *
+
+    #set_dimension(4)
 
     # Create a set of grid functions
-    gf = ThornDef("TestKerr", "Kerr")
+    gf = ThornDef("TestKerr", "Kerr", dimensionality=4)
 
     spin = False
     a: Expr
@@ -46,7 +45,7 @@ if __name__ == "__main__":
     gtp = -4 * m * r * a * sin(th) ** 2 / sigma
 
     Z = sympify(0)
-    gmat = mkMatrix([
+    gmat = mk_matrix([
         [gtt, Z, Z, gtp],
         [Z, grr, Z, Z],
         [Z, Z, gqq, Z],
@@ -71,4 +70,4 @@ if __name__ == "__main__":
             ixi = [l0, l1, l2, l3][i]
             ixj = [l0, l1, l2, l3][j]
             print("Checking:", Ric[ixi, ixj])
-            assert gf.do_subs(Ric[ixi, ixj]) == sympify(0)
+            assert gf._do_subs(Ric[ixi, ixj]) == sympify(0)

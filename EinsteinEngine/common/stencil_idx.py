@@ -15,22 +15,33 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Union
+from typing import NamedTuple
 
-from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdxWithNameAndCentering
-
-StencilIdxWithCenteringLike = Union[StencilIdxWithCentering, StencilIdxWithNameAndCentering]
+from EinsteinEngine.emit.tree import Centering
 
 
-def encode_stencil_idx(stencil_idx: StencilIdxWithCenteringLike) -> str:
-    encoded = 'stencil_idx'
+class StencilIdx(NamedTuple):
+    x: int
+    y: int
+    z: int
 
-    for idx in stencil_idx.indices:
-        if idx >= 0:
-            encoded += f'_{idx}'
-        else:
-            encoded += f'_m{-idx}'
 
-    encoded += f'_{stencil_idx.centering.string_repr}'
+class StencilIdxWithName(NamedTuple):
+    indices: StencilIdx
+    var_name: str
 
-    return encoded
+
+class StencilIdxWithCentering(NamedTuple):
+    indices: StencilIdx
+    centering: Centering
+
+
+class StencilIdxWithNameAndCentering(NamedTuple):
+    indices: StencilIdx
+    var_name: str
+    centering: Centering
+
+    @staticmethod
+    def from_stencil_idx(idx: StencilIdxWithName, centering: Centering) -> 'StencilIdxWithNameAndCentering':
+        return StencilIdxWithNameAndCentering(idx.indices, idx.var_name, centering)
+

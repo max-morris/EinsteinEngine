@@ -20,7 +20,7 @@ from typing import Callable, Protocol, Any
 
 from sympy import Symbol
 
-from EinsteinEngine.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 
 SoftSplitRetainmentPredicate = Callable[[Symbol], bool]
 

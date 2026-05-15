@@ -15,13 +15,17 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Collection, Optional
+from typing import Any, Collection, Optional, TYPE_CHECKING
 
 import sympy
 from sympy import IndexedBase, Indexed
 
-from EinsteinEngine.dsl.use_indices import ScheduleBin
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleBlock
+if TYPE_CHECKING:
+    from EinsteinEngine import ScheduleBin
+    from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleBlock
+else:
+    ScheduleBin = Any
+    ScheduleBlock = Any
 
 
 class ExplicitSyncBatch:

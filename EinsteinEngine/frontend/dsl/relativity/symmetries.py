@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from EinsteinEngine.dsl.sympywrap import *
+from EinsteinEngine.common.sympywrap import *
 from sympy import IndexedBase, Basic, Expr, Indexed, Idx
 from typing import Dict, List, cast, Tuple
 
@@ -95,9 +95,9 @@ class Sym(Applier):
 
 
 def test() -> None:
-    u0, u1, u2, u3 = mkIdxs('u0 u1 u2 u3')
+    u0, u1, u2, u3 = mk_idxes('u0 u1 u2 u3')
     sym = Sym()
-    eps = mkIndexedBase("eps", shape=(3, 3, 3))
+    eps = mk_indexed_base("eps", shape=(3, 3, 3))
     sym.add(eps, 0, 1, -1)
     sym.add(eps, 0, 2, -1)
     sym.add(eps, 1, 2, -1)
@@ -105,7 +105,7 @@ def test() -> None:
     assert sym.apply(eps[u0, u2, u1]) == -eps[u0, u1, u2]
     assert sym.apply(eps[u0, u1, u2]) ==  eps[u0, u1, u2]
     assert sym.apply(eps[u0, u1, u1]) == 0
-    M = mkIndexedBase("M", shape=(3,3))
+    M = mk_indexed_base("M", shape=(3, 3))
     sym.add(M, 0, 1, -1)
     assert sym.apply(M[u0,u1]) ==  M[u0,u1]
     assert sym.apply(M[u1,u0]) == -M[u0,u1]
