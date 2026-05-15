@@ -20,7 +20,7 @@ from typing import Optional, cast
 
 import sympy as sy
 
-from EinsteinEngine.dsl.eqnlist import TemporaryReplacement, EqnList
+from EinsteinEngine.intermediate.eqnlist import TemporaryReplacement, EqnList
 
 
 @dataclass(frozen=True)

@@ -20,8 +20,8 @@ from typing import Dict
 
 from multimethod import multimethod
 
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering, StencilIdx
-from EinsteinEngine.dsl.util import require
+from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdx
+from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.emit.code.code_tree import CodeNode, StandardizedFunctionCallType, IdExpr, IntLiteralExpr, \
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \

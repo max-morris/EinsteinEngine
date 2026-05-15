@@ -32,7 +32,7 @@ from math import pi
 cfu.verbose = True
 
 
-flat_metric = mkMatrix([
+flat_metric = mk_matrix([
     [1, 0, 0],
     [0, 1, 0],
     [0, 0, 0]

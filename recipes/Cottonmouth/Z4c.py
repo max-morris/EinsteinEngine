@@ -24,12 +24,6 @@ from sympy import Rational
 
 from EinsteinEngine import *
 
-###
-# Some more indices
-###
-ul, ll = mk_pair("l")
-um, lm = mk_pair("m")
-
 ################################
 # BEGIN Generate Options
 ###
@@ -57,6 +51,12 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 # Thorn definitions
 ###
 cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}")
+
+###
+# Some more indices
+###
+ul, ll = cottonmouth_Z4c.mk_pair("l")
+um, lm = cottonmouth_Z4c.mk_pair("m")
 
 cottonmouth_Z4c.set_derivative_stencil(stencil_order + 1)
 

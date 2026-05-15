@@ -21,9 +21,10 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Expr, IndexedBase, Symbol
 
 from EinsteinEngine import *
-from EinsteinEngine.dsl.dimension import get_dimension
-from EinsteinEngine.dsl.eqnlist import DXI
-from EinsteinEngine.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
+from EinsteinEngine import ScheduleBin, ThornDef
+from EinsteinEngine.frontend.dimension import get_dimension
+from EinsteinEngine.intermediate.eqnlist import DXI
+from EinsteinEngine.frontend.dsl.relativity.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker, zero, \
     do_div, x, one, y
 
 
@@ -44,7 +45,7 @@ if __name__ == "__main__":
     gf._add_sym(A[ua, lb, lc], lb, lc, 1)
 
     ####
-    fail_expr = mkSymbol("fail_expr")
+    fail_expr = mk_symbol("fail_expr")
 
 
     def testerr(gf: ThornDef, in_expr: Expr, result_expr: Expr) -> None:
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     # Anti-Symmetric
 
     n = 0
-    for out in gf.expand_eqn(mkEq(M[la, lb], B[la, lb])):
+    for out in gf.expand_eqn(mk_eq(M[la, lb], B[la, lb])):
         print(out)
         n += 1
     assert n == get_dimension(), f"n = {n}"
@@ -108,7 +109,7 @@ if __name__ == "__main__":
     gf._add_sym(N[la, lb], la, lb, 1)
 
     n = 0
-    for out in gf.expand_eqn(mkEq(N[la, lb], B[la, lb])):
+    for out in gf.expand_eqn(mk_eq(N[la, lb], B[la, lb])):
         print(out)
         n += 1
     assert n == get_dimension() * (get_dimension() - 1)
@@ -117,7 +118,7 @@ if __name__ == "__main__":
     Q = gf.decl("Q", [la, lb])
 
     n = 0
-    for out in gf.expand_eqn(mkEq(Q[la, lb], B[la, lb])):
+    for out in gf.expand_eqn(mk_eq(Q[la, lb], B[la, lb])):
         print(out)
         n += 1
     assert n == get_dimension() ** 2
@@ -134,7 +135,7 @@ if __name__ == "__main__":
     # Test of custom derivative operation mdiv
     mdiv = gf.mk_stencil("mdiv", la, (stencil(la) - stencil(0)) * DDI(la))
     foofunc.add_eqn(k[la], mdiv(a ** 5 * b, la))
-    kd0eqn = foofunc._eqn_list.eqns.get(mkSymbol("kD0"), None)
+    kd0eqn = foofunc._eqn_list.eqns.get(mk_symbol("kD0"), None)
     assert kd0eqn == 5 * DXI * (-stencil(a, 0, 0, 0) + stencil(a, 1, 0, 0)) * a ** 4 * b + DXI * (
             -stencil(b, 0, 0, 0) + stencil(b, 1, 0, 0)) * a ** 5
 
@@ -153,15 +154,15 @@ if __name__ == "__main__":
     assert foofunc._eqn_list.depends_on(getsym(c), getsym(b))
 
 if __name__ == "__main__":
-    foo = mkIndexedBase("foo", (1,))
-    gxx = mkSymbol("gxx")
-    gxy = mkSymbol("gxy")
-    gyy = mkSymbol("gyy")
-    gzz = mkSymbol("gzz")
-    gyz = mkSymbol("gyz")
-    gxz = mkSymbol("gxz")
-    f = mkFunction("f")
-    fp = mkFunction("f'")
+    foo = mk_indexed_base("foo", (1,))
+    gxx = mk_symbol("gxx")
+    gxy = mk_symbol("gxy")
+    gyy = mk_symbol("gyy")
+    gzz = mk_symbol("gzz")
+    gyz = mk_symbol("gyz")
+    gxz = mk_symbol("gxz")
+    f = mk_function("f")
+    fp = mk_function("f'")
 
     expr1 = div(gxx ** 2, l0, l0)
     expr2 = 2 * div(gxx, l0) ** 2 + 2 * gxx * div(gxx, l0, l0)

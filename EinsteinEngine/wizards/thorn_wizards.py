@@ -20,8 +20,7 @@ from typing import TypeVar, Generic, Optional
 
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 
-from EinsteinEngine import ExplicitSyncBatch
-from EinsteinEngine.dsl.use_indices import ThornDef
+from EinsteinEngine import ExplicitSyncBatch, ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_visitor import InterfaceVisitor
 from EinsteinEngine.emit.ccl.param.param_visitor import ParamVisitor
 from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor

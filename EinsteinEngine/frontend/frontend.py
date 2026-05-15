@@ -15,33 +15,11 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import NamedTuple
-
-from ..emit.tree import Centering
+from abc import ABC
 
 
-class StencilIdx(NamedTuple):
-    x: int
-    y: int
-    z: int
+class Frontend(ABC):
+    dimensionality: int
 
-
-class StencilIdxWithName(NamedTuple):
-    indices: StencilIdx
-    var_name: str
-
-
-class StencilIdxWithCentering(NamedTuple):
-    indices: StencilIdx
-    centering: Centering
-
-
-class StencilIdxWithNameAndCentering(NamedTuple):
-    indices: StencilIdx
-    var_name: str
-    centering: Centering
-
-    @staticmethod
-    def from_stencil_idx(idx: StencilIdxWithName, centering: Centering) -> 'StencilIdxWithNameAndCentering':
-        return StencilIdxWithNameAndCentering(idx.indices, idx.var_name, centering)
-
+    def __init__(self, dimensionality: int = 3):
+        self.dimensionality = dimensionality

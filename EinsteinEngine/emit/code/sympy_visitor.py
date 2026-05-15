@@ -23,9 +23,9 @@ import sympy as sy
 from multimethod import multimethod
 from sympy.logic.boolalg import Boolean
 
-from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering, StencilIdx
-from EinsteinEngine.dsl.util import require
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdx
+from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.code.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, FunctionCall, \
     StandardizedFunctionCallType, StandardizedFunctionCall, IntLiteralExpr, FloatLiteralExpr, IfElseExpr
 from EinsteinEngine.emit.tree import Identifier

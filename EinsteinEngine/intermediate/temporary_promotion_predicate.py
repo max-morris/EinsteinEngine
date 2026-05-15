@@ -22,8 +22,8 @@ from typing import Protocol, Any, Optional
 
 from sympy import Symbol
 
-from EinsteinEngine.dsl.dsl_exception import DslException
-from EinsteinEngine.dsl.temp_kind import TempKind
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.intermediate.temp_kind import TempKind
 
 
 # region Promotion Predicates

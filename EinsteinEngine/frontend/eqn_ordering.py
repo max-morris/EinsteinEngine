@@ -28,12 +28,12 @@ from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast, Optional
 from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr, Basic, preorder_traversal
 
-from .dependencies import Dependencies
-from .functions import stencil
-from ..util import pprint
+from EinsteinEngine.intermediate.dependencies import Dependencies
+from EinsteinEngine.frontend.definitions import stencil
+from EinsteinEngine.util import pprint
 
 if TYPE_CHECKING:
-    from EinsteinEngine.dsl.eqnlist import EqnList
+    from EinsteinEngine.intermediate.eqnlist import EqnList
 
 EqnOrderingFn = Callable[[dict[Symbol, Expr], 'EqnList'], Iterator[Symbol | tuple[Symbol, str]]]
 
