@@ -850,7 +850,7 @@ fun_z4c_rhs.add_eqn(
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
 
-fun_z4c_rhs.split_loop()
+fun_z4c_rhs.soft_split()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
@@ -866,8 +866,6 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-fun_z4c_rhs.soft_split()
-
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
     Rt_tmp[li, lj]
@@ -875,8 +873,6 @@ fun_z4c_rhs.add_eqn(
     + gt[ul, um] * Gammat[uk, ll, lj] * Gammat[li, lk, lm]
     + gt[ul, um] * Gammat[uk, li, lm] * Gammat[lk, ll, lj]
 )
-
-fun_z4c_rhs.soft_split() 
 
 fun_z4c_rhs.add_eqn(
     R[li, lj],
@@ -939,7 +935,7 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-fun_z4c_rhs.split_loop()
+fun_z4c_rhs.soft_split()
 
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
@@ -963,7 +959,7 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * (-16) * pi * evo_lapse * gt[ui, uj] * Svec[lj]
 )
 
-fun_z4c_rhs.soft_split()
+fun_z4c_rhs.split_loop()
 
 # Eq. (2) of [1]
 fun_z4c_rhs.add_eqn(
@@ -1252,9 +1248,7 @@ cottonmouth_Z4c.bake(
     do_madd=False,
     do_recycle_temporaries=True,
     cse_optimization_level=CseOptimizationLevel.Fast,
-    soft_split_retainment_strategy=retain_percentile(.7),
-    ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
+    soft_split_retainment_strategy=retain_percentile(.7)
 )
 
 ###
