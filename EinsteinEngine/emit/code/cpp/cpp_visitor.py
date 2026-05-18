@@ -33,7 +33,7 @@ from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
-from EinsteinEngine.util import indent
+from EinsteinEngine.common.util import indent
 
 
 class CppVisitor(Visitor[CodeNode]):

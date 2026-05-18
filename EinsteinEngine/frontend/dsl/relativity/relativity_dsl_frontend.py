@@ -15,30 +15,44 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from abc import abstractmethod
+from dataclasses import dataclass
 # mypy: disable-error-code=no-redef
 # The above line suppresses an unfortunate interaction between MyPy and the intersection of ABC and multimethod.
 
-from typing import Optional, cast
+from typing import Optional, cast, NamedTuple, TypedDict, Unpack
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from multimethod import multimethod
 
-from EinsteinEngine.frontend.dsl.relativity.use_indices import DivMakerVisitor, ApplyDiv, ApplyDivN, is_down
-from sympy import Idx, Symbol, Expr, Indexed, IndexedBase, Function
+from EinsteinEngine.frontend.dsl.relativity.use_indices import DivMakerVisitor, ApplyDiv, ApplyDivN, is_relativity_lower_idx, relativity_idx_to_int
+from EinsteinEngine.common.util import checked_cast
+from sympy import Idx, Expr, Indexed, IndexedBase, Function, Basic, Matrix, Symbol
 
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
 from EinsteinEngine.frontend.dsl.relativity.use_indices import EinsteinNotationManager, IndexSubsVisitor
 from EinsteinEngine.frontend.dsl.relativity.symmetries import Sym
 
-from EinsteinEngine.common.sympywrap import free_symbols, Applier, UFunc, mk_idxes, Pow, mk_idx, mk_function
+from EinsteinEngine.common.sympywrap import Applier, UFunc, mk_idxes, Pow, mk_idx, mk_function, mk_zeros, do_subs
 
 from EinsteinEngine.frontend.definitions import D, div, no_idx, stencil, dummy, DD, DDI, DX, DY, DZ, DXI, DYI, DZI, \
     noop, zero, one
 from EinsteinEngine.intermediate.coef import coef
 import sympy as sy
 
+class OverwriteSymbolRecord(NamedTuple):
+    symbol: IndexedBase
+    resolves_to: IndexedBase
 
-class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
+class RelativityDeclKwargs(TypedDict, total=False):
+    pass
+
+@dataclass
+class RelativityDeclaration[KwargsType: RelativityDeclKwargs]:
+    indices: tuple[Idx, ...]
+    kwargs: KwargsType
+
+class RelativityDslFrontend[ParamData, DeclKwargsType: RelativityDeclKwargs](DslFrontend[ParamData]):
     einstein_notation: EinsteinNotationManager
     subs: dict[Indexed | IndexedBase, Expr]
     symmetries: Sym
@@ -47,6 +61,10 @@ class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
     funs1: dict[tuple[UFunc, Idx], Expr]
     funs2: dict[tuple[UFunc, Idx, Idx], Expr]
     fun_args: dict[str, int]
+    overwrite_symbols: dict[str, OverwriteSymbolRecord]
+    declarations: dict[str, RelativityDeclaration[DeclKwargsType]]
+    gfs: dict[str, IndexedBase]
+    coords: list[Symbol]
 
     def __init__(self, dimensionality: int = 3):
         super().__init__(dimensionality=dimensionality)
@@ -57,6 +75,11 @@ class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
         self.funs1 = dict()
         self.funs2 = dict()
         self.fun_args = dict()
+        self.coords = list()
+
+        self.gfs = dict()
+        self.overwrite_symbols = dict()
+        self.declarations = dict()
 
         self.div_makers = dict()
         self.div_makers["div"] = DivMakerVisitor(div)
@@ -67,9 +90,60 @@ class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
 
         self._populate_globals()
 
-    # @property
-    # def lookup_pair(self) -> dict[Idx, Idx]:
-    #     return self.einstein_notation.lookup_pair
+    @abstractmethod
+    def decl(self, basename: str, indices: tuple[Idx, ...], **kwargs: Unpack[RelativityDeclKwargs]) -> IndexedBase:
+        ...
+
+    @abstractmethod
+    def _decl_scalar(self, basename: str) -> Symbol:
+        ...
+
+    def mk_coords(self, with_time: bool = False) -> list[Symbol]:
+        # Note that x, y, and z are special symbols
+        if self.dimensionality == 3:
+            if with_time:
+                self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
+                               self._decl_scalar("z")]
+            else:
+                self.coords = [self._decl_scalar("x"), self._decl_scalar("y"), self._decl_scalar("z")]
+        elif self.dimensionality == 4:
+            # TODO: No idea whether this works
+            self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
+                           self._decl_scalar("z")]
+        else:
+            assert False
+        return self.coords
+
+    def get_matrix(self, ind: Indexed) -> Matrix:
+        values: dict[Idx, Idx] = dict()
+        result = mk_zeros(*tuple([self.dimensionality] * (len(ind.args) - 1)))
+        ind_args: list[Idx] = [checked_cast(x, Idx) for x in ind.args[1:]]
+        while self.einstein_notation.incr(ind_args, values):
+            arr_idxs = tuple([relativity_idx_to_int(checked_cast(do_subs(x, values), Idx)) for x in ind_args])
+            r = self._do_subs(ind, idx_subs=values)
+            result[arr_idxs] = r
+        return result
+
+    def find_symmetries(self, foo: Basic) -> list[tuple[int, int, int]]:
+        m_sym_list: list[tuple[int, int, int]] = list()
+        # noinspection PyUnresolvedReferences
+        if foo.is_Function and hasattr(foo, "name") and foo.name in ["div", "D"]:
+            # This is a derivative
+            if len(foo.args) == 3:
+                # This is a 2nd derivative, symmetric in the last 2 args
+                foo_arg1 = len(foo.args[0].args) - 1
+                foo_arg2 = foo_arg1 + 1
+                m_sym: tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
+                m_sym_list += [m_sym]
+                m_sym_list += self.find_symmetries(foo.args[0])
+            elif len(foo.args) == 2:
+                m_sym_list += self.find_symmetries(foo.args[0])
+            else:
+                assert False, "Only handle 1st and 2nd derivatives"
+        elif isinstance(foo, Indexed):
+            k = foo.base
+            return self.symmetries.sd.get(k, list())
+        return m_sym_list
 
     def _populate_globals(self) -> None:
         """
@@ -242,7 +316,7 @@ class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
 
         if len(idx_list) == 1 or (len(idx_list) == 2 and idx_list[0] == idx_list[1]):
             idx = idx_list[0]
-            is_down_idx = is_down(idx)
+            is_down_idx = is_relativity_lower_idx(idx)
             for i in range(self.dimensionality):
                 if is_down_idx:
                     idx0 = mk_idx(f'l{i}')
@@ -253,8 +327,8 @@ class RelativityDslFrontend[ParamData](DslFrontend[ParamData]):
         elif len(idx_list) == 2:
             idx1 = idx_list[0]
             idx2 = idx_list[1]
-            is_down_idx1 = is_down(idx1)
-            is_down_idx2 = is_down(idx2)
+            is_down_idx1 = is_relativity_lower_idx(idx1)
+            is_down_idx2 = is_relativity_lower_idx(idx2)
             for i in range(self.dimensionality):
                 if is_down_idx1:
                     idx10 = mk_idx(f'l{i}')

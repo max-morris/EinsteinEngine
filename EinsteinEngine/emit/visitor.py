@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from typing import Generic, NoReturn, Iterable, Any
 from typing import TypeVar
 
-from EinsteinEngine import util
+import EinsteinEngine.common.util as util
 from EinsteinEngine.emit.tree import CommonNode
 # noinspection PyUnresolvedReferences
 # MyPy needs these

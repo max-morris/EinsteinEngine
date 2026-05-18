@@ -27,7 +27,7 @@ from EinsteinEngine.common.sympywrap import cbrt, sqrt, mk_matrix, log, cos, sin
     erf, pi, atan
 from EinsteinEngine.intermediate.temp_kind import TempKind
 from EinsteinEngine.intermediate.temporary_promotion_predicate import *
-from EinsteinEngine.frontend.dsl.relativity.use_indices import D, div, to_num, IndexedSubstFnType, MkSubstType, subst_tensor_xyz, \
+from EinsteinEngine.frontend.dsl.relativity.use_indices import D, div, relativity_idx_to_int, IndexedSubstFnType, MkSubstType, subst_tensor_xyz, \
     noop, stencil, DD, DDI
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn, IntentRegion
@@ -104,7 +104,7 @@ __all__ = [
     "sin", "cos", "tan", "cot", "sec", "csc",
     "sinh", "cosh", "tanh", "sech", "csch", "coth",
     "erf", "atan", "pi",
-    "D", "div", "to_num", "IndexedSubstFnType", "MkSubstType", "CactusParam", "ThornFunction", "ScheduleBin", "ThornDef",
+    "D", "div", "relativity_idx_to_int", "IndexedSubstFnType", "MkSubstType", "CactusParam", "ThornFunction", "ScheduleBin", "ThornDef",
     "subst_tensor_xyz",
     "noop", "stencil", "DD", "DDI",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",

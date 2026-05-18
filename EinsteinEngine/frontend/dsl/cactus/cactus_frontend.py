@@ -22,16 +22,16 @@ from collections import defaultdict
 from enum import auto
 from itertools import chain
 from typing import Collection, TypedDict, Optional, OrderedDict, cast, List, Unpack, Set, Union, Tuple, Dict, Iterator, \
-    NamedTuple, Callable, Type, Any
+    NamedTuple, Callable, Iterable
 
 import sympy as sy
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Matrix, Integer, ImmutableDenseMatrix, MatrixBase, Eq
 
-import EinsteinEngine.util as util
+import EinsteinEngine.common.util as util
 from EinsteinEngine import EqnOrderingFn, SoftSplitRetainmentStrategy, CseOptimizationLevel, TemporaryPromotionStrategy, \
-    IntentOverride, ScheduleBlock, GroupOrFunction, free_symbols, to_num, \
+    IntentOverride, ScheduleBlock, GroupOrFunction, free_symbols, relativity_idx_to_int, \
     maximize_symbol_reuse, retain_none, Applier, Centering, mk_function, div, D, promote_none, promote_all, cse, \
     TemporaryPromotionPredicate, OnePassTemporaryPromotionStrategy, TwoPassTemporaryPromotionStrategy, Identifier, \
     TempKind, mk_symbol, mk_indexed_base, stencil, DD, DDI, noop, Pow, mk_indexed, subst_tensor_xyz, \
@@ -42,21 +42,37 @@ from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parit
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
 from EinsteinEngine.frontend.dsl.relativity.use_indices import SourceAnnotations, do_isub, \
     to_num_tup, _is_valid_c_identifier, ApplyDiv, DivMakerVisitor, \
-    _Declaration, _OverwriteSymbolRecord, ApplyDivN, \
-    no_idx, dummy, zero, one, is_down, DeclOptionalArgs, subst_tensor, checked_cast, \
-    BaseIndexedSubstFnType, MkSubstType
+    ApplyDivN, \
+    no_idx, dummy, zero, one, is_relativity_lower_idx, subst_tensor, BaseIndexedSubstFnType, MkSubstType
+from EinsteinEngine.common.util import checked_cast
 from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, DX, DY, DZ, DXI, DYI, DZI
 from EinsteinEngine.intermediate.splitmaxxer import SplitMaxxer
-from EinsteinEngine.util import ScheduleBinEnum, ScheduleFrequency, wprint, vprint, OrderedSet, pprint, get_or_compute, verbose
+from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, vprint, OrderedSet, pprint, get_or_compute, verbose
 
-from EinsteinEngine.frontend.dsl.relativity.relativity_dsl_frontend import RelativityDslFrontend
+from EinsteinEngine.frontend.dsl.relativity.relativity_dsl_frontend import (
+    RelativityDslFrontend,
+    RelativityDeclaration,
+    RelativityDeclKwargs,
+    OverwriteSymbolRecord,
+)
 from EinsteinEngine.common.schedule_target import ScheduleTarget, safe_name
 
 TfName = typing.NewType("TfName", str)
 LocalElIdx = typing.NewType("LocalElIdx", int)
+
+class CactusDeclOptionalArgs(RelativityDeclKwargs, total=False):
+    centering: Centering
+    declare_as_temp: bool
+    rhs: IndexedBase
+    from_thorn: str
+    parity: TensorParity
+    group_name: str
+    symmetries: List[Tuple[Idx, Idx]]
+    anti_symmetries: List[Tuple[Idx, Idx]]
+    substitution_rule: MkSubstType | None
 
 class ScheduleBin(ScheduleBinEnum):
     Init = auto(), 'Init', True,  ScheduleFrequency.Once, 0
@@ -225,7 +241,7 @@ class ThornFunction:
         vprint(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
-        it = self.thorn_def.einstein_notation.check_indices(expr, self.thorn_def.defn)
+        it = self.thorn_def.einstein_notation.check_indices(expr, self.thorn_def.declarations)
         return it.free
 
     def split_loop(self, annotation: Optional[str] = None) -> None:
@@ -281,7 +297,7 @@ class ThornFunction:
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
-        self.thorn_def.einstein_notation.check_indices(rhs, self.thorn_def.defn)
+        self.thorn_def.einstein_notation.check_indices(rhs, self.thorn_def.declarations)
 
         if self.been_baked:
             raise DslException("add_eqn should not be called on a baked ThornFunction")
@@ -355,7 +371,7 @@ class ThornFunction:
         for tup in self.thorn_def.einstein_notation.expand_free_indices(lhs, self.thorn_def.symmetries):
             count += 1
             lhs_x, idxs, idx = tup
-            num_idx = to_num(idxs[idx[0]])
+            num_idx = relativity_idx_to_int(idxs[idx[0]])
             lhs2_ = do_isub(lhs_x, self.thorn_def.subs)
             lhs2 = lhs2_
             rhs2 = rhs[num_idx]
@@ -439,7 +455,7 @@ class ThornFunction:
         return self.thorn_def.get_tensortype(item)
 
 
-class ThornDef(RelativityDslFrontend[CactusParam]):
+class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
     """
     Represents a Cactus thorn. A ThornDef object contains everything EinsteinEngine knows about a thorn over the course
     of evaluating a recipe. It is also an important interface for declaring variables, adding new thorn functions,
@@ -469,22 +485,18 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         }
     }
 
-    def __init__(self, arr: str, name: str, *, dimensionality: int = 3, run_simplify: bool = True) -> None:
+    def __init__(self, arr: str, name: str, *, dimensionality: int = 3) -> None:
         super().__init__(dimensionality=dimensionality)
 
         if not _is_valid_c_identifier(name):
             raise DslException(f"Thorn name '{name}' is not a valid C identifier")
 
-        self.run_simplify = run_simplify
-        self.coords: List[Symbol] = list()
         self.arrangement = arr
         self.name = name
         self.base2group: Dict[str, str] = dict()
-        self.gfs: Dict[str, IndexedBase] = dict()
         self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
         self.props: Dict[str, List[Integer]] = dict()
-        self.defn: Dict[str, Tuple[str, List[Idx]]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Symbol] = dict()
@@ -499,8 +511,6 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         self.tile_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
-        self.declarations: dict[str, _Declaration] = dict()
-        self.overwrite_symbols: dict[str, _OverwriteSymbolRecord] = dict()
 
     def _grid_variables(self) -> set[Symbol]:
         gv: set[Symbol] = set()
@@ -959,7 +969,7 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         return ThornDef._ClassifyTempsResult(temp_kinds, tfs_active_reads, synthetic_global_dependents)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
-        it = self.einstein_notation.check_indices(expr, self.defn)
+        it = self.einstein_notation.check_indices(expr, self.declarations)
         return it.free
 
     def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
@@ -968,7 +978,7 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         v = self.var2base.get(k, None)
         if v is None:
             return "none", list(), list()  # scalar
-        return v, self.defn[v][1], self.groups[v]
+        return v, list(self.declarations[v].indices), self.groups[v]
 
     def create_function(self,
                         name: str,
@@ -1010,29 +1020,11 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
     def _decl_scalar(self, basename: str) -> Symbol:
         ret = mk_indexed_base(basename, tuple())
         self.gfs[basename] = ret
-        self.defn[basename] = (basename, list())
+        self.declarations[basename] = RelativityDeclaration(indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
 
         base = ret.args[0]
         assert isinstance(base, Symbol)
         return base
-
-    def mk_coords(self, with_time: bool = False) -> List[Symbol]:
-        # Note that x, y, and z are special symbols
-        if self.dimensionality == 3:
-            if with_time:
-                self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
-                               self._decl_scalar("z")]
-            else:
-                self.coords = [self._decl_scalar("x"), self._decl_scalar("y"), self._decl_scalar("z")]
-        elif self.dimensionality == 4:
-            # TODO: No idea whether this works
-            self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
-                           self._decl_scalar("z")]
-        else:
-            assert False
-        return self.coords
-
-
 
     def get_state(self) -> OrderedSet[IndexedBase]:
         return OrderedSet(self.gfs[k.replace("'", "")] for k in self.rhs)
@@ -1045,13 +1037,12 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         decl = self.declarations[str(orig_sym)]
         sym_prime = self.decl(f"{sym}'", decl.indices, **decl.kwargs)
 
-        self.overwrite_symbols[str(sym_prime)] = _OverwriteSymbolRecord(sym_prime, orig_sym)
+        self.overwrite_symbols[str(sym_prime)] = OverwriteSymbolRecord(sym_prime, orig_sym)
 
         return sym_prime
 
-
     # noinspection PyIncorrectDocstring
-    def decl(self, basename: str, indices: List[Idx], **kwargs: Unpack[DeclOptionalArgs]) -> IndexedBase:
+    def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[CactusDeclOptionalArgs]) -> IndexedBase:
         """
         Declares a new scalar or tensor variable.
 
@@ -1082,7 +1073,8 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         :return: A symbolic `IndexedBase` object which represents the declared variable.
         :raises DslException: If symmetries or anti-symmetries are applied to a scalar variable.
         """
-        self.declarations[basename] = _Declaration(indices=indices, kwargs=kwargs)
+        indices_tup: tuple[Idx, ...] = tuple(indices)
+        self.declarations[basename] = RelativityDeclaration(indices=indices_tup, kwargs=kwargs)
 
         if (rhs := kwargs.get('rhs', None)) is not None:
             base_sym = rhs.args[0]
@@ -1092,16 +1084,15 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         if (centering := kwargs.get('centering', None)) is None:
             centering = Centering.VVV
 
-        the_symbol = mk_indexed_base(basename, shape=tuple([self.dimensionality] * len(indices)))
+        the_symbol = mk_indexed_base(basename, shape=tuple([self.dimensionality] * len(indices_tup)))
 
-        if len(indices) != 0:
-            indexed_symbol = mk_indexed(the_symbol, *tuple(indices))
+        if len(indices_tup) != 0:
+            indexed_symbol = mk_indexed(the_symbol, *indices_tup)
         else:
             indexed_symbol = None
 
         assert basename not in self.gfs
         self.gfs[basename] = the_symbol
-        self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
         self.base2group[basename] = kwargs.get('group_name', basename)
 
@@ -1146,7 +1137,7 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
 
         assert basename not in self.gfs
         self.gfs[basename] = mk_indexed_base(basename, shape=())
-        self.defn[basename] = (basename, list())
+        self.declarations[basename] = RelativityDeclaration(indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
         self.centering[basename] = centering
         self.base2group[basename] = basename
 
@@ -1158,37 +1149,6 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
             assert isinstance(arg, Idx)
             ret.append(arg)
         return ret
-
-    def find_symmetries(self, foo: Basic) -> List[Tuple[int, int, int]]:
-        m_sym_list: List[Tuple[int, int, int]] = list()
-        # noinspection PyUnresolvedReferences
-        if foo.is_Function and hasattr(foo, "name") and foo.name in ["div", "D"]:
-            # This is a derivative
-            if len(foo.args) == 3:
-                # This is a 2nd derivative, symmetric in the last 2 args
-                foo_arg1 = len(foo.args[0].args) - 1
-                foo_arg2 = foo_arg1 + 1
-                m_sym: Tuple[int, int, int] = (foo_arg1, foo_arg2, 1)
-                m_sym_list += [m_sym]
-                m_sym_list += self.find_symmetries(foo.args[0])
-            elif len(foo.args) == 2:
-                m_sym_list += self.find_symmetries(foo.args[0])
-            else:
-                assert False, "Only handle 1st and 2nd derivatives"
-        elif isinstance(foo, Indexed):
-            k = foo.base
-            return self.symmetries.sd.get(k, list())
-        return m_sym_list
-
-    def get_matrix(self, ind: Indexed) -> Matrix:
-        values: Dict[Idx, Idx] = dict()
-        result = mk_zeros(*tuple([self.dimensionality] * (len(ind.args) - 1)))
-        ind_args: List[Idx] = [checked_cast(x, Idx) for x in ind.args[1:]]
-        while self.einstein_notation.incr(ind_args, values):
-            arr_idxs = tuple([to_num(checked_cast(do_subs(x, values), Idx)) for x in ind_args])
-            r = self._do_subs(ind, idx_subs=values)
-            result[arr_idxs] = r
-        return result
 
     @staticmethod
     def get_indices(expr: Expr) -> List[Idx]:
@@ -1277,10 +1237,7 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         for tup in self.einstein_notation.expand_free_indices(iter_var, self.symmetries):
             indexed_sym, ind_rep, _ = tup
             assert isinstance(indexed_sym, Indexed)
-            if self.run_simplify:
-                self.subs[indexed_sym] = simplify(self._do_subs(f, idx_subs=ind_rep))
-            else:
-                self.subs[indexed_sym] = self._do_subs(f, idx_subs=ind_rep)
+            self.subs[indexed_sym] = simplify(self._do_subs(f, idx_subs=ind_rep))
             vprint(colorize(indexed_sym, "red"), colorize("->", "magenta"), colorize(self.subs[indexed_sym], "cyan"))
         return None
 
@@ -1300,15 +1257,12 @@ class ThornDef(RelativityDslFrontend[CactusParam]):
         for tup in self.einstein_notation.expand_free_indices(iter_var, self.symmetries):
             out, idx_rep, alist = tup
             assert isinstance(out, Indexed)
-            arr_idxs = tuple([to_num(x) for x in out.indices])
-            if self.run_simplify:
-                n_array = len(arr_idxs)
-                res = simplify(set_matrix[arr_idxs[0:2]])
-                if n_array >= 3:
-                    res = self._do_subs(res, idx_subs=idx_rep)
-                self.subs[out] = res
-            else:
-                self.subs[out] = set_matrix[arr_idxs]
+            arr_idxs = tuple([relativity_idx_to_int(x) for x in out.indices])
+            n_array = len(arr_idxs)
+            res = simplify(set_matrix[arr_idxs[0:2]])
+            if n_array >= 3:
+                res = self._do_subs(res, idx_subs=idx_rep)
+            self.subs[out] = res
             vprint(colorize(out, "red"), colorize("->", "magenta"), colorize(self.subs[out], "cyan"))
         return None
 

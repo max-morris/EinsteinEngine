@@ -23,7 +23,7 @@ from typing import Union, List
 from typing_extensions import Unpack
 
 from EinsteinEngine.emit.tree import Node, Identifier, Integer, String, Language
-from EinsteinEngine.util import ReprEnum, try_get
+from EinsteinEngine.common.util import ReprEnum, try_get
 
 
 class ScheduleNode(Node):
