@@ -21,8 +21,7 @@ from sympy import Expr
 
 from EinsteinEngine import *
 
-newradx_weq = ThornDef("TestEinsteinEngine", "NewRadXWeq")
-newradx_weq.set_derivative_stencil(5)
+newradx_weq = ThornDef("TestEinsteinEngine", "NewRadXWeq", derivative_stencil_order=5)
 
 ###
 # Parities and centering

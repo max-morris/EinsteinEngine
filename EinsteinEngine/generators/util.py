@@ -17,7 +17,7 @@
 
 from typing import Protocol, Optional
 
-from EinsteinEngine import Centering
+from EinsteinEngine.emit.tree import Centering
 
 
 class SympyNameSubstitutionFn(Protocol):

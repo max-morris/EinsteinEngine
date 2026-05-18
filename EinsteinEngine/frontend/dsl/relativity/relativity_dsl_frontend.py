@@ -15,21 +15,22 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from dataclasses import dataclass
 # mypy: disable-error-code=no-redef
 # The above line suppresses an unfortunate interaction between MyPy and the intersection of ABC and multimethod.
 
-from typing import Optional, cast, NamedTuple, TypedDict, Unpack
+from typing import Optional, cast, NamedTuple, TypedDict, Unpack, Iterable, Any
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from multimethod import multimethod
 
-from EinsteinEngine.frontend.dsl.relativity.use_indices import DivMakerVisitor, ApplyDiv, ApplyDivN, is_relativity_lower_idx, relativity_idx_to_int
+from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor, ApplyDiv, ApplyDivN
+from EinsteinEngine.frontend.dsl.relativity.use_indices import is_relativity_lower_idx, relativity_idx_to_int
 from EinsteinEngine.common.util import checked_cast
 from sympy import Idx, Expr, Indexed, IndexedBase, Function, Basic, Matrix, Symbol
 
-from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
+from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend, SymbolDeclarationKwargs, SymbolDeclaration
 from EinsteinEngine.frontend.dsl.relativity.use_indices import EinsteinNotationManager, IndexSubsVisitor
 from EinsteinEngine.frontend.dsl.relativity.symmetries import Sym
 
@@ -40,63 +41,30 @@ from EinsteinEngine.frontend.definitions import D, div, no_idx, stencil, dummy, 
 from EinsteinEngine.intermediate.coef import coef
 import sympy as sy
 
-class OverwriteSymbolRecord(NamedTuple):
-    symbol: IndexedBase
-    resolves_to: IndexedBase
-
-class RelativityDeclKwargs(TypedDict, total=False):
+class RelativitySymbolDeclarationKwargs(SymbolDeclarationKwargs, total=False):
     pass
 
 @dataclass
-class RelativityDeclaration[KwargsType: RelativityDeclKwargs]:
-    indices: tuple[Idx, ...]
-    kwargs: KwargsType
+class RelativitySymbolDeclaration[KwargsType: RelativitySymbolDeclarationKwargs](SymbolDeclaration[KwargsType]):
+    pass
 
-class RelativityDslFrontend[ParamData, DeclKwargsType: RelativityDeclKwargs](DslFrontend[ParamData]):
+class RelativityDslFrontend[ParamDataT, SymbolDeclarationT: RelativitySymbolDeclaration[Any]](
+        DslFrontend[ParamDataT, SymbolDeclarationT], ABC
+):
     einstein_notation: EinsteinNotationManager
     subs: dict[Indexed | IndexedBase, Expr]
     symmetries: Sym
-    div_makers: dict[str, DivMakerVisitor]
-    apply_div: Applier
-    funs1: dict[tuple[UFunc, Idx], Expr]
-    funs2: dict[tuple[UFunc, Idx, Idx], Expr]
-    fun_args: dict[str, int]
-    overwrite_symbols: dict[str, OverwriteSymbolRecord]
-    declarations: dict[str, RelativityDeclaration[DeclKwargsType]]
-    gfs: dict[str, IndexedBase]
-    coords: list[Symbol]
 
-    def __init__(self, dimensionality: int = 3):
-        super().__init__(dimensionality=dimensionality)
+    def __init__(self, *, dimensionality: int = 3, derivative_stencil_order: int = 5):
+        super().__init__(
+            dimensionality=dimensionality,
+            derivative_stencil_order=derivative_stencil_order
+        )
         self.einstein_notation = EinsteinNotationManager(dimensionality=dimensionality)
         self.symmetries = Sym()
         self.subs = dict()
-        self.apply_div = ApplyDiv()
-        self.funs1 = dict()
-        self.funs2 = dict()
-        self.fun_args = dict()
-        self.coords = list()
-
-        self.gfs = dict()
-        self.overwrite_symbols = dict()
-        self.declarations = dict()
-
-        self.div_makers = dict()
-        self.div_makers["div"] = DivMakerVisitor(div)
-        self.div_makers["D"] = DivMakerVisitor(D)
-
-        for dmv in self.div_makers.values():
-            dmv.params = self._mk_param_set()
 
         self._populate_globals()
-
-    @abstractmethod
-    def decl(self, basename: str, indices: tuple[Idx, ...], **kwargs: Unpack[RelativityDeclKwargs]) -> IndexedBase:
-        ...
-
-    @abstractmethod
-    def _decl_scalar(self, basename: str) -> Symbol:
-        ...
 
     def mk_coords(self, with_time: bool = False) -> list[Symbol]:
         # Note that x, y, and z are special symbols
@@ -111,7 +79,7 @@ class RelativityDslFrontend[ParamData, DeclKwargsType: RelativityDeclKwargs](Dsl
             self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
                            self._decl_scalar("z")]
         else:
-            assert False
+            raise DslException(f"Unsupported dimensionality {self.dimensionality}")
         return self.coords
 
     def get_matrix(self, ind: Indexed) -> Matrix:
@@ -198,11 +166,6 @@ class RelativityDslFrontend[ParamData, DeclKwargsType: RelativityDeclKwargs](Dsl
                 return new_arg
             arg1 = new_arg
         raise Exception(arg)
-
-    def set_derivative_stencil(self, n: int) -> None:
-        assert n % 2 == 1, "n must be odd"
-        assert n > 1, "n must be > 1"
-        self.apply_div = ApplyDivN(n, self.funs1, self.funs2, self.fun_args, self.dimensionality)
 
     @multimethod
     def mk_stencil(self, func_name: str, idx: Idx, expr: Expr) -> UFunc:

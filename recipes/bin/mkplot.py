@@ -21,7 +21,6 @@ import sys
 from typing import Tuple, Any, Optional
 
 import matplotlib.pyplot as plt
-import matplotlib.pyplot as plt
 import numpy as np
 from kuibit.simdir import SimDir
 

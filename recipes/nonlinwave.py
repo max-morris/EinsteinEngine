@@ -38,11 +38,7 @@ if __name__ == "__main__":
             return sympify(0)
 
     # Create a set of grid functions
-    gf = ThornDef("TestWave", "WaveEqn")
-
-    # Use a NRPy calculated stencil instead
-    # of simply calling functions such as divx()
-    gf.set_derivative_stencil(3)
+    gf = ThornDef("TestWave", "WaveEqn", derivative_stencil_order=3)
 
     # Declare gfs
     v_t = gf.decl("v_t", [], centering=Centering.VVC)
@@ -77,7 +73,7 @@ if __name__ == "__main__":
     fun.dump()
 
     # Show tensortypes
-    fun.show_tensortypes()
+    fun.show_tensor_types()
 
     # Again for wave_init
     fun = gf.create_function("newwave_init", ScheduleBin.Init)
@@ -85,7 +81,7 @@ if __name__ == "__main__":
     fun.add_eqn(u, sympify(0))  # kx**2 * ky**2 * sin(kx * x) * sin(ky * y))
     print('*** ThornFunction wave_init:')
     fun.dump()
-    fun.show_tensortypes()
+    fun.show_tensor_types()
 
     fun = gf.create_function("refine", ScheduleBin.EstimateError)
     regrid_error = gf.decl(
