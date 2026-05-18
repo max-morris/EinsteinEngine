@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import auto
-from EinsteinEngine.util import ReprEnum, try_get
+from EinsteinEngine.common.util import ReprEnum, try_get
 from typing import Optional, TypedDict, Union
 from typing_extensions import Unpack
 

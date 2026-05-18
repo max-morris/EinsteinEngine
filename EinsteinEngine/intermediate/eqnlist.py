@@ -43,7 +43,7 @@ from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
-from EinsteinEngine.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
+from EinsteinEngine.common.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
 
 # These symbols represent the inverse of the
 # spatial discretization.

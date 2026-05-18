@@ -29,7 +29,7 @@ from EinsteinEngine.emit.code.cpp.cpp_visitor import CppVisitor
 from EinsteinEngine.emit.visitor import Visitor
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
 from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
-from EinsteinEngine.util import OrderedSet
+from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.wizards.wizard import Wizard
 
 G = TypeVar('G', bound=CactusGenerator)

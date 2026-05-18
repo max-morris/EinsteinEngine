@@ -52,7 +52,7 @@ from EinsteinEngine.generators.cactus_generator import CactusGenerator, CactusGe
 from EinsteinEngine.generators.generator_exception import GeneratorException
 from EinsteinEngine.generators.substitute_recycled_temporaries import substitute_recycled_temporaries
 from EinsteinEngine.generators.util import VarCenteringFn
-from EinsteinEngine.util import OrderedSet, wprint
+from EinsteinEngine.common.util import OrderedSet, wprint
 from EinsteinEngine.common.schedule_target import ScheduleTarget
 
 

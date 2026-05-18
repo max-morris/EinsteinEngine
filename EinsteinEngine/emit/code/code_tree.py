@@ -24,7 +24,7 @@ import sympy as sy
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering, BlockComment, LineComment
 from EinsteinEngine.generators.substitute_recycled_temporaries import RecycledTemporarySubstitution
-from EinsteinEngine.util import ReprEnum
+from EinsteinEngine.common.util import ReprEnum
 
 
 class CodeNode(Node):

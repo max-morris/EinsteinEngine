@@ -30,7 +30,7 @@ from sympy import Symbol, Expr, Basic, preorder_traversal
 
 from EinsteinEngine.intermediate.dependencies import Dependencies
 from EinsteinEngine.frontend.definitions import stencil
-from EinsteinEngine.util import pprint
+from EinsteinEngine.common.util import pprint
 
 if TYPE_CHECKING:
     from EinsteinEngine.intermediate.eqnlist import EqnList

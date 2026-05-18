@@ -27,7 +27,7 @@ from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlock
 from EinsteinEngine.emit.code.code_tree import CodeRoot
 from EinsteinEngine.emit.tree import Identifier, String, Bool
-from EinsteinEngine.util import get_or_compute, OrderedSet
+from EinsteinEngine.common.util import get_or_compute, OrderedSet
 from EinsteinEngine.generators.generator import Generator
 from EinsteinEngine.common.schedule_target import ScheduleTarget
 

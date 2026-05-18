@@ -21,7 +21,7 @@ import os
 from enum import Enum, auto
 from time import time
 from types import TracebackType
-from typing import Any, TypeVar, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING
+from typing import Any, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 if TYPE_CHECKING:
@@ -61,13 +61,13 @@ def consolidate[K, V](recipient: dict[K, V], donor: dict[K, V], f: Callable[[V, 
 
 
 def indent(s: str, spaces: int = 4) -> str:
-    ind = ' ' * spaces
-    split = s.split('\n')
+    ind = " " * spaces
+    split = s.split("\n")
 
     for i in range(len(split) - 1):
-        split[i] += '\n'
+        split[i] += "\n"
 
-    return ''.join([f'{ind}{s}' for s in split])
+    return "".join([f"{ind}{s}" for s in split])
 
 
 class ReprEnum(Enum):
@@ -111,12 +111,12 @@ class ScheduleBinEnum(Enum):
     relative_order: int
 
     def __new__(
-            cls,
-            value: Any,
-            generic_name: str,
-            is_builtin: bool,
-            schedule_frequency: ScheduleFrequency,
-            relative_order: int
+        cls,
+        value: Any,
+        generic_name: str,
+        is_builtin: bool,
+        schedule_frequency: ScheduleFrequency,
+        relative_order: int,
     ) -> ScheduleBinEnum:
         member = object.__new__(cls)
         member._value_ = value
@@ -129,12 +129,8 @@ class ScheduleBinEnum(Enum):
     def __repr__(self) -> str:
         return self.generic_name
 
-
-T0 = TypeVar('T0')
-
-
-class OrderedSet(Set[T0], Generic[T0]):
-    def __iter__(self) -> Iterator[T0]:
+class OrderedSet[T](set[T]):
+    def __iter__(self) -> Iterator[T]:
         r = set.__iter__(self)
         return sorted(list(r), key=lambda a: repr(a)).__iter__()
 
@@ -160,8 +156,11 @@ class ProgressBarImpl:
         n_star = int(self.bar_size * n / nt)
         bar = ("*" * n_star) + (" " * (self.bar_size - n_star))
         if delt >= 1.5 and tt >= 3.0:
-            print("%s: %s %d/%d (%.2f%%) time: (remaining: %.2fs, total: %.2fs)   " % (
-                self.name, bar, n, nt, 100 * n / nt, tr, tt), end='\r')
+            print(
+                "%s: %s %d/%d (%.2f%%) time: (remaining: %.2fs, total: %.2fs)   "
+                % (self.name, bar, n, nt, 100 * n / nt, tr, tt),
+                end="\r",
+            )
 
 
 class ProgressBar:
@@ -173,35 +172,49 @@ class ProgressBar:
     def __enter__(self) -> ProgressBarImpl:
         return ProgressBarImpl(self.n_items, self.name, self.bar_size)
 
-    def __exit__(self, ty: Optional[type[BaseException]], val: Optional[BaseException],
-                 tb: Optional[TracebackType]) -> None:
+    def __exit__(
+        self, ty: Optional[type[BaseException]], val: Optional[BaseException], tb: Optional[TracebackType]
+    ) -> None:
         print()
 
 
 def verbose() -> bool:
     return (e := os.getenv("EINSTEINENGINE_VERBOSE")) is not None and e != "0"
 
-def vprint(*values: object,
-           sep: str | None = " ",
-           end: str | None = "\n",
-           file: SupportsWrite[str] | None = None,
-           flush: Literal[False] = False) -> None:
+
+def vprint(
+    *values: object,
+    sep: str | None = " ",
+    end: str | None = "\n",
+    file: SupportsWrite[str] | None = None,
+    flush: Literal[False] = False,
+) -> None:
     if verbose():
         print(*values, sep=sep, end=end, file=file, flush=flush)
 
-def wprint(*values: object,
-           sep: str | None = " ",
-           end: str | None = "\n",
-           file: SupportsWrite[str] | None = None,
-           flush: Literal[False] = False) -> None:
+
+def wprint(
+    *values: object,
+    sep: str | None = " ",
+    end: str | None = "\n",
+    file: SupportsWrite[str] | None = None,
+    flush: Literal[False] = False,
+) -> None:
     print(colorize("Warning: " + " ".join(map(str, values)), "yellow"), sep=sep, end=end, file=file, flush=flush)
 
-def pprint(*values: object,
-           sep: str | None = " ",
-           end: str | None = "\n",
-           file: SupportsWrite[str] | None = None,
-           flush: Literal[False] = False) -> None:
+
+def pprint(
+    *values: object,
+    sep: str | None = " ",
+    end: str | None = "\n",
+    file: SupportsWrite[str] | None = None,
+    flush: Literal[False] = False,
+) -> None:
     if verbose():
         print("***", *values, "***", sep=sep, end=end, file=file, flush=flush)
     else:
         print(*values, sep=sep, end=end, file=file, flush=flush)
+
+def checked_cast[T](obj: Any, typ: type[T]) -> T:
+    assert isinstance(obj, typ), f"Expected type {typ}, found type {type(obj)}"
+    return obj

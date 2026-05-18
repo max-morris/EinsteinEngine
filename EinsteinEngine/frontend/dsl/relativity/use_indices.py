@@ -21,34 +21,39 @@ Use the Sympy Indexed type for relativity expressions.
 import re
 import typing
 from collections import defaultdict
-from dataclasses import dataclass
 from typing import *
 
 import sympy.logic.boolalg
 from multimethod import multimethod
 from mypy_extensions import VarArg
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
-from sympy import Symbol, Indexed, IndexedBase, Basic, MatrixBase, Expr, Idx, \
-    ImmutableDenseMatrix
+# noinspection PyUnusedImports (MyPy needs Idx, Expr)
+from sympy import Symbol, Indexed, IndexedBase, Basic, MatrixBase, ImmutableDenseMatrix, Idx, Expr
 from sympy.core.relational import Relational
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.relativity.symmetries import Sym
 from EinsteinEngine.common.sympywrap import *
-from EinsteinEngine.util import OrderedSet
-from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity
-from EinsteinEngine.emit.tree import Centering
+from EinsteinEngine.common.util import OrderedSet
+from EinsteinEngine.common.util import checked_cast
 
 DXI = mk_symbol("DXI")
 DYI = mk_symbol("DYI")
 DZI = mk_symbol("DZI")
 L0, U0, L1, U1, L2, U2 = cast(Tuple[Idx, Idx, Idx, Idx, Idx, Idx], mk_idxes('l0 u0 l1 u1 l2 u2'))
 
-__all__ = ["D", "div", "EinsteinNotationManager", "to_num", "IndexedSubstFnType", "MkSubstType", "subst_tensor",
+__all__ = ["D", "div", "EinsteinNotationManager", "relativity_idx_to_int", "IndexedSubstFnType", "MkSubstType", "subst_tensor",
            "subst_tensor_xyz", "noop", "stencil", "DD", "DDI"]
 
 IndexPairLookup = Mapping[Idx, Idx]
+
+
+class IndexedDeclaration(Protocol):
+    indices: tuple[Idx, ...]
+
+
+type IndexDeclarations = Mapping[str, tuple[Idx, ...] | IndexedDeclaration]
 
 ###
 import sympy as sy
@@ -94,14 +99,12 @@ class EinsteinNotationManager:
     def check_indices(
             self,
             rhs: Expr,
-            defn: Optional[Dict[str, Tuple[str, List[Idx]]]] = None
+            declarations: IndexDeclarations
     ) -> 'IndexTracker':
         """
         Check indexed-expression validity and return free/contracted index tracking.
         """
-        if defn is None:
-            defn = dict()
-        err = IndexContractionVisitor(defn, dimensionality=self.dimensionality, lookup_pair=self.lookup_pair)
+        err = IndexContractionVisitor(declarations, dimensionality=self.dimensionality, lookup_pair=self.lookup_pair)
         ret: IndexTracker
         _, ret = err.visit(rhs)
         return ret
@@ -109,9 +112,9 @@ class EinsteinNotationManager:
     def get_free_indices(
             self,
             expr: Expr,
-            defn: Optional[Dict[str, Tuple[str, List[Idx]]]] = None
+            declarations: IndexDeclarations
     ) -> OrderedSet[Idx]:
-        return self.check_indices(expr, defn).free
+        return self.check_indices(expr, declarations).free
 
     def expand_contracted_indices(self, expr: Expr, sym: Sym) -> Expr:
         viz = IndexContractionVisitor(dict(), dimensionality=self.dimensionality, lookup_pair=self.lookup_pair)
@@ -221,7 +224,7 @@ class EinsteinNotationManager:
             if ix >= len(index_list):
                 return False
             u_ind, ind = self.get_pair(index_list[ix])
-            index_value = to_num(index_values[ind])
+            index_value = relativity_idx_to_int(index_values[ind])
             if index_value == self.dimensionality - 1:
                 index_values[ind] = self._lower_numeric_indices[0]
                 index_values[u_ind] = self._upper_numeric_indices[0]
@@ -305,11 +308,11 @@ class IndexTracker:
 class IndexContractionVisitor:
     def __init__(
             self,
-            defn: Dict[str, Tuple[str, List[Idx]]],
+            declarations: IndexDeclarations,
             dimensionality: int,
             lookup_pair: IndexPairLookup
     ) -> None:
-        self.defn = defn
+        self.declarations = declarations
         self.dimensionality = dimensionality
         self.lookup_pair = lookup_pair
         self._numeric_index_pairs: tuple[tuple[Idx, Idx], ...] = tuple(
@@ -318,6 +321,14 @@ class IndexContractionVisitor:
 
     def _tracker(self) -> IndexTracker:
         return IndexTracker(self.lookup_pair)
+
+    def _decl_indices(self, basename: str) -> Optional[Tuple[Idx, ...]]:
+        decl = self.declarations.get(basename, None)
+        if decl is None:
+            return None
+        indices = decl if isinstance(decl, tuple) else decl.indices
+        assert all(isinstance(idx, Idx) for idx in indices), f"Invalid index tuple for '{basename}': {indices}"
+        return indices
 
     @multimethod
     def visit(self, expr: sy.Basic) -> Tuple[Expr, IndexTracker]:
@@ -448,12 +459,12 @@ class IndexContractionVisitor:
     @visit.register
     def _(self, expr: sy.Indexed) -> Tuple[Expr, IndexTracker]:
         basename = str(expr.args[0])
-        if basename in self.defn:
-            bn, indices = self.defn[basename]
+        indices = self._decl_indices(basename)
+        if indices is not None:
             if len(indices) + 1 != len(expr.args):
                 raise InvalidIndexError(f"indices used on a non-indexed quantity '{expr}' in:")
         else:
-            assert len(self.defn) == 0
+            assert len(self.declarations) == 0
         it = self._tracker()
         for a in expr.args[1:]:
             _a_it = self.visit(a)
@@ -492,13 +503,13 @@ class IndexContractionVisitor:
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Tuple[Expr, IndexTracker]:
         basename = str(expr)
-        if basename not in self.defn:
-            if len(self.defn) == 0:
+        indices = self._decl_indices(basename)
+        if indices is None:
+            if len(self.declarations) == 0:
                 n = 0
             else:
-                raise InvalidIndexError(f"Undefined symbol in '{self.defn}':")
+                raise InvalidIndexError(f"Undefined symbol in '{self.declarations}':")
         else:
-            bn, indices = self.defn[basename]
             n = len(indices)
         if n != 0:
             if n == 1:
@@ -626,7 +637,7 @@ def do_isub(expr: Expr, subs: Optional[Dict[Indexed | IndexedBase, Expr]] = None
 
 def check_indices(
         rhs: Expr,
-        defn: Optional[Dict[str, Tuple[str, List[Idx]]]] = None,
+        declarations: IndexDeclarations,
         *,
         manager: EinsteinNotationManager
 ) -> IndexTracker:
@@ -635,7 +646,7 @@ def check_indices(
     all free and contracted indices.
     """
 
-    return manager.check_indices(rhs, defn)
+    return manager.check_indices(rhs, declarations)
 
 
 ###
@@ -643,13 +654,13 @@ def check_indices(
 ###
 
 
-def is_down(ind: Idx) -> bool:
+def is_relativity_lower_idx(ind: Idx) -> bool:
     s = str(ind)
     assert s[0] in ["u", "l"], f"ind={ind}"
     return s[0] == "l"
 
 
-def to_num(ind: Idx) -> int:
+def relativity_idx_to_int(ind: Idx) -> int:
     s = str(ind)
     assert s[0] in ["u", "l"], f"ind={ind}"
     return int(s[1])
@@ -872,20 +883,12 @@ def do_div(expr: Basic) -> Expr:
 TA = TypeVar("TA")
 
 
-def checked_cast(obj: Any, typ: Type[TA]) -> TA:
-    """
-    Checked cast
-    """
-    assert isinstance(obj, typ), f"expected type {typ} found type {type(obj)}"
-    return obj
-
-
 def sub_idxs(idx: Idx, values: Dict[Idx, Idx]) -> Idx:
     return checked_cast(do_subs(idx, values), Idx)
 
 
 def to_num_tup_2(li: List[Idx], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
-    return tuple([to_num(sub_idxs(x, values)) for x in li])
+    return tuple([relativity_idx_to_int(sub_idxs(x, values)) for x in li])
 
 
 def to_num_tup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
@@ -987,7 +990,7 @@ def _mk_name_for_tensor(sym: Indexed) -> str:
                                f"Lower indices must be prefixed with l, and upper indices with u.")
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
-        base_name += str(to_num(ind))
+        base_name += str(relativity_idx_to_int(ind))
 
     return base_name
 
@@ -1011,7 +1014,7 @@ def _mk_name_for_tensor_xyz(sym: Indexed, *_args: Idx) -> str:
     base_name = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
-        base_name += ["x", "y", "z"][to_num(ind)]
+        base_name += ["x", "y", "z"][relativity_idx_to_int(ind)]
     return base_name
 
 
@@ -1042,7 +1045,7 @@ def to_div(out: Expr) -> Expr:
     nm = "div"
     for k in out.args[1:]:
         assert isinstance(k, Idx)
-        nm += "xyz"[to_num(k)]
+        nm += "xyz"[relativity_idx_to_int(k)]
     div_nn = mk_function(nm)
     arg = out.args[0]  # div(v, i, j) -> v
     return cast(Expr, div_nn(arg))
@@ -1149,7 +1152,7 @@ class ApplyDivN(Applier):
             new_expr1: List[int | sy.Integer] = list()
             for arg in expr.args[1:]:
                 if isinstance(arg, Idx):
-                    new_expr1.append(to_num(arg))
+                    new_expr1.append(relativity_idx_to_int(arg))
                 elif isinstance(arg, sy.Integer):
                     new_expr1.append(arg)
                 else:
@@ -1277,26 +1280,3 @@ def _is_valid_c_identifier(s: str) -> bool:
         return False
     # C identifiers must start with a letter or underscore, followed by letters, digits, or underscores
     return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', s))
-
-
-class DeclOptionalArgs(TypedDict, total=False):
-    centering: Centering
-    declare_as_temp: bool
-    rhs: IndexedBase
-    from_thorn: str
-    parity: TensorParity
-    group_name: str
-    symmetries: List[Tuple[Idx, Idx]]
-    anti_symmetries: List[Tuple[Idx, Idx]]
-    substitution_rule: MkSubstType | None
-
-
-@dataclass
-class _Declaration:
-    indices: List[Idx]
-    kwargs: DeclOptionalArgs
-
-
-class _OverwriteSymbolRecord(NamedTuple):
-    symbol: IndexedBase
-    resolves_to: IndexedBase

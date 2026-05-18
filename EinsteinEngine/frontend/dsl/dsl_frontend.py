@@ -15,9 +15,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional, Set
+from typing import Set
 
-from sympy import Indexed, IndexedBase, Expr, Symbol
+from sympy import Symbol
 
 from EinsteinEngine import mk_symbol
 from EinsteinEngine.frontend.frontend import Frontend

@@ -21,7 +21,7 @@ from multimethod import multimethod
 
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float
 from EinsteinEngine.emit.visitor import Visitor, visit_each
-from EinsteinEngine.util import indent
+from EinsteinEngine.common.util import indent
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleNode, ScheduleRoot, StorageLine, \
     StorageDecl, ScheduleBlock, GroupOrFunction, Intent, IfStatement
 
