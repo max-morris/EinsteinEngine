@@ -23,10 +23,10 @@ import sympy as sy
 from sympy import IndexedBase, Indexed
 from typing_extensions import Unpack, OrderedDict
 
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornFunction, ThornDef
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
 from EinsteinEngine.intermediate.eqnlist import stencil
 from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering
-from EinsteinEngine import ScheduleBin, ThornFunction, ThornDef
 from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, \
     FunctionSection, \
@@ -713,7 +713,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             rhs_name = str(rhs_sym)
 
-            rhs_indexed = self.thorn_def.gfs[rhs_name][*batch.var.args[1:]]
+            rhs_indexed = self.thorn_def.declarations[rhs_name].base[*batch.var.args[1:]]
 
             var_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(batch.var))
             rhs_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(rhs_indexed))

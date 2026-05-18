@@ -25,14 +25,11 @@ from EinsteinEngine import *
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK")
+cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK", derivative_stencil_order=5)
 
 ###
 # Finite difference stencils
 ###
-
-# Fourth order centered
-cottonmouth_bssnok.set_derivative_stencil(5)
 
 # Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_bssnok.mk_stencil(

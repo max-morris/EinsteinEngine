@@ -18,8 +18,7 @@
 from EinsteinEngine import *
 
 # Create a set of grid functions
-gf = ThornDef("TestEinsteinEngine", "Ricci")
-gf.set_derivative_stencil(5)
+gf = ThornDef("TestEinsteinEngine", "Ricci", derivative_stencil_order=5)
 
 a = gf.add_param("a", default=10.0, desc="Just a constant")
 b = gf.add_param("b", default=0.2, desc="Just a constant")

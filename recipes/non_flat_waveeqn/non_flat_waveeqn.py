@@ -29,8 +29,7 @@ cfu.verbose = True
 # Thorn creation
 # We implement Eqs. (5)-(9) of https://arxiv.org/abs/gr-qc/0602104v2
 ###
-nfweq = ThornDef("TestEinsteinEngine", "NonFlatWaveEqn")
-nfweq.set_derivative_stencil(5)
+nfweq = ThornDef("TestEinsteinEngine", "NonFlatWaveEqn", derivative_stencil_order=5)
 
 ###
 # Initial data parameters

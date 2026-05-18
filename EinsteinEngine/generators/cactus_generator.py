@@ -20,7 +20,7 @@ from collections import OrderedDict
 from enum import auto, Enum
 from typing import Set, Optional, TypedDict
 
-from EinsteinEngine import ThornDef
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
     TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot

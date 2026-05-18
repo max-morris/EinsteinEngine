@@ -20,13 +20,14 @@ from typing import TypeVar, Generic, Optional
 
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 
-from EinsteinEngine import ExplicitSyncBatch, ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_visitor import InterfaceVisitor
 from EinsteinEngine.emit.ccl.param.param_visitor import ParamVisitor
 from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
 from EinsteinEngine.emit.code.code_tree import CodeNode
 from EinsteinEngine.emit.code.cpp.cpp_visitor import CppVisitor
 from EinsteinEngine.emit.visitor import Visitor
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ThornDef
+from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
 from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EinsteinEngine.common.util import OrderedSet

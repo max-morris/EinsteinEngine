@@ -19,7 +19,5 @@ from abc import ABC
 
 
 class Frontend(ABC):
-    dimensionality: int
-
-    def __init__(self, dimensionality: int = 3):
-        self.dimensionality = dimensionality
+    def __init__(self) -> None:
+        pass

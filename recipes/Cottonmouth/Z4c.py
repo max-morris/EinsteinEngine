@@ -50,15 +50,13 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}")
+cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}", derivative_stencil_order=stencil_order + 1)
 
 ###
 # Some more indices
 ###
 ul, ll = cottonmouth_Z4c.mk_pair("l")
 um, lm = cottonmouth_Z4c.mk_pair("m")
-
-cottonmouth_Z4c.set_derivative_stencil(stencil_order + 1)
 
 # Fifth order Kreiss-Oliger disspation stencil
 div_diss = cottonmouth_Z4c.mk_stencil(

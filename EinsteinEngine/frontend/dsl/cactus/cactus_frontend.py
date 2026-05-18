@@ -30,20 +30,29 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Matrix, Integer, ImmutableDenseMatrix, MatrixBase, Eq
 
 import EinsteinEngine.common.util as util
-from EinsteinEngine import EqnOrderingFn, SoftSplitRetainmentStrategy, CseOptimizationLevel, TemporaryPromotionStrategy, \
-    IntentOverride, ScheduleBlock, GroupOrFunction, free_symbols, relativity_idx_to_int, \
-    maximize_symbol_reuse, retain_none, Applier, Centering, mk_function, div, D, promote_none, promote_all, cse, \
-    TemporaryPromotionPredicate, OnePassTemporaryPromotionStrategy, TwoPassTemporaryPromotionStrategy, Identifier, \
-    TempKind, mk_symbol, mk_indexed_base, stencil, DD, DDI, noop, Pow, mk_indexed, subst_tensor_xyz, \
-    mk_zeros, \
-    do_subs, simplify, mk_eq, UFunc, mk_idx, do_replace, mk_idxes
+from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
+from EinsteinEngine.common.intent_override import IntentOverride
+from EinsteinEngine.common.sympywrap import (
+    Applier, Pow, UFunc, cse, do_replace, do_subs, free_symbols, mk_eq, mk_function, mk_idx, mk_idxes,
+    mk_indexed, mk_indexed_base, mk_symbol, mk_zeros, simplify
+)
+from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
+from EinsteinEngine.emit.tree import Centering, Identifier
+from EinsteinEngine.frontend.definitions import D, DD, DDI, div, noop, stencil
+from EinsteinEngine.frontend.dsl.relativity.use_indices import relativity_idx_to_int, subst_tensor_xyz
+from EinsteinEngine.frontend.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
+from EinsteinEngine.intermediate.temp_kind import TempKind
+from EinsteinEngine.intermediate.temporary_promotion_predicate import (
+    OnePassTemporaryPromotionStrategy, TemporaryPromotionPredicate, TemporaryPromotionStrategy,
+    TwoPassTemporaryPromotionStrategy, promote_all, promote_none
+)
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
-from EinsteinEngine.frontend.dsl.relativity.use_indices import SourceAnnotations, do_isub, \
-    to_num_tup, _is_valid_c_identifier, ApplyDiv, DivMakerVisitor, \
-    ApplyDivN, \
-    no_idx, dummy, zero, one, is_relativity_lower_idx, subst_tensor, BaseIndexedSubstFnType, MkSubstType
+from EinsteinEngine.frontend.dsl.relativity.use_indices import do_isub, \
+    to_num_tup, no_idx, dummy, zero, one, is_relativity_lower_idx, subst_tensor, BaseIndexedSubstFnType, MkSubstType
+from EinsteinEngine.frontend.dsl.finite_difference import ApplyDiv, DivMakerVisitor, ApplyDivN
 from EinsteinEngine.common.util import checked_cast
 from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
@@ -52,18 +61,15 @@ from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, DX, DY, DZ,
 from EinsteinEngine.intermediate.splitmaxxer import SplitMaxxer
 from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, vprint, OrderedSet, pprint, get_or_compute, verbose
 
-from EinsteinEngine.frontend.dsl.relativity.relativity_dsl_frontend import (
-    RelativityDslFrontend,
-    RelativityDeclaration,
-    RelativityDeclKwargs,
-    OverwriteSymbolRecord,
-)
+from EinsteinEngine.frontend.dsl.relativity.relativity_dsl_frontend import RelativityDslFrontend, \
+    RelativitySymbolDeclaration, RelativitySymbolDeclarationKwargs
 from EinsteinEngine.common.schedule_target import ScheduleTarget, safe_name
+from EinsteinEngine.frontend.dsl.dsl_frontend import SymbolDeclarationKwargs, OverwriteSymbolRecord
 
 TfName = typing.NewType("TfName", str)
 LocalElIdx = typing.NewType("LocalElIdx", int)
 
-class CactusDeclOptionalArgs(RelativityDeclKwargs, total=False):
+class CactusDeclOptionalArgs(RelativitySymbolDeclarationKwargs, total=False):
     centering: Centering
     declare_as_temp: bool
     rhs: IndexedBase
@@ -327,7 +333,6 @@ class ThornFunction:
 
     @add_eqn.register
     def _(self, lhs: IndexedBase, rhs: Expr) -> None:
-
         if self.been_baked:
             raise Exception("add_eqn should not be called on a baked ThornFunction")
 
@@ -440,22 +445,22 @@ class ThornFunction:
 
         self.been_late_baked = True
 
-    def show_tensortypes(self) -> None:
+    def show_tensor_types(self) -> None:
         keys: Set[str] = OrderedSet()
         for k1 in self.eqn_complex.inputs:
             keys.add(str(k1))
         for k2 in self.eqn_complex.outputs:
             keys.add(str(k2))
         for k in keys:
-            group, indices, members = self.get_tensortype(k)
+            group, indices, members = self.get_tensor_type(k)
             print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
                   colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
 
-    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
-        return self.thorn_def.get_tensortype(item)
+    def get_tensor_type(self, item: Union[str, Symbol]) -> tuple[str, tuple[Idx, ...], tuple[str, ...]]:
+        return self.thorn_def.get_tensor_type(item)
 
 
-class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
+class ThornDef(RelativityDslFrontend[CactusParam, RelativitySymbolDeclaration[CactusDeclOptionalArgs]]):
     """
     Represents a Cactus thorn. A ThornDef object contains everything EinsteinEngine knows about a thorn over the course
     of evaluating a recipe. It is also an important interface for declaring variables, adding new thorn functions,
@@ -485,8 +490,18 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
         }
     }
 
-    def __init__(self, arr: str, name: str, *, dimensionality: int = 3) -> None:
-        super().__init__(dimensionality=dimensionality)
+    def __init__(
+            self,
+            arr: str,
+            name: str,
+            *,
+            dimensionality: int = 3,
+            derivative_stencil_order: int = 5
+    ) -> None:
+        super().__init__(
+            dimensionality=dimensionality,
+            derivative_stencil_order=derivative_stencil_order
+        )
 
         if not _is_valid_c_identifier(name):
             raise DslException(f"Thorn name '{name}' is not a valid C identifier")
@@ -494,20 +509,12 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
         self.arrangement = arr
         self.name = name
         self.base2group: Dict[str, str] = dict()
-        self.var2base: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
-        self.props: Dict[str, List[Integer]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
         self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Symbol] = dict()
-        self.temp: OrderedSet[str] = OrderedSet()
         self.base2thorn: Dict[str, str] = dict()
         self.base2parity: Dict[str, TensorParity] = dict()
-        self.is_stencil: Dict[UFunc, bool] = {
-            mk_function("muladd"): False,
-            mk_function("stencil"): True
-        }
-        self.set_derivative_stencil(5)
         self.tile_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
@@ -972,13 +979,13 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
         it = self.einstein_notation.check_indices(expr, self.declarations)
         return it.free
 
-    def get_tensortype(self, item: Union[str, Symbol]) -> Tuple[str, List[Idx], List[str]]:
-        k = str(item)
-        assert k in self.gfs.keys(), f"Not a defined symbol {item}"
-        v = self.var2base.get(k, None)
-        if v is None:
-            return "none", list(), list()  # scalar
-        return v, list(self.declarations[v].indices), self.groups[v]
+    def get_tensor_type(self, item: str | Symbol) -> tuple[str, tuple[Idx, ...], tuple[str, ...]]:
+        var_name = str(item)
+        assert var_name in self.declarations.keys(), f"Not a defined symbol {item}"
+        base_name = self.var2base.get(var_name, None)
+        if base_name is None:
+            return "none", tuple(), tuple()  # scalar
+        return base_name, self.declarations[base_name].indices, tuple(self.groups[base_name])
 
     def create_function(self,
                         name: str,
@@ -1019,18 +1026,17 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
 
     def _decl_scalar(self, basename: str) -> Symbol:
         ret = mk_indexed_base(basename, tuple())
-        self.gfs[basename] = ret
-        self.declarations[basename] = RelativityDeclaration(indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
+        self.declarations[basename] = RelativitySymbolDeclaration(basename=basename, base=ret, indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
 
         base = ret.args[0]
         assert isinstance(base, Symbol)
         return base
 
     def get_state(self) -> OrderedSet[IndexedBase]:
-        return OrderedSet(self.gfs[k.replace("'", "")] for k in self.rhs)
+        return OrderedSet(self.declarations[k.replace("'", "")].base for k in self.rhs)
 
     def overwrite(self, sym: IndexedBase) -> IndexedBase:
-        if sym not in self.gfs.values() or str(sym) not in self.declarations:
+        if str(sym) not in self.declarations or self.declarations[str(sym)].base != sym:
             raise DslException(f"Cannot overwrite symbol {sym} which is not declared")
 
         orig_sym = sym if str(sym) not in self.overwrite_symbols else self.overwrite_symbols[str(sym)].resolves_to
@@ -1074,7 +1080,6 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
         :raises DslException: If symmetries or anti-symmetries are applied to a scalar variable.
         """
         indices_tup: tuple[Idx, ...] = tuple(indices)
-        self.declarations[basename] = RelativityDeclaration(indices=indices_tup, kwargs=kwargs)
 
         if (rhs := kwargs.get('rhs', None)) is not None:
             base_sym = rhs.args[0]
@@ -1091,8 +1096,8 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
         else:
             indexed_symbol = None
 
-        assert basename not in self.gfs
-        self.gfs[basename] = the_symbol
+        assert basename not in self.declarations
+        self.declarations[basename] = RelativitySymbolDeclaration(basename=basename, base=the_symbol, indices=indices_tup, kwargs=kwargs)
         self.centering[basename] = centering
         self.base2group[basename] = kwargs.get('group_name', basename)
 
@@ -1105,7 +1110,10 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
 
 
         if kwargs.get('declare_as_temp', False):
-            self.temp.add(basename)
+            pass
+            # self.temp.add(basename)
+            # todo: The `temp` data structure above was never used. Ought we replace this with something else,
+            #       or just remove `declare_as_temp`?
 
         if (parity := kwargs.get('parity', None)) is not None:
             self.base2parity[basename] = parity
@@ -1135,9 +1143,9 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
     def _add_symbol(self, the_symbol: Symbol, centering: Optional[Centering]) -> None:
         basename = str(the_symbol)
 
-        assert basename not in self.gfs
-        self.gfs[basename] = mk_indexed_base(basename, shape=())
-        self.declarations[basename] = RelativityDeclaration(indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
+        assert basename not in self.declarations
+        base = mk_indexed_base(basename, shape=())
+        self.declarations[basename] = RelativitySymbolDeclaration(basename=basename, base=base, indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
         self.centering[basename] = centering
         self.base2group[basename] = basename
 
@@ -1211,7 +1219,12 @@ class ThornDef(RelativityDslFrontend[CactusParam, CactusDeclOptionalArgs]):
                 sub_val = str(sub_val_)
                 out_str = str(indexed_sym.base)
                 assert isinstance(sub_val_, Symbol)
-                self.gfs[sub_val] = mk_indexed_base(sub_val, tuple())
+                self.declarations[sub_val] = RelativitySymbolDeclaration(
+                    basename=sub_val,
+                    base=mk_indexed_base(sub_val, tuple()),
+                    indices=tuple(),
+                    kwargs=cast(CactusDeclOptionalArgs, dict())
+                )
                 self.centering[sub_val] = self.centering[out_str]
                 self.var2base[sub_val] = out_str
                 if out_str not in self.groups:
@@ -1314,3 +1327,20 @@ def mk_mk_subst(s: str) -> str:
         next_sub = chr(ord(next_sub) + 1)
     new_s += s[pos:]
     return new_s
+
+
+class SourceAnnotations:
+    loops: dict[int, str]
+    eqns: dict[int, dict[Symbol, str]]
+
+    def __init__(self) -> None:
+        self.loops = defaultdict(str)
+        self.eqns = defaultdict(lambda: defaultdict(str))
+
+
+def _is_valid_c_identifier(s: str) -> bool:
+    """Check if a string is a valid C identifier."""
+    if not s:
+        return False
+    # C identifiers must start with a letter or underscore, followed by letters, digits, or underscores
+    return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', s))
