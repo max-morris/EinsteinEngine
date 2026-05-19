@@ -128,7 +128,7 @@ if __name__ == "__main__":
         n += 1
     #assert n == get_dimension() ** 2
 
-    a = gf.decl("a", [], declare_as_temp=True)
+    a = gf.decl("a", [])
     b = gf.decl("b", [])
     c = gf.decl("c", [])
     k = gf.decl("k", [la])
