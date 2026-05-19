@@ -250,43 +250,6 @@ def do_div(expr: Basic) -> Expr:
     return r
 
 
-# STEVE: Entanglement
-def to_div(out: Expr) -> Expr:
-    nm = "div"
-    for k in out.args[1:]:
-        assert isinstance(k, Idx)
-        nm += "xyz"[relativity_idx_to_int(k)]
-    div_nn = mk_function(nm)
-    arg = out.args[0]  # div(v, i, j) -> v
-    return cast(Expr, div_nn(arg))
-
-
-class ApplyDiv(Applier):
-    def __init__(self) -> None:
-        self.val: Optional[Expr] = None
-
-    def m(self, expr: Expr) -> bool:
-        # noinspection PyUnresolvedReferences
-        if expr.is_Function and hasattr(expr, "name") and expr.name == "div":
-            for arg in expr.args[1:]:
-                assert isinstance(arg, Idx)
-                # STEVE: Entanglement
-                if not is_numeric_relativity_index(arg):
-                    self.val = None
-                    return False
-            self.val = to_div(expr)
-            return True
-        else:
-            self.val = None
-            return False
-
-    def r(self, _expr: Basic) -> Optional[Expr]:
-        return self.val
-
-    def apply(self, arg: Basic) -> Basic:
-        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
-
-
 def mk_term(v: Basic, i: int, j: int, k: int) -> Any:
     """
     Create a stencil term for output. Note that

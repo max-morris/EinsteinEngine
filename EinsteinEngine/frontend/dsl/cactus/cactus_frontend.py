@@ -52,11 +52,8 @@ from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parit
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
 from EinsteinEngine.frontend.dsl.relativity.use_indices import do_isub, \
     to_num_tup, no_idx, dummy, zero, one, is_relativity_lower_idx, subst_tensor, BaseIndexedSubstFnType, MkSubstType
-from EinsteinEngine.frontend.dsl.finite_difference import ApplyDiv, DivMakerVisitor, ApplyDivN
-from EinsteinEngine.common.util import checked_cast
 from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
-from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, DX, DY, DZ, DXI, DYI, DZI
 from EinsteinEngine.intermediate.splitmaxxer import SplitMaxxer
 from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, vprint, OrderedSet, pprint, get_or_compute, verbose
@@ -64,7 +61,7 @@ from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprin
 from EinsteinEngine.frontend.dsl.relativity.relativity_dsl_frontend import RelativityDslFrontend, \
     RelativitySymbolDeclaration, RelativitySymbolDeclarationKwargs
 from EinsteinEngine.common.schedule_target import ScheduleTarget, safe_name
-from EinsteinEngine.frontend.dsl.dsl_frontend import SymbolDeclarationKwargs, OverwriteSymbolRecord
+from EinsteinEngine.frontend.dsl.dsl_frontend import OverwriteSymbolRecord
 
 TfName = typing.NewType("TfName", str)
 LocalElIdx = typing.NewType("LocalElIdx", int)
