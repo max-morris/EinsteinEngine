@@ -20,7 +20,6 @@ from sympy import IndexedBase, Basic, Expr, Indexed, Idx
 from typing import Dict, List, cast, Tuple
 
 
-
 class Sym(Applier):
     def __init__(self) -> None:
         self.sd: Dict[IndexedBase, List[Tuple[int, int, int]]] = dict()
@@ -77,7 +76,7 @@ class Sym(Applier):
             elif s1 == s2 and sgn < 0:
                 self.modified = True
                 return sympify(0)
-        ret : Expr
+        ret: Expr
         if retsgn == 1:
             ret = expr.base.__getitem__(tuple(args))
         else:
@@ -103,12 +102,12 @@ def test() -> None:
     sym.add(eps, 1, 2, -1)
     assert sym.apply(eps[u2, u1, u0]) == -eps[u0, u1, u2]
     assert sym.apply(eps[u0, u2, u1]) == -eps[u0, u1, u2]
-    assert sym.apply(eps[u0, u1, u2]) ==  eps[u0, u1, u2]
+    assert sym.apply(eps[u0, u1, u2]) == eps[u0, u1, u2]
     assert sym.apply(eps[u0, u1, u1]) == 0
     M = mk_indexed_base("M", shape=(3, 3))
     sym.add(M, 0, 1, -1)
-    assert sym.apply(M[u0,u1]) ==  M[u0,u1]
-    assert sym.apply(M[u1,u0]) == -M[u0,u1]
+    assert sym.apply(M[u0, u1]) == M[u0, u1]
+    assert sym.apply(M[u1, u0]) == -M[u0, u1]
 
 
 if __name__ == "__main__":
