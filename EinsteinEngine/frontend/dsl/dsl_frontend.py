@@ -56,9 +56,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationT: SymbolDeclaration[Any]](Fronte
 
     div_makers: dict[str, DivMakerVisitor]
     apply_div: Applier
-    funs1: dict[tuple[UFunc, Idx], Expr]  # Steve: help me understand what this does
-    funs2: dict[tuple[UFunc, Idx, Idx], Expr]  # Steve: help me understand what this does
-    fun_args: dict[str, int]  # Steve: help me understand what this does
+    unary_custom_stencils: dict[tuple[UFunc, Idx], Expr]
+    binary_custom_stencils: dict[tuple[UFunc, Idx, Idx], Expr]
+    ufunc_arities: dict[str, int]
 
     def __init__(self, *, dimensionality: int = 3, derivative_stencil_order: int = 5):
         super().__init__()
@@ -74,9 +74,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationT: SymbolDeclaration[Any]](Fronte
             mk_function("stencil"): True
         }
 
-        self.funs1 = dict()
-        self.funs2 = dict()
-        self.fun_args = dict()
+        self.unary_custom_stencils = dict()
+        self.binary_custom_stencils = dict()
+        self.ufunc_arities = dict()
         self._set_derivative_stencil(derivative_stencil_order)
 
         self.div_makers = dict()
@@ -101,7 +101,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationT: SymbolDeclaration[Any]](Fronte
     def _set_derivative_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
         assert n > 1, "n must be > 1"
-        self.apply_div = ApplyDivN(n, self.funs1, self.funs2, self.fun_args, self.dimensionality)
+        self.apply_div = ApplyDivN(n, self.unary_custom_stencils, self.binary_custom_stencils, self.ufunc_arities, self.dimensionality)
 
     def _mk_param_set(self) -> Set[Symbol]:
         ret: Set[Symbol] = set()

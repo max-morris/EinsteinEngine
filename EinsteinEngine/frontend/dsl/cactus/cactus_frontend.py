@@ -212,34 +212,12 @@ class ThornFunction:
                 self._eqn_list.add_param(item)
         divs = self.thorn_def.apply_div
 
-        class FindBad:
-            def __init__(self, outer: ThornFunction) -> None:
-                self.outer = outer.thorn_def
-                self.msg: Optional[str] = None
-
-            def m(self, expr: Expr) -> bool:
-                if isinstance(expr, Idx):
-                    self.msg = f"Index passed to add_eqn: '{expr}'"
-                elif type(expr) == Indexed:
-                    if len(expr.args) != 1:
-                        mms = mk_mk_subst(str(expr))
-                        self.msg = f"'{expr}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?"
-                return False
-
-            def r(self, expr: Expr) -> Expr:
-                return expr
-
         rhs2_: Basic = do_isub(rhs2)
         assert isinstance(rhs2_, Expr)
         rhs2_ = divs.apply(rhs2_)
         assert isinstance(rhs2_, Expr)
         rhs2 = rhs2_
-        fb = FindBad(self)
-        do_replace(rhs2, fb.m, fb.r)
-        if fb.msg is not None:
-            print(self.thorn_def.subs)
-            raise Exception(fb.msg)
-        assert not lhs2.is_Number, f"The left hand side of an equation can't be a number: '{lhs2}'"
+
         self._eqn_list.add_eqn(lhs2, rhs2)
         vprint(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
 
@@ -1016,7 +994,7 @@ class ThornDef(RelativityDslFrontend[CactusParam, RelativitySymbolDeclaration[Ca
 
     def decl_fun(self, fn_name: str, args: int = 1, is_stencil: bool = False) -> UFunc:
         fun = mk_function(fn_name)
-        self.fun_args[fn_name] = args
+        self.ufunc_arities[fn_name] = args
         self.is_stencil[fun] = is_stencil
 
         return fun

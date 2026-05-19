@@ -273,14 +273,14 @@ class ApplyDivN(Applier):
     Use NRPy to calculate the stencil coefficients.
     """
 
-    def __init__(self, n: int, funs1: Dict[Tuple[UFunc, Idx], Expr], funs2: Dict[Tuple[UFunc, Idx, Idx], Expr],
-                 fun_args: Dict[str, int], dimensionality: int) -> None:
+    def __init__(self, n: int, unary_custom_stencils: Dict[Tuple[UFunc, Idx], Expr], binary_custom_stencils: Dict[Tuple[UFunc, Idx, Idx], Expr],
+                 ufunc_arities: Dict[str, int], dimensionality: int) -> None:
         self.val: Optional[Expr] = None
         self.n = n
         self.fd_matrix = setup_FD_matrix__return_inverse_lowlevel(n, 0)
-        self.funs1 = funs1
-        self.funs2 = funs2
-        self.fun_args = fun_args
+        self.unary_custom_stencils = unary_custom_stencils
+        self.binary_custom_stencils = binary_custom_stencils
+        self.ufunc_arities = ufunc_arities
         self.dimensionality = dimensionality
 
     def is_user_func(self, f: Expr) -> Optional[Expr]:
@@ -288,8 +288,8 @@ class ApplyDivN(Applier):
         if not f.is_Function or not isinstance(f_func, UFunc):
             return None
         # noinspection PyUnresolvedReferences
-        if hasattr(f, "name") and f.name in self.fun_args:
-            nargs = self.fun_args[f.name]
+        if hasattr(f, "name") and f.name in self.ufunc_arities:
+            nargs = self.ufunc_arities[f.name]
             if len(f.args) != nargs:
                 raise DslException(
                     f"function {f.name} called with wrong number of args. Expected {nargs}, got {len(f.args)}. Expr: {f}")
@@ -298,7 +298,7 @@ class ApplyDivN(Applier):
             _, arg1 = f.args
             if not isinstance(arg1, Idx):
                 raise DslException(f"Expected an index argument but found {type(arg1)} in call {f}")
-            return self.funs1.get((f_func, arg1), None)
+            return self.unary_custom_stencils.get((f_func, arg1), None)
         elif len(f.args) == 3:
             _, arg1, arg2 = f.args
 
@@ -308,10 +308,10 @@ class ApplyDivN(Applier):
                 raise DslException(f"Expected an index argument but found {type(arg2)} in second argument in call {f}")
 
             if arg1 == arg2:
-                return self.funs1.get((f_func, arg1), None)
+                return self.unary_custom_stencils.get((f_func, arg1), None)
             else:
                 # noinspection PyTypeChecker
-                return self.funs2.get((f_func, arg1, arg2), None)
+                return self.binary_custom_stencils.get((f_func, arg1, arg2), None)
         return None
 
     def m(self, expr: Expr) -> bool:

@@ -15,15 +15,24 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Never
+
+import sympy
 from multimethod import multimethod
-from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow
+from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow, Idx, Indexed
 
 from EinsteinEngine.common.sympywrap import *
+from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
 
 
 @multimethod
 def symbify(a: Number) -> Expr:
     return a
+
+
+@symbify.register
+def _(a: Idx | Indexed) -> Never:
+    raise IntermediateException(f"Expression {a} (type {type(a)}) should not be present while calling symbify()")
 
 
 @symbify.register
@@ -33,8 +42,13 @@ def _(a: NumberSymbol) -> Expr:
 
 @symbify.register
 def _(a: IndexedBase) -> Symbol:
-    r = a.args[0]
-    assert isinstance(r, Symbol)
+    if not isinstance(r := a.args[0], Symbol):
+        raise IntermediateException(f"Expected a Symbol, got {r} (type {type(r)})")
+    if len(a.args) == 2:
+        if not isinstance(a.args[1], tuple) and not isinstance(a.args[1], sympy.core.containers.Tuple):
+            raise IntermediateException(f"Expected a tuple as the second argument of IndexedBase, got {a.args[1]} (type {type(a.args[1])})")
+    if len(a.args) > 2:
+        raise IntermediateException(f"Expected at most 2 arguments for IndexedBase, got {len(a.args)}")
     return r
 
 
