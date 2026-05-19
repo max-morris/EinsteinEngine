@@ -152,20 +152,22 @@ class RelativityDslFrontend[ParamDataT, SymbolDeclarationT: RelativitySymbolDecl
         return r
 
     def _do_subs(self, arg: Expr, idx_subs: Optional[dict[Idx, Idx]] = None) -> Expr:
-        isub = IndexSubsVisitor(self.subs)
+        isub = IndexSubsVisitor(self.subs, idx_subs)
         arg1 = arg
-        for i in range(20):
+
+        max_iter = 100
+        for i in range(max_iter):
             new_arg = arg1
             new_arg = self.einstein_notation.expand_contracted_indices(new_arg, self.symmetries)
             new_arg = cast(Expr, self.symmetries.apply(new_arg))
 
-            isub.idx_subs = idx_subs if idx_subs is not None else dict()
             new_arg = isub.visit(new_arg)
             new_arg = self._do_div(new_arg)
             if new_arg == arg1:
                 return new_arg
             arg1 = new_arg
-        raise Exception(arg)
+
+        raise DslException(f"Failed to exhaustively substitute {arg} after {max_iter} iterations.")
 
     @multimethod
     def mk_stencil(self, func_name: str, idx: Idx, expr: Expr) -> UFunc:
@@ -286,7 +288,7 @@ class RelativityDslFrontend[ParamDataT, SymbolDeclarationT: RelativitySymbolDecl
                 else:
                     idx0 = mk_idx(f'u{i}')
                 result = mk_sten({idx: idx0}, expr)
-                self.funs1[(func, idx0)] = result
+                self.unary_custom_stencils[(func, idx0)] = result
         elif len(idx_list) == 2:
             idx1 = idx_list[0]
             idx2 = idx_list[1]
@@ -305,6 +307,6 @@ class RelativityDslFrontend[ParamDataT, SymbolDeclarationT: RelativitySymbolDecl
                     else:
                         idx20 = mk_idx(f'u{j}')
                     result = mk_sten({idx1: idx10, idx2: idx20}, expr)
-                    self.funs2[(func, idx10, idx20)] = result
+                    self.binary_custom_stencils[(func, idx10, idx20)] = result
 
         return func

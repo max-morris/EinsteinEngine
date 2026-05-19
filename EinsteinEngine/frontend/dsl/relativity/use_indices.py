@@ -515,9 +515,9 @@ class IndexContractionVisitor:
 
 
 class IndexSubsVisitor:
-    def __init__(self, defn: Dict[Indexed | IndexedBase, Expr]) -> None:
-        self.defn = defn
-        self.idx_subs: Dict[Idx, Idx] = dict()
+    def __init__(self, defn: Optional[dict[Indexed | IndexedBase, Expr]] = None, idx_subs: Optional[dict[Idx, Idx]] = None) -> None:
+        self.defn = defn if defn is not None else dict()
+        self.idx_subs = idx_subs if idx_subs is not None else dict()
 
     @multimethod
     def visit(self, expr: sy.Expr) -> Expr:
@@ -618,12 +618,7 @@ class IndexSubsVisitor:
 
 def do_isub(expr: Expr, subs: Optional[Dict[Indexed | IndexedBase, Expr]] = None,
             idx_subs: Optional[Dict[Idx, Idx]] = None) -> Expr:
-    if subs is None:
-        subs = dict()
-    if idx_subs is None:
-        idx_subs = dict()
-    isub = IndexSubsVisitor(subs)
-    isub.idx_subs = idx_subs
+    isub = IndexSubsVisitor(subs, idx_subs)
     # FIXME Why is this cast needed?
     return cast(Expr, isub.visit(expr))
 
