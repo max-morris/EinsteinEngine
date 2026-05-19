@@ -25,7 +25,7 @@ from typing import Optional, cast, NamedTuple, TypedDict, Unpack, Iterable, Any
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from multimethod import multimethod
 
-from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor, ApplyDiv, ApplyDivN
+from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor
 from EinsteinEngine.frontend.dsl.relativity.use_indices import is_relativity_lower_idx, relativity_idx_to_int
 from EinsteinEngine.common.util import checked_cast
 from sympy import Idx, Expr, Indexed, IndexedBase, Function, Basic, Matrix, Symbol
