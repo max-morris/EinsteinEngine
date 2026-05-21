@@ -34,7 +34,7 @@ from EinsteinEngine.intermediate.eqnlist import EqnList
 class AddEqnManager:
     def __init__(
             self,
-            frontend: DslFrontend[Any, Any],
+            frontend: DslFrontend[Any, Any, Any],
             eqn_list_getter: Callable[[], EqnList],
             is_baked: Callable[[], bool],
             *,

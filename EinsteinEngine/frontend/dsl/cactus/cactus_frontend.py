@@ -20,37 +20,23 @@ import typing
 from collections import defaultdict
 from enum import auto
 from itertools import chain
-from typing import Collection, TypedDict, Optional, OrderedDict, cast, List, Unpack, Set, Union, Dict, Iterator, \
-    NamedTuple, Iterable, Any
+from typing import Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq, Matrix
-
-import EinsteinEngine.common.util as util
-from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
+from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
-    cse, free_symbols, mk_eq, mk_indexed_base, mk_symbol
+    free_symbols, mk_eq, mk_indexed_base, mk_symbol
 )
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
 from EinsteinEngine.emit.tree import Centering, Identifier
 from EinsteinEngine.frontend.dsl.use_indices import subst_tensor_xyz
-from EinsteinEngine.frontend.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
-from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
 from EinsteinEngine.intermediate.temp_kind import TempKind
-from EinsteinEngine.intermediate.temporary_promotion_predicate import (
-    OnePassTemporaryPromotionStrategy, TemporaryPromotionPredicate, TemporaryPromotionStrategy,
-    TwoPassTemporaryPromotionStrategy, promote_all, promote_none
-)
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
 from EinsteinEngine.frontend.dsl.use_indices import do_isub, subst_tensor
-from EinsteinEngine.frontend.util import cse_isolate
-from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
-from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList
-from EinsteinEngine.intermediate.splitmaxxer import SplitMaxxer
-from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, vprint, OrderedSet, pprint, get_or_compute, verbose
+from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, OrderedSet, pprint
 
 from EinsteinEngine.common.schedule_target import ScheduleTarget, safe_name
 from EinsteinEngine.frontend.dsl.dsl_frontend import (
@@ -59,7 +45,7 @@ from EinsteinEngine.frontend.dsl.dsl_frontend import (
     SymbolDeclaration,
     SymbolDeclarationKwargs,
 )
-from EinsteinEngine.frontend.dsl.add_eqn_manager import AddEqnManager
+from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
 from EinsteinEngine.frontend.dsl.dsl_frontend import mk_mk_subst
 
 TfName = typing.NewType("TfName", str)
@@ -118,32 +104,15 @@ class ScheduleBin(ScheduleBinEnum):
         return ret
 
 
-class ThornFunctionBakeOptions(TypedDict, total=False):
-    do_madd: bool
-    do_recycle_temporaries: bool
-    splitmaxxing: bool
-    ordering_fn: EqnOrderingFn
-    soft_split_retainment_strategy: SoftSplitRetainmentStrategy
+class ThornFunctionBakeOptions(DslFunctionFrontendBakeOptions, total=False):
+    pass
 
 
-class ThornDefBakeOptions(DslFrontendBakeOptions, total=False):
-    # ThornDef opts
-    do_cse: bool
-    cse_optimization_level: CseOptimizationLevel
-    temporary_promotion_strategy: TemporaryPromotionStrategy
-
-    # ThornFunction default opts
-    do_madd: bool
-    do_recycle_temporaries: bool
-    splitmaxxing: bool
-    ordering_fn: EqnOrderingFn
-    soft_split_retainment_strategy: SoftSplitRetainmentStrategy
-
-    # Overrides for ThornFunction default opts
-    functions: dict[str, ThornFunctionBakeOptions]
+class ThornDefBakeOptions(DslFrontendBakeOptions[ThornFunctionBakeOptions], total=False):
+    pass
 
 
-class ThornFunction:
+class ThornFunction(DslFunctionFrontend["ThornDef"]):
     """
     Represents a function within a Cactus thorn. Important member functions include `add_eqn` for specifying
     the computations this function will perform, and `bake` for finalizing the function.
@@ -156,171 +125,25 @@ class ThornFunction:
                  schedule_before: Optional[Collection[str]],
                  schedule_after: Optional[Collection[str]],
                  intent_override: Optional[IntentOverride] = None) -> None:
-        self.schedule_target = schedule_target
-        self.name = name
         self.thorn_def = thorn_def
-        self.source_annotations: SourceAnnotations = SourceAnnotations()
-        self.source_annotations.loops[0] = f'{self.name} loop 0'
-
-        def set_eqn_annotation(loop_idx: int, key: Symbol, annotation: str) -> None:
-            self.source_annotations.eqns[loop_idx][key] = annotation
-
-        self.eqn_complex: EqnComplex = EqnComplex(thorn_def.is_stencil, intent_override, set_eqn_annotation)
-        self.been_baked: bool = False
-        self.been_late_baked: bool = False
+        self.schedule_target = schedule_target
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
-        self.intent_override = intent_override
-        self._add_eqn_manager = AddEqnManager(
-            thorn_def,
-            lambda: self._eqn_list,
-            lambda: self.been_baked,
-            owner_name="ThornFunction"
-        )
+        super().__init__(name, thorn_def, intent_override, owner_name="ThornFunction")
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
 
-    def needs_merge(self) -> bool:
-        return self.eqn_complex.needs_merge()
-
-    def merge_soft_splits(self, soft_split_retainment_strategy: SoftSplitRetainmentStrategy) -> None:
-        _, inv_subst = self.eqn_complex.merge_soft_splits(soft_split_retainment_strategy)
-
-        for mangled_sym, sym in inv_subst.items():
-            if (c := self.thorn_def.centering.get(str(sym))) is not None:
+    def _on_soft_split_symbol_merged(self, mangled_sym: Symbol, sym: Symbol) -> None:
+        if (c := self.thorn_def.centering.get(str(sym))) is not None:
+            self.thorn_def.centering[str(mangled_sym)] = c
+        elif (sym_base := self.thorn_def.var2base.get(str(sym))) is not None:
+            if (c := self.thorn_def.centering.get(sym_base)) is not None:
                 self.thorn_def.centering[str(mangled_sym)] = c
-            elif (sym_base := self.thorn_def.var2base.get(str(sym))) is not None:
-                if (c := self.thorn_def.centering.get(sym_base)) is not None:
-                    self.thorn_def.centering[str(mangled_sym)] = c
-
-        for el_idx in range(len(self.eqn_complex.eqn_lists)):
-            self.source_annotations.loops[el_idx] = f'{self.name} loop {el_idx}'
-
-    @property
-    def _eqn_list(self) -> EqnList:
-        return self.eqn_complex.get_active_eqn_list()
-
-    def _base_add_eqn(self, lhs2: Symbol, rhs2: Expr) -> None:
-        self._add_eqn_manager._base_add_eqn(lhs2, rhs2)
-
-    def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
-        return self.thorn_def.get_free_indices(expr)
-
-    def split_loop(self, annotation: Optional[str] = None) -> None:
-        if self.been_baked:
-            raise DslException("Cannot split loop because the EqnComplex has already been baked.")
-
-        loop_idx = len(self.eqn_complex.eqn_lists)
-        if annotation is None:
-            annotation = f'{self.name} loop {loop_idx}'
-
-        if annotation.strip() != '':
-            self.source_annotations.loops[loop_idx] = annotation
-
-        self.eqn_complex._new_eqn_list()
-
-    def soft_split(self, retainment_strategy: Optional[SoftSplitRetainmentStrategy] = None, annotation: Optional[str] = None) -> None:
-        if self.been_baked:
-            raise DslException("Cannot split loop because the EqnComplex has already been baked.")
-
-        loop_idx = len(self.eqn_complex.eqn_lists)
-        if annotation is None:
-            annotation = f'{self.name} loop {loop_idx} (soft split)'
-
-        if annotation.strip() != '':
-            self.source_annotations.loops[loop_idx] = annotation
-
-        self.eqn_complex._new_eqn_list(True, soft_split_retainment_strategy=retainment_strategy)
-
-    def _do_splitmaxxing(self) -> None:
-        assert self.been_baked, "Cannot perform splitmaxxing because the EqnComplex has not been baked."
-        assert not self.been_late_baked, "Cannot perform splitmaxxing because the EqnComplex has already been late-baked."
-
-        for loop_idx, eqn_list in enumerate(self.eqn_complex.eqn_lists):
-            new_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
-            modify_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
-
-            for lhs, rhs in eqn_list.eqns.items():
-                splitmaxxer = SplitMaxxer(f'{self.name}_loop{loop_idx}_{str(lhs).replace("'", "_prime_")}')
-                modify_eqns[lhs] = splitmaxxer.visit(rhs, top=True)
-                new_eqns.update(splitmaxxer.new_eqns)
-
-            for lhs, rhs in modify_eqns.items():
-                eqn_list.eqns[lhs] = rhs
-
-            for lhs, rhs in new_eqns.items():
-                eqn_list.add_eqn(lhs, rhs)
-
-            pprint(f'Rebaking {self.name} loop {loop_idx} after do_splitmaxxing...')
-            eqn_list.bake(force_rebake=True)
-
-            if util.verbose():
-                eqn_list.dump()
-
-    def add_eqn(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
-        self._add_eqn_manager.add_eqn(lhs, rhs)
-
-    def madd(self) -> None:
-        self.eqn_complex.do_madd()
-
-    def cse(self) -> None:
-        self.eqn_complex.do_cse()
-
-    def dump(self) -> None:
-        self.eqn_complex.dump()
-
-    def eqn_bake(self, ordering_fn: EqnOrderingFn) -> None:
-        for eqn_list in self.eqn_complex.eqn_lists:
-            eqn_list.ordering_fn = ordering_fn
-
-        self.eqn_complex.bake()
-
-    def recycle_temporaries(self) -> None:
-        pprint(f"Recycling temporaries for {self.name}...")
-        self.eqn_complex.recycle_temporaries()
 
     @staticmethod
     def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
-        return {
-            'do_madd': False,
-            'do_recycle_temporaries': True,
-            'splitmaxxing': False,
-            'ordering_fn': maximize_symbol_reuse,
-            'soft_split_retainment_strategy': retain_none()
-        }
-
-    def _early_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
-        if self.been_baked:
-            raise DslException("_early_bake should not be called more than once")
-        pprint(f"Early Baking {self.name}...")
-
-        options = self._mk_default_thorn_function_bake_options()
-        options.update(kwargs)
-
-        # Doing a first pass of complexity analysis for CSE
-        for eqn_list in self.eqn_complex.eqn_lists:
-            eqn_list._run_preliminary_complexity_analysis()
-
-        if options['do_madd']:
-            self.madd()
-
-        self.eqn_bake(options['ordering_fn'])
-
-        self.been_baked = True
-
-    def _late_bake(self, **kwargs: Unpack[ThornFunctionBakeOptions]) -> None:
-        if self.been_late_baked:
-            raise DslException("_late_bake should not be called more than once")
-        pprint(f"Late Baking {self.name}...")
-
-        options = self._mk_default_thorn_function_bake_options()
-        options.update(kwargs)
-
-        if options['do_recycle_temporaries']:
-            self.recycle_temporaries()
-
-        self.been_late_baked = True
+        return DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options()
 
     def show_tensor_types(self) -> None:
         keys: Set[str] = OrderedSet()
@@ -337,7 +160,7 @@ class ThornFunction:
         return self.thorn_def.get_tensor_type(item)
 
 
-class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
+class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
     """
     Represents a Cactus thorn. A ThornDef object contains everything EinsteinEngine knows about a thorn over the course
     of evaluating a recipe. It is also an important interface for declaring variables, adding new thorn functions,
@@ -388,19 +211,10 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
         self.base2group: Dict[str, str] = dict()
         self.groups: Dict[str, List[str]] = dict()
         self.centering: Dict[str, Optional[Centering]] = dict()
-        self.thorn_functions: Dict[str, ThornFunction] = dict()
         self.rhs: Dict[str, Symbol] = dict()
         self.base2thorn: Dict[str, str] = dict()
         self.base2parity: Dict[str, TensorParity] = dict()
-        self.tile_temporaries: OrderedSet[Symbol] = OrderedSet()
-        self.global_temporaries: OrderedSet[Symbol] = OrderedSet()
         self.synthetic_fns: dict[ScheduleTarget, set[ThornFunction]] = defaultdict(set)
-
-    def _grid_variables(self) -> set[Symbol]:
-        gv: set[Symbol] = set()
-        for tf in self.thorn_functions.values():
-            gv |= tf.eqn_complex._grid_variables()
-        return gv
 
     def get_centering_from_var_name(self, var_name: str) -> Optional[Centering]:
         var_centering: Optional[Centering]
@@ -431,16 +245,8 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
 
     @staticmethod
     def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
-        opts: ThornDefBakeOptions = {
-            'do_cse': True,
-            'cse_optimization_level': CseOptimizationLevel.Optimal,
-            'temporary_promotion_strategy': promote_none(),
-            'ordering_fn': maximize_symbol_reuse,
-            'functions': dict()
-        }
-
+        opts: ThornDefBakeOptions = DslFrontend._mk_default_dsl_frontend_bake_options()
         opts.update(ThornFunction._mk_default_thorn_function_bake_options())  # type: ignore[typeddict-item]
-
         return opts
 
 
@@ -449,13 +255,13 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
         my_opts.update(opts)
         my_tf_opts: dict[str, ThornFunctionBakeOptions] = dict()
 
-        for tf in self.thorn_functions.values():
+        for tf in self.functions.values():
             tf_opts = typing.cast(ThornFunctionBakeOptions, my_opts.copy())  # ThornFunctionBakeOptions is a strict subset of ThornDefBakeOptions
             if 'functions' in my_opts and tf.name in my_opts['functions']:
                 tf_opts.update(my_opts['functions'][tf.name])
             my_tf_opts[tf.name] = tf_opts
 
-        for tf in self.thorn_functions.values():
+        for tf in self.functions.values():
             assert tf.name in my_tf_opts, f"Thorn function '{tf.name}' not found in my_tf_opts"
             tf._early_bake(**my_tf_opts[tf.name])
 
@@ -463,12 +269,12 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
             pprint("Performing CSE...")
             self._do_global_cse(my_opts['temporary_promotion_strategy'], my_opts['cse_optimization_level'])
 
-        for tf in self.thorn_functions.values():
+        for tf in self.functions.values():
             if tf.needs_merge():
                 pprint(f"Merging soft splits in {tf.name}...")
                 tf.merge_soft_splits(my_tf_opts[tf.name]['soft_split_retainment_strategy'])
 
-        for tf in self.thorn_functions.values():
+        for tf in self.functions.values():
             if tf.name not in my_tf_opts:  # Must be a synthetic function
                 tf._late_bake()
             else:
@@ -477,149 +283,14 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
                 tf._late_bake(**my_tf_opts[tf.name])
 
 
-    def _do_global_cse(
+    def _global_cse_pre_materialization(
             self,
-            promotion_strategy: TemporaryPromotionStrategy = promote_all(),
-            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+            substitutions: dict[Symbol, Expr],
+            new_temp_dependencies: dict[Symbol, set[Symbol]],
+            temp_kinds: dict[Symbol, TempKind]
     ) -> None:
-        for tf in self.thorn_functions.values():
-            if tf.been_late_baked:
-                raise DslException(f"Cannot do_global_cse on ThornFunction {self} because it has already undergone late baking.")
-
-        grid_vars = self._grid_variables()
-
-        tf_names: list[TfName] = sorted([TfName(name) for name in self.thorn_functions.keys()])
-        old_tf_shapes: OrderedDict[TfName, list[int]] = OrderedDict()
-        old_tf_lhses: OrderedDict[TfName, list[list[Symbol]]] = OrderedDict()
-        old_tf_rhses: OrderedDict[TfName, list[list[Expr]]] = OrderedDict()
-
-        for tf_name in tf_names:
-            old_tf_shapes[tf_name] = list()
-            old_tf_lhses[tf_name] = list()
-            old_tf_rhses[tf_name] = list()
-
-        for tf_name, tf in sorted([(TfName(name), tf) for name, tf in self.thorn_functions.items()], key=lambda kv: tf_names.index(kv[0])):
-            for eqn_list in tf.eqn_complex.eqn_lists:
-                old_tf_shapes[tf_name].append(len(eqn_list.eqns))
-                old_tf_lhses[tf_name].append(list())
-                old_tf_rhses[tf_name].append(list())
-                for lhs, rhs in sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])):
-                    old_tf_lhses[tf_name][-1].append(lhs)
-                    old_tf_rhses[tf_name][-1].append(rhs)
-
-        substitutions_list: list[tuple[Symbol, Expr]]
-        new_rhses: list[Expr]
-
-        if optimization_level is CseOptimizationLevel.Optimal:
-            substitutions_list, new_rhses = cse_isolate(
-                list(chain(*chain(*old_tf_rhses.values()))),
-                symbols_to_isolate=grid_vars
-            )
-        elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
-        else:
-            raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
-
-        substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
-        substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
-
-        new_temp_direct_reads: dict[Symbol, dict[TfName, set[LocalElIdx]]] = {sym: dict() for sym in substitutions.keys()}
-        new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
-        new_temp_dependents: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
-
-        temp_rhs_occurrences: dict[Symbol, int] = defaultdict(int)
-        for rhs in new_rhses:
-            for temp in free_symbols(rhs).intersection(substitutions.keys()):
-                temp_rhs_occurrences[temp] += 1
-
-        for rhs in substitutions.values():
-            for temp in free_symbols(rhs).intersection(substitutions.keys()):
-                temp_rhs_occurrences[temp] += 1
-
-        global_eqn_idx = 0
-        for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
-            tf_name = TfName(tf.name)
-
-            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
-                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
-                el_new_free_symbols: set[Symbol] = set(chain(*[free_symbols(rhs) for rhs in new_rhses[global_eqn_idx:global_eqn_idx + el_shape]]))
-                new_temps = el_new_free_symbols.intersection(substitutions.keys())
-
-                for new_temp, temp_rhs in [(new_temp, substitutions[new_temp]) for new_temp in new_temps]:
-                    assert new_temp not in eqn_list.inputs
-                    assert new_temp not in eqn_list.params
-                    assert new_temp not in eqn_list.outputs
-                    assert new_temp not in eqn_list.eqns
-
-                    get_or_compute(new_temp_direct_reads[new_temp], tf_name, lambda _: set()).add(LocalElIdx(el_idx))
-
-                    # Temps might be substituted for expressions which contain other temps.
-                    # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
-                    def drill(lhs: Symbol, rhs: Expr) -> None:
-                        temp_dependencies = free_symbols(rhs).intersection(substitutions.keys())
-                        assert lhs not in temp_dependencies
-                        for td in temp_dependencies:
-                            new_temp_dependencies[lhs].add(td)
-                            new_temp_dependents[td].add(lhs)
-                            drill(td, substitutions[td])
-
-                    drill(new_temp, temp_rhs)
-
-                global_eqn_idx += el_shape
-
-        tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
-
-        for new_temp, new_rhs in substitutions.items():
-            tf_names_reading_direct = set(new_temp_direct_reads[new_temp].keys())
-
-            for tf_name in tf_names_reading_direct:
-                els_reading_direct = new_temp_direct_reads[new_temp].get(tf_name, set())
-                tfs_reading_direct[new_temp][self.thorn_functions[tf_name]] = els_reading_direct
-
-        complexities: dict[Symbol, int] = dict()
-        for tf in self.thorn_functions.values():
-            for eqn_list in tf.eqn_complex.eqn_lists:
-                complexities.update(eqn_list.complexity)
-
-        complexity_visitor = SympyComplexityVisitor(
-            lambda s: s in grid_vars
-        )
-        for new_temp, new_rhs in substitutions.items():
-            complexities[new_temp] = complexity_visitor.complexity(new_rhs)
-
-        promotion_predicate: TemporaryPromotionPredicate
-        two_pass: bool
-        if isinstance(promotion_strategy, OnePassTemporaryPromotionStrategy):
-            promotion_predicate = promotion_strategy(complexities)
-            two_pass = False
-        elif isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy):
-            # noinspection PyUnnecessaryCast
-            promotion_predicate = cast(OnePassTemporaryPromotionStrategy, promote_all())(complexities)
-            two_pass = True
-        else:
-            raise DslException(f"Not a valid promotion strategy: {promotion_strategy}")
-
-        temp_kinds, tfs_active_reads, synthetic_global_dependents = self._classify_temps(
-            new_temp_dependents,
-            promotion_predicate,
-            substitutions,
-            tfs_reading_direct,
-            substitutions_order
-        )
-
-        if two_pass:
-            assert isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy)
-            promotion_predicate = promotion_strategy(complexities, temp_kinds)
-
-            temp_kinds, tfs_active_reads, synthetic_global_dependents = self._classify_temps(
-                new_temp_dependents,
-                promotion_predicate,
-                substitutions,
-                tfs_reading_direct,
-                substitutions_order
-            )
-
         checked_deps: set[Symbol] = set()
+
         def compute_centerings(temp: Symbol) -> None:
             if temp in checked_deps:
                 return
@@ -636,8 +307,6 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
             }
 
             if len(centerings) == 0:
-                #raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings")
-                #todo: Cases where a temp has no grid functions in its RHS might require us to check its dependents
                 wprint(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings. Defaulting to VVV.")
                 centerings = {Centering.VVV}
             elif len(centerings) > 1:
@@ -649,79 +318,33 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
         for new_temp in substitutions.keys():
             compute_centerings(new_temp)
 
+    def _global_cse_handle_global_temps(
+            self,
+            substitutions: dict[Symbol, Expr],
+            temp_kinds: dict[Symbol, TempKind],
+            tfs_active_reads: dict[Symbol, dict[ThornFunction, set[int]]],
+            new_temp_dependencies: dict[Symbol, set[Symbol]]
+    ) -> None:
         schedule_blocks: dict[Identifier, ScheduleBlock] = dict()
         schedule_bin_targets: dict[Symbol, dict[ScheduleBin, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
         schedule_block_targets: dict[Symbol, dict[Identifier, set[ThornFunction]]] = defaultdict(lambda: defaultdict(set))
 
         for new_temp in substitutions.keys():
-            vprint(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
-
-        inline_temps: list[tuple[Symbol, Expr]] = list()
-        for new_temp, new_rhs in sorted(substitutions.items(),
-                                        key=lambda kv: substitutions_order[kv[0]],
-                                        reverse=True):
-            if temp_kinds.get(new_temp, None) == TempKind.Inline:
-                inline_temps.append((new_temp, new_rhs))
-
-        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]  # type: ignore[no-untyped-call]
-
-        for lhs in substitutions.keys():
-            substitutions[lhs] = substitutions[lhs].subs(inline_temps)  # type: ignore[no-untyped-call]
-
-        for temp, _ in inline_temps:
-            del substitutions[temp]
-
-        global_eqn_idx = 0
-        for tf_index, tf in enumerate(sorted(self.thorn_functions.values(), key=lambda tf: tf_names.index(TfName(tf.name)))):
-            tf_name = TfName(tf.name)
-            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
-                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
-
-                for lhs in old_tf_lhses[tf_name][el_idx]:
-                    assert lhs in eqn_list.eqns
-                    eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
-                    global_eqn_idx += 1
-
-
-        for new_temp, new_rhs in substitutions.items():
-            if new_temp not in temp_kinds or temp_kinds[new_temp] == TempKind.Inline:
+            if temp_kinds.get(new_temp, None) != TempKind.Global:
                 continue
-            elif temp_kinds[new_temp] == TempKind.Local:
-                for tf, els_reading in tfs_active_reads[new_temp].items():
-                    ec = tf.eqn_complex
 
-                    for el in (ec.eqn_lists[el_idx] for el_idx in els_reading):
-                        el.add_eqn(new_temp, substitutions[new_temp])
-                        el.temporaries.add(new_temp)
-            elif temp_kinds[new_temp] == TempKind.Tile:
-                self.tile_temporaries.add(new_temp)
+            self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
+            self.global_temporaries.add(new_temp)
 
-                for tf, els_reading in tfs_active_reads[new_temp].items():
-                    ec = tf.eqn_complex
-                    primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
-
-                    if len(els_reading) == 1:
-                        primary_el.add_eqn(new_temp, substitutions[new_temp])
-                        primary_el.temporaries.add(new_temp)
-                    else:
-                        primary_el.add_eqn(new_temp, substitutions[new_temp])
-                        ec._tile_temporaries.add(new_temp)
-                        primary_el.uninitialized_tile_temporaries.add(new_temp)
-                        for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
-                            eqn_list.preinitialized_tile_temporaries.add(new_temp)
-            else:  # TempKind.Global
-                self._add_symbol(new_temp, centering=self.centering[str(new_temp)])
-                self.global_temporaries.add(new_temp)
-
-                for tf in tfs_active_reads[new_temp]:
-                    if isinstance(tf.schedule_target, ScheduleBlock):
-                        name = tf.schedule_target.name
-                        if name in schedule_blocks:
-                            assert schedule_blocks[name] == tf.schedule_target
-                        schedule_blocks[name] = tf.schedule_target
-                        schedule_block_targets[new_temp][name].add(tf)
-                    else:
-                        schedule_bin_targets[new_temp][tf.schedule_target].add(tf)
+            for tf in tfs_active_reads[new_temp]:
+                if isinstance(tf.schedule_target, ScheduleBlock):
+                    name = tf.schedule_target.name
+                    if name in schedule_blocks:
+                        assert schedule_blocks[name] == tf.schedule_target
+                    schedule_blocks[name] = tf.schedule_target
+                    schedule_block_targets[new_temp][name].add(tf)
+                else:
+                    schedule_bin_targets[new_temp][tf.schedule_target].add(tf)
 
         # Rancid hack: In CarpetX, Evolve DOES NOT run on step 0, while Analysis DOES. This breaks global temps
         #  if they happen to be initialized in Evolve then read in Analysis. To get around this, we will use
@@ -731,6 +354,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
                 continue
 
             def post_init_hack(tmp: Symbol) -> None:
+                # todo: I don't remember why this code is commented out. Need to figure out whether to restore or remove this hack.
                 return
                 if temp_kinds.get(tmp, None) == TempKind.Global:
                     schedule_bin_targets[tmp][ScheduleBin.PostInit].update(set())  # Just touch the set so defaultdict initializes it
@@ -748,7 +372,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
                                 schedule_before: Collection[str],
                                 schedule_after: Collection[str]) -> ThornFunction:
                 synthetic_fn = self.create_function(
-                    f'synthetic_compute_{new_temp}_{safe_name(schedule_target)}',
+                    f"synthetic_compute_{new_temp}_{safe_name(schedule_target)}",
                     schedule_target,
                     schedule_before=schedule_before,
                     schedule_after=schedule_after
@@ -778,79 +402,19 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
 
             for bin in ScheduleBin._schedule_synthetic_fns(schedule_bin_targets[new_temp].keys()):
                 schedule_before_tfs = set(chain(*[schedule_bin_targets[new_temp][key] for key in schedule_bin_targets[new_temp].keys() if key.is_colocated(bin)]))
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(bin)}_group' for dep_bin in schedule_bin_targets[td].keys() if bin.is_colocated(dep_bin)] for td in find_all_global_deps(new_temp)])))
+                schedule_after = sorted(list(chain(*[[f"synthetic_compute_{td}_{safe_name(bin)}_group" for dep_bin in schedule_bin_targets[td].keys() if bin.is_colocated(dep_bin)] for td in find_all_global_deps(new_temp)])))
                 if bin is ScheduleBin.PostInit:
-                    schedule_after.append('ODESolvers_PostStep')  # Hack to ensure AMR and synchronization happen first
-                mk_synthetic_fn(bin, sorted([f'{tf.name}_group' for tf in schedule_before_tfs]), schedule_after)
+                    schedule_after.append("ODESolvers_PostStep")  # Hack to ensure AMR and synchronization happen first
+                mk_synthetic_fn(bin, sorted([f"{tf.name}_group" for tf in schedule_before_tfs]), schedule_after)
 
             if len(schedule_block_targets) > 0:
-                wprint(f'Global temporary {new_temp} is accessed in at least one custom schedule block,'
-                       f' on which EinsteinEngine cannot perform schedule analysis. The temporary will be recomputed for each'
-                       f' custom block, perhaps redundantly.')
+                wprint(f"Global temporary {new_temp} is accessed in at least one custom schedule block,"
+                       f" on which EinsteinEngine cannot perform schedule analysis. The temporary will be recomputed for each"
+                       f" custom block, perhaps redundantly.")
 
             for block, schedule_before_tfs in [(schedule_blocks[id], tfs) for id, tfs in schedule_block_targets[new_temp].items()]:
-                schedule_after = sorted(list(chain(*[[f'synthetic_compute_{td}_{safe_name(block)}_group' for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
-                mk_synthetic_fn(block, sorted([f'{tf.name}_group' for tf in schedule_before_tfs]), schedule_after)
-
-        for tf in self.thorn_functions.values():
-            for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
-                pprint(f'Rebaking {tf.name} loop {idx} after CSE...')
-
-                # If the tf needs a merge, set force_fast because another (slow) rebake will succeed CSE.
-                eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
-
-                if verbose():
-                    eqn_list.dump()
-
-    class _ClassifyTempsResult(NamedTuple):
-        temp_kinds: dict[Symbol, TempKind]
-        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]]
-        synthetic_global_dependents: dict[Symbol, set[Symbol]]
-
-
-    @staticmethod
-    def _classify_temps(
-            new_temp_dependents: dict[Symbol, set[Symbol]],
-            promotion_predicate: TemporaryPromotionPredicate,
-            substitutions: dict[Symbol, Expr],
-            tfs_reading_direct: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]],
-            substitutions_order: dict[Symbol, int]
-    ) -> _ClassifyTempsResult:
-        temp_kinds: dict[Symbol, TempKind] = dict()
-        tfs_active_reads: dict[Symbol, dict[ThornFunction, set[LocalElIdx]]] = defaultdict(lambda: dict())
-        synthetic_global_dependents: dict[Symbol, set[Symbol]] = defaultdict(set)
-
-        for new_temp, new_rhs in sorted(substitutions.items(),
-                                        key=lambda kv: substitutions_order[kv[0]],
-                                        reverse=True):
-            tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
-
-            for td in new_temp_dependents[new_temp]:
-                if temp_kinds.get(td, None) == TempKind.Global:
-                    synthetic_global_dependents[new_temp].add(td)
-                else:
-                    if len(synthetic_global_dependents[td]) > 0:
-                        synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
-                    for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
-                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
-
-            assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
-
-            if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
-                temp_kinds[new_temp] = TempKind.Global
-            elif len(synthetic_global_dependents[new_temp]) == 1:
-                temp_kinds[new_temp] = TempKind.Local
-            else:
-                assert len(tfs_active_reads[new_temp]) == 1
-                if len(list(tfs_active_reads[new_temp].values())[0]) > 1:
-                    temp_kinds[new_temp] = TempKind.Tile
-                else:
-                    temp_kinds[new_temp] = TempKind.Local
-
-            assert new_temp in temp_kinds
-            temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
-
-        return ThornDef._ClassifyTempsResult(temp_kinds, tfs_active_reads, synthetic_global_dependents)
+                schedule_after = sorted(list(chain(*[[f"synthetic_compute_{td}_{safe_name(block)}_group" for dep_block_name in schedule_block_targets[new_temp].keys() if block.name == dep_block_name] for td in new_temp_dependencies[new_temp] if temp_kinds.get(td, None) == TempKind.Global])))
+                mk_synthetic_fn(block, sorted([f"{tf.name}_group" for tf in schedule_before_tfs]), schedule_after)
 
     def get_tensor_type(self, item: str | Symbol) -> tuple[str, tuple[Idx, ...], tuple[str, ...]]:
         var_name = str(item)
@@ -868,7 +432,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs]):
                         schedule_after: Optional[Collection[str]] = None,
                         intent_override: Optional[IntentOverride] = None) -> ThornFunction:
         tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override)
-        self.thorn_functions[name] = tf
+        self.functions[name] = tf
         return tf
 
     def add_param(self, name: str, default: CactusParamDefaultType, desc: str, values: CactusParamValuesType = None) -> Symbol:
@@ -993,15 +557,6 @@ def parities(*args: Parity | int) -> TensorParity:
         parities.append(SingleIndexParity(*pars))
 
     return TensorParity(parities)
-
-
-class SourceAnnotations:
-    loops: dict[int, str]
-    eqns: dict[int, dict[Symbol, str]]
-
-    def __init__(self) -> None:
-        self.loops = defaultdict(str)
-        self.eqns = defaultdict(lambda: defaultdict(str))
 
 
 def _is_valid_c_identifier(s: str) -> bool:

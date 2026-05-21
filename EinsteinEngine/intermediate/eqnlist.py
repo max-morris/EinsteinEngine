@@ -27,12 +27,13 @@ from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTup
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sortedcontainers import SortedDict
+# noinspection PyUnusedImports
 from sympy import Basic, IndexedBase, Symbol, Integer, Expr
 
 from EinsteinEngine.intermediate.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.intermediate.dependencies import Dependencies
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.frontend.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
+from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
     prioritize_rare_symbols, respects_dependency_order
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
