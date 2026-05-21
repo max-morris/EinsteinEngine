@@ -18,13 +18,13 @@
 from typing import Literal
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Expr, IndexedBase, Symbol
+from sympy import IndexedBase, Symbol
 
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
 from EinsteinEngine.frontend.dsl.finite_difference import do_div
-from EinsteinEngine.frontend.dsl.relativity.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker
+from frontend.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker
 
 
 val = mk_symbol("val")

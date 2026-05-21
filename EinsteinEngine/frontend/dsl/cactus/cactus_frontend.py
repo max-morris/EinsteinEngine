@@ -16,30 +16,25 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
-import sys
 import typing
 from collections import defaultdict
 from enum import auto
 from itertools import chain
-from typing import Collection, TypedDict, Optional, OrderedDict, cast, List, Unpack, Set, Union, Tuple, Dict, Iterator, \
-    NamedTuple, Callable, Iterable, Any
+from typing import Collection, TypedDict, Optional, OrderedDict, cast, List, Unpack, Set, Union, Dict, Iterator, \
+    NamedTuple, Iterable, Any
 
-import sympy as sy
-from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Matrix, Integer, Eq
+from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq, Matrix
 
 import EinsteinEngine.common.util as util
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
-    Applier, Pow, UFunc, cse, do_replace, do_subs, free_symbols, mk_eq, mk_function, mk_idx, mk_idxes,
-    mk_indexed, mk_indexed_base, mk_symbol, mk_zeros
+    cse, free_symbols, mk_eq, mk_indexed_base, mk_symbol
 )
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
 from EinsteinEngine.emit.tree import Centering, Identifier
-from EinsteinEngine.frontend.definitions import D, DD, DDI, div, noop, stencil
-from EinsteinEngine.frontend.dsl.relativity.use_indices import relativity_idx_to_int, subst_tensor_xyz
+from EinsteinEngine.frontend.dsl.use_indices import subst_tensor_xyz
 from EinsteinEngine.frontend.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
 from EinsteinEngine.intermediate.temp_kind import TempKind
@@ -50,7 +45,7 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import (
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
-from EinsteinEngine.frontend.dsl.relativity.use_indices import do_isub, to_num_tup, subst_tensor
+from EinsteinEngine.frontend.dsl.use_indices import do_isub, subst_tensor
 from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList
@@ -64,6 +59,8 @@ from EinsteinEngine.frontend.dsl.dsl_frontend import (
     SymbolDeclaration,
     SymbolDeclarationKwargs,
 )
+from EinsteinEngine.frontend.dsl.add_eqn_manager import AddEqnManager
+from EinsteinEngine.frontend.dsl.dsl_frontend import mk_mk_subst
 
 TfName = typing.NewType("TfName", str)
 LocalElIdx = typing.NewType("LocalElIdx", int)
@@ -174,6 +171,12 @@ class ThornFunction:
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
         self.intent_override = intent_override
+        self._add_eqn_manager = AddEqnManager(
+            thorn_def,
+            lambda: self._eqn_list,
+            lambda: self.been_baked,
+            owner_name="ThornFunction"
+        )
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -199,29 +202,10 @@ class ThornFunction:
         return self.eqn_complex.get_active_eqn_list()
 
     def _base_add_eqn(self, lhs2: Symbol, rhs2: Expr) -> None:
-        """
-        The base case of add_eqn. Assumes the LHS has already been flattened.
-        """
-
-        rhs2 = self.thorn_def._do_subs(self.thorn_def.einstein_notation.expand_contracted_indices(rhs2, self.thorn_def.symmetries))
-        for item in free_symbols(rhs2):
-            if str(item) in self.thorn_def.params:
-                assert item.is_Symbol
-                self._eqn_list.add_param(item)
-        divs = self.thorn_def.apply_div
-
-        rhs2_: Basic = do_isub(rhs2)
-        assert isinstance(rhs2_, Expr)
-        rhs2_ = divs.apply(rhs2_)
-        assert isinstance(rhs2_, Expr)
-        rhs2 = rhs2_
-
-        self._eqn_list.add_eqn(lhs2, rhs2)
-        vprint(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
+        self._add_eqn_manager._base_add_eqn(lhs2, rhs2)
 
     def get_free_indices(self, expr: Expr) -> OrderedSet[Idx]:
-        it = self.thorn_def.einstein_notation.check_indices(expr, self.thorn_def.declarations)
-        return it.free
+        return self.thorn_def.get_free_indices(expr)
 
     def split_loop(self, annotation: Optional[str] = None) -> None:
         if self.been_baked:
@@ -274,88 +258,8 @@ class ThornFunction:
             if util.verbose():
                 eqn_list.dump()
 
-    @multimethod
-    def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
-        self.thorn_def.einstein_notation.check_indices(rhs, self.thorn_def.declarations)
-
-        if self.been_baked:
-            raise DslException("add_eqn should not be called on a baked ThornFunction")
-
-        lhs2: Symbol
-        if self.get_free_indices(lhs) != self.get_free_indices(rhs):
-            raise DslException(f"Free indices of '{lhs}' and '{rhs}' do not match.")
-        count = 0
-        for tup in self.thorn_def.einstein_notation.expand_free_indices(lhs, self.thorn_def.symmetries):
-            count += 1
-            lhs_x, idxs, _ = tup
-            lhs2_: Basic = do_isub(lhs_x, self.thorn_def.subs)
-            if not isinstance(lhs2_, Symbol):
-                mms = mk_mk_subst(repr(lhs2_))
-                raise Exception(f"'{lhs2_}' does not evaluate a Symbol. Did you forget to call mk_subst({mms},...)?")
-            lhs2 = lhs2_
-            rhs0 = rhs
-            rhs2 = self.thorn_def._do_subs(rhs0, idxs)
-            self._base_add_eqn(lhs2, rhs2)
-        if count == 0:
-            for ind in lhs.args[1:]:
-                assert isinstance(ind, Idx)
-                assert self.thorn_def.einstein_notation.is_numeric_index(ind)
-            lhs2 = cast(Symbol, self.thorn_def._do_subs(lhs))
-            rhs2 = self.thorn_def._do_subs(rhs)
-            self._base_add_eqn(lhs2, rhs2)
-
-    @add_eqn.register
-    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
-        if self.been_baked:
-            raise Exception("add_eqn should not be called on a baked ThornFunction")
-
-        lhs2 = cast(Symbol, self.thorn_def._do_subs(lhs))
-        eci = self.thorn_def.einstein_notation.expand_contracted_indices(rhs, self.thorn_def.symmetries)
-        rhs2 = do_isub(eci)
-        self._base_add_eqn(lhs2, rhs2)
-
-    @add_eqn.register
-    def _(self, lhs: Indexed, rhs: Matrix) -> None:
-
-        if self.been_baked:
-            raise DslException("add_eqn should not be called on a baked ThornFunction")
-
-        count = 0
-        for tup in self.thorn_def.einstein_notation.expand_free_indices(lhs, self.thorn_def.symmetries):
-            count += 1
-            lhs_x, idxs, _ = tup
-            lhs2_ = do_isub(lhs_x, self.thorn_def.subs)
-            lhs2 = lhs2_
-            arr_idxs = to_num_tup(lhs.args[1:], idxs)
-            rhs0 = rhs[arr_idxs]
-            rhs2 = self.thorn_def._do_subs(rhs0, idxs)
-            assert isinstance(lhs2, Symbol)
-            self._base_add_eqn(lhs2, rhs2)
-        assert count > 0
-
-    @add_eqn.register
-    def _(self, lhs: IndexedBase, rhs: Expr) -> None:
-        var = lhs.args[0]
-        assert isinstance(var, Symbol)
-        self._base_add_eqn(var, rhs)
-
-    @add_eqn.register
-    def _(self, lhs: Indexed, rhs: List[Expr]) -> None:
-
-        if self.been_baked:
-            raise Exception("add_eqn should not be called on a baked ThornFunction")
-
-        count = 0
-        for tup in self.thorn_def.einstein_notation.expand_free_indices(lhs, self.thorn_def.symmetries):
-            count += 1
-            lhs_x, idxs, idx = tup
-            num_idx = relativity_idx_to_int(idxs[idx[0]])
-            lhs2_ = do_isub(lhs_x, self.thorn_def.subs)
-            lhs2 = lhs2_
-            rhs2 = rhs[num_idx]
-            assert isinstance(lhs2, Symbol)
-            self._base_add_eqn(lhs2, rhs2)
-        assert count > 0
+    def add_eqn(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
+        self._add_eqn_manager.add_eqn(lhs, rhs)
 
     def madd(self) -> None:
         self.eqn_complex.do_madd()
@@ -1089,22 +993,6 @@ def parities(*args: Parity | int) -> TensorParity:
         parities.append(SingleIndexParity(*pars))
 
     return TensorParity(parities)
-
-
-def mk_mk_subst(s: str) -> str:
-    next_sub = 'a'
-    pos = 0
-    new_s = ""
-    for g in re.finditer(r'\b([ul])([0-9])\b', s):
-        new_s += s[pos:g.start()]
-        pos = g.end()
-        up_down = g.group(1)
-        _index = g.group(2)
-        new_s += up_down
-        new_s += next_sub
-        next_sub = chr(ord(next_sub) + 1)
-    new_s += s[pos:]
-    return new_s
 
 
 class SourceAnnotations:

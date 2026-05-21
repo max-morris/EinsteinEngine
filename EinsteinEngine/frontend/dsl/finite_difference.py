@@ -28,7 +28,7 @@ from sympy import Symbol, Basic, Idx, Expr
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.frontend.dsl.relativity.use_indices import is_numeric_relativity_index, relativity_idx_to_int
+from EinsteinEngine.frontend.dsl.use_indices import idx_to_int
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
@@ -326,7 +326,7 @@ class ApplyDivN(Applier):
             new_expr1: List[int | sy.Integer] = list()
             for arg in expr.args[1:]:
                 if isinstance(arg, Idx):
-                    new_expr1.append(relativity_idx_to_int(arg))
+                    new_expr1.append(idx_to_int(arg))
                 elif isinstance(arg, sy.Integer):
                     new_expr1.append(arg)
                 else:

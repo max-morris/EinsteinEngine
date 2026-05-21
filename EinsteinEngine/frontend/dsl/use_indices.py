@@ -31,12 +31,12 @@ from sympy.core.relational import Relational
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import *
-from EinsteinEngine.frontend.dsl.relativity.symmetries import Sym
+from EinsteinEngine.frontend.dsl.symmetries import Sym
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.common.util import checked_cast
 
-__all__ = ["EinsteinNotationManager", "relativity_idx_to_int", "IndexedSubstFnType", "MkSubstType", "subst_tensor",
+__all__ = ["EinsteinNotationManager", "idx_to_int", "IndexedSubstFnType", "MkSubstType", "subst_tensor",
            "subst_tensor_xyz", "noop", "stencil", "DD", "DDI", "is_numeric_relativity_index"]
 
 IndexPairLookup = Mapping[Idx, Idx]
@@ -217,7 +217,7 @@ class EinsteinNotationManager:
             if ix >= len(index_list):
                 return False
             u_ind, ind = self.get_pair(index_list[ix])
-            index_value = relativity_idx_to_int(index_values[ind])
+            index_value = idx_to_int(index_values[ind])
             if index_value == self.dimensionality - 1:
                 index_values[ind] = self._lower_numeric_indices[0]
                 index_values[u_ind] = self._upper_numeric_indices[0]
@@ -642,13 +642,13 @@ def check_indices(
 ###
 
 
-def is_relativity_lower_idx(ind: Idx) -> bool:
+def is_lower_idx(ind: Idx) -> bool:
     s = str(ind)
     assert s[0] in ["u", "l"], f"ind={ind}"
     return s[0] == "l"
 
 
-def relativity_idx_to_int(ind: Idx) -> int:
+def idx_to_int(ind: Idx) -> int:
     s = str(ind)
     assert s[0] in ["u", "l"], f"ind={ind}"
     return int(s[1])
@@ -663,7 +663,7 @@ def sub_idxs(idx: Idx, values: Dict[Idx, Idx]) -> Idx:
 
 
 def to_num_tup_2(li: List[Idx], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
-    return tuple([relativity_idx_to_int(sub_idxs(x, values)) for x in li])
+    return tuple([idx_to_int(sub_idxs(x, values)) for x in li])
 
 
 def to_num_tup(li: Tuple[Basic, ...], values: Dict[Idx, Idx]) -> Tuple[int, ...]:
@@ -765,7 +765,7 @@ def _mk_name_for_tensor(sym: Indexed) -> str:
                                f"Lower indices must be prefixed with l, and upper indices with u.")
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
-        base_name += str(relativity_idx_to_int(ind))
+        base_name += str(idx_to_int(ind))
 
     return base_name
 
@@ -789,7 +789,7 @@ def _mk_name_for_tensor_xyz(sym: Indexed, *_args: Idx) -> str:
     base_name = str(sym.base)
     for ind in sym.args[1:]:
         assert isinstance(ind, Idx)
-        base_name += ["x", "y", "z"][relativity_idx_to_int(ind)]
+        base_name += ["x", "y", "z"][idx_to_int(ind)]
     return base_name
 
 
