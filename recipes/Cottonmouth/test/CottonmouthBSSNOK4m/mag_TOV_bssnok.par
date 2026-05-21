@@ -117,12 +117,13 @@ EOSX::rho_max = 1e8
 EOSX::eps_max = 1e8
 
 # IO
-IO::out_dir = $parfile
-IO::out_every = $out_every
+IO::out_dir       = $parfile
+IO::out_every     = $out_every
+IO::parfile_write = no
 
-CarpetX::out_metadata           = no
-CarpetX::out_performance        = no
-CarpetX::output_boundary_points = no
+CarpetX::out_metadata                   = no
+CarpetX::out_performance                = no
+CarpetX::out_tsv_output_boundary_points = no
 
 CarpetX::out_tsv_vars = "
     HydroBaseX::Bvec
