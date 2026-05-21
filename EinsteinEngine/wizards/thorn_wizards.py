@@ -60,7 +60,7 @@ class ThornWizard(Generic[G, CV], Wizard[ThornDef, G, CV]):
         os.makedirs(self.base_dir, exist_ok=True)
         os.makedirs(os.path.join(self.base_dir, "src"), exist_ok=True)
 
-        for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys()):
+        for fn_name in OrderedSet(self.thorn_def.functions.keys()):
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)

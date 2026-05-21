@@ -67,7 +67,7 @@ class CactusGenerator(Generator[ThornDef]):
         if 'sync_mode' not in self.options:
             self.options['sync_mode'] = SyncMode.EmulatePresync
 
-        for tf in self.thorn_def.thorn_functions.values():
+        for tf in self.thorn_def.functions.values():
             for iv in tf.eqn_complex.inputs:
                 var_name = str(iv).replace("'", "")
                 if var_name not in self.vars_to_ignore:

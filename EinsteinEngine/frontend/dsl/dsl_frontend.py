@@ -17,7 +17,9 @@
 
 import re
 from abc import abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
+from itertools import chain
 from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any
 
 # mypy: disable-error-code=no-redef
@@ -36,6 +38,7 @@ from EinsteinEngine.common.util import checked_cast, vprint, OrderedSet
 from EinsteinEngine.frontend.frontend import Frontend
 from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor, ApplyDivN
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.frontend.dsl.use_indices import (
     is_lower_idx,
     idx_to_int,
@@ -64,7 +67,19 @@ from EinsteinEngine.frontend.definitions import (
     zero,
     one,
 )
+from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
+from EinsteinEngine.common.sympywrap import cse, free_symbols
 from EinsteinEngine.intermediate.coef import coef
+from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
+from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
+from EinsteinEngine.intermediate.temp_kind import TempKind
+from EinsteinEngine.intermediate.temporary_promotion_predicate import (
+    OnePassTemporaryPromotionStrategy, TemporaryPromotionPredicate, TemporaryPromotionStrategy,
+    TwoPassTemporaryPromotionStrategy, promote_all, promote_none
+)
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.common.util import get_or_compute, pprint, verbose
 
 
 class OverwriteSymbolRecord(NamedTuple):
@@ -77,8 +92,21 @@ class SymbolDeclarationKwargs(TypedDict, total=False):
     anti_symmetries: list[tuple[Idx, Idx]]
     substitution_rule: MkSubstType | None
 
-class DslFrontendBakeOptions(TypedDict, total=False):
-    pass
+class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBakeOptions](TypedDict, total=False):
+    # Frontend opts
+    do_cse: bool
+    cse_optimization_level: CseOptimizationLevel
+    temporary_promotion_strategy: TemporaryPromotionStrategy
+
+    # Function frontend default opts
+    do_madd: bool
+    do_recycle_temporaries: bool
+    splitmaxxing: bool
+    ordering_fn: EqnOrderingFn
+    soft_split_retainment_strategy: SoftSplitRetainmentStrategy
+
+    # Overrides for function frontend default opts
+    functions: dict[str, FunctionFrontendBakeOptionsT]
 
 
 @dataclass
@@ -89,12 +117,21 @@ class SymbolDeclaration[KwargsType: SymbolDeclarationKwargs]:
     kwargs: KwargsType
 
 
-class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs](Frontend):
+class ClassifyTempsResult[FunctionFrontendT](NamedTuple):
+    temp_kinds: dict[Symbol, TempKind]
+    tfs_active_reads: dict[Symbol, dict[FunctionFrontendT, set[int]]]
+    synthetic_global_dependents: dict[Symbol, set[Symbol]]
+
+
+class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs, FunctionFrontendT: DslFunctionFrontend[Any]](Frontend):
     dimensionality: int
     declarations: dict[str, SymbolDeclaration[SymbolDeclarationKwargsT]]
     coords: list[Symbol]
     params: dict[str, ParamDataT]
     var2base: dict[str, str]
+    functions: dict[str, FunctionFrontendT]
+    tile_temporaries: OrderedSet[Symbol]
+    global_temporaries: OrderedSet[Symbol]
 
     overwrite_symbols: dict[str, OverwriteSymbolRecord]
 
@@ -117,6 +154,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
         self.coords = list()
         self.params = dict()
         self.var2base = dict()
+        self.functions = dict()
+        self.tile_temporaries = OrderedSet()
+        self.global_temporaries = OrderedSet()
 
         self.overwrite_symbols = dict()
 
@@ -226,9 +266,299 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
     def get_params(self) -> Set[str]:
         return OrderedSet(self.params)
 
+    def grid_variables(self) -> set[Symbol]:
+        gv: set[Symbol] = set()
+        for function_frontend in self.functions.values():
+            gv |= function_frontend.eqn_complex._grid_variables()
+        return gv
+
+    @staticmethod
+    def _mk_default_dsl_frontend_bake_options() -> DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]:
+        opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions] = {
+            "do_cse": True,
+            "cse_optimization_level": CseOptimizationLevel.Optimal,
+            "temporary_promotion_strategy": promote_none(),
+            "ordering_fn": maximize_symbol_reuse,
+            "functions": dict(),
+        }
+        opts.update(DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options())  # type: ignore[typeddict-item]
+        return opts
+
     @abstractmethod
-    def bake(self, **opts: Unpack[DslFrontendBakeOptions]) -> None:
+    def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
         ...
+
+    @staticmethod
+    def _classify_temps(
+            new_temp_dependents: dict[Symbol, set[Symbol]],
+            promotion_predicate: TemporaryPromotionPredicate,
+            substitutions: dict[Symbol, Expr],
+            tfs_reading_direct: dict[Symbol, dict[FunctionFrontendT, set[int]]],
+            substitutions_order: dict[Symbol, int]
+    ) -> ClassifyTempsResult[FunctionFrontendT]:
+        temp_kinds: dict[Symbol, TempKind] = dict()
+        tfs_active_reads: dict[Symbol, dict[FunctionFrontendT, set[int]]] = defaultdict(lambda: dict())
+        synthetic_global_dependents: dict[Symbol, set[Symbol]] = defaultdict(set)
+
+        for new_temp, _ in sorted(substitutions.items(),
+                                  key=lambda kv: substitutions_order[kv[0]],
+                                  reverse=True):
+            tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
+
+            for td in new_temp_dependents[new_temp]:
+                if temp_kinds.get(td, None) == TempKind.Global:
+                    synthetic_global_dependents[new_temp].add(td)
+                else:
+                    if len(synthetic_global_dependents[td]) > 0:
+                        synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
+                    for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
+                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
+
+            assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
+
+            if len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 1:
+                temp_kinds[new_temp] = TempKind.Global
+            elif len(synthetic_global_dependents[new_temp]) == 1:
+                temp_kinds[new_temp] = TempKind.Local
+            else:
+                assert len(tfs_active_reads[new_temp]) == 1
+                if len(list(tfs_active_reads[new_temp].values())[0]) > 1:
+                    temp_kinds[new_temp] = TempKind.Tile
+                else:
+                    temp_kinds[new_temp] = TempKind.Local
+
+            assert new_temp in temp_kinds
+            temp_kinds[new_temp] = temp_kinds[new_temp].clamp(promotion_predicate(new_temp))
+
+        return ClassifyTempsResult(temp_kinds, tfs_active_reads, synthetic_global_dependents)
+
+    def _global_cse_pre_materialization(
+            self,
+            substitutions: dict[Symbol, Expr],
+            new_temp_dependencies: dict[Symbol, set[Symbol]],
+            temp_kinds: dict[Symbol, TempKind]
+    ) -> None:
+        pass
+
+    def _global_cse_handle_global_temps(
+            self,
+            substitutions: dict[Symbol, Expr],
+            temp_kinds: dict[Symbol, TempKind],
+            tfs_active_reads: dict[Symbol, dict[FunctionFrontendT, set[int]]],
+            new_temp_dependencies: dict[Symbol, set[Symbol]]
+    ) -> None:
+        for new_temp in substitutions.keys():
+            if temp_kinds.get(new_temp, None) == TempKind.Global:
+                self.global_temporaries.add(new_temp)
+
+    def _do_global_cse(
+            self,
+            promotion_strategy: TemporaryPromotionStrategy = promote_all(),
+            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+    ) -> None:
+        for tf in self.functions.values():
+            if tf.been_late_baked:
+                raise DslException(f"Cannot do_global_cse on function {tf.name} because it has already undergone late baking.")
+
+        grid_vars = self.grid_variables()
+
+        tf_names = sorted(self.functions.keys())
+        old_tf_shapes: dict[str, list[int]] = dict()
+        old_tf_lhses: dict[str, list[list[Symbol]]] = dict()
+        old_tf_rhses: dict[str, list[list[Expr]]] = dict()
+
+        for tf_name in tf_names:
+            old_tf_shapes[tf_name] = list()
+            old_tf_lhses[tf_name] = list()
+            old_tf_rhses[tf_name] = list()
+
+        for tf_name, tf in sorted(self.functions.items(), key=lambda kv: tf_names.index(kv[0])):
+            for eqn_list in tf.eqn_complex.eqn_lists:
+                old_tf_shapes[tf_name].append(len(eqn_list.eqns))
+                old_tf_lhses[tf_name].append(list())
+                old_tf_rhses[tf_name].append(list())
+                for lhs, rhs in sorted(eqn_list.eqns.items(), key=lambda kv: eqn_list.order.index(kv[0])):
+                    old_tf_lhses[tf_name][-1].append(lhs)
+                    old_tf_rhses[tf_name][-1].append(rhs)
+
+        substitutions_list: list[tuple[Symbol, Expr]]
+        new_rhses: list[Expr]
+
+        if optimization_level is CseOptimizationLevel.Optimal:
+            substitutions_list, new_rhses = cse_isolate(
+                list(chain(*chain(*old_tf_rhses.values()))),
+                symbols_to_isolate=grid_vars
+            )
+        elif optimization_level is CseOptimizationLevel.Fast:
+            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
+        else:
+            raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
+
+        substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
+        substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
+
+        new_temp_direct_reads: dict[Symbol, dict[str, set[int]]] = {sym: dict() for sym in substitutions.keys()}
+        new_temp_dependencies: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
+        new_temp_dependents: dict[Symbol, set[Symbol]] = {sym: set() for sym in substitutions.keys()}
+
+        global_eqn_idx = 0
+        for _, tf in enumerate(sorted(self.functions.values(), key=lambda tf: tf_names.index(tf.name))):
+            tf_name = tf.name
+
+            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
+                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
+                el_new_free_symbols: set[Symbol] = set(chain(*[free_symbols(rhs) for rhs in new_rhses[global_eqn_idx:global_eqn_idx + el_shape]]))
+                new_temps = el_new_free_symbols.intersection(substitutions.keys())
+
+                for new_temp, temp_rhs in [(new_temp, substitutions[new_temp]) for new_temp in new_temps]:
+                    assert new_temp not in eqn_list.inputs
+                    assert new_temp not in eqn_list.params
+                    assert new_temp not in eqn_list.outputs
+                    assert new_temp not in eqn_list.eqns
+
+                    get_or_compute(new_temp_direct_reads[new_temp], tf_name, lambda _: set()).add(el_idx)
+
+                    # Temps might be substituted for expressions which contain other temps.
+                    # We need to recursively check the RHSes to ensure we compute the dependencies in the appropriate loops.
+                    def drill(lhs: Symbol, rhs: Expr) -> None:
+                        temp_dependencies = free_symbols(rhs).intersection(substitutions.keys())
+                        assert lhs not in temp_dependencies
+                        for td in temp_dependencies:
+                            new_temp_dependencies[lhs].add(td)
+                            new_temp_dependents[td].add(lhs)
+                            drill(td, substitutions[td])
+
+                    drill(new_temp, temp_rhs)
+
+                global_eqn_idx += el_shape
+
+        tfs_reading_direct: dict[Symbol, dict[FunctionFrontendT, set[int]]] = defaultdict(lambda: dict())
+
+        for new_temp in substitutions.keys():
+            tf_names_reading_direct = set(new_temp_direct_reads[new_temp].keys())
+
+            for tf_name in tf_names_reading_direct:
+                els_reading_direct = new_temp_direct_reads[new_temp].get(tf_name, set())
+                tfs_reading_direct[new_temp][self.functions[tf_name]] = els_reading_direct
+
+        complexities: dict[Symbol, int] = dict()
+        for tf in self.functions.values():
+            for eqn_list in tf.eqn_complex.eqn_lists:
+                complexities.update(eqn_list.complexity)
+
+        complexity_visitor = SympyComplexityVisitor(
+            lambda s: s in grid_vars
+        )
+        for new_temp, new_rhs in substitutions.items():
+            complexities[new_temp] = complexity_visitor.complexity(new_rhs)
+
+        promotion_predicate: TemporaryPromotionPredicate
+        two_pass: bool
+        if isinstance(promotion_strategy, OnePassTemporaryPromotionStrategy):
+            promotion_predicate = promotion_strategy(complexities)
+            two_pass = False
+        elif isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy):
+            # noinspection PyUnnecessaryCast
+            promotion_predicate = cast(OnePassTemporaryPromotionStrategy, promote_all())(complexities)
+            two_pass = True
+        else:
+            raise DslException(f"Not a valid promotion strategy: {promotion_strategy}")
+
+        temp_kinds, tfs_active_reads, _ = self._classify_temps(
+            new_temp_dependents,
+            promotion_predicate,
+            substitutions,
+            tfs_reading_direct,
+            substitutions_order
+        )
+
+        if two_pass:
+            assert isinstance(promotion_strategy, TwoPassTemporaryPromotionStrategy)
+            promotion_predicate = promotion_strategy(complexities, temp_kinds)
+
+            temp_kinds, tfs_active_reads, _ = self._classify_temps(
+                new_temp_dependents,
+                promotion_predicate,
+                substitutions,
+                tfs_reading_direct,
+                substitutions_order
+            )
+
+        self._global_cse_pre_materialization(substitutions=substitutions, new_temp_dependencies=new_temp_dependencies,
+                                             temp_kinds=temp_kinds)
+
+        for new_temp in substitutions.keys():
+            vprint(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+
+        inline_temps: list[tuple[Symbol, Expr]] = list()
+        for new_temp, new_rhs in sorted(substitutions.items(),
+                                        key=lambda kv: substitutions_order[kv[0]],
+                                        reverse=True):
+            if temp_kinds.get(new_temp, None) == TempKind.Inline:
+                inline_temps.append((new_temp, new_rhs))
+
+        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]  # type: ignore[no-untyped-call]
+
+        for lhs in substitutions.keys():
+            substitutions[lhs] = substitutions[lhs].subs(inline_temps)  # type: ignore[no-untyped-call]
+
+        for temp, _ in inline_temps:
+            del substitutions[temp]
+
+        global_eqn_idx = 0
+        for tf in sorted(self.functions.values(), key=lambda tf: tf_names.index(tf.name)):
+            tf_name = tf.name
+            for el_idx, el_shape in enumerate(old_tf_shapes[tf_name]):
+                eqn_list = tf.eqn_complex.eqn_lists[el_idx]
+
+                for lhs in old_tf_lhses[tf_name][el_idx]:
+                    assert lhs in eqn_list.eqns
+                    eqn_list.eqns[lhs] = new_rhses[global_eqn_idx]
+                    global_eqn_idx += 1
+
+        for new_temp in substitutions.keys():
+            if new_temp not in temp_kinds or temp_kinds[new_temp] in [TempKind.Inline, TempKind.Global]:
+                continue
+            elif temp_kinds[new_temp] == TempKind.Local:
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    ec = tf.eqn_complex
+
+                    for el in (ec.eqn_lists[el_idx] for el_idx in els_reading):
+                        el.add_eqn(new_temp, substitutions[new_temp])
+                        el.temporaries.add(new_temp)
+            elif temp_kinds[new_temp] == TempKind.Tile:
+                self.tile_temporaries.add(new_temp)
+
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    ec = tf.eqn_complex
+                    primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+
+                    if len(els_reading) == 1:
+                        primary_el.add_eqn(new_temp, substitutions[new_temp])
+                        primary_el.temporaries.add(new_temp)
+                    else:
+                        primary_el.add_eqn(new_temp, substitutions[new_temp])
+                        ec._tile_temporaries.add(new_temp)
+                        primary_el.uninitialized_tile_temporaries.add(new_temp)
+                        for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
+                            eqn_list.preinitialized_tile_temporaries.add(new_temp)
+
+        self._global_cse_handle_global_temps(
+            substitutions=substitutions,
+            temp_kinds=temp_kinds,
+            tfs_active_reads=tfs_active_reads,
+            new_temp_dependencies=new_temp_dependencies
+        )
+
+        for tf in self.functions.values():
+            for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
+                pprint(f"Rebaking {tf.name} loop {idx} after CSE...")
+
+                # If the tf needs a merge, set force_fast because another (slow) rebake will succeed CSE.
+                eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
+
+                if verbose():
+                    eqn_list.dump()
 
     def overwrite(self, sym: IndexedBase) -> IndexedBase:
         if str(sym) not in self.declarations or self.declarations[str(sym)].base != sym:

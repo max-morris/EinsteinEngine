@@ -139,12 +139,12 @@ class CppCarpetXGenerator(CactusGenerator):
     def __init__(self, thorn_def: ThornDef, **options: Unpack[CppCarpetXGeneratorOptions]) -> None:
         super().__init__(thorn_def, options)
 
-        unbaked_fns = {name for name, fn in thorn_def.thorn_functions.items() if not fn.been_baked}
+        unbaked_fns = {name for name, fn in thorn_def.functions.items() if not fn.been_baked}
         if len(unbaked_fns) > 0:
             raise GeneratorException(f"One or more functions have not been baked. Namely: {unbaked_fns}")
 
     def get_fn_src_file_name(self, which_fn: str) -> str:
-        assert which_fn in self.thorn_def.thorn_functions
+        assert which_fn in self.thorn_def.functions
 
         return f'{self.thorn_def.name}_{which_fn}.cpp'
 
@@ -152,7 +152,7 @@ class CppCarpetXGenerator(CactusGenerator):
         return f'{self.thorn_def.name}_{which if isinstance(which, str) else which.name}.cpp'
 
     def generate_makefile(self) -> str:
-        srcs = [self.get_fn_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys())]
+        srcs = [self.get_fn_src_file_name(fn_name) for fn_name in OrderedSet(self.thorn_def.functions.keys())]
 
         for sync_batch in self.options.get('explicit_syncs', list()):
             srcs.append(self.get_explicit_src_file_name(sync_batch))
@@ -176,7 +176,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             ]))
 
-        for fn_name, fn in sorted(self.thorn_def.thorn_functions.items()):
+        for fn_name, fn in sorted(self.thorn_def.functions.items()):
             schedule_bin, at_or_in = self._resolve_schedule_target(fn.schedule_target)
 
             reads: OrderedSet[Intent] = OrderedSet()
@@ -419,7 +419,7 @@ class CppCarpetXGenerator(CactusGenerator):
         state_vec = self.thorn_def.get_state()
         state_vec_strs = {str(v) for v in state_vec}
 
-        for tf in self.thorn_def.thorn_functions.values():
+        for tf in self.thorn_def.functions.values():
             if len(bad_vars := {self.thorn_def.var2base.get(str_v := str(v), str_v) for v in tf.eqn_complex.tile_temporaries}.intersection(state_vec_strs)) > 0:
                 raise GeneratorException(f'Thorn function {tf.name} uses one or more tile temporaries {bad_vars} that are also in the state vector by way of being declared with an `rhs` property. This is not allowed.')
 
@@ -723,7 +723,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
     def generate_function_code(self, which_fn: str) -> CodeRoot:
         nodes: list[CodeElem] = list()
-        thorn_fn: ThornFunction = self.thorn_def.thorn_functions[which_fn]
+        thorn_fn: ThornFunction = self.thorn_def.functions[which_fn]
         fn_name: str = thorn_fn.name
 
         assert thorn_fn.been_baked
