@@ -15,6 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import re
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any
@@ -35,16 +36,16 @@ from EinsteinEngine.common.util import checked_cast, vprint, OrderedSet
 from EinsteinEngine.frontend.frontend import Frontend
 from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor, ApplyDivN
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.frontend.dsl.relativity.use_indices import (
-    is_relativity_lower_idx,
-    relativity_idx_to_int,
+from EinsteinEngine.frontend.dsl.use_indices import (
+    is_lower_idx,
+    idx_to_int,
     EinsteinNotationManager,
     IndexSubsVisitor,
     BaseIndexedSubstFnType,
     MkSubstType,
     subst_tensor,
 )
-from EinsteinEngine.frontend.dsl.relativity.symmetries import Sym
+from EinsteinEngine.frontend.dsl.symmetries import Sym
 from EinsteinEngine.frontend.definitions import (
     D,
     div,
@@ -320,7 +321,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
         for tup in self.einstein_notation.expand_free_indices(iter_var, self.symmetries):
             out, idx_rep, _ = tup
             assert isinstance(out, Indexed)
-            arr_idxs = tuple([relativity_idx_to_int(x) for x in out.indices])
+            arr_idxs = tuple([idx_to_int(x) for x in out.indices])
             n_array = len(arr_idxs)
             res = simplify(set_matrix[arr_idxs[0:2]])
             if n_array >= 3:
@@ -370,7 +371,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
         result = mk_zeros(*tuple([self.dimensionality] * (len(ind.args) - 1)))
         ind_args: list[Idx] = [checked_cast(x, Idx) for x in ind.args[1:]]
         while self.einstein_notation.incr(ind_args, values):
-            arr_idxs = tuple([relativity_idx_to_int(checked_cast(do_subs(x, values), Idx)) for x in ind_args])
+            arr_idxs = tuple([idx_to_int(checked_cast(do_subs(x, values), Idx)) for x in ind_args])
             r = self._do_subs(ind, idx_subs=values)
             result[arr_idxs] = r
         return result
@@ -566,7 +567,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
 
         if len(idx_list) == 1 or (len(idx_list) == 2 and idx_list[0] == idx_list[1]):
             idx = idx_list[0]
-            is_down_idx = is_relativity_lower_idx(idx)
+            is_down_idx = is_lower_idx(idx)
             for i in range(self.dimensionality):
                 idx0 = mk_idx(f'l{i}') if is_down_idx else mk_idx(f'u{i}')
                 result = mk_sten({idx: idx0}, expr)
@@ -574,8 +575,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
         elif len(idx_list) == 2:
             idx1 = idx_list[0]
             idx2 = idx_list[1]
-            is_down_idx1 = is_relativity_lower_idx(idx1)
-            is_down_idx2 = is_relativity_lower_idx(idx2)
+            is_down_idx1 = is_lower_idx(idx1)
+            is_down_idx2 = is_lower_idx(idx2)
             for i in range(self.dimensionality):
                 idx10 = mk_idx(f'l{i}') if is_down_idx1 else mk_idx(f'u{i}')
                 for j in range(self.dimensionality):
@@ -586,3 +587,19 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs]
                     self.binary_custom_stencils[(func, idx10, idx20)] = result
 
         return func
+
+# STEVE: What does this do and what does its name mean?
+def mk_mk_subst(s: str) -> str:
+    next_sub = 'a'
+    pos = 0
+    new_s = ""
+    for g in re.finditer(r'\b([ul])([0-9])\b', s):
+        new_s += s[pos:g.start()]
+        pos = g.end()
+        up_down = g.group(1)
+        _index = g.group(2)
+        new_s += up_down
+        new_s += next_sub
+        next_sub = chr(ord(next_sub) + 1)
+    new_s += s[pos:]
+    return new_s
