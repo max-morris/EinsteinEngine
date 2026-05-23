@@ -1270,7 +1270,7 @@ cottonmouth_Z4c.bake(
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=functools.partial(
-        prioritize_rare_symbols, use_sqrt=False, consider_frequency=True, complexity_factor=0.0)
+        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###
