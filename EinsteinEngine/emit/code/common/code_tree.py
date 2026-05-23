@@ -17,13 +17,11 @@
 
 from dataclasses import dataclass
 from enum import auto
-from typing import Optional, Union, List, Collection, Tuple
+from typing import Union, List, TypeAlias, Sequence
 
 import sympy as sy
 
-from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, Centering, BlockComment, LineComment
-from EinsteinEngine.generators.substitute_recycled_temporaries import RecycledTemporarySubstitution
+from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, BlockComment, LineComment
 from EinsteinEngine.common.util import ReprEnum
 
 
@@ -65,6 +63,7 @@ class UnOp(ReprEnum):
 
 class BinOp(ReprEnum):
     Add = auto(), "+"
+    Sub = auto(), "-"
     Mul = auto(), "*"
     Pow = auto(), "^"
     Div = auto(), "/"
@@ -124,37 +123,6 @@ TopLevelNode = Stmt | Directive | LineComment | BlockComment | Verbatim
 
 
 @dataclass
-class DeclareCarpetXArgs(Directive):
-    fn_name: Identifier
-
-
-@dataclass
-class DeclareCarpetArgs(Directive):
-    fn_name: Identifier
-
-
-@dataclass
-class DeclareCarpetParams(Directive):
-    pass
-
-
-@dataclass(init=False)
-class IncludeDirective(Directive):
-    header_name: Identifier
-    quote_name: bool
-
-    def __init__(self, header_name: Identifier, quote_name: bool = False):
-        self.header_name = header_name
-        self.quote_name = quote_name
-
-
-@dataclass
-class DefineDirective(Directive):
-    name: Identifier
-    val: Optional[AnyNode]
-
-
-@dataclass
 class ExprStmt(Stmt):
     expr: Expr
 
@@ -162,8 +130,8 @@ class ExprStmt(Stmt):
 @dataclass
 class IfElseStmt(Stmt):
     cond: Expr
-    then: List[TopLevelNode]
-    else_: List[TopLevelNode]
+    then: Sequence[TopLevelNode]
+    else_: Sequence[TopLevelNode]
 
 
 @dataclass
@@ -171,57 +139,7 @@ class Decl(Stmt):
     pass
 
 
-@dataclass
-class ConstAssignDecl(Decl):
-    type: Identifier
-    lhs: Identifier
-    rhs: Expr
-
-
-@dataclass
-class MutableAssignDecl(Decl):
-    type: Identifier
-    lhs: Identifier
-    rhs: Expr
-
-
-@dataclass
-class ConstExprAssignDecl(Decl):
-    type: Identifier
-    lhs: Identifier
-    rhs: Expr
-
-
-@dataclass
-class ConstConstructDecl(Decl):
-    type: Identifier
-    lhs: Identifier
-    constructor_args: List[Expr]
-
-
-@dataclass
-class UsingNamespace(Decl):
-    namespace_name: Identifier
-
-
-@dataclass
-class Using(Decl):
-    ids: List[Identifier]
-
-
-@dataclass
-class UsingAlias(Decl):
-    lhs: Identifier
-    rhs: AnyNode
-
-
 CodeElem = Union[Stmt, Expr, Directive, Verbatim]
-
-
-@dataclass
-class ThornFunctionDecl(Decl):
-    name: Identifier
-    body: List[TopLevelNode]
 
 
 @dataclass
@@ -256,24 +174,17 @@ class StandardizedFunctionCall(Expr):
     args: List[Expr]
 
 
-@dataclass
-class CarpetXGridLoopLambda(Expr):
-    preceding: Collection[CodeElem]
-    equations: List[Tuple[sy.Symbol, Expr]]
-    annotations: dict[str, str]
-    succeeding: Collection[CodeElem]
-    temporaries: Collection[str]
-    reassigned_lhses: dict[int, RecycledTemporarySubstitution]
+CommonExpr: TypeAlias = (
+    IdExpr
+    | IntLiteralExpr
+    | FloatLiteralExpr
+    | VerbatimExpr
+    | UnOpExpr
+    | BinOpExpr
+    | NArityOpExpr
+    | IfElseExpr
+    | SympyExpr
+    | FunctionCall
+    | StandardizedFunctionCall
+)
 
-
-@dataclass
-class CarpetXGridLoopCall(Stmt):
-    centering: Centering
-    write_destination: IntentRegion
-    fn: CarpetXGridLoopLambda
-    simd: bool
-
-
-@dataclass
-class CodeRoot(CodeNode):
-    children: List[CodeElem]

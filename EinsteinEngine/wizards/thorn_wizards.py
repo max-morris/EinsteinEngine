@@ -23,8 +23,8 @@ from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 from EinsteinEngine.emit.ccl.interface.interface_visitor import InterfaceVisitor
 from EinsteinEngine.emit.ccl.param.param_visitor import ParamVisitor
 from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
-from EinsteinEngine.emit.code.code_tree import CodeNode
-from EinsteinEngine.emit.code.cpp.cpp_visitor import CppVisitor
+from EinsteinEngine.emit.code.common.code_tree import CodeNode
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_visitor import CppVisitor
 from EinsteinEngine.emit.visitor import Visitor
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ThornDef
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch

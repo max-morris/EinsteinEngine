@@ -25,7 +25,6 @@ from typing_extensions import Unpack, OrderedDict
 
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornFunction, ThornDef
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.intermediate.eqnlist import stencil
 from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering
 from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.ccl.interface.interface_tree import InterfaceRoot, HeaderSection, IncludeSection, \
@@ -39,12 +38,13 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import IfStatement as Schedu
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, StorageLine, ScheduleBlock, StorageDecl, \
     Intent, \
     GroupOrFunction, AtOrIn, IntentRegion
-from EinsteinEngine.emit.code.code_tree import CodeRoot, CodeElem, IncludeDirective, UsingNamespace, Using, \
-    ConstConstructDecl, IdExpr, VerbatimExpr, ConstAssignDecl, BinOpExpr, BinOp, FloatLiteralExpr, ThornFunctionDecl, \
-    DeclareCarpetXArgs, DeclareCarpetParams, UsingAlias, ConstExprAssignDecl, CarpetXGridLoopCall, \
-    CarpetXGridLoopLambda, ExprStmt, FunctionCall, IntLiteralExpr, MutableAssignDecl, Expr, IfElseStmt, Stmt, \
-    TopLevelNode
-from EinsteinEngine.emit.code.sympy_visitor import SympyExprVisitor
+from EinsteinEngine.emit.code.common.code_tree import CodeElem, IdExpr, VerbatimExpr, BinOpExpr, BinOp, FloatLiteralExpr, ExprStmt, FunctionCall, IntLiteralExpr, Expr, IfElseStmt, Stmt, TopLevelNode
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetParams, \
+    IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, \
+    Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot, \
+    CppCarpetXCodeElem, CppCarpetXStmtNode
+from EinsteinEngine.emit.code.sympy_visitor import BaseSympyExprVisitor
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_sympy_visitor import CppCarpetXSympyVisitor
 from EinsteinEngine.emit.tree import String, Identifier, Bool, Integer, Float, Language, Verbatim, Centering, \
     LineComment
 from EinsteinEngine.emit.util import encode_stencil_idx
@@ -54,6 +54,8 @@ from EinsteinEngine.generators.substitute_recycled_temporaries import substitute
 from EinsteinEngine.generators.util import VarCenteringFn
 from EinsteinEngine.common.util import OrderedSet, wprint
 from EinsteinEngine.common.schedule_target import ScheduleTarget
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXExprNode
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXTopLevelNode
 
 
 @dataclass(frozen=True)
@@ -602,8 +604,8 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return ParamRoot(params)
 
-    def generate_new_rad_x_boundary_function_code(self, batch: NewRadXBoundaryBatch) -> CodeRoot:
-        nodes: list[CodeElem] = list()
+    def generate_new_rad_x_boundary_function_code(self, batch: NewRadXBoundaryBatch) -> CppCarpetXCodeRoot:
+        nodes: list[CppCarpetXCodeElem] = list()
 
         # Includes, usings...
         for include in self._boilerplate_includes:
@@ -623,12 +625,12 @@ class CppCarpetXGenerator(CactusGenerator):
 
         base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
 
-        sympy_visitor = SympyExprVisitor()
+        sympy_visitor = CppCarpetXSympyVisitor()
         val_at_infinity = sympy_visitor.visit(batch.val_at_infinity)
         propagation_speed = sympy_visitor.visit(batch.propagation_speed)
         radial_falloff_exponent = sympy_visitor.visit(batch.radial_falloff_exponent)
 
-        apply_calls: list[Stmt] = list()
+        apply_calls: list[CppCarpetXStmtNode] = list()
         for (v, r) in zip(var_names, rhs_names):
             apply_calls.append(
                 ExprStmt(
@@ -673,7 +675,7 @@ class CppCarpetXGenerator(CactusGenerator):
             )
         )
 
-        return CodeRoot(nodes)
+        return CppCarpetXCodeRoot(nodes)
 
 
     class _NewRadXBatchNames(NamedTuple):
@@ -713,7 +715,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
             rhs_name = str(rhs_sym)
 
-            rhs_indexed = self.thorn_def.declarations[rhs_name].base[*batch.var.args[1:]]
+            rhs_indexed = self.thorn_def.declarations[rhs_name].indexed_base[*batch.var.args[1:]]
 
             var_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(batch.var))
             rhs_names = sorted(str(x) for x in self.thorn_def._flatten_indexed(rhs_indexed))
@@ -721,8 +723,8 @@ class CppCarpetXGenerator(CactusGenerator):
             return CppCarpetXGenerator._NewRadXBatchNames(str(batch.var), str(rhs_indexed), var_names, rhs_names)
 
 
-    def generate_function_code(self, which_fn: str) -> CodeRoot:
-        nodes: list[CodeElem] = list()
+    def generate_function_code(self, which_fn: str) -> CppCarpetXCodeRoot:
+        nodes: list[CppCarpetXCodeElem] = list()
         thorn_fn: ThornFunction = self.thorn_def.functions[which_fn]
         fn_name: str = thorn_fn.name
 
@@ -751,7 +753,7 @@ class CppCarpetXGenerator(CactusGenerator):
         # `const GF3D5layout ${VAR_NAME}_layout(${LAYOUT_NAME}_layout);`
         # for the div macros to work; layout here really means centering.
 
-        layout_decls: list[TopLevelNode] = list()
+        layout_decls: list[CppCarpetXTopLevelNode] = list()
         declared_layouts: set[Centering] = set()
         var_centerings: dict[str, Centering] = dict()
 
@@ -834,7 +836,7 @@ class CppCarpetXGenerator(CactusGenerator):
                 )
             )
 
-        def calc_stencil_idx(stencil_idx: StencilIdxWithCentering) -> list[Expr]:
+        def calc_stencil_idx(stencil_idx: StencilIdxWithCentering) -> list[CppCarpetXExprNode]:
             result = 'p.I'
 
             for i in range(3):
@@ -906,7 +908,7 @@ class CppCarpetXGenerator(CactusGenerator):
         ]
 
         loop_to_output_region = [
-            self._get_output_region_for_loop(thorn_fn, loop_idx)
+            self._get_output_region_for_loop(thorn_fn, self.var_names, loop_idx)
             for loop_idx, _ in enumerate(thorn_fn.eqn_complex.eqn_lists)
         ]
 
@@ -920,7 +922,7 @@ class CppCarpetXGenerator(CactusGenerator):
             centering_fn=lambda vn: self.thorn_def.get_centering_from_var_name(vn)
         )
 
-        carpetx_loops: list[TopLevelNode] = list()
+        carpetx_loops: list[CppCarpetXTopLevelNode] = list()
         for loop_idx, eqn_list in enumerate(thorn_fn.eqn_complex.eqn_lists):
             output_centering = final_loop_centerings[loop_idx]
             output_region = loop_to_output_region[loop_idx]
@@ -930,7 +932,7 @@ class CppCarpetXGenerator(CactusGenerator):
             def _resolve_overwrite(s: sy.Symbol) -> sy.Symbol:
                 return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
 
-            eqns: list[tuple[sy.Symbol, Expr]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
+            eqns: list[tuple[sy.Symbol, CppCarpetXExprNode]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
             annotations: dict[str, str] = {str(lhs): ann for lhs, ann in thorn_fn.source_annotations.eqns[loop_idx].items()}
             temporaries = [
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
@@ -1001,7 +1003,7 @@ class CppCarpetXGenerator(CactusGenerator):
             )
         )
 
-        return CodeRoot(nodes)
+        return CppCarpetXCodeRoot(nodes)
 
     @staticmethod
     def _get_tile_temp_centerings(loop_to_output_centering: list[Optional[Centering]], thorn_fn: ThornFunction) -> _TileTempCenteringData:
@@ -1059,14 +1061,14 @@ class CppCarpetXGenerator(CactusGenerator):
             final_loop_centerings=final_loop_centerings
         )
 
-    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol], centering_fn: VarCenteringFn) -> SympyExprVisitor:
+    def _mk_sympy_visitor(self, tile_temps: Collection[sy.Symbol], centering_fn: VarCenteringFn) -> CppCarpetXSympyVisitor:
         stencil_fn_names = {str(fn) for fn, fn_is_stencil in self.thorn_def.is_stencil.items() if fn_is_stencil}
         tile_temp_names = {str(sym) for sym in tile_temps}
 
         def should_wrap_with_access_fn(name: str, in_stencil_args: bool) -> bool:
             return not in_stencil_args and (name in self.var_names or name in tile_temp_names)
 
-        sympy_visitor = SympyExprVisitor(
+        sympy_visitor = CppCarpetXSympyVisitor(
             stencil_fns=stencil_fn_names,
             should_wrap_with_access_fn=should_wrap_with_access_fn,
             centering_fn=centering_fn
@@ -1074,8 +1076,8 @@ class CppCarpetXGenerator(CactusGenerator):
         return sympy_visitor
 
     @staticmethod
-    def _generate_tile_temp_setup(tile_temps_by_centering: dict[Centering, set[sy.Symbol]]) -> list[TopLevelNode]:
-        tile_temp_setup: list[TopLevelNode] = list()
+    def _generate_tile_temp_setup(tile_temps_by_centering: dict[Centering, set[sy.Symbol]]) -> list[CppCarpetXTopLevelNode]:
+        tile_temp_setup: list[CppCarpetXTopLevelNode] = list()
         
         for centering, temps in tile_temps_by_centering.items():
             tile_temp_setup.append(
@@ -1136,75 +1138,6 @@ class CppCarpetXGenerator(CactusGenerator):
 
         return tile_temp_setup
 
-    def _get_output_region_for_loop(self,
-                                    thorn_fn: ThornFunction,
-                                    loop_idx: int) -> IntentRegion:
-
-        """
-        Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs, or, failing that, the inputs.
-        All of this loop's outputs need to have the same write region.
-        """
-
-        eqn_list = thorn_fn.eqn_complex.eqn_lists[loop_idx]
-        write_decls = eqn_list.write_decls
-        read_decls = eqn_list.read_decls
-
-        writes = {
-            var: spec
-            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in write_decls.items())
-            if var in self.var_names
-        }
-
-        reads = {
-            var: spec
-            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in read_decls.items())
-            if var in self.var_names
-        }
-
-        if len(writes) == 0 and len(reads) == 0:
-            return IntentRegion.Everywhere  # No inputs and outputs; assume analytical
-
-        if len(writes) == 0:
-            input_regions = set(reads.values())
-
-            if None in input_regions or len(input_regions) == 0:
-                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
-
-            for rhs in eqn_list.eqns.values():
-                for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
-                    if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
-                        return IntentRegion.Interior
-
-            if len(input_regions) > 1:
-                if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
-                    wprint(f"In {thorn_fn.name}@{loop_idx}:"
-                           f" While trying to infer the loop region, we found that there were no output vars,"
-                           f" and we found the input vars to have a mix of Interior and Everywhere read regions."
-                           f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
-                           f" finite difference, so we will infer Interior as the loop region.")
-                    return IntentRegion.Interior
-
-                raise GeneratorException(
-                    f"In {thorn_fn.name}@{loop_idx}: Input vars have mixed read regions: {list(write_decls.items())}\nSince there are no output vars, the loop region cannot be inferred."
-                )
-
-            [input_region] = input_regions
-            return input_region
-        else:
-            output_regions = set(writes.values())
-
-            if None in output_regions or len(output_regions) == 0:
-                raise GeneratorException(f"In {thorn_fn.name}@{loop_idx}: All output vars for must have a write region.")
-
-            if len(output_regions) > 1:
-                raise GeneratorException(
-                    f"In {thorn_fn.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}\n\n"
-                    f"Hint: You can normalize the write regions to Interior by supplying intent_override=IntentOverride.WriteInterior to create_function()."
-                )
-
-            [output_region] = output_regions
-            return output_region
-
     def _get_output_centering_for_loop(self,
                                        thorn_fn: ThornFunction,
                                        loop_idx: int,
@@ -1231,8 +1164,8 @@ class CppCarpetXGenerator(CactusGenerator):
         return output_centering
 
 
-    def generate_sync_batch_function_code(self, sync_batch: _HasName | str) -> CodeRoot:
-        return CodeRoot([
+    def generate_sync_batch_function_code(self, sync_batch: _HasName | str) -> CppCarpetXCodeRoot:
+        return CppCarpetXCodeRoot([
             Verbatim(self._boilerplate_setup),
             *[IncludeDirective(include) for include in self._boilerplate_includes],
             ThornFunctionDecl(

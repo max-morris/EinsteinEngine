@@ -25,11 +25,12 @@ from EinsteinEngine.emit.ccl.interface.interface_tree import VariableGroup, Acce
     TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlock
-from EinsteinEngine.emit.code.code_tree import CodeRoot
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXCodeRoot
 from EinsteinEngine.emit.tree import Identifier, String, Bool
 from EinsteinEngine.common.util import get_or_compute, OrderedSet
 from EinsteinEngine.generators.generator import Generator
 from EinsteinEngine.common.schedule_target import ScheduleTarget
+from EinsteinEngine.generators.dsl_generator import DslGenerator
 
 
 class SyncMode(Enum):
@@ -47,7 +48,7 @@ class CactusGeneratorOptions(TypedDict, total=False):
     interior_sync_schedule_target: ScheduleTarget
 
 
-class CactusGenerator(Generator[ThornDef]):
+class CactusGenerator(DslGenerator[ThornDef]):
     variable_groups: OrderedDict[str, VariableGroup]
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
@@ -120,7 +121,7 @@ class CactusGenerator(Generator[ThornDef]):
         ...
 
     @abstractmethod
-    def generate_function_code(self, which_fn: str) -> CodeRoot:
+    def generate_function_code(self, which_fn: str) -> CppCarpetXCodeRoot:
         ...
 
     def _var_is_locally_declared(self, var_name: str) -> bool:

@@ -36,7 +36,7 @@ from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.emit.ccl.interface.interface_tree import TensorParity, Parity, SingleIndexParity
 from EinsteinEngine.frontend.dsl.cactus.cactus_param import CactusParam, CactusParamValuesType, CactusParamDefaultType
 from EinsteinEngine.frontend.dsl.use_indices import do_isub, subst_tensor
-from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, OrderedSet, pprint
+from EinsteinEngine.common.util import ScheduleBinEnum, ScheduleFrequency, wprint, OrderedSet
 
 from EinsteinEngine.common.schedule_target import ScheduleTarget, safe_name
 from EinsteinEngine.frontend.dsl.dsl_frontend import (
@@ -141,10 +141,6 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
             if (c := self.thorn_def.centering.get(sym_base)) is not None:
                 self.thorn_def.centering[str(mangled_sym)] = c
 
-    @staticmethod
-    def _mk_default_thorn_function_bake_options() -> ThornFunctionBakeOptions:
-        return DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options()
-
     def show_tensor_types(self) -> None:
         keys: Set[str] = OrderedSet()
         for k1 in self.eqn_complex.inputs:
@@ -243,45 +239,13 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                 assert self.einstein_notation.is_numeric_index(ind)
             yield cast(Symbol, self._do_subs(sym))
 
-    @staticmethod
-    def _mk_default_thorn_def_bake_options() -> ThornDefBakeOptions:
+    def _mk_default_bake_options(self) -> ThornDefBakeOptions:
         opts: ThornDefBakeOptions = DslFrontend._mk_default_dsl_frontend_bake_options()
-        opts.update(ThornFunction._mk_default_thorn_function_bake_options())  # type: ignore[typeddict-item]
+        opts.update(self._mk_default_function_bake_options())  # type: ignore[typeddict-item]
         return opts
 
-
-    def bake(self, **opts: Unpack[ThornDefBakeOptions]) -> None:
-        my_opts = self._mk_default_thorn_def_bake_options()
-        my_opts.update(opts)
-        my_tf_opts: dict[str, ThornFunctionBakeOptions] = dict()
-
-        for tf in self.functions.values():
-            tf_opts = typing.cast(ThornFunctionBakeOptions, my_opts.copy())  # ThornFunctionBakeOptions is a strict subset of ThornDefBakeOptions
-            if 'functions' in my_opts and tf.name in my_opts['functions']:
-                tf_opts.update(my_opts['functions'][tf.name])
-            my_tf_opts[tf.name] = tf_opts
-
-        for tf in self.functions.values():
-            assert tf.name in my_tf_opts, f"Thorn function '{tf.name}' not found in my_tf_opts"
-            tf._early_bake(**my_tf_opts[tf.name])
-
-        if my_opts['do_cse']:
-            pprint("Performing CSE...")
-            self._do_global_cse(my_opts['temporary_promotion_strategy'], my_opts['cse_optimization_level'])
-
-        for tf in self.functions.values():
-            if tf.needs_merge():
-                pprint(f"Merging soft splits in {tf.name}...")
-                tf.merge_soft_splits(my_tf_opts[tf.name]['soft_split_retainment_strategy'])
-
-        for tf in self.functions.values():
-            if tf.name not in my_tf_opts:  # Must be a synthetic function
-                tf._late_bake()
-            else:
-                if my_tf_opts[tf.name]['splitmaxxing']:
-                    tf._do_splitmaxxing()
-                tf._late_bake(**my_tf_opts[tf.name])
-
+    def _mk_default_function_bake_options(self) -> ThornFunctionBakeOptions:
+        return DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options()
 
     def _global_cse_pre_materialization(
             self,
@@ -440,7 +404,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
         return mk_symbol(name)
 
     def get_state(self) -> OrderedSet[IndexedBase]:
-        return OrderedSet(self.declarations[k.replace("'", "")].base for k in self.rhs)
+        return OrderedSet(self.declarations[k.replace("'", "")].indexed_base for k in self.rhs)
 
     # noinspection PyIncorrectDocstring
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[CactusDeclOptionalArgs]) -> IndexedBase:
@@ -512,7 +476,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
 
         assert basename not in self.declarations
         base = mk_indexed_base(basename, shape=())
-        self.declarations[basename] = SymbolDeclaration(basename=basename, base=base, indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
+        self.declarations[basename] = SymbolDeclaration(symbol_name=basename, indexed_base=base, indices=tuple(), kwargs=cast(CactusDeclOptionalArgs, dict()))
         self.centering[basename] = centering
         self.base2group[basename] = basename
 
@@ -520,7 +484,6 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
         sub_name = str(sub_symbol)
         base_name = str(indexed.base)
         self.centering[sub_name] = self.centering[base_name]
-        self.var2base[sub_name] = base_name
         if base_name not in self.groups:
             self.groups[base_name] = list()
         self.groups[base_name].append(sub_name)
