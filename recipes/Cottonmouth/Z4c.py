@@ -850,21 +850,25 @@ fun_z4c_rhs.add_eqn(
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
 
-fun_z4c_rhs.soft_split()
+fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
     Rt_tmp[li, lj],
     - Rational(1, 2) * gt[ul, um] * D(gt[li, lj], ll, lm)
+    , # +
     + Rational(1, 2) * (
         + gt[lk, li] * D(evo_Gammat[uk], lj)
         + gt[lk, lj] * D(evo_Gammat[uk], li)
     )
+    , # +
     + Rational(1, 2) * (
         + Gammatd[uk] * Gammat[li, lj, lk]
         + Gammatd[uk] * Gammat[lj, li, lk]
     )
 )
+
+fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
@@ -878,6 +882,8 @@ fun_z4c_rhs.add_eqn(
     R[li, lj],
     Rchi[li, lj] + Rt[li, lj]
 )
+
+fun_z4c_rhs.soft_split()
 
 # Eq. (6) of [1]
 fun_z4c_rhs.add_eqn(
@@ -894,6 +900,7 @@ fun_z4c_rhs.add_eqn(
     # Matter
     + use_matter_terms * (-evo_lapse) * 8 * pi * rho
 )
+
 
 # Eq. (4) of [1]
 fun_z4c_rhs.add_eqn(
@@ -935,7 +942,7 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-fun_z4c_rhs.soft_split()
+fun_z4c_rhs.split_loop()
 
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
@@ -959,8 +966,6 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * (-16) * pi * evo_lapse * gt[ui, uj] * Svec[lj]
 )
 
-fun_z4c_rhs.split_loop()
-
 # Eq. (2) of [1]
 fun_z4c_rhs.add_eqn(
     gt_rhs[li, lj],
@@ -971,6 +976,7 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[uk] * D(gt[li, lj], lk)
 )
+fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     At_rhs[li, lj],
@@ -1023,6 +1029,8 @@ fun_z4c_diss.add_eqn(
     )
 )
 
+fun_z4c_diss.split_loop()
+
 chi_rhs_diss = cottonmouth_Z4c.overwrite(chi_rhs)
 fun_z4c_diss.add_eqn(
     chi_rhs_diss,
@@ -1032,6 +1040,8 @@ fun_z4c_diss.add_eqn(
         + div_diss(chi, l2)
     )
 )
+
+fun_z4c_diss.split_loop()
 
 trK_rhs_diss = cottonmouth_Z4c.overwrite(trK_rhs)
 fun_z4c_diss.add_eqn(
@@ -1043,6 +1053,8 @@ fun_z4c_diss.add_eqn(
     )
 )
 
+fun_z4c_diss.split_loop()
+
 GammaHat_rhs_diss = cottonmouth_Z4c.overwrite(evo_Gammat_rhs)
 fun_z4c_diss.add_eqn(
     GammaHat_rhs_diss[ui],
@@ -1052,6 +1064,8 @@ fun_z4c_diss.add_eqn(
         + div_diss(evo_Gammat[ui], l2)
     )
 )
+
+fun_z4c_diss.split_loop()
 
 gt_rhs_diss = cottonmouth_Z4c.overwrite(gt_rhs)
 fun_z4c_diss.add_eqn(
@@ -1063,6 +1077,8 @@ fun_z4c_diss.add_eqn(
     )
 )
 
+fun_z4c_diss.split_loop()
+
 At_rhs_diss = cottonmouth_Z4c.overwrite(At_rhs)
 fun_z4c_diss.add_eqn(
     At_rhs_diss[li, lj],
@@ -1073,6 +1089,8 @@ fun_z4c_diss.add_eqn(
     )
 )
 
+fun_z4c_diss.split_loop()
+
 evo_lapse_rhs_diss = cottonmouth_Z4c.overwrite(evo_lapse_rhs)
 fun_z4c_diss.add_eqn(
     evo_lapse_rhs_diss,
@@ -1082,6 +1100,8 @@ fun_z4c_diss.add_eqn(
         + div_diss(evo_lapse, l2)
     )
 )
+
+fun_z4c_diss.split_loop()
 
 evo_shift_rhs_diss = cottonmouth_Z4c.overwrite(evo_shift_rhs)
 fun_z4c_diss.add_eqn(
@@ -1247,8 +1267,10 @@ cottonmouth_Z4c.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=True,
-    cse_optimization_level=CseOptimizationLevel.Fast,
-    soft_split_retainment_strategy=retain_percentile(.7)
+    cse_optimization_level=CseOptimizationLevel.Optimal,
+    soft_split_retainment_strategy=retain_rank(50),
+    ordering_fn=functools.partial(
+        prioritize_rare_symbols, use_sqrt=False, consider_frequency=True, complexity_factor=0.0)
 )
 
 ###

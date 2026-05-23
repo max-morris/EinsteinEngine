@@ -1535,8 +1535,41 @@ class ThornFunction:
             if util.verbose():
                 eqn_list.dump()
 
+    def _mk_extra(self, ivar:Indexed)->Indexed:
+        td = self.thorn_def
+        td.name_index += 1
+        base = ivar.args[0]
+        assert type(base) == IndexedBase
+        name = base.name + "_extra_" + str(td.name_index)
+        inds : List[Idx] = list()
+        for ind in ivar.args[1:]:
+            assert type(ind) == Idx
+            inds.append(ind)
+        syms = list()
+        asyms = list()
+        for sym in td.symmetries.sd[base]:
+            ind1, ind2, sign = sym
+            idx1 = inds[ind1]
+            idx2 = inds[ind2]
+            if sign > 0:
+                syms  += [(idx1, idx2)]
+            else:
+                asyms += [(idx1, idx2)]
+        new_var : IndexedBase = td.decl(name, td.declarations[base.name].indices, symmetries=syms, anti_symmetries=asyms)
+        new_ivar = new_var[*inds]
+        assert type(new_ivar) == Indexed
+        return new_ivar
+
     @multimethod
-    def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:
+    def add_eqn(self, lhs: Indexed, rhs: Expr, *extras: Expr) -> None:
+
+        # Handle extras: These are implicitly declared temporaries
+        # that are used to split up the calculation into smaller pieces.
+        for extra in extras:
+            extra_lhs = self._mk_extra(lhs)
+            rhs += extra_lhs
+            self.add_eqn(extra_lhs, extra)
+
         check_indices(rhs, self.thorn_def.defn)
 
         if self.been_baked:
@@ -1756,6 +1789,7 @@ class ThornDef:
         if not _is_valid_c_identifier(name):
             raise DslException(f"Thorn name '{name}' is not a valid C identifier")
 
+        self.name_index: int = 0
         self.fun_args: Dict[str, int] = dict()
         self.run_simplify = run_simplify
         self.coords: List[Symbol] = list()
@@ -2549,7 +2583,7 @@ class ThornDef:
         else:
             indexed_symbol = None
 
-        assert basename not in self.gfs
+        assert basename not in self.gfs, f"basename: {basename}"
         self.gfs[basename] = the_symbol
         self.defn[basename] = (basename, list(indices))
         self.centering[basename] = centering
