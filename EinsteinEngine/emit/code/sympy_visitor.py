@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import typing
-from typing import List, Optional
+from typing import List, Optional, cast
 
 # noinspection PyUnresolvedReferences
 import sympy as sy
@@ -24,20 +24,15 @@ from multimethod import multimethod
 from sympy.logic.boolalg import Boolean
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdx
-from EinsteinEngine.frontend.util import require
-from EinsteinEngine.emit.code.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, FunctionCall, \
+from EinsteinEngine.common.stencil_idx import StencilIdx
+from EinsteinEngine.emit.code.common.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, FunctionCall, \
     StandardizedFunctionCallType, StandardizedFunctionCall, IntLiteralExpr, FloatLiteralExpr, IfElseExpr
 from EinsteinEngine.emit.tree import Identifier
-from EinsteinEngine.emit.util import encode_stencil_idx
-from EinsteinEngine.generators.util import VarCenteringFn, ShouldWrapWithAccessFn
 
 
-class SympyExprVisitor:
-    should_wrap_with_access_fn: ShouldWrapWithAccessFn
+class BaseSympyExprVisitor[ExprT: Expr]:
     visiting_stencil_fn_args: bool
     stencil_fns: set[str]
-    centering_fn: VarCenteringFn
 
     standard_fns: dict[sy.Function, StandardizedFunctionCallType] = {
         sy.sin: StandardizedFunctionCallType.Sin,
@@ -60,18 +55,14 @@ class SympyExprVisitor:
     def __init__(
             self,
             *,
-            stencil_fns: Optional[set[str]] = None,
-            should_wrap_with_access_fn: Optional[ShouldWrapWithAccessFn] = None,
-            centering_fn: Optional[VarCenteringFn] = None
+            stencil_fns: Optional[set[str]] = None
     ):
-        self.should_wrap_with_access_fn = should_wrap_with_access_fn if should_wrap_with_access_fn is not None else lambda _0, _1: False
         self.stencil_fns = stencil_fns if stencil_fns is not None else set()
         self.visiting_stencil_fn_args = False
-        self.centering_fn = centering_fn if centering_fn is not None else lambda _: None
 
     @multimethod
     def visit(self, expr: sy.Basic) -> Expr:
-        raise NotImplementedError(f'visit({expr.func}) not implemented in SympyExprVisitor expr={expr}')
+        raise NotImplementedError(f'visit({expr.func}) not implemented in BaseSympyExprVisitor expr={expr}')
 
     @visit.register
     def _(self, expr: sy.Add) -> Expr:
@@ -128,27 +119,7 @@ class SympyExprVisitor:
     @visit.register
     def _(self, expr: sy.Symbol) -> Expr:
         assert len(expr.args) == 0
-        name = expr.name if "'" not in expr.name else expr.name.replace("'", "")
-        if self.should_wrap_with_access_fn(name, self.visiting_stencil_fn_args):
-            return FunctionCall(
-                Identifier("access"),
-                [
-                    IdExpr(Identifier(name)),
-                    IdExpr(
-                        Identifier(
-                            encode_stencil_idx(
-                                StencilIdxWithCentering(
-                                    StencilIdx(0, 0, 0),
-                                    require(self.centering_fn(name), lambda: f'Unknown centering for variable {name}')
-                                )
-                            )
-                        )
-                    )
-                ],
-                []
-            )
-        else:
-            return IdExpr(Identifier(name))
+        return self._visit_symbol(self._sanitize_symbol_name(expr.name))
 
     @visit.register
     def _(self, expr: sy.IndexedBase) -> Expr:
@@ -156,23 +127,52 @@ class SympyExprVisitor:
         assert len(tup.args) == 0, f"Missing arguments on symbol: {str(expr)} {tup.args} {len(tup.args)}"
         return typing.cast(Expr, self.visit(base))
 
-    def _visit_stencil_call(self, expr: sy.Function) -> Expr:
-        self.visiting_stencil_fn_args = True
+    def _sanitize_symbol_name(self, name: str) -> str:
+        return name.replace("'", "")
 
+    def _visit_symbol(self, symbol_name: str) -> Expr:
+        return IdExpr(Identifier(symbol_name))
+
+    def _visit_stencil_access(
+            self,
+            *,
+            expr: sy.Function,
+            stencil_idx: StencilIdx
+    ) -> Expr:
         gf_arg = self.visit(expr.args[0])
-        var_name = str(expr.args[0])
+        return FunctionCall(
+            Identifier(expr.func.name),
+            [gf_arg, IntLiteralExpr(stencil_idx.x), IntLiteralExpr(stencil_idx.y), IntLiteralExpr(stencil_idx.z)],
+            []
+        )
+
+    @staticmethod
+    def _to_stencil_offset(v: sy.Basic) -> int:
+        if isinstance(v, sy.Integer):
+            return int(v)
+
+        # noinspection PyTypeChecker
+        return int(cast(sy.Expr, v).evalf())  # type: ignore[no-untyped-call]
+
+    def _visit_stencil_call(self, expr: sy.Function) -> Expr:
+        if len(expr.args) != 4:
+            raise DslException(f"Stencil call `{expr}` should have 4 args (gf, i, j, k), got {len(expr.args)}.")
+
         x_arg, y_arg, z_arg = expr.args[1:]
-        x_n, y_n, z_n = (int(typing.cast(sy.Expr, arg).evalf()) for arg in [x_arg, y_arg, z_arg])  # type: ignore[no-untyped-call]
-        centering = require(self.centering_fn(var_name), lambda: f"Stencil call `{expr}` references a variable `{var_name}` without a defined centering.")
+        stencil_idx = StencilIdx(
+            self._to_stencil_offset(x_arg),
+            self._to_stencil_offset(y_arg),
+            self._to_stencil_offset(z_arg)
+        )
 
-        args_encoded = encode_stencil_idx(StencilIdxWithCentering(
-            StencilIdx(x_n, y_n, z_n),
-            centering
-        ))
-
-        self.visiting_stencil_fn_args = False
-
-        return FunctionCall(Identifier(f'{expr.func.name}'), [gf_arg, IdExpr(Identifier(args_encoded))], [])
+        self.visiting_stencil_fn_args = True
+        try:
+            return self._visit_stencil_access(
+                expr=expr,
+                stencil_idx=stencil_idx
+            )
+        finally:
+            self.visiting_stencil_fn_args = False
 
     @visit.register
     def _(self, expr: sy.Function) -> Expr:
@@ -192,7 +192,7 @@ class SympyExprVisitor:
         if expr.func in self.standard_fns:
             fn_type = self.standard_fns[expr.func]
         else:
-            raise NotImplementedError(f"visit({expr.func}) not implemented in SympyExprVisitor")
+            raise NotImplementedError(f"visit({expr.func}) not implemented in BaseSympyExprVisitor")
 
         arg_list = [self.visit(a) for a in expr.args]
         return StandardizedFunctionCall(fn_type, arg_list)

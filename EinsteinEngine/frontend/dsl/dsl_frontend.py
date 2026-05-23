@@ -16,7 +16,6 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
-from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
@@ -111,8 +110,8 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
 
 @dataclass
 class SymbolDeclaration[KwargsType: SymbolDeclarationKwargs]:
-    basename: str
-    base: IndexedBase
+    symbol_name: str
+    indexed_base: IndexedBase
     indices: tuple[Idx, ...]
     kwargs: KwargsType
 
@@ -191,8 +190,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             raise DslException(f"Symbol {basename} already declared.")
 
         self.declarations[basename] = SymbolDeclaration(
-            basename=basename,
-            base=the_symbol,
+            symbol_name=basename,
+            indexed_base=the_symbol,
             indices=indices_tup,
             kwargs=cast(SymbolDeclarationKwargsT, kwargs),
         )
@@ -217,8 +216,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _decl_scalar(self, basename: str) -> Symbol:
         ret = mk_indexed_base(basename, tuple())
         self.declarations[basename] = SymbolDeclaration(
-            basename=basename,
-            base=ret,
+            symbol_name=basename,
+            indexed_base=ret,
             indices=tuple(),
             kwargs=cast(SymbolDeclarationKwargsT, dict()),
         )
@@ -284,9 +283,51 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         opts.update(DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options())  # type: ignore[typeddict-item]
         return opts
 
-    @abstractmethod
+    def _mk_default_bake_options(self) -> DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]:
+        return self._mk_default_dsl_frontend_bake_options()
+
+    def _mk_default_function_bake_options(self) -> DslFunctionFrontendBakeOptions:
+        return DslFunctionFrontend._mk_default_dsl_function_frontend_bake_options()
+
+    def _mk_function_bake_options(
+            self, opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]
+    ) -> dict[str, DslFunctionFrontendBakeOptions]:
+        my_tf_opts: dict[str, DslFunctionFrontendBakeOptions] = dict()
+
+        for tf in self.functions.values():
+            tf_opts = self._mk_default_function_bake_options()
+            tf_opts.update(cast(DslFunctionFrontendBakeOptions, opts))
+            if "functions" in opts and tf.name in opts["functions"]:
+                tf_opts.update(opts["functions"][tf.name])
+            my_tf_opts[tf.name] = tf_opts
+
+        return my_tf_opts
+
     def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
-        ...
+        my_opts = self._mk_default_bake_options()
+        my_opts.update(opts)  # type: ignore[typeddict-item]
+        my_tf_opts = self._mk_function_bake_options(my_opts)
+
+        for tf in self.functions.values():
+            assert tf.name in my_tf_opts, f"Function '{tf.name}' not found in my_tf_opts"
+            tf._early_bake(**my_tf_opts[tf.name])
+
+        if my_opts["do_cse"]:
+            pprint("Performing CSE...")
+            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+
+        for tf in self.functions.values():
+            if tf.needs_merge():
+                pprint(f"Merging soft splits in {tf.name}...")
+                tf.merge_soft_splits(my_tf_opts[tf.name]["soft_split_retainment_strategy"])
+
+        for tf in self.functions.values():
+            if tf.name not in my_tf_opts:  # Must be a synthetic function
+                tf._late_bake()
+            else:
+                if my_tf_opts[tf.name]["splitmaxxing"]:
+                    tf._do_splitmaxxing()
+                tf._late_bake(**my_tf_opts[tf.name])
 
     @staticmethod
     def _classify_temps(
@@ -561,7 +602,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     eqn_list.dump()
 
     def overwrite(self, sym: IndexedBase) -> IndexedBase:
-        if str(sym) not in self.declarations or self.declarations[str(sym)].base != sym:
+        if str(sym) not in self.declarations or self.declarations[str(sym)].indexed_base != sym:
             raise DslException(f"Cannot overwrite symbol {sym} which is not declared")
 
         orig_sym = sym if str(sym) not in self.overwrite_symbols else self.overwrite_symbols[str(sym)].resolves_to
@@ -608,15 +649,17 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 pass
             else:
                 assert isinstance(sub_val_, Symbol)
+                base_name = str(indexed.base)
                 sub_val_name = str(sub_val_)
                 self.declarations[sub_val_name] = SymbolDeclaration(
-                    basename=sub_val_name,
-                    base=mk_indexed_base(sub_val_name, tuple()),
+                    symbol_name=sub_val_name,
+                    indexed_base=mk_indexed_base(sub_val_name, tuple()),
                     indices=tuple(),
                     kwargs=cast(SymbolDeclarationKwargsT, dict())
                 )
-                self._on_substitution_symbol_created(indexed_sym, sub_val_)
+                self.var2base[sub_val_name] = base_name
                 self.subs[indexed_sym] = sub_val_
+                self._on_substitution_symbol_created(indexed_sym, sub_val_)
                 self._on_substitution_mapping(indexed_sym, sub_val_)
 
     @add_substitution_rule.register

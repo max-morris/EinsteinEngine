@@ -23,12 +23,9 @@ from multimethod import multimethod
 from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdx
 from EinsteinEngine.frontend.util import require
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.emit.code.code_tree import CodeNode, StandardizedFunctionCallType, IdExpr, IntLiteralExpr, \
-    FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
-    StandardizedFunctionCall, CarpetXGridLoopCall, CarpetXGridLoopLambda, ThornFunctionDecl, CodeRoot, IncludeDirective, \
-    UsingNamespace, Using, UsingAlias, DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, ConstAssignDecl, \
-    ConstExprAssignDecl, ConstConstructDecl, VerbatimExpr, MutableAssignDecl, IfElseExpr, IfElseStmt
-from EinsteinEngine.emit.code.sympy_visitor import SympyExprVisitor
+from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunctionCallType, IdExpr, IntLiteralExpr, FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, StandardizedFunctionCall, VerbatimExpr, IfElseExpr, IfElseStmt
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_sympy_visitor import CppCarpetXSympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float, LineComment, BlockComment
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.emit.visitor import Visitor, visit_each
@@ -38,7 +35,7 @@ from EinsteinEngine.common.util import indent
 
 class CppVisitor(Visitor[CodeNode]):
     generator: CactusGenerator
-    sympy_visitor: SympyExprVisitor
+    sympy_visitor: CppCarpetXSympyVisitor
 
     standardized_function_calls: Dict[StandardizedFunctionCallType, str] = {
         StandardizedFunctionCallType.Sin: 'sin',
@@ -66,7 +63,7 @@ class CppVisitor(Visitor[CodeNode]):
         def should_wrap_with_access_fn(name: str, in_stencil_args: bool) -> bool:
             return not in_stencil_args and name in self.generator.var_names
 
-        self.sympy_visitor = SympyExprVisitor(
+        self.sympy_visitor = CppCarpetXSympyVisitor(
             stencil_fns=stencil_fns,
             should_wrap_with_access_fn=should_wrap_with_access_fn,
             centering_fn=lambda vn: self.generator.thorn_def.get_centering_from_var_name(vn)
@@ -269,7 +266,7 @@ class CppVisitor(Visitor[CodeNode]):
                 f'\n}}')
 
     @visit.register
-    def _(self, n: CodeRoot) -> str:
+    def _(self, n: CppCarpetXCodeRoot) -> str:
         return '\n'.join(visit_each(self, n.children))
 
     @visit.register
