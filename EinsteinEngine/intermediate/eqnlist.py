@@ -663,11 +663,14 @@ class EqnList:
         self.eqn_insertion_order[lhs] = len(self.eqns) - 1
 
     def do_pull_out(self, name_generator: Generator[str, Never, Never]) -> None:
-        new_eqns: dict[Symbol, Expr] = dict()
-        modify_eqns: dict[Symbol, Expr] = dict()
+        new_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
+        modify_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
 
-        for lhs, rhs in self.eqns.items():
-            for sub_expr in rhs.find(pull_out):  # type: ignore[no-untyped-call]
+        assert self.eqns.keys() == self.eqn_insertion_order.keys()
+
+        for lhs in self.eqn_insertion_order.keys():
+            rhs = self.eqns[lhs]
+            for sub_expr in sorted(rhs.find(pull_out), key=str):  # type: ignore[no-untyped-call]
                 if len(sub_expr_args := sub_expr.args) > 1:
                     raise IntermediateException("pull_out() should have only one argument")
                 new_sym = mk_symbol(next(name_generator))

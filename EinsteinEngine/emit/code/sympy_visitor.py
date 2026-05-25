@@ -25,8 +25,9 @@ from sympy.logic.boolalg import Boolean
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.common.stencil_idx import StencilIdx
-from EinsteinEngine.emit.code.common.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, FunctionCall, \
-    StandardizedFunctionCallType, StandardizedFunctionCall, IntLiteralExpr, FloatLiteralExpr, IfElseExpr
+from EinsteinEngine.emit.code.common.code_tree import NArityOpExpr, Expr, BinOp, UnOpExpr, UnOp, BinOpExpr, IdExpr, \
+    FunctionCall, \
+    StandardizedFunctionCallType, StandardizedFunctionCall, IntLiteralExpr, FloatLiteralExpr, IfElseExpr, GroupedExpr
 from EinsteinEngine.emit.tree import Identifier
 
 
@@ -182,6 +183,9 @@ class BaseSympyExprVisitor[ExprT: Expr]:
             assert hasattr(expr.func, 'name')
             if expr.func.name in self.stencil_fns:
                 return self._visit_stencil_call(expr)
+            elif expr.func.name == 'noop':
+                assert len(expr.args) == 1
+                return GroupedExpr(self.visit(expr.args[0]))
             else:
                 arg_list = [self.visit(a) for a in expr.args]
                 return FunctionCall(Identifier(expr.func.name), arg_list, [])

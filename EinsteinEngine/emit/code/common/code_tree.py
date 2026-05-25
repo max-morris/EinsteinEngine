@@ -149,6 +149,11 @@ class FunctionCall(Expr):
     template_args: List[Union[Expr, Identifier]]
 
 
+@dataclass
+class GroupedExpr(Expr):
+    expr: Expr
+
+
 class StandardizedFunctionCallType(ReprEnum):
     Sinh = auto(), 'sinh'
     Cosh = auto(), 'cosh'
