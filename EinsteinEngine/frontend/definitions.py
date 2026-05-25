@@ -36,6 +36,7 @@ noop = mk_function("noop")
 div = mk_function("div")
 D = mk_function("D")
 muladd = mk_function("muladd")
+pull_out = mk_function("pull_out")
 
 # These symbols represent the inverse of the spatial discretization.
 DXI = mk_symbol("DXI")

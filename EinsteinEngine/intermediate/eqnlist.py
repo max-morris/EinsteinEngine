@@ -22,7 +22,7 @@ from functools import cache, partial
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple
+from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple, Never, Generator
 
 from multimethod import multimethod
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
@@ -45,6 +45,8 @@ from EinsteinEngine.frontend.util import require_baked
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.common.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
+from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
+
 
 # These symbols represent the inverse of the
 # spatial discretization.
@@ -162,6 +164,10 @@ class EqnComplex:
         for eqn_list in self.eqn_lists:
             gv |= eqn_list._grid_variables()
         return gv
+
+    def do_pull_out(self, name_generator: Generator[str, Never, Never]) -> None:
+        for eqn_list in self.eqn_lists:
+            eqn_list.do_pull_out(name_generator)
 
     def do_madd(self) -> None:
         for eqn_list in self.eqn_lists:
@@ -655,6 +661,16 @@ class EqnList:
         # Ensure we only have symbols in eqnlist
         self.eqns[lhs := symbify(lhs)] = symbify(rhs)
         self.eqn_insertion_order[lhs] = len(self.eqns) - 1
+
+    def do_pull_out(self, name_generator: Generator[str, Never, Never]) -> None:
+        for lhs, rhs in self.eqns.items():
+            for sub_expr in rhs.find(pull_out):  # type: ignore[no-untyped-call]
+                if len(sub_expr_args := sub_expr.args) > 1:
+                    raise IntermediateException("pull_out() should have only one argument")
+                new_sym = mk_symbol(next(name_generator))
+                self.add_eqn(new_sym, sub_expr_args[0])
+                rhs = rhs.xreplace({sub_expr: new_sym})  # type: ignore[no-untyped-call]
+            self.eqns[lhs] = rhs
 
     def recycle_temporaries(self) -> None:
         temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()

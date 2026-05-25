@@ -198,6 +198,8 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         options = self._mk_default_dsl_function_frontend_bake_options()
         options.update(kwargs)
 
+        self.eqn_complex.do_pull_out(self.frontend._unique_name('pull_out'))
+
         # Doing a first pass of complexity analysis for CSE
         for eqn_list in self.eqn_complex.eqn_lists:
             eqn_list._run_preliminary_complexity_analysis()

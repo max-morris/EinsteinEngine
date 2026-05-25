@@ -19,7 +19,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
-from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any
+from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any, Generator, Never
 
 # mypy: disable-error-code=no-redef
 # The above line suppresses an unfortunate interaction between MyPy and multimethod.
@@ -146,6 +146,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     subs: dict[Indexed | IndexedBase, Expr]
     symmetries: Sym
 
+    _unique_name_counter: int
+
     def __init__(self, *, dimensionality: int = 3, derivative_stencil_order: int = 5):
         super().__init__()
         self.dimensionality = dimensionality
@@ -180,6 +182,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self.subs = dict()
         self._populate_globals()
 
+        self._unique_name_counter = 0
+
     # Wart: Proper signature is **kwargs: Unpack[SymbolDeclarationKwargsT] but MyPy does not support this.
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
         indices_tup: tuple[Idx, ...] = tuple(indices)
@@ -212,6 +216,12 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             self.add_substitution_rule(indexed_symbol, substitution_rule)
 
         return the_symbol
+
+    def _unique_name(self, prefix: str = 'tmp') -> Generator[str, Never, Never]:
+        while True:
+            r = f'{prefix}_{self._unique_name_counter}'
+            self._unique_name_counter += 1
+            yield r
 
     def _decl_scalar(self, basename: str) -> Symbol:
         ret = mk_indexed_base(basename, tuple())
