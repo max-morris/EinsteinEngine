@@ -663,14 +663,25 @@ class EqnList:
         self.eqn_insertion_order[lhs] = len(self.eqns) - 1
 
     def do_pull_out(self, name_generator: Generator[str, Never, Never]) -> None:
+        new_eqns: dict[Symbol, Expr] = dict()
+        modify_eqns: dict[Symbol, Expr] = dict()
+
         for lhs, rhs in self.eqns.items():
             for sub_expr in rhs.find(pull_out):  # type: ignore[no-untyped-call]
                 if len(sub_expr_args := sub_expr.args) > 1:
                     raise IntermediateException("pull_out() should have only one argument")
                 new_sym = mk_symbol(next(name_generator))
-                self.add_eqn(new_sym, sub_expr_args[0])
-                self.temporaries.add(new_sym)
+                assert new_sym not in new_eqns
+                new_eqns[new_sym] = sub_expr_args[0]
                 rhs = rhs.xreplace({sub_expr: new_sym})  # type: ignore[no-untyped-call]
+            assert lhs not in modify_eqns
+            modify_eqns[lhs] = rhs
+
+        for lhs, rhs in new_eqns.items():
+            self.add_eqn(lhs, rhs)
+            self.temporaries.add(lhs)
+
+        for lhs, rhs in modify_eqns.items():
             self.eqns[lhs] = rhs
 
     def recycle_temporaries(self) -> None:
