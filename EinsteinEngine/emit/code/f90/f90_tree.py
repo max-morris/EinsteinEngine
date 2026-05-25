@@ -66,6 +66,10 @@ class IntentOut(TypeAttribute):
     pass
 
 @dataclass
+class Allocatable(TypeAttribute):
+    pass
+
+@dataclass
 class Dimension(TypeAttribute):
     dims: Sequence[Optional[IntLiteralExpr]]
 

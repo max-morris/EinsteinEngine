@@ -30,6 +30,7 @@ from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunc
 
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeRoot
+from EinsteinEngine.emit.code.f90.f90_tree import Allocatable
 
 
 class F90Visitor(Visitor[CodeNode]):
@@ -187,6 +188,10 @@ class F90Visitor(Visitor[CodeNode]):
     @visit.register
     def _(self, _: IntentOut) -> str:
         return 'INTENT(OUT)'
+
+    @visit.register
+    def _(self, _: Allocatable) -> str:
+        return 'ALLOCATABLE'
 
     @visit.register
     def _(self, n: Dimension) -> str:

@@ -28,7 +28,7 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Frontend
 from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeRoot, VarDecl, PrimitiveType, IntentIn, F90TopLevelNode
-from EinsteinEngine.emit.code.common.code_tree import BinOpExpr, IntLiteralExpr, FloatLiteralExpr
+from EinsteinEngine.emit.code.common.code_tree import BinOpExpr, IntLiteralExpr, FloatLiteralExpr, FunctionCall, ExprStmt
 from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeElem, SubroutineDecl, TypeSpecifier, Dimension, DoLoop, Assignment, F90ExprNode
 from EinsteinEngine.generators.dsl_generator import DslGenerator
@@ -36,6 +36,7 @@ from EinsteinEngine.generators.dsl_generator import DslGenerator
 import sympy as sy
 
 from EinsteinEngine.emit.code.f90.f90_tree import IntentOut
+from EinsteinEngine.emit.code.f90.f90_tree import Allocatable, ArrayAccess
 
 ThornFnName: TypeAlias = str
 SymbolName: TypeAlias = str
@@ -208,6 +209,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
         ]
 
         temp_decls: list[VarDecl] = list()
+        temp_allocs: list[F90TopLevelNode] = list()
 
         loop_to_output_region = [
             self._get_output_region_for_loop(fn, self.grid_names, loop_idx)
@@ -216,6 +218,35 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
 
         loops: list[F90TopLevelNode] = list()
         sympy_visitor = self._mk_sympy_visitor(fn.name)
+
+        def _add_temp(temp_name: str) -> None:
+            temp_decls.append(VarDecl(
+                type=TypeSpecifier(
+                    type=PrimitiveType.Double,
+                    attributes=[Allocatable(), Dimension((None, None, None))]
+                ),
+                names=[Identifier(temp_name)],
+            ))
+
+            temp_allocs.append(
+                ExprStmt(
+                    FunctionCall(
+                        Identifier('ALLOCATE'),
+                        [
+                            ArrayAccess(
+                                Identifier(temp_name),
+                                [IdExpr(Identifier(s)) for s in ('nx', 'ny', 'nz')],
+                            )
+                        ],
+                        []
+                    )
+                )
+            )
+
+        for tile_temp in fn.eqn_complex.tile_temporaries:
+            assert str(tile_temp) not in self.grid_names and str(tile_temp) not in self.local_temp_names[fn_name]
+            _add_temp(str(tile_temp))
+
         for loop_idx, eqn_list in enumerate(fn.eqn_complex.eqn_lists):
             output_region = loop_to_output_region[loop_idx]
             subst_result = substitute_recycled_temporaries(eqn_list)
@@ -228,17 +259,11 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             annotations: dict[str, str] = {str(lhs): ann for lhs, ann in fn.source_annotations.eqns[loop_idx].items()}
             temporaries = [
                 str(lhs) for lhs in OrderedSet(eqn_list.eqns.keys())
-                if lhs in (eqn_list.temporaries - self.frontend.global_temporaries) and str(lhs) not in self.grid_names
+                if lhs in (eqn_list.temporaries - self.frontend.global_temporaries - fn.eqn_complex.tile_temporaries) and str(lhs) not in self.grid_names
             ]
 
             for temp_name in temporaries:
-                temp_decls.append(VarDecl(
-                    type=TypeSpecifier(
-                        type=PrimitiveType.Double,
-                        attributes=[Dimension((None, None, None))]
-                    ),
-                    names=[Identifier(temp_name)],
-                ))
+                _add_temp(temp_name)
 
             if (loop_annotation := fn.source_annotations.loops[loop_idx]) != '':
                 loops.append(LineComment(loop_annotation))
@@ -320,6 +345,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                     *param_decls,
                     *temp_decls,
                     *boilerplate_inits,
+                    *temp_allocs,
                     *loops
                 ]
             )
