@@ -318,7 +318,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         my_opts.update(opts)  # type: ignore[typeddict-item]
         my_tf_opts = self._mk_function_bake_options(my_opts)
 
-        for tf in self.functions.values():
+        for _, tf in sorted(self.functions.items(), key=lambda kv: kv[0]):
             assert tf.name in my_tf_opts, f"Function '{tf.name}' not found in my_tf_opts"
             tf._early_bake(**my_tf_opts[tf.name])
 
