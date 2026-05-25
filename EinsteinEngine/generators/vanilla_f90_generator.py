@@ -335,7 +335,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                         'dy',   # "
                         'dz',   # "
                         'dt',   # time step size
-                        *self.grid_names,
+                        *self.read_decls[fn_name].keys(),
+                        *self.write_decls[fn_name].keys(),
                         *self.frontend.params.keys()
                     )
                 ],
