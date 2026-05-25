@@ -153,7 +153,7 @@ class F90Visitor(Visitor[CodeNode]):
         return f'{fn_name}({fn_args})'
 
     @visit.register
-    def _(self, n: GroupedExpr):
+    def _(self, n: GroupedExpr) -> str:
         return f'({self.visit(n.expr)})'
 
     @visit.register
@@ -191,7 +191,7 @@ class F90Visitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: Dimension) -> str:
         dims = ", ".join(self.visit(d) if d is not None else ':' for d in n.dims)
-        return f'dimension({dims})'
+        return f'DIMENSION({dims})'
 
     @visit.register
     def _(self, n: TypeSpecifier) -> str:

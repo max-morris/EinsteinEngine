@@ -190,7 +190,7 @@ class CppVisitor(Visitor[CodeNode]):
         return f'{fn_name}<{template_args}>({fn_args})'
 
     @visit.register
-    def _(self, n: GroupedExpr):
+    def _(self, n: GroupedExpr) -> str:
         return f'({self.visit(n.expr)})'
 
     @visit.register
