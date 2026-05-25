@@ -669,6 +669,7 @@ class EqnList:
                     raise IntermediateException("pull_out() should have only one argument")
                 new_sym = mk_symbol(next(name_generator))
                 self.add_eqn(new_sym, sub_expr_args[0])
+                self.temporaries.add(new_sym)
                 rhs = rhs.xreplace({sub_expr: new_sym})  # type: ignore[no-untyped-call]
             self.eqns[lhs] = rhs
 
