@@ -111,6 +111,7 @@ class EqnComplex:
     _tile_temporaries: set[Symbol]
     _inputs: set[Symbol]
     _outputs: set[Symbol]
+    _params: set[Symbol]
     _temporaries: set[Symbol]
     _read_decls: dict[Symbol, IntentRegion]
     _write_decls: dict[Symbol, IntentRegion]
@@ -449,12 +450,14 @@ class EqnComplex:
     def _calc_vars(self) -> None:
         self._inputs = OrderedSet()
         self._outputs = OrderedSet()
+        self._params = OrderedSet()
         self._temporaries = OrderedSet()
         self._variables = OrderedSet()
 
         for eqn_list in self.eqn_lists:
             self._inputs |= eqn_list.inputs
             self._outputs |= eqn_list.outputs
+            self._params |= eqn_list.params
             self._temporaries |= eqn_list.temporaries
             self._variables |= eqn_list.variables
 
@@ -495,6 +498,12 @@ class EqnComplex:
     def outputs(self) -> set[Symbol]:
         self._calc_vars()
         return self._outputs
+
+    @property
+    @require_baked(msg="Can't get params before baking the EqnComplex.")
+    def params(self) -> set[Symbol]:
+        self._calc_vars()
+        return self._params
 
     @property
     @require_baked(msg="Can't get temporaries before baking the EqnComplex.")
