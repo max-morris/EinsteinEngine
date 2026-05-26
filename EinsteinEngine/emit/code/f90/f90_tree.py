@@ -84,6 +84,10 @@ class VarDecl(F90Decl):
     names: Sequence[Identifier]
 
 @dataclass
+class Block(F90Stmt):
+    body: Sequence[F90TopLevelNode]
+
+@dataclass
 class DoLoop(F90Stmt):
     induction_var: Identifier
     lower_bound: F90ExprNode
