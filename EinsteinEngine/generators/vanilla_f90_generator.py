@@ -209,6 +209,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
 
         grid_temp_decls: list[VarDecl] = list()
         grid_temp_allocs: list[F90TopLevelNode] = list()
+        grid_temp_deallocs: list[IdExpr] = list()
 
         loop_to_output_region = [
             self._get_output_region_for_loop(fn, self.grid_names, loop_idx)
@@ -241,6 +242,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                     )
                 )
             )
+
+            grid_temp_deallocs.append(IdExpr(Identifier(temp_name)))
 
         for tile_temp in fn.eqn_complex.tile_temporaries:
             assert str(tile_temp) not in self.grid_names and str(tile_temp) not in self.local_temp_names[fn_name]
@@ -309,7 +312,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
 
             loops.append(
                 LineComment(
-                    '$OMP PARALLEL DO DEFAULT(SHARED)'
+                    '$OMP PARALLEL DO DEFAULT(SHARED) COLLAPSE(2)'
                 )
             )
             loops.append(
@@ -340,6 +343,9 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                 )
             )
 
+        params = sorted(map(str, fn.eqn_complex.inputs.intersection(self.frontend.params.keys())))
+        deallocate_stmt = ExprStmt(FunctionCall(Identifier('DEALLOCATE'), list(grid_temp_deallocs), []))
+
         nodes.append(
             SubroutineDecl(
                 name=Identifier(fn_name),
@@ -357,7 +363,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                         'dt',   # time step size
                         *self.read_decls[fn_name].keys(),
                         *self.write_decls[fn_name].keys(),
-                        *self.frontend.params.keys()
+                        *params
                     )
                 ],
                 body=[
@@ -367,7 +373,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                     *grid_temp_decls,
                     *boilerplate_inits,
                     *grid_temp_allocs,
-                    *loops
+                    *loops,
+                    deallocate_stmt
                 ]
             )
         )

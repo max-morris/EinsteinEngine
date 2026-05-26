@@ -89,7 +89,7 @@ class F90Visitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: LineComment) -> str:
-        return f'! {n.text}'
+        return f'!{n.text}'
 
     @visit.register
     def _(self, n: String) -> str:
