@@ -25,7 +25,7 @@ from EinsteinEngine.generators.substitute_recycled_temporaries import substitute
 
 from EinsteinEngine.emit.tree import Identifier, LineComment
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Frontend
+from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Frontend, VanillaF90Param
 from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeRoot, VarDecl, PrimitiveType, IntentIn, F90TopLevelNode, Block
 from EinsteinEngine.emit.code.common.code_tree import BinOpExpr, IntLiteralExpr, FloatLiteralExpr, FunctionCall, ExprStmt
@@ -45,6 +45,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
     grid_names: OrderedSet[str]
     read_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
     write_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
+    params: dict[ThornFnName, OrderedDict[SymbolName, VanillaF90Param]]
     local_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
     tile_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
 
@@ -55,6 +56,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
         self.grid_names = OrderedSet()
         self.read_decls = defaultdict(OrderedDict)
         self.write_decls = defaultdict(OrderedDict)
+        self.params = defaultdict(OrderedDict)
         self.local_temp_names = defaultdict(OrderedSet)
         self.tile_temp_names = defaultdict(OrderedSet)
 
@@ -62,17 +64,22 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             tf.eqn_complex._calc_tile_temps()
             tf.eqn_complex._calc_vars()
 
-            for symbol, region in tf.eqn_complex.read_decls.items():
+            for symbol, region in sorted(tf.eqn_complex.read_decls.items(), key=lambda kv: str(kv[0])):
                 var_name = str(symbol).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.grid_names.add(var_name)
                     self.read_decls[tf.name][var_name] = region
 
-            for symbol, region in tf.eqn_complex.write_decls.items():
+            for symbol, region in sorted(tf.eqn_complex.write_decls.items(), key=lambda kv: str(kv[0])):
                 var_name = str(symbol).replace("'", "")
                 if var_name not in self.vars_to_ignore:
                     self.grid_names.add(var_name)
                     self.write_decls[tf.name][var_name] = region
+
+            for symbol in sorted(tf.eqn_complex.params, key=str):
+                var_name = (sym_name := str(symbol)).replace("'", "")
+                if var_name not in self.vars_to_ignore:
+                    self.params[tf.name][var_name] = self.frontend.params[sym_name]
 
             for tt in tf.eqn_complex.tile_temporaries:
                 self.tile_temp_names[tf.name].add(str(tt).replace("'", ""))
@@ -176,10 +183,6 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             ) for d in ('x', 'y', 'z')
         ]
 
-        #base_to_grid_vars: OrderedDict[str, set[str]] = OrderedDict()
-        #for name in self.grid_names:
-        #    base_to_grid_vars.setdefault(self.frontend.var2base.get(name, name), set()).add(name)
-
         grid_decls = [
             *(VarDecl(
                 type=TypeSpecifier(
@@ -204,7 +207,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                     attributes=[IntentIn()]
                 ),
                 names=[Identifier(var)],
-            ) for var, param in self.frontend.params.items())
+            ) for var, param in self.params[fn_name].items())
         ]
 
         grid_temp_decls: list[VarDecl] = list()
@@ -343,7 +346,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                 )
             )
 
-        params = sorted(map(str, fn.eqn_complex.inputs.intersection(self.frontend.params.keys())))
+        param_names = sorted(map(str, self.params[fn_name].keys()))
         deallocate_stmt = ExprStmt(FunctionCall(Identifier('DEALLOCATE'), list(grid_temp_deallocs), []))
 
         nodes.append(
@@ -363,7 +366,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                         'dt',   # time step size
                         *self.read_decls[fn_name].keys(),
                         *self.write_decls[fn_name].keys(),
-                        *params
+                        *param_names
                     )
                 ],
                 body=[
