@@ -20,7 +20,8 @@ from multimethod import multimethod
 import typing
 
 from EinsteinEngine.common.util import indent
-from EinsteinEngine.emit.code.f90.f90_tree import F90Expr, F90Stmt, F90Directive, F90Decl, TypeAttribute, TypeSpecifier, PrimitiveType, IntentIn, IntentOut, Dimension, VarDecl, DoLoop, Assignment, SubroutineDecl, ArrayAccess
+from EinsteinEngine.emit.code.f90.f90_tree import F90Expr, F90Stmt, F90Directive, F90Decl, TypeAttribute, TypeSpecifier, \
+    PrimitiveType, IntentIn, IntentOut, Dimension, VarDecl, DoLoop, Assignment, SubroutineDecl, ArrayAccess, Block
 from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, LineComment, BlockComment, String, Bool, Float
 
@@ -208,6 +209,11 @@ class F90Visitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: VarDecl) -> str:
         return f'{self.visit(n.type)} :: {", ".join(visit_each(self, n.names))}'
+
+    @visit.register
+    def _(self, n: Block) -> str:
+        body = "\n".join(visit_each(self, n.body))
+        return f'BLOCK\n{indent(body)}\nEND BLOCK'
 
     @visit.register
     def _(self, n: DoLoop) -> str:
