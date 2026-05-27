@@ -71,7 +71,7 @@ class Allocatable(TypeAttribute):
 
 @dataclass
 class Dimension(TypeAttribute):
-    dims: Sequence[Optional[IntLiteralExpr]]
+    dims: Sequence[Optional[F90ExprNode]]
 
 @dataclass
 class TypeSpecifier(CodeNode):
