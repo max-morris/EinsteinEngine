@@ -118,10 +118,9 @@ class F90Visitor(Visitor[CodeNode]):
         rhs = self.visit(n.rhs)
 
         if n.op is BinOp.Pow:
-            return f'({lhs} ** {rhs})'
+            return f'({lhs} ** ({rhs}))'
         if n.op is BinOp.Neq:
             return f'({lhs} /= {rhs})'
-
 
         return f'({lhs} {n.op.representation} {rhs})'
 
