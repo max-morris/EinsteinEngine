@@ -18,16 +18,17 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Generic, TypeVar, Optional, TYPE_CHECKING
+from typing import Generic, TypeVar, Optional, TYPE_CHECKING, Any
+
+from EinsteinEngine.emit.visitor import Visitor
+
+from EinsteinEngine.frontend.frontend import Frontend
+from EinsteinEngine.generators.generator import Generator
 
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
 
-F = TypeVar('F')  # todo: generic Frontend bound
-G = TypeVar('G')  # todo: generic Generator bound
-CV = TypeVar('CV')  # todo: generic Visitor bound
-
-class Wizard(ABC, Generic[F, G, CV]):
+class Wizard[F: Frontend, G: Generator[Any], CV: Visitor[Any]](ABC):
     frontend: F
     generator: G
     code_visitor: CV

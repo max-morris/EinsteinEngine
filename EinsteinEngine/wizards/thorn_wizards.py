@@ -33,11 +33,7 @@ from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.wizards.wizard import Wizard
 
-G = TypeVar('G', bound=CactusGenerator)
-CV = TypeVar('CV', bound=Visitor[CodeNode])
-
-
-class ThornWizard(Generic[G, CV], Wizard[ThornDef, G, CV]):
+class ThornWizard[G: CactusGenerator, CV: Visitor[CodeNode]](Wizard[ThornDef, G, CV]):
     base_dir: str
     license_file: Optional[str]
 

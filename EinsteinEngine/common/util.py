@@ -21,7 +21,7 @@ import os
 from enum import Enum, auto
 from time import time
 from types import TracebackType
-from typing import Any, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING
+from typing import Any, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING, Iterable
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 
 if TYPE_CHECKING:
@@ -218,3 +218,7 @@ def pprint(
 def checked_cast[T](obj: Any, typ: type[T]) -> T:
     assert isinstance(obj, typ), f"Expected type {typ}, found type {type(obj)}"
     return obj
+
+def flatten[T](iterable: Iterable[Iterable[T]]) -> Iterator[T]:
+    for item in iterable:
+        yield from item

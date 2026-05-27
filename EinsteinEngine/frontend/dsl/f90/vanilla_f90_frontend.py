@@ -42,16 +42,19 @@ class VanillaF90Param:
         else:
             raise ValueError(f"Unexpected type in VanillaF90Param: {self.type}")
 
-class VanillaF90Function(DslFunctionFrontend["VanillaF90Frontend"]):
+class VanillaF90Function(DslFunctionFrontend["VanillaF90Module"]):
     def __init__(self,
                  name: str,
-                 frontend: "VanillaF90Frontend",
+                 frontend: "VanillaF90Module",
                  intent_override: Optional[IntentOverride] = None) -> None:
         super().__init__(name, frontend, intent_override, owner_name="VanillaF90Function")
 
-class VanillaF90Frontend(DslFrontend[VanillaF90Param, Never, VanillaF90Function]):
+class VanillaF90Module(DslFrontend[VanillaF90Param, Never, VanillaF90Function]):
+    name: str
+
     def __init__(
             self,
+            name: str,
             *,
             dimensionality: int = 3,
             derivative_stencil_order: int = 5
@@ -60,6 +63,7 @@ class VanillaF90Frontend(DslFrontend[VanillaF90Param, Never, VanillaF90Function]
             dimensionality=dimensionality,
             derivative_stencil_order=derivative_stencil_order
         )
+        self.name = name
 
 
     def create_function(self,
