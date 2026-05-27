@@ -109,7 +109,7 @@ class CppCarpetXGenerator(CactusGenerator):
     """.strip().replace('    ', '')
 
     _boilerplate_namespace_usings: List[Identifier] = [Identifier(s) for s in ["Arith", "Loop"]]
-    _boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::fmax", "std::fmin", "std::sqrt"]]
+    _boilerplate_usings: List[Identifier] = [Identifier(s) for s in ["std::cbrt", "std::max", "std::min", "std::sqrt"]]
 
     # TODO: We want to be able to
     #  specify a header file with these
