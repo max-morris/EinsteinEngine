@@ -183,18 +183,20 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             ) for d in ('x', 'y', 'z')
         ]
 
+        grid_dimensions = Dimension(tuple(IdExpr(Identifier(s)) for s in ('nx', 'ny', 'nz')))
+
         grid_decls = [
             *(VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Double,
-                    attributes=[IntentIn(), Dimension((None, None, None))]
+                    attributes=[IntentIn(), grid_dimensions]
                 ),
                 names=[Identifier(var)],
             ) for var in self.read_decls[fn_name].keys()),
             *(VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Double,
-                    attributes=[IntentOut(), Dimension((None, None, None))]
+                    attributes=[IntentOut(), grid_dimensions]
                 ),
                 names=[Identifier(var)],
             ) for var in self.write_decls[fn_name].keys()),
@@ -226,7 +228,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             grid_temp_decls.append(VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Double,
-                    attributes=[Allocatable(), Dimension((None, None, None))]
+                    attributes=[Allocatable(), grid_dimensions]
                 ),
                 names=[Identifier(temp_name)],
             ))
