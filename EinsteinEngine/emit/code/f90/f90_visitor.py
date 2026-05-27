@@ -20,8 +20,7 @@ from multimethod import multimethod
 import typing
 
 from EinsteinEngine.common.util import indent
-from EinsteinEngine.emit.code.f90.f90_tree import F90Expr, F90Stmt, F90Directive, F90Decl, TypeAttribute, TypeSpecifier, \
-    PrimitiveType, IntentIn, IntentOut, Dimension, VarDecl, DoLoop, Assignment, SubroutineDecl, ArrayAccess, Block
+from EinsteinEngine.emit.code.f90.f90_tree import *
 from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, LineComment, BlockComment, String, Bool, Float
 
@@ -56,7 +55,6 @@ class F90Visitor(Visitor[CodeNode]):
     }
 
     def __init__(self) -> None:
-        #self.sympy_visitor = F90SympyVisitor()
         pass
 
     @multimethod
@@ -229,11 +227,62 @@ class F90Visitor(Visitor[CodeNode]):
             lhs += f'({", ".join(visit_each(self, n.dimensions))})'
         return f'{lhs} = {self.visit(n.rhs)}'
 
-    @visit.register
-    def _(self, n: SubroutineDecl) -> str:
+    def _visit_subroutine_decl(self, n: SubroutineDecl) -> str:
         args = ", ".join(visit_each(self, n.args))
         body = "\n".join(visit_each(self, n.body))
         return f'SUBROUTINE {self.visit(n.name)}({args})\n{indent(body)}\nEND SUBROUTINE {self.visit(n.name)}'
+
+    @visit.register
+    def _(self, n: SubroutineDecl) -> str:
+        return self._visit_subroutine_decl(n)
+
+    @visit.register
+    def _(self, _: ImplicitNone) -> str:
+        return 'IMPLICIT NONE'
+
+    @visit.register
+    def _(self, n: ModuleSubroutineDecl) -> str:
+        return 'MODULE ' + self._visit_subroutine_decl(n)
+
+    @visit.register
+    def _(self, n: ModuleProcedureDecl) -> str:
+        body = "\n".join(visit_each(self, n.body))
+        return f'MODULE PROCEDURE {self.visit(n.name)}\n{indent(body)}\nEND PROCEDURE {self.visit(n.name)}'
+
+    @visit.register
+    def _(self, n: ModuleInterface) -> str:
+        if n.name is not None:
+            header = f'INTERFACE {self.visit(n.name)}'
+            footer = f'END INTERFACE {self.visit(n.name)}'
+        else:
+            header = 'INTERFACE'
+            footer = 'END INTERFACE'
+
+        body = "\n".join(visit_each(self, n.decls))
+
+        return f'{header}\n{indent(body)}\n{footer}'
+
+    @visit.register
+    def _(self, _: Public) -> str:
+        return 'PUBLIC'
+
+    @visit.register
+    def _(self, _: Private) -> str:
+        return 'PRIVATE'
+
+    @visit.register
+    def _(self, n: Module) -> str:
+        decls = "\n".join(visit_each(self, n.decls))
+        interfaces = "\n".join(visit_each(self, n.interfaces))
+
+        return f'MODULE {self.visit(n.name)}\n{indent(decls)}\n{indent(interfaces)}\nEND MODULE {self.visit(n.name)}'
+
+    @visit.register
+    def _(self, n: Submodule) -> str:
+        decls = "\n".join(visit_each(self, n.decls))
+        procedures = "\n".join(visit_each(self, n.procedures))
+
+        return f'SUBMODULE({self.visit(n.parent)}) {self.visit(n.name)}\n{indent(decls)}\nCONTAINS\n{indent(procedures)}\nEND SUBMODULE {self.visit(n.name)}'
 
     @visit.register
     def _(self, n: F90CodeRoot) -> str:

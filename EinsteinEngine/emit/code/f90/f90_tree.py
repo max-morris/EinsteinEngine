@@ -113,5 +113,48 @@ class SubroutineDecl(F90Decl):
     body: Sequence[F90TopLevelNode]
 
 @dataclass
+class ImplicitNone(F90Decl):
+    pass
+
+@dataclass
+class ModuleSubroutineDecl(SubroutineDecl):
+    pass
+
+@dataclass
+class ModuleProcedureDecl(F90Decl):
+    name: Identifier
+    body: Sequence[F90TopLevelNode]
+
+@dataclass
+class ModuleInterface(F90Decl):
+    name: Optional[Identifier]
+    decls: Sequence[ModuleSubroutineDecl]
+
+@dataclass
+class AccessLevel(TypeAttribute):
+    pass
+
+@dataclass
+class Public(AccessLevel):
+    pass
+
+@dataclass
+class Private(AccessLevel):
+    pass
+
+@dataclass
+class Module(F90Decl):
+    name: Identifier
+    decls: Sequence[F90Decl]
+    interfaces: Sequence[ModuleInterface]
+
+@dataclass
+class Submodule(F90Decl):
+    name: Identifier
+    parent: Identifier
+    decls: Sequence[F90Decl]
+    procedures: Sequence[ModuleProcedureDecl]
+
+@dataclass
 class F90CodeRoot(CodeNode):
     children: Sequence[F90CodeElem]

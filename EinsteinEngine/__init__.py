@@ -42,6 +42,11 @@ from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, Thor
 from EinsteinEngine.generators.cactus_generator import SyncMode
 from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EinsteinEngine.wizards.thorn_wizards import CppCarpetXWizard
+from EinsteinEngine.wizards.vanilla_f90_wizard import VanillaF90Wizard
+from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
+from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
+from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
+
 from sympy import Idx
 from sympy.core.relational import Relational
 
@@ -98,7 +103,7 @@ __all__ = [
     "CppCarpetXGenerator", "SyncMode",
     "cbrt", "sqrt", "mk_matrix", "mk_piecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
-    "CppCarpetXWizard", "ExplicitSyncBatch",
+    "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",

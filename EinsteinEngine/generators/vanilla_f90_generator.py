@@ -16,7 +16,8 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from collections import OrderedDict, defaultdict
-from typing import Literal, TypeAlias
+from dataclasses import dataclass
+from typing import Literal, TypeAlias, Sequence, Optional
 
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
@@ -25,9 +26,9 @@ from EinsteinEngine.generators.substitute_recycled_temporaries import substitute
 
 from EinsteinEngine.emit.tree import Identifier, LineComment
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
-from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Frontend, VanillaF90Param
+from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module, VanillaF90Param
 from EinsteinEngine.common.util import OrderedSet
-from EinsteinEngine.emit.code.f90.f90_tree import F90CodeRoot, VarDecl, PrimitiveType, IntentIn, F90TopLevelNode, Block
+from EinsteinEngine.emit.code.f90.f90_tree import *
 from EinsteinEngine.emit.code.common.code_tree import BinOpExpr, IntLiteralExpr, FloatLiteralExpr, FunctionCall, ExprStmt
 from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeElem, SubroutineDecl, TypeSpecifier, Dimension, DoLoop, Assignment, F90ExprNode
@@ -37,11 +38,13 @@ import sympy as sy
 
 from EinsteinEngine.emit.code.f90.f90_tree import IntentOut
 from EinsteinEngine.emit.code.f90.f90_tree import Allocatable, ArrayAccess
+from EinsteinEngine.common.util import flatten
+from EinsteinEngine.emit.code.f90.f90_tree import F90Decl
 
 ThornFnName: TypeAlias = str
 SymbolName: TypeAlias = str
 
-class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
+class VanillaF90Generator(DslGenerator[VanillaF90Module]):
     grid_names: OrderedSet[str]
     read_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
     write_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
@@ -49,9 +52,11 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
     local_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
     tile_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
 
+    function_pieces: OrderedDict[str, 'VanillaF90Generator.FunctionPieces']
+
     vars_to_ignore: set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
-    def __init__(self, frontend: VanillaF90Frontend):
+    def __init__(self, frontend: VanillaF90Module):
         super().__init__(frontend)
         self.grid_names = OrderedSet()
         self.read_decls = defaultdict(OrderedDict)
@@ -90,6 +95,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
                 self.local_temp_names[tf.name].add(lt_name := str(lt).replace("'", ""))
                 assert lt_name not in self.tile_temp_names[tf.name]
 
+        self.function_pieces = self._generate_all_function_pieces()
+
     def _mk_sympy_visitor(self, fn_name: ThornFnName) -> F90SympyVisitor:
         def should_inject_array_access(name: str, in_stencil_args: bool) -> bool:
             return not in_stencil_args and (
@@ -102,8 +109,18 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
             should_inject_array_access=should_inject_array_access
         )
 
-    def generate_function_code(self, which_fn: str) -> F90CodeRoot:
-        nodes: list[F90CodeElem] = list()
+    @dataclass
+    class FunctionPieces:
+        name: Identifier
+        args: Sequence[Identifier]
+        param_args: Sequence[Identifier]
+        decls: Sequence[F90Decl]
+        param_decls: Sequence[F90Decl]
+        inits: Sequence[F90TopLevelNode]
+        loops: Sequence[F90TopLevelNode]
+        destructs: Sequence[F90TopLevelNode]
+
+    def _generate_function_pieces(self, which_fn: str) -> FunctionPieces:
         fn = self.frontend.functions[which_fn]
         fn_name: str = fn.name
 
@@ -351,38 +368,136 @@ class VanillaF90Generator(DslGenerator[VanillaF90Frontend]):
         param_names = sorted(map(str, self.params[fn_name].keys()))
         deallocate_stmt = ExprStmt(FunctionCall(Identifier('DEALLOCATE'), list(grid_temp_deallocs), []))
 
-        nodes.append(
-            SubroutineDecl(
-                name=Identifier(fn_name),
-                args=[
-                    Identifier(s) for s in (
-                        'nx',   # dimensions of the 3d arrays
-                        'ny',   # "
-                        'nz',   # "
-                        'ngx',  # number of ghost zones on either side in each direction
-                        'ngy',  # "
-                        'ngz',  # "
-                        'dx',   # grid spacing in each direction
-                        'dy',   # "
-                        'dz',   # "
-                        'dt',   # time step size
-                        *self.read_decls[fn_name].keys(),
-                        *self.write_decls[fn_name].keys(),
-                        *param_names
-                    )
-                ],
-                body=[
-                    *boilerplate_decls,
-                    *grid_decls,
-                    *param_decls,
-                    *grid_temp_decls,
-                    *boilerplate_inits,
-                    *grid_temp_allocs,
-                    *loops,
-                    deallocate_stmt
-                ]
-            )
+        return self.FunctionPieces(
+            name=Identifier(fn_name),
+            args=[
+                Identifier(s) for s in (
+                    'nx',   # dimensions of the 3d arrays
+                    'ny',   # "
+                    'nz',   # "
+                    'ngx',  # number of ghost zones on either side in each direction
+                    'ngy',  # "
+                    'ngz',  # "
+                    'dx',   # grid spacing in each direction
+                    'dy',   # "
+                    'dz',   # "
+                    'dt',   # time step size
+                    *self.read_decls[fn_name].keys(),
+                    *self.write_decls[fn_name].keys(),
+                )
+            ],
+            param_args=[
+                Identifier(s) for s in param_names
+            ],
+            decls=[
+                *boilerplate_decls,
+                *grid_decls,
+                *grid_temp_decls
+            ],
+            param_decls=[
+                *param_decls,
+            ],
+            inits=[
+                *boilerplate_inits,
+                *grid_temp_allocs
+            ],
+            loops=loops,
+            destructs=[
+                deallocate_stmt
+            ]
         )
 
-        return F90CodeRoot(nodes)
+    def _generate_all_function_pieces(self) -> OrderedDict[str, FunctionPieces]:
+        od = OrderedDict()
+
+        for fn_name in sorted(self.frontend.functions.keys()):
+            od[fn_name] = self._generate_function_pieces(fn_name)
+
+        return od
+
+    def generate_standalone_subroutine_code(self, which_fn: str) -> F90CodeRoot:
+        pieces = self.function_pieces[which_fn]
+
+        return F90CodeRoot(
+            [
+                SubroutineDecl(
+                    name=pieces.name,
+                    args=[*pieces.args, *pieces.param_args],
+                    body=[
+                        *pieces.decls,
+                        *pieces.param_decls,
+                        *pieces.inits,
+                        *pieces.loops,
+                        *pieces.destructs
+                    ]
+                )
+            ]
+        )
+
+    def generate_module_code(self) -> F90CodeRoot:
+        fn_names = list(self.function_pieces.keys())
+        assert sorted(fn_names) == fn_names
+
+        param_decls: list[VarDecl] = list(
+            VarDecl(
+                type=TypeSpecifier(
+                    type=param.get_type(),
+                    attributes=[Public()]
+                ),
+                names=[Identifier(var)],
+            ) for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names)
+        )
+
+        interfaces = [
+            ModuleInterface(
+                name=None,
+                decls=[
+                    ModuleSubroutineDecl(
+                        name=fn.name,
+                        args=fn.args,
+                        body=fn.decls
+                    )
+                    for fn in self.function_pieces.values()
+                ]
+            )
+        ]
+
+        return F90CodeRoot(
+            [
+                Module(
+                    name=Identifier(self.frontend.name),
+                    decls=[
+                        ImplicitNone(),
+                        *param_decls
+                    ],
+                    interfaces=interfaces,
+                )
+            ]
+        )
+
+    def generate_submodule_code(self, which_fn: str) -> F90CodeRoot:
+        pieces = self.function_pieces[which_fn]
+        mod_name = self.frontend.name
+
+        return F90CodeRoot(
+            [
+                Submodule(
+                    name=Identifier(f'{mod_name}_{pieces.name.identifier}'),
+                    parent=Identifier(mod_name),
+                    decls=[
+                        ImplicitNone()
+                    ],
+                    procedures=[
+                        ModuleProcedureDecl(
+                            name=pieces.name,
+                            body=[
+                                *pieces.inits,
+                                *pieces.loops,
+                                *pieces.destructs
+                            ]
+                        )
+                    ]
+                )
+            ]
+        )
 

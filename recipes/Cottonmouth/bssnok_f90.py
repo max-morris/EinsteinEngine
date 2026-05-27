@@ -24,10 +24,6 @@ from typing import Any
 from sympy import Rational, Idx
 
 from EinsteinEngine import *
-from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Frontend
-from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
-from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
-from EinsteinEngine.emit.code.f90.f90_visitor import F90Visitor
 
 ################################
 # BEGIN Generate Options
@@ -54,7 +50,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = VanillaF90Frontend()
+cottonmouth_bssnok = VanillaF90Module("cottonmouth_bssnok_f90")
 
 ####
 ####
@@ -71,15 +67,6 @@ eta_B = cottonmouth_bssnok.add_param(
     "eta_b",
     type=float
 )
-
-###
-# Tensor parities
-###
-# fmt: off
-parity_scalar = parities(+1,+1,+1)
-parity_vector = parities(-1,+1,+1,  +1,-1,+1,  +1,+1,-1)
-parity_sym2ten = parities(+1,+1,+1,  -1,-1,+1,  -1,+1,-1,  +1,+1,+1,  +1,-1,-1,  +1,+1,+1)
-# fmt: on
 
 ###
 # ADMBaseX vars.
@@ -519,60 +506,19 @@ cottonmouth_bssnok.bake(
     )
 )
 
-generator = VanillaF90Generator(cottonmouth_bssnok)
-visitor = F90Visitor()
-
 recipe_dir = Path(__file__).resolve().parent
 
-with (recipe_dir / 'cottonmouthbssnok_rhs.f90').open('w') as fd:
-    fd.write(visitor.visit(generator.generate_function_code('rhs')))
+with (recipe_dir / 'cottonmouth_agpl3.txt').open('r') as fd:
+    license_file = fd.read()
 
-# recipe_dir = Path(__file__).resolve().parent
-#
-# with (recipe_dir / 'cottonmouth_agpl3.txt').open('r') as fd:
-#     license_file = fd.read()
-#
-# with (recipe_dir / 'cottonmouth_agpl3_header.txt').open('r') as fd:
-#     license_header = fd.read()
+with (recipe_dir / 'cottonmouth_agpl3_header.txt').open('r') as fd:
+    license_header = fd.read()
 
-###
-# Thorn creation
-###
-# CppCarpetXWizard(
-#     cottonmouth_bssnok,
-#     CppCarpetXGenerator(
-#         cottonmouth_bssnok,
-#         sync_mode=SyncMode.HandsOff,
-#         interior_sync_schedule_target=post_step_group,
-#         extra_schedule_blocks=[
-#             initial_group,
-#             post_step_group,
-#             rhs_group,
-#             analysis_group,
-#         ],
-#         explicit_syncs=[
-#             sync_bssn,
-#             sync_bssn_pt2
-#         ],
-#         new_rad_x_boundary_fns=[
-#             nrx_w,
-#             nrx_gt_xx,
-#             nrx_gt_xy,
-#             nrx_gt_xz,
-#             nrx_gt_yy,
-#             nrx_gt_yz,
-#             nrx_gt_zz,
-#             nrx_At,
-#             nrx_trK,
-#             nrx_ConfConnect,
-#             nrx_evo_lapse,
-#             nrx_evo_shift,
-#             nrx_shift_B
-#         ]
-#     ),
-#     license_header=license_header,
-#     license_file=license_file
-# ).generate_thorn()
+VanillaF90Wizard(
+    cottonmouth_bssnok,
+    license_header=license_header,
+    license_file=license_file
+).generate_module()
 
 # References
 # [1] https://docs.einsteintoolkit.org/et-docs/images/0/05/PeterDiener15-MacLachlan.pdf
