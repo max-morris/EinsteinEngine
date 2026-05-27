@@ -17,13 +17,13 @@
 
 from typing import Protocol, Optional
 
-from EinsteinEngine import Centering
+from EinsteinEngine.emit.tree import Centering
 
 
 class SympyNameSubstitutionFn(Protocol):
     def __call__(self, name: str, in_stencil_args: bool) -> str: ...
 
-class ShouldWrapWithAccessFn(Protocol):
+class SymbolInStencilArgsPredicate(Protocol):
     def __call__(self, name: str, in_stencil_args: bool) -> bool: ...
 
 class VarCenteringFn(Protocol):

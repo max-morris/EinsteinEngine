@@ -15,19 +15,22 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections import OrderedDict
 from enum import auto, Enum
 from typing import Set, Optional, TypedDict
 
-from EinsteinEngine.dsl.use_indices import ThornDef, ScheduleTarget
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_tree import VariableGroup, Access, DataType, GroupType, InterfaceRoot, \
     TagPropertyNode, RhsTag, CheckpointTag, GroupTags, ParityTag
 from EinsteinEngine.emit.ccl.param.param_tree import ParamRoot
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import ScheduleRoot, ScheduleBlock
-from EinsteinEngine.emit.code.code_tree import CodeRoot
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXCodeRoot
 from EinsteinEngine.emit.tree import Identifier, String, Bool
-from EinsteinEngine.util import get_or_compute, OrderedSet
+from EinsteinEngine.common.util import get_or_compute, OrderedSet
+from EinsteinEngine.generators.generator import Generator
+from EinsteinEngine.common.schedule_target import ScheduleTarget
+from EinsteinEngine.generators.dsl_generator import DslGenerator
 
 
 class SyncMode(Enum):
@@ -45,16 +48,19 @@ class CactusGeneratorOptions(TypedDict, total=False):
     interior_sync_schedule_target: ScheduleTarget
 
 
-class CactusGenerator(ABC):
-    thorn_def: ThornDef
+class CactusGenerator(DslGenerator[ThornDef]):
     variable_groups: OrderedDict[str, VariableGroup]
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
 
     vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
 
+    @property
+    def thorn_def(self) -> ThornDef:
+        return self.frontend
+
     def __init__(self, thorn_def: ThornDef, options: CactusGeneratorOptions):
-        self.thorn_def = thorn_def
+        super().__init__(thorn_def)
         self.variable_groups = OrderedDict()
         self.var_names = OrderedSet()
         self.options = options if options is not None else dict()
@@ -62,7 +68,7 @@ class CactusGenerator(ABC):
         if 'sync_mode' not in self.options:
             self.options['sync_mode'] = SyncMode.EmulatePresync
 
-        for tf in self.thorn_def.thorn_functions.values():
+        for tf in self.thorn_def.functions.values():
             for iv in tf.eqn_complex.inputs:
                 var_name = str(iv).replace("'", "")
                 if var_name not in self.vars_to_ignore:
@@ -115,7 +121,7 @@ class CactusGenerator(ABC):
         ...
 
     @abstractmethod
-    def generate_function_code(self, which_fn: str) -> CodeRoot:
+    def generate_function_code(self, which_fn: str) -> CppCarpetXCodeRoot:
         ...
 
     def _var_is_locally_declared(self, var_name: str) -> bool:

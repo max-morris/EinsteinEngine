@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from enum import auto
 from typing import Union
 
-from EinsteinEngine.util import ReprEnum, CenteringEnum
+from EinsteinEngine.common.util import ReprEnum, CenteringEnum
 
 
 class Node(ABC):

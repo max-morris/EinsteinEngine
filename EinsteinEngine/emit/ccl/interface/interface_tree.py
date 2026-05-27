@@ -25,7 +25,7 @@ from typing import TypedDict, Optional
 from typing_extensions import Unpack
 
 from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, Integer, String, Language, Centering, CommonNode, Bool
-from EinsteinEngine.util import try_get, ReprEnum
+from EinsteinEngine.common.util import try_get, ReprEnum
 
 
 class InterfaceNode(Node):

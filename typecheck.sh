@@ -21,9 +21,18 @@ set -e
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
-if [ "$1" == "-c" ] || [ "$1" == "--clean" ]; then
-    rm -rf "$SCRIPT_DIR/.mypy_cache/"
-fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -c|--clean)
+            rm -rf "$SCRIPT_DIR/.mypy_cache/"
+            shift
+        ;;
+        -n|--normalize)
+            python "$SCRIPT_DIR/scripts/normalize_einsteinengine_imports.py"
+            shift
+        ;;
+    esac
+done
 
 if [ ! -d "$SCRIPT_DIR/venv" ]; then
     echo "$SCRIPT_DIR/venv does not exist. Please set up your venv."

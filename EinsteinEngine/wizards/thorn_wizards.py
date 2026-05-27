@@ -20,24 +20,20 @@ from typing import TypeVar, Generic, Optional
 
 from nrpy.helpers.conditional_file_updater import ConditionalFileUpdater
 
-from EinsteinEngine import ExplicitSyncBatch
-from EinsteinEngine.dsl.use_indices import ThornDef
 from EinsteinEngine.emit.ccl.interface.interface_visitor import InterfaceVisitor
 from EinsteinEngine.emit.ccl.param.param_visitor import ParamVisitor
 from EinsteinEngine.emit.ccl.schedule.schedule_visitor import ScheduleVisitor
-from EinsteinEngine.emit.code.code_tree import CodeNode
-from EinsteinEngine.emit.code.cpp.cpp_visitor import CppVisitor
+from EinsteinEngine.emit.code.common.code_tree import CodeNode
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_visitor import CppVisitor
 from EinsteinEngine.emit.visitor import Visitor
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ThornDef
+from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
 from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
-from EinsteinEngine.util import OrderedSet
+from EinsteinEngine.common.util import OrderedSet
 from EinsteinEngine.wizards.wizard import Wizard
 
-G = TypeVar('G', bound=CactusGenerator)
-CV = TypeVar('CV', bound=Visitor[CodeNode])
-
-
-class ThornWizard(Generic[G, CV], Wizard[ThornDef, G, CV]):
+class ThornWizard[G: CactusGenerator, CV: Visitor[CodeNode]](Wizard[ThornDef, G, CV]):
     base_dir: str
     license_file: Optional[str]
 
@@ -60,7 +56,7 @@ class ThornWizard(Generic[G, CV], Wizard[ThornDef, G, CV]):
         os.makedirs(self.base_dir, exist_ok=True)
         os.makedirs(os.path.join(self.base_dir, "src"), exist_ok=True)
 
-        for fn_name in OrderedSet(self.thorn_def.thorn_functions.keys()):
+        for fn_name in OrderedSet(self.thorn_def.functions.keys()):
             print('=====================')
             code_tree = self.generator.generate_function_code(fn_name)
             code = self.code_visitor.visit(code_tree)

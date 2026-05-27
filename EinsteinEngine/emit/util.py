@@ -17,7 +17,7 @@
 
 from typing import Union
 
-from EinsteinEngine.dsl.stencil_idx import StencilIdxWithCentering, StencilIdxWithNameAndCentering
+from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdxWithNameAndCentering
 
 StencilIdxWithCenteringLike = Union[StencilIdxWithCentering, StencilIdxWithNameAndCentering]
 

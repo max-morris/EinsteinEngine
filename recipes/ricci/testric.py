@@ -18,8 +18,7 @@
 from EinsteinEngine import *
 
 # Create a set of grid functions
-gf = ThornDef("TestEinsteinEngine", "Ricci")
-gf.set_derivative_stencil(5)
+gf = ThornDef("TestEinsteinEngine", "Ricci", derivative_stencil_order=5)
 
 a = gf.add_param("a", default=10.0, desc="Just a constant")
 b = gf.add_param("b", default=0.2, desc="Just a constant")
@@ -44,7 +43,7 @@ grr = sqrt(1+c**2)*(a+b*x**2)
 gqq = sqrt(1+c**2)/(a+b*x**2)
 gpp = sympify(1)
 Z = sympify(0)
-gmat = mkMatrix([
+gmat = mk_matrix([
     [grr,   c,   Z],
     [c, gqq,   Z],
     [Z,   Z, gpp]])
