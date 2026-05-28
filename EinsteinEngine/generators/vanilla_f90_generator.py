@@ -114,7 +114,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
         name: Identifier
         args: Sequence[Identifier]
         param_args: Sequence[Identifier]
-        decls: Sequence[F90Decl]
+        interface_decls: Sequence[F90Decl]
+        local_decls: Sequence[F90Decl]
         param_decls: Sequence[F90Decl]
         inits: Sequence[F90TopLevelNode]
         loops: Sequence[F90TopLevelNode]
@@ -129,7 +130,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
         if len(self.frontend.global_temporaries) > 0:
             raise GeneratorException("Global temporaries are not supported in vanilla f90")
 
-        boilerplate_decls = [
+        boilerplate_interface_decls = [
             VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Integer,
@@ -148,19 +149,6 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             ),
             VarDecl(
                 type=TypeSpecifier(
-                    type=PrimitiveType.Integer,
-                    attributes=[]
-                ),
-                names=list(
-                    Identifier(s) for s in (
-                        'i',
-                        'j',
-                        'k',
-                    )
-                )
-            ),
-            VarDecl(
-                type=TypeSpecifier(
                     type=PrimitiveType.Double,
                     attributes=[IntentIn()]
                 ),
@@ -172,7 +160,10 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                         'dt',
                     )
                 )
-            ),
+            )
+        ]
+
+        boilerplate_local_decls = [
             VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Double,
@@ -183,6 +174,19 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                         'DXI',
                         'DYI',
                         'DZI'
+                    )
+                )
+            ),
+            VarDecl(
+                type=TypeSpecifier(
+                    type=PrimitiveType.Integer,
+                    attributes=[]
+                ),
+                names=list(
+                    Identifier(s) for s in (
+                        'i',
+                        'j',
+                        'k',
                     )
                 )
             )
@@ -201,6 +205,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
         ]
 
         grid_dimensions = Dimension(tuple(IdExpr(Identifier(s)) for s in ('nx', 'ny', 'nz')))
+        placeholder_dimensions = Dimension((None,) * 3)
 
         grid_decls = [
             *(VarDecl(
@@ -245,7 +250,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             grid_temp_decls.append(VarDecl(
                 type=TypeSpecifier(
                     type=PrimitiveType.Double,
-                    attributes=[Allocatable(), grid_dimensions]
+                    attributes=[Allocatable(), placeholder_dimensions]
                 ),
                 names=[Identifier(temp_name)],
             ))
@@ -389,10 +394,13 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             param_args=[
                 Identifier(s) for s in param_names
             ],
-            decls=[
-                *boilerplate_decls,
+            interface_decls=[
+                *boilerplate_interface_decls,
                 *grid_decls,
-                *grid_temp_decls
+            ],
+            local_decls=[
+                *boilerplate_local_decls,
+                *grid_temp_decls,
             ],
             param_decls=[
                 *param_decls,
@@ -424,7 +432,8 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                     name=pieces.name,
                     args=[*pieces.args, *pieces.param_args],
                     body=[
-                        *pieces.decls,
+                        *pieces.local_decls,
+                        *pieces.interface_decls,
                         *pieces.param_decls,
                         *pieces.inits,
                         *pieces.loops,
@@ -455,7 +464,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                     ModuleSubroutineDecl(
                         name=fn.name,
                         args=fn.args,
-                        body=fn.decls
+                        body=fn.interface_decls
                     )
                     for fn in self.function_pieces.values()
                 ]
@@ -491,6 +500,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                         ModuleProcedureDecl(
                             name=pieces.name,
                             body=[
+                                *pieces.local_decls,
                                 *pieces.inits,
                                 *pieces.loops,
                                 *pieces.destructs
