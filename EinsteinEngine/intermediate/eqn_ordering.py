@@ -267,7 +267,10 @@ def _get_symbol_reuse_stats(free_symbols: set[Symbol], in_memory: dict[Symbol, i
 def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
                             eqn_list: EqnList,
                             consider_frequency: bool = True,
-                            complexity_factor: float = 0.0) -> Iterator[tuple[Symbol, str]]:
+                            complexity_factor: float = 0.0,
+                            dependencies: Optional[Dependencies] = None,
+                            in_memory_override: Optional[set[Symbol]] = None,
+                            plain_scores_override: Optional[dict[Symbol, float]] = None) -> Iterator[tuple[Symbol, str]]:
     """
     Orders equations based on symbol rarity.
     Equations which use symbols that are less common in other equations are given higher priority.
@@ -281,26 +284,89 @@ def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
     if len(eqns) == 0:
         return
 
-    raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency).linear
-    def eqn_score(lhs: Symbol) -> float: return raw_eqn_score(lhs) + (complexity_factor * eqn_list.complexity[lhs])
+    dependencies = dependencies or Dependencies(eqns, free_symbols=_free_symbols)
+    assert dependencies is not None
 
-    scores = {lhs: eqn_score(lhs) for lhs in eqns.keys()}
+    if plain_scores_override is None:
+        raw_eqn_score = _get_eqn_score_fn_by_rarity(eqns, consider_frequency).linear
+
+        def plain_eqn_score(lhs: Symbol) -> float:
+            return raw_eqn_score(lhs) + complexity_factor * eqn_list.complexity[lhs]
+
+        plain_scores = {lhs: plain_eqn_score(lhs) for lhs in eqns.keys()}
+    else:
+        plain_scores = plain_scores_override
+
+    def plain_score(lhs: Symbol) -> float:
+        return plain_scores.get(lhs, 0.0)
 
     disambiguation_rank: dict[Symbol, int] = {
         lhs: idx for idx, lhs in enumerate(sorted(eqns.keys(), key=str, reverse=True))
     }
 
-    ordered = sorted(eqns.keys(), key=lambda lhs: (scores[lhs], eqn_list.complexity[lhs], disambiguation_rank[lhs]), reverse=True)
-    ordered_dict: OrderedDict[Symbol, Expr] = OrderedDict()
-    for lhs in ordered:
-        ordered_dict[lhs] = eqns[lhs]
+    eqns_remaining = set(eqns.keys())
+    order: OrderedDict[Symbol, Expr] = OrderedDict()
+    in_memory: set[Symbol] = in_memory_override or set()
 
-    ordered_liveness = _score_all_liveness(_get_lifetimes(eqns, ordered), ordered_dict)
+    while len(eqns_remaining) > 0:
+        scores: dict[Symbol, float] = dict()
+        required_deps: dict[Symbol, set[Symbol]] = dict()
 
+        def score(lhs: Symbol) -> float:
+            if lhs in scores:
+                return scores[lhs]
+
+            dependency_symbols: set[Symbol] = set()
+
+            if len(deps := dependencies.get_transitive_dependencies(lhs)) > 0:
+                for dep in deps:
+                    if dep in dependencies.eqns and dep not in in_memory:
+                        dependency_symbols.add(dep)
+
+            required_deps[lhs] = dependency_symbols
+
+            the_score = plain_score(lhs) + sum(score(sym) for sym in dependency_symbols)
+            scores[lhs] = the_score
+            return the_score
+
+        lhs = max(eqns_remaining, key=lambda lhs: (score(lhs), eqn_list.complexity[lhs], disambiguation_rank[lhs]))
+
+        if lhs in required_deps:
+            partial_dep_ordering = dependencies.get_partial_order(required_deps[lhs], in_memory)
+
+            for dep_set in partial_dep_ordering:
+                dep_dict = {lhs: eqns[lhs] for lhs in dep_set}
+                for dep, _ in prioritize_rare_symbols(dep_dict, eqn_list, consider_frequency, complexity_factor, dependencies, in_memory, plain_scores):
+                    eqns_remaining.remove(dep)
+                    order[dep] = dep_dict[dep]
+                    in_memory.add(dep)
+
+        rhs = eqns[lhs]
+        eqns_remaining.remove(lhs)
+        order[lhs] = rhs
+        in_memory.add(lhs)
+
+    ordered_symbols = list(order.keys())
+    ordered_liveness = _score_all_liveness(_get_lifetimes(eqns, ordered_symbols), order)
     yield from (
         (lhs, f'Liveness = {len(ordered_liveness[lhs])}; {sorted(ordered_liveness[lhs], key=str)}')
-        for lhs in ordered.__iter__()
+        for lhs in ordered_symbols
     )
+
+
+    # ordered = sorted(eqns.keys(), key=lambda lhs: (scores[lhs], eqn_list.complexity[lhs], disambiguation_rank[lhs]), reverse=True)
+    # ordered_dict: OrderedDict[Symbol, Expr] = OrderedDict()
+    # for lhs in ordered:
+    #     ordered_dict[lhs] = eqns[lhs]
+    #
+    # ordered_liveness = _score_all_liveness(_get_lifetimes(eqns, ordered), ordered_dict)
+    #
+    # yield from (
+    #     (lhs, f'Liveness = {len(ordered_liveness[lhs])}; {sorted(ordered_liveness[lhs], key=str)}')
+    #     for lhs in ordered.__iter__()
+    # )
+
+prioritize_rare_symbols.respects_dependency_order = True  # type: ignore[attr-defined]
     
 def lexicographical_order(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Iterator[Symbol]:
     """
