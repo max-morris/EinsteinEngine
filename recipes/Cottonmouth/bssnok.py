@@ -49,7 +49,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = ThornDef("Cottonmouth", f"CottonmouthBSSNOK{suffix}")
+cottonmouth_bssnok = ThornDef("Cottonmouth", f"CottonmouthBSSNOK{suffix}", derivative_stencil_order=stencil_order + 1)
 
 ####
 ####
@@ -627,7 +627,7 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
     analysis_group
 )
 
-def add_ricci(fun: ThornFunction, la: Idx, lb: Idx, do_split=True) -> None:
+def add_ricci(fun: ThornFunction, la: Idx, lb: Idx, do_split: bool = True) -> None:
 
     fun.add_eqn(
         Rt[la, lb],
