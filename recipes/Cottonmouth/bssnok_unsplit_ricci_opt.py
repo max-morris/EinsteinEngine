@@ -25,7 +25,7 @@ from EinsteinEngine import *
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK", derivative_stencil_order=5)
+cottonmouth_bssnok = ThornDef("Cottonmouth", "CottonmouthBSSNOK", derivative_stencil_width=5)
 
 ###
 # Finite difference stencils

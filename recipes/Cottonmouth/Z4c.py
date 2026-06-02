@@ -50,7 +50,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}", derivative_stencil_order=stencil_order + 1)
+cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}", derivative_stencil_width=stencil_order + 1)
 
 ###
 # Some more indices

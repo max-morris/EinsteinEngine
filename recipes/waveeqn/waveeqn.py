@@ -39,7 +39,7 @@ flat_metric = mk_matrix([
 ])
 
 # Create a set of grid functions
-gf = ThornDef("TestEinsteinEngine", "WaveEqn", derivative_stencil_order=5)
+gf = ThornDef("TestEinsteinEngine", "WaveEqn", derivative_stencil_width=5)
 
 # Declare gfs
 v_t = gf.decl("v_t", [], centering=Centering.VVV)

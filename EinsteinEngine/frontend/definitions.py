@@ -51,8 +51,8 @@ for func in [stencil, DD, DDI, noop, div, D, muladd]:
     if func.__module__ is None:
         func.__module__ = "functions"
 
-def kreiss_oliger_stencil(m: int, la: Idx) -> Expr:
-    n = (m + 1) // 2
+def kreiss_oliger_stencil(stencil_width: int, la: Idx) -> Expr:
+    n = (stencil_width + 1) // 2
     sign = (-1) ** (n + 1)
     k = n
     coef = comb(2 * n, n)

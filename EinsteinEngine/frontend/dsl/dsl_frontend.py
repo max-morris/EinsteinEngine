@@ -148,7 +148,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     _unique_name_counter: int
 
-    def __init__(self, *, dimensionality: int = 3, derivative_stencil_order: int = 5):
+    def __init__(self, *, dimensionality: int = 3, derivative_stencil_width: int = 5):
         super().__init__()
         self.dimensionality = dimensionality
         self.declarations = dict()
@@ -168,7 +168,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self.unary_custom_stencils = dict()
         self.binary_custom_stencils = dict()
         self.ufunc_arities = dict()
-        self._set_derivative_stencil(derivative_stencil_order)
+        self._set_derivative_stencil(derivative_stencil_width)
 
         self.div_makers = dict()
         self.div_makers["div"] = DivMakerVisitor(div)
