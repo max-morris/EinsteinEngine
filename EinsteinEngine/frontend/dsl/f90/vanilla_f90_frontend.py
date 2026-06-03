@@ -57,11 +57,11 @@ class VanillaF90Module(DslFrontend[VanillaF90Param, Never, VanillaF90Function]):
             name: str,
             *,
             dimensionality: int = 3,
-            derivative_stencil_order: int = 5
+            derivative_stencil_width: int = 5
     ) -> None:
         super().__init__(
             dimensionality=dimensionality,
-            derivative_stencil_order=derivative_stencil_order
+            derivative_stencil_width=derivative_stencil_width
         )
         self.name = name
 

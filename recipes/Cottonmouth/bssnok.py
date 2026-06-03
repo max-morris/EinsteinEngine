@@ -49,7 +49,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = ThornDef("Cottonmouth", f"CottonmouthBSSNOK{suffix}", derivative_stencil_order=stencil_order + 1)
+cottonmouth_bssnok = ThornDef("Cottonmouth", f"CottonmouthBSSNOK{suffix}", derivative_stencil_width=stencil_order + 1)
 
 ####
 ####
@@ -627,26 +627,26 @@ fun_bssn_cons = cottonmouth_bssnok.create_function(
     analysis_group
 )
 
-def add_ricci(fun: ThornFunction, la: Idx, lb: Idx) -> None:
-    fun.add_eqn(
-        Rt_tmp[la, lb],
-        - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
-        + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
-        + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
-    )
-
-    fun.split_loop()
+def add_ricci(fun: ThornFunction, la: Idx, lb: Idx, do_split: bool = True) -> None:
 
     fun.add_eqn(
         Rt[la, lb],
-        Rt_tmp[la, lb]
+        pull_out(
+            - Rational(1, 2) * gt[uc, ud] * D(gt[la, lb], lc, ld)
+            + Rational(1, 2) * gt[lc, la] * D(ConfConnect[uc], lb)
+            + Rational(1, 2) * gt[lc, lb] * D(ConfConnect[uc], la)
+        )
         + Rational(1, 2) * Delta[uc] * Gammat[la, lb, lc]
         + Rational(1, 2) * Delta[uc] * Gammat[lb, la, lc]
-        + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
-        + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
-        + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+        + pull_out(
+            + Gammat[uc, la, ld] * Gammat[lb, lc, ud]
+            + Gammat[uc, lb, ld] * Gammat[la, lc, ud]
+            + Gammat[uc, la, ld] * Gammat[lc, lb, ud]
+        )
     )
 
+    if do_split:
+        fun.soft_split()
 
     fun.add_eqn(
         cdphi2[la, lb],
@@ -656,6 +656,9 @@ def add_ricci(fun: ThornFunction, la: Idx, lb: Idx) -> None:
         )
         + Rational(1, 2) * (1 / (w**2)) * D(w, la) * D(w, lb)
     )
+
+    if do_split:
+        fun.soft_split()
 
     fun.add_eqn(
         RPhi[la, lb],
@@ -670,7 +673,9 @@ def add_ricci(fun: ThornFunction, la: Idx, lb: Idx) -> None:
         Rt[la, lb] + RPhi[la, lb]
     )
 
-add_ricci(fun_bssn_cons, la, lb)
+add_ricci(fun_bssn_cons, la, lb, do_split=False)
+
+fun_bssn_cons.split_loop()
 
 # Hamiltonian constraint
 fun_bssn_cons.add_eqn(
@@ -681,12 +686,13 @@ fun_bssn_cons.add_eqn(
     # Matter
     + use_matter_terms * (-16) * pi * rho
 )
-fun_bssn_cons.split_loop()
+#fun_bssn_cons.split_loop()
+fun_bssn_cons.soft_split(retain_rank(50))
 
 # Momentum constraint
 fun_bssn_cons.add_eqn(
     MomCons[ua],
-    + gt[ua, uc] * gt[ub, ud] * (
+    + gt[ua, uc] * gt[ub, ud] * pull_out(
         D(At[lc, ld], lb)
         - Gammat[uk, lc, lb] * At[lk, ld]
         - Gammat[uk, ld, lb] * At[lc, lk]
@@ -731,6 +737,7 @@ fun_bssn_rhs = cottonmouth_bssnok.create_function(
 
 
 add_ricci(fun_bssn_rhs, la, lb)
+
 fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
@@ -742,8 +749,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection: + Upwind[beta[uc], gt[la,lb], lc]
     + evo_shift[uc] * D(gt[la, lb], lc)
 )
-
-
 
 # Hyperbolic Gamma Driver shift
 fun_bssn_rhs.add_eqn(
@@ -771,11 +776,9 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(w, la)
 )
 
-fun_bssn_rhs.soft_split()
-
 fun_bssn_rhs.add_eqn(
     Ats[la, lb],
-    (
+    pull_out(
         -D(evo_lapse, la, lb)
         + Gammat[uc, la, lb] * D(evo_lapse, lc)
     )
@@ -789,11 +792,11 @@ fun_bssn_rhs.add_eqn(
 # Evolution equations
 fun_bssn_rhs.add_eqn(
     At_rhs[la, lb],
-    (w**2) * (
+    (w**2) * pull_out(
         Ats[la, lb]
         - Rational(1, 3) * gt[la, lb] * gt[uc, ud] * Ats[lc, ld]
     )
-    + evo_lapse * (
+    + evo_lapse * pull_out(
         + trK * At[la, lb]
         - 2 * At[la, lc] * At[uc, lb]
     )
@@ -807,8 +810,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection: + Upwind[beta[uc], At[la,lb], lc]
     + evo_shift[uc] * D(At[la, lb], lc)
 )
-
-fun_bssn_rhs.split_loop()
 
 fun_bssn_rhs.add_eqn(
     trK_rhs,
@@ -829,17 +830,25 @@ fun_bssn_rhs.add_eqn(
     + evo_shift[ua] * D(trK, la)
 )
 
+fun_bssn_rhs.split_loop()
+
 fun_bssn_rhs.add_eqn(
-    ConfConnect_rhs_tmp[ua], ConfConnect_rhs_tmp2[ua]
+    ConfConnect_rhs_tmp[ua],
+    + pull_out( gt[ub, uc] * D(evo_shift[ua], lb, lc) )
+    + Rational(1, 3) * pull_out( gt[ua, ub] * D(evo_shift[uc], lb, lc) )
+    - Delta[ub] * D(evo_shift[ua], lb)
+    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
+    # Matter
+    + use_matter_terms * (-16) * pi * evo_lapse * gt[ua, ub] * S[lb]
+    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
+    + evo_shift[ub] * D(ConfConnect[ua], lb)
     - 2 * At[ua, ub] * D(evo_lapse, lb)
-    + 2 * evo_lapse * (
+    + 2 * evo_lapse * pull_out(
         + Gammat[ua, lb, lc] * At[ub, uc]
         - Rational(2, 3) * gt[ua, ub] * D(trK, lb)
         + 6 * At[ua, ub] * cdphi[lb]
     )
 )
-
-fun_bssn_rhs.soft_split()
 
 fun_bssn_rhs.add_eqn(
     shift_B_rhs[ua],
@@ -850,19 +859,6 @@ fun_bssn_rhs.add_eqn(
     # TODO: Advection
     + evo_shift[ub] * D(shift_B[ua], lb)
 )
-
-fun_bssn_rhs.add_eqn(
-    ConfConnect_rhs_tmp2[ua], 0
-    + gt[ub, uc] * D(evo_shift[ua], lb, lc)
-    + Rational(1, 3) * gt[ua, ub] * D(evo_shift[uc], lb, lc)
-    - Delta[ub] * D(evo_shift[ua], lb)
-    + Rational(2, 3) * Delta[ua] * D(evo_shift[ub], lb)
-    # Matter
-    + use_matter_terms * (-16) * pi * evo_lapse * gt[ua, ub] * S[lb]
-    # TODO: Advection: + Upwind[beta[ub], Xt[ua], lb]
-    + evo_shift[ub] * D(ConfConnect[ua], lb)
-)
-
 
 fun_bssn_rhs.add_eqn(ConfConnect_rhs[ua], ConfConnect_rhs_tmp[ua])
 
@@ -1125,12 +1121,7 @@ cottonmouth_bssnok.bake(
     do_madd=False,
     do_recycle_temporaries=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
-    soft_split_retainment_strategy=retain_rank(50),
-    functions={
-        "rhs": {
-            "soft_split_retainment_strategy": retain_rank(100)
-        }
-    },
+    soft_split_retainment_strategy=retain_rank(150),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
     )

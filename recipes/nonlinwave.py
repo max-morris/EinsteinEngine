@@ -38,7 +38,7 @@ if __name__ == "__main__":
             return sympify(0)
 
     # Create a set of grid functions
-    gf = ThornDef("TestWave", "WaveEqn", derivative_stencil_order=3)
+    gf = ThornDef("TestWave", "WaveEqn", derivative_stencil_width=3)
 
     # Declare gfs
     v_t = gf.decl("v_t", [], centering=Centering.VVC)

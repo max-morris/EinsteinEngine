@@ -50,7 +50,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_bssnok = VanillaF90Module("cottonmouth_bssnok_f90", derivative_stencil_order=stencil_order + 1)
+cottonmouth_bssnok = VanillaF90Module("cottonmouth_bssnok_f90", derivative_stencil_width=stencil_order + 1)
 
 ####
 ####

@@ -50,7 +50,7 @@ suffix = f"{stencil_order}{'v' if pres.vacuum else 'm'}"
 ###
 # Thorn definitions
 ###
-cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}", derivative_stencil_order=stencil_order + 1)
+cottonmouth_Z4c = ThornDef("Cottonmouth", f"CottonmouthZ4c{suffix}", derivative_stencil_width=stencil_order + 1)
 
 ###
 # Some more indices
@@ -1266,7 +1266,8 @@ cottonmouth_Z4c.bake(
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
+        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    )
 )
 
 ###
