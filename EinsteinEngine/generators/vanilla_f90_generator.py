@@ -17,7 +17,7 @@
 
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Literal, TypeAlias, Sequence, Optional
+from typing import Literal, TypeAlias, Sequence, Optional, Any
 
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
@@ -48,7 +48,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
     grid_names: OrderedSet[str]
     read_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
     write_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
-    params: dict[ThornFnName, OrderedDict[SymbolName, VanillaF90Param]]
+    params: dict[ThornFnName, OrderedDict[SymbolName, VanillaF90Param[Any]]]
     local_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
     tile_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
 
@@ -447,14 +447,27 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
         fn_names = list(self.function_pieces.keys())
         assert sorted(fn_names) == fn_names
 
-        param_decls: list[VarDecl] = list(
-            VarDecl(
-                type=TypeSpecifier(
-                    type=param.get_type(),
-                    attributes=[Public()]
-                ),
-                names=[Identifier(var)],
-            ) for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names)
+        def mk_param_decl[T: int|float](var: str, param: VanillaF90Param[T]) -> F90Decl:
+            if param.default is None:
+                return VarDecl(
+                    type=TypeSpecifier(
+                        type=param.get_type(),
+                        attributes=[Public()]
+                    ),
+                    names=[Identifier(var)],
+                )
+            else:
+                return VarDeclAssign(
+                    type=TypeSpecifier(
+                        type=param.get_type(),
+                        attributes=[Public()]
+                    ),
+                    names=[Identifier(var)],
+                    rhs=param.get_default_expr(),
+                )
+
+        param_decls: list[F90Decl] = list(
+            mk_param_decl(var, param) for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names)
         )
 
         interfaces = [

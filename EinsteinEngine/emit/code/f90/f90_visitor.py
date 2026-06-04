@@ -204,8 +204,12 @@ class F90Visitor(Visitor[CodeNode]):
         return f'{self.visit(n.type)}, {", ".join(attrs)}'
 
     @visit.register
-    def _(self, n: VarDecl) -> str:
+    def _visit_var_decl(self, n: VarDecl) -> str:
         return f'{self.visit(n.type)} :: {", ".join(visit_each(self, n.names))}'
+
+    @visit.register
+    def _(self, n: VarDeclAssign) -> str:
+        return f'{self._visit_var_decl(n)} = {self.visit(n.rhs)}'
 
     @visit.register
     def _(self, n: Block) -> str:

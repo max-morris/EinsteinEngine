@@ -65,7 +65,7 @@ def_max = cottonmouth_bssnok.decl_fun("max", args=2, is_stencil=False)
 ###
 eta_B = cottonmouth_bssnok.add_param(
     "eta_b",
-    type=float
+    float
 )
 
 ###

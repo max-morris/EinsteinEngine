@@ -84,6 +84,10 @@ class VarDecl(F90Decl):
     names: Sequence[Identifier]
 
 @dataclass
+class VarDeclAssign(VarDecl):
+    rhs: F90ExprNode
+
+@dataclass
 class Block(F90Stmt):
     body: Sequence[F90TopLevelNode]
 
