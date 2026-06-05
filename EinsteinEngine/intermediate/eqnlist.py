@@ -1219,12 +1219,18 @@ class EqnList:
         return result[0], result[1], result[2]
 
     def _stencil_limits(self, result: List[int], expr: Expr) -> None:
+        def extract(arg: Basic) -> None:
+            for i in range(3):
+                ivar = arg.args[i + 1]
+                assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
+                result[i] = max(result[i], abs(int(ivar)))
+
+        if str(type(expr)) == "stencil":
+            extract(expr)
+
         for arg in expr.args:
             if str(type(arg)) == "stencil":
-                for i in range(3):
-                    ivar = arg.args[i + 1]
-                    assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
-                    result[i] = max(result[i], abs(int(ivar)))
+                extract(arg)
             else:
                 if isinstance(arg, Expr):
                     self._stencil_limits(result, arg)
