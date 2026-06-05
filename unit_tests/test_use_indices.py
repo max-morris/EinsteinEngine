@@ -157,6 +157,10 @@ if __name__ == "__main__":
     gf.bake()
 
 
+dmv = DivMakerVisitor(div)
+dmv2 = DivMakerVisitor(D)
+
+
 def do_div(expr: Basic) -> Expr:
     r = dmv.visit(expr, no_idx)
     r = dmv2.visit(r, no_idx)
@@ -260,5 +264,3 @@ if __name__ == "__main__":
     assert_eq(do_div(D(f(x ** 2 + y), l1)), fp(x ** 2 + y))
     assert_eq(do_div(D(f(x ** 2 + y), l2)), 0)
     assert_eq(do_div(D(f(x + f(x)), l0)), fp(x + f(x)) * (1 + fp(x)))
-dmv = DivMakerVisitor(div)
-dmv2 = DivMakerVisitor(D)
