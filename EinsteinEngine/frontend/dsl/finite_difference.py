@@ -70,8 +70,8 @@ class DivMakerVisitor:
         sy.sinh: lambda self, r, idx: cosh(r) * self.visit(r, idx),
         sy.tanh: lambda self, r, idx: sech(r) ** 2 * self.visit(r, idx),
         sy.coth: lambda self, r, idx: -csch(r) ** 2 * self.visit(r, idx),
-        sy.sech: lambda self, r, idx: -sech(r) * tanh(x) * self.visit(r, idx),
-        sy.csch: lambda self, r, idx: -csch(r) * coth(x) * self.visit(r, idx),
+        sy.sech: lambda self, r, idx: -sech(r) * tanh(r) * self.visit(r, idx),
+        sy.csch: lambda self, r, idx: -csch(r) * coth(r) * self.visit(r, idx),
         sy.erf: lambda self, r, idx: 2 * exp(-r ** 2) / sqrt(pi) * self.visit(r, idx)
     }
 
