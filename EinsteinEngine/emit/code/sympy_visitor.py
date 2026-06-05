@@ -152,8 +152,10 @@ class BaseSympyExprVisitor[ExprT: Expr]:
         if isinstance(v, sy.Integer):
             return int(v)
 
-        # noinspection PyTypeChecker
-        return int(cast(sy.Expr, v).evalf())  # type: ignore[no-untyped-call]
+        if not (f := cast(sy.Expr, v).evalf()).is_integer():  # type: ignore[no-untyped-call]
+            raise DslException(f"Stencil offset {v} is not an integer.")
+
+        return int(f)
 
     def _visit_stencil_call(self, expr: sy.Function) -> Expr:
         if len(expr.args) != 4:
