@@ -816,9 +816,12 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 i1 = i - 1
             if tens.args[i] == ix2:
                 i2 = i - 1
-        assert i1 != -1, f"Index {ix1} not in {tens}"
-        assert i2 != -2, f"Index {ix2} not in {tens}"
-        assert i1 != i2, f"Index {ix1} cannot be symmetric with itself in {tens}"
+        if i1 == -1:
+            raise DslException(f"Index {ix1} not in {tens}")
+        if i2 == -1:
+            raise DslException(f"Index {ix2} not in {tens}")
+        if i1 == i2:
+            raise DslException(f"Index {ix1} cannot be symmetric with itself in {tens}")
         if i1 > i2:
             i1, i2 = i2, i1
         self.symmetries.add(tens.base, i1, i2, sgn)
