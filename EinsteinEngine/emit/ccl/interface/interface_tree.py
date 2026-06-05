@@ -20,7 +20,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from dataclasses import dataclass
 from enum import auto
-from typing import TypedDict, Optional
+from typing import TypedDict, Optional, Sequence
 
 from typing_extensions import Unpack
 
@@ -59,7 +59,7 @@ class IncludeIn(InterfaceNode):
 
 @dataclass
 class IncludeSection(InterfaceNode):
-    directives: list[UsesInclude | IncludeIn]
+    directives: Sequence[UsesInclude | IncludeIn]
 
 
 class FunctionAliasReturnType(ReprEnum):

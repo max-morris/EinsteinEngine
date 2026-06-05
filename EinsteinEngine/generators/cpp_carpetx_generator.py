@@ -507,15 +507,20 @@ class CppCarpetXGenerator(CactusGenerator):
         # We always want to inherit from CarpetX even if no vars explicitly need it
         inherits_from.update({Identifier('Driver'), Identifier('ODESolvers')})
 
+        if self.options.get('new_rad_x_boundary_fns'):
+            includes = [
+                UsesInclude(Verbatim('newradx.hxx'))
+            ]
+        else:
+            includes = []
+
         return InterfaceRoot(
             HeaderSection(
                 implements=Identifier(self.thorn_def.name),
                 inherits=[*inherits_from],
                 friends=[]
             ),
-            IncludeSection([
-                UsesInclude(Verbatim('newradx.hxx'))
-            ]),
+            IncludeSection(includes),
             FunctionSection([]),
             VariableSection(list(self.variable_groups.values()))
         )

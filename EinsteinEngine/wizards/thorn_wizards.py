@@ -88,8 +88,12 @@ class ThornWizard[G: CactusGenerator, CV: Visitor[CodeNode]](Wizard[ThornDef, G,
             self.write_with_header(fd, schedule_ccl, '#')
 
         print('== configuration.ccl ==')
+        requires = f"REQUIRES Arith Loop {self.thorn_def.name}_gen AMReX"
+        if self.generator.options.get("new_rad_x_boundary_fns"):
+            requires += " NewRadX"
+
         configuration_ccl = f"""
-REQUIRES Arith Loop {self.thorn_def.name}_gen AMReX NewRadX
+{requires}
 
 PROVIDES {self.thorn_def.name}_gen
 {{
