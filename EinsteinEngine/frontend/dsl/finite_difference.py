@@ -45,16 +45,13 @@ def _mk_div(div_fun: UFunc, expr: Expr, *args: Idx) -> Expr:
 
 
 class DivMakerVisitor:
-    def __init__(self, div_fun: UFunc, coords: Optional[List[Symbol]] = None) -> None:
+    def __init__(self, div_fun: UFunc, coords: Optional[Sequence[Symbol]] = None) -> None:
         self.div_func = div_fun
         self.div_name = str(div_fun)
         self.params: Set[Symbol] = set()
-        if coords is None:
-            coords = [x, y, z]
-        self.coords = coords
-        self.idx_map = dict()
-        for i in range(len(coords)):
-            self.idx_map[coords[i]] = mk_idx(f"l{i}")
+        self.coords: tuple[Symbol, ...] = tuple(coords) if coords is not None else (x, y, z)
+        self.coord2idx: dict[Symbol, Idx] = {coord: mk_idx(f"l{i}") for i, coord in enumerate(self.coords)}
+        self.idx2coord: dict[Idx, Symbol] = {v: k for k, v in self.coord2idx.items()}
 
     @multimethod
     def visit(self, expr: sy.Basic, idx: sy.Idx) -> Expr:
@@ -109,36 +106,19 @@ class DivMakerVisitor:
     def _(self, expr: sy.Symbol, idx: sy.Idx) -> Expr:
         if idx is no_idx:
             return expr
-        ####
-        # TODO: generalize for other dimensions than 3
-        # assert get_dimension()==3
 
-        if idx == L0:
-            if expr == x:
+        if expr in self.params:
+            return zero
+
+        if idx not in self.idx2coord:
+            raise DslException(f"Bad index passed to derivative: {expr}: idx={idx}")
+
+        if expr in self.coords:
+            assert expr in self.coord2idx, f"{expr} present in coords ({self.coords}) but not in coord2idx ({self.coord2idx})"
+            if idx == self.coord2idx[expr]:
                 return one
-            elif expr in [y, z]:
+            else:
                 return zero
-            elif expr in self.params:
-                return zero
-
-        elif idx == L1:
-            if expr == y:
-                return one
-            elif expr in [x, z]:
-                return zero
-            elif expr in self.params:
-                return zero
-
-        elif idx == L2:
-            if expr == z:
-                return one
-            elif expr in [x, y]:
-                return zero
-            elif expr in self.params:
-                return zero
-
-        else:
-            raise Exception(f"Bad index passed to derivative: {expr}: idx={idx}")
 
         return _mk_div(self.div_func, expr, idx)
 
@@ -237,17 +217,6 @@ class DivMakerVisitor:
             ret = n * r ** (n - 1) * self.visit(r, idx)
             assert isinstance(ret, Expr)
             return ret
-
-
-dmv = DivMakerVisitor(div)
-dmv2 = DivMakerVisitor(D)
-
-
-def do_div(expr: Basic) -> Expr:
-    r = dmv.visit(expr, no_idx)
-    r = dmv2.visit(r, no_idx)
-    assert isinstance(r, Expr)
-    return r
 
 
 def mk_term(v: Basic, i: int, j: int, k: int) -> Any:
