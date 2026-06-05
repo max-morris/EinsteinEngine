@@ -84,7 +84,7 @@ class ScheduleVisitor(Visitor[ScheduleNode]):
             s += f' WHILE {self.visit(n.while_var)}'
 
         if n.if_var is not None:
-            s += f' IN {self.visit(n.if_var)}'
+            s += f' IF {self.visit(n.if_var)}'
 
         if n.before is not None and (before_len := len(n.before)) > 0:
             if before_len == 1:
