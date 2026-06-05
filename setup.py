@@ -20,6 +20,7 @@ from setuptools import setup, find_packages
 setup(
     name='EinsteinEngine',
     version='0.1.0',
+    python_requires='>=3.13',
     description='DSL and toolset for creating Cactus thorns',
     url='https://github.com/max-morris/EinsteinEngine',
     author='Max Morris',
