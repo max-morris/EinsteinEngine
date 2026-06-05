@@ -476,8 +476,15 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                     rhs=param.get_default_expr(),
                 )
 
+        param_usages: dict[str, VanillaF90Param[Any]] = dict()
+
+        for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names):
+            if var in param_usages:
+                assert param_usages[var] == param, f"Conflicting parameter definitions for {var}"
+            param_usages[var] = param
+
         param_decls: list[F90Decl] = list(
-            mk_param_decl(var, param) for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names)
+            mk_param_decl(var, param) for var, param in param_usages.items()
         )
 
         interfaces = [
