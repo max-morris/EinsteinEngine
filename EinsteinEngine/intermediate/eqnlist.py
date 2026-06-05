@@ -666,7 +666,9 @@ class EqnList:
         self.outputs.add(lhs)
 
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
-        assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
+        if lhs in self.eqns:
+            raise IntermediateException(f"Equation for '{lhs}' is already defined")
+
         # Ensure we only have symbols in eqnlist
         self.eqns[lhs := symbify(lhs)] = symbify(rhs)
         self.eqn_insertion_order[lhs] = len(self.eqns) - 1
