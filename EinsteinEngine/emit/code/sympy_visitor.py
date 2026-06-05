@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import typing
-from typing import List, Optional, cast
+from typing import List, Optional, cast, Callable
 
 # noinspection PyUnresolvedReferences
 import sympy as sy
@@ -39,18 +39,21 @@ class BaseSympyExprVisitor[ExprT: Expr]:
         sy.sin: StandardizedFunctionCallType.Sin,
         sy.cos: StandardizedFunctionCallType.Cos,
         sy.tan: StandardizedFunctionCallType.Tan,
-        sy.cot: StandardizedFunctionCallType.Cot,
-        sy.sec: StandardizedFunctionCallType.Sec,
-        sy.csc: StandardizedFunctionCallType.Csc,
         sy.sinh: StandardizedFunctionCallType.Sinh,
         sy.cosh: StandardizedFunctionCallType.Cosh,
         sy.tanh: StandardizedFunctionCallType.Tanh,
-        sy.coth: StandardizedFunctionCallType.Coth,
-        sy.sech: StandardizedFunctionCallType.Sech,
-        sy.csch: StandardizedFunctionCallType.Csch,
         sy.exp: StandardizedFunctionCallType.Exp,
         sy.erf: StandardizedFunctionCallType.Erf,
         sy.log: StandardizedFunctionCallType.Log
+    }
+
+    standard_fns_rewrite: dict[sy.Function, Callable[[*tuple[sy.Basic, ...]], sy.Expr]] = {
+        sy.cot: lambda a, *_: sy.cos(a) / sy.sin(a),
+        sy.sec: lambda a, *_: 1 / sy.cos(a),
+        sy.csc: lambda a, *_: 1 / sy.sin(a),
+        sy.coth: lambda a, *_: sy.cosh(a) / sy.sinh(a),
+        sy.sech: lambda a, *_: 1 / sy.cosh(a),
+        sy.csch: lambda a, *_: 1 / sy.sinh(a)
     }
 
     def __init__(
@@ -194,14 +197,15 @@ class BaseSympyExprVisitor[ExprT: Expr]:
 
         # If we're here, the function is some sort of standard mathematical function (e.g., sin, cos)
         fn_type: StandardizedFunctionCallType
-
-        if expr.func in self.standard_fns:
+        if expr.func in self.standard_fns_rewrite:
+            rewritten: sy.Expr = self.standard_fns_rewrite[expr.func](*expr.args)
+            return cast(Expr, self.visit(rewritten))
+        elif expr.func in self.standard_fns:
             fn_type = self.standard_fns[expr.func]
+            arg_list = [self.visit(a) for a in expr.args]
+            return StandardizedFunctionCall(fn_type, arg_list)
         else:
             raise NotImplementedError(f"visit({expr.func}) not implemented in BaseSympyExprVisitor")
-
-        arg_list = [self.visit(a) for a in expr.args]
-        return StandardizedFunctionCall(fn_type, arg_list)
 
     def _visit_piecewise(self, expr: sy.Piecewise, i: int = 0) -> Expr:
         piecewise_args = typing.cast(tuple[tuple[sy.Expr, Boolean]], expr.args)
