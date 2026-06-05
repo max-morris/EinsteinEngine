@@ -949,7 +949,6 @@ class EqnList:
             self.outputs.add(lhs)
             process_overwrite(lhs)
             for symb in rhs.free_symbols:
-
                 if symb not in self.params:
                     assert isinstance(symb, Symbol), f"{symb} should be an instance of Symbol, but type={type(symb)}"
                     self.inputs.add(symb)
@@ -969,8 +968,9 @@ class EqnList:
                 raise DslException(f"Overwrite source symbol {rd} should not be in temporaries")
 
         for rhs in self.eqns.values():
-            if "stencil" in rhs.free_symbols:
-                raise DslException(f"Overwrite source symbol {rd} cannot be used inside a stencil")
+            for call in rhs.find(lambda e: hasattr(e, "func") and self.is_stencil.get(e.func, False)):  # type: ignore[no-untyped-call]
+                if len(call.args) > 0 and call.args[0] in rd_overwrites:
+                    raise DslException(f"Overwrite source symbol {call.args[0]} cannot be used inside a stencil")
 
         for wr in wr_overwrites:
             if wr in self.inputs:
