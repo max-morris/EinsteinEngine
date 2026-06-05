@@ -20,7 +20,7 @@ import typing
 from collections import defaultdict
 from enum import auto
 from itertools import chain
-from typing import Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any
+from typing import Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
@@ -192,10 +192,12 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
             name: str,
             *,
             dimensionality: int = 3,
+            coords: Optional[Sequence[str]] = None,
             derivative_stencil_width: int = 5
     ) -> None:
         super().__init__(
             dimensionality=dimensionality,
+            coords=coords,
             derivative_stencil_width=derivative_stencil_width
         )
 

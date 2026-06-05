@@ -198,6 +198,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 raise DslException(f"For dimensionality > {len(self._default_coords)}, you must supply coordinate names.")
             self.coordinates = [self._decl_scalar(c) for c in self._default_coords[:self.dimensionality]]
         else:
+            if len(coords) != self.dimensionality:
+                raise DslException(f"Dimensionality does not match number of provided coordinates: {len(coords)} != {self.dimensionality}")
             self.coordinates = [self._decl_scalar(c) for c in coords]
 
     # Wart: Proper signature is **kwargs: Unpack[SymbolDeclarationKwargsT] but MyPy does not support this.

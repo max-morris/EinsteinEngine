@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from dataclasses import dataclass
-from typing import Type, Never, Optional, Any, cast
+from typing import Type, Never, Optional, Any, cast, Sequence
 
 from EinsteinEngine.emit.code.common.code_tree import IntLiteralExpr, FloatLiteralExpr
 from multimethod import multimethod
@@ -73,10 +73,12 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
             name: str,
             *,
             dimensionality: int = 3,
+            coords: Optional[Sequence[str]] = None,
             derivative_stencil_width: int = 5
     ) -> None:
         super().__init__(
             dimensionality=dimensionality,
+            coords=coords,
             derivative_stencil_width=derivative_stencil_width
         )
         self.name = name
