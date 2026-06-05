@@ -293,13 +293,14 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
 
             loop_body: list[F90TopLevelNode] = list()
 
-            loop_body.append(VarDecl(
-                type=TypeSpecifier(
-                    type=PrimitiveType.Double,
-                    attributes=[]
-                ),
-                names=[Identifier(temp_name) for temp_name in local_temporaries]
-            ))
+            if len(local_temporaries) > 0:
+                loop_body.append(VarDecl(
+                    type=TypeSpecifier(
+                        type=PrimitiveType.Double,
+                        attributes=[]
+                    ),
+                    names=[Identifier(temp_name) for temp_name in local_temporaries]
+                ))
 
             if (loop_annotation := fn.source_annotations.loops[loop_idx]) != '':
                 loops.append(LineComment(loop_annotation))
@@ -371,7 +372,16 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             )
 
         param_names = sorted(map(str, self.params[fn_name].keys()))
-        deallocate_stmt = ExprStmt(FunctionCall(Identifier('DEALLOCATE'), list(grid_temp_deallocs), []))
+        if len(grid_temp_deallocs) > 0:
+            deallocate_stmt = ExprStmt(
+                FunctionCall(
+                    Identifier('DEALLOCATE'),
+                    list(grid_temp_deallocs),
+                    []
+                )
+            )
+        else:
+            deallocate_stmt = None
 
         return self.FunctionPieces(
             name=Identifier(fn_name),
@@ -412,7 +422,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             loops=loops,
             destructs=[
                 deallocate_stmt
-            ]
+            ] if deallocate_stmt is not None else []
         )
 
     def _generate_all_function_pieces(self) -> OrderedDict[str, FunctionPieces]:
