@@ -155,8 +155,6 @@ if __name__ == "__main__":
     fmax = gf.decl_fun("fmax", 2)
     foofunc.add_eqn(c, fmax(a, b))
     gf.bake()
-    assert foofunc._eqn_list.depends_on(getsym(c), getsym(a))
-    assert foofunc._eqn_list.depends_on(getsym(c), getsym(b))
 
 
 def do_div(expr: Basic) -> Expr:

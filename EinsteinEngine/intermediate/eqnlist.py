@@ -1262,14 +1262,3 @@ class EqnList:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
             print(" ", colorize(k, "cyan"), "=", self.eqns[k])
-
-    def depends_on(self, a: Symbol, b: Symbol) -> bool:
-        """
-        Dependency checker. Assumes no cycles.
-        """
-        for c in self.requires:
-            if c == b:
-                return True
-            else:
-                return self.depends_on(a, c)
-        return False
