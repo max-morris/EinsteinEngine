@@ -666,7 +666,9 @@ class EqnList:
         self.outputs.add(lhs)
 
     def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
-        assert lhs not in self.eqns, f"Equation for '{lhs}' is already defined"
+        if lhs in self.eqns:
+            raise IntermediateException(f"Equation for '{lhs}' is already defined")
+
         # Ensure we only have symbols in eqnlist
         self.eqns[lhs := symbify(lhs)] = symbify(rhs)
         self.eqn_insertion_order[lhs] = len(self.eqns) - 1
@@ -947,7 +949,6 @@ class EqnList:
             self.outputs.add(lhs)
             process_overwrite(lhs)
             for symb in rhs.free_symbols:
-
                 if symb not in self.params:
                     assert isinstance(symb, Symbol), f"{symb} should be an instance of Symbol, but type={type(symb)}"
                     self.inputs.add(symb)
@@ -967,8 +968,9 @@ class EqnList:
                 raise DslException(f"Overwrite source symbol {rd} should not be in temporaries")
 
         for rhs in self.eqns.values():
-            if "stencil" in rhs.free_symbols:
-                raise DslException(f"Overwrite source symbol {rd} cannot be used inside a stencil")
+            for call in rhs.find(lambda e: hasattr(e, "func") and self.is_stencil.get(e.func, False)):  # type: ignore[no-untyped-call]
+                if len(call.args) > 0 and call.args[0] in rd_overwrites:
+                    raise DslException(f"Overwrite source symbol {call.args[0]} cannot be used inside a stencil")
 
         for wr in wr_overwrites:
             if wr in self.inputs:
@@ -1219,12 +1221,18 @@ class EqnList:
         return result[0], result[1], result[2]
 
     def _stencil_limits(self, result: List[int], expr: Expr) -> None:
+        def extract(arg: Basic) -> None:
+            for i in range(3):
+                ivar = arg.args[i + 1]
+                assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
+                result[i] = max(result[i], abs(int(ivar)))
+
+        if str(type(expr)) == "stencil":
+            extract(expr)
+
         for arg in expr.args:
             if str(type(arg)) == "stencil":
-                for i in range(3):
-                    ivar = arg.args[i + 1]
-                    assert isinstance(ivar, Integer), f"ivar={ivar}, type={type(ivar)}"
-                    result[i] = max(result[i], abs(int(ivar)))
+                extract(arg)
             else:
                 if isinstance(arg, Expr):
                     self._stencil_limits(result, arg)
@@ -1254,14 +1262,3 @@ class EqnList:
         print(colorize("Dumping Equations:", "green"))
         for k in self.order:
             print(" ", colorize(k, "cyan"), "=", self.eqns[k])
-
-    def depends_on(self, a: Symbol, b: Symbol) -> bool:
-        """
-        Dependency checker. Assumes no cycles.
-        """
-        for c in self.requires:
-            if c == b:
-                return True
-            else:
-                return self.depends_on(a, c)
-        return False

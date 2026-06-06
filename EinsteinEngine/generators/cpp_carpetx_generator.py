@@ -17,7 +17,7 @@
 
 import functools
 from dataclasses import dataclass
-from typing import Optional, List, Collection, Protocol, NamedTuple
+from typing import Optional, List, Collection, Protocol, NamedTuple, Any, cast
 
 import sympy as sy
 from sympy import IndexedBase, Indexed
@@ -507,18 +507,29 @@ class CppCarpetXGenerator(CactusGenerator):
         # We always want to inherit from CarpetX even if no vars explicitly need it
         inherits_from.update({Identifier('Driver'), Identifier('ODESolvers')})
 
+        if self.options.get('new_rad_x_boundary_fns'):
+            includes = [
+                UsesInclude(Verbatim('newradx.hxx'))
+            ]
+        else:
+            includes = []
+
         return InterfaceRoot(
             HeaderSection(
                 implements=Identifier(self.thorn_def.name),
                 inherits=[*inherits_from],
                 friends=[]
             ),
-            IncludeSection([
-                UsesInclude(Verbatim('newradx.hxx'))
-            ]),
+            IncludeSection(includes),
             FunctionSection([]),
             VariableSection(list(self.variable_groups.values()))
         )
+
+    def _raise_parameter_range(self, expected: str, name: str, actual: Any) -> None:
+        raise GeneratorException(f'Bad parameter range {actual} for parameter {name}. Expected a {expected}.')
+
+    def _raise_parameter_default(self, expected: str, name: str, actual: Any) -> None:
+        raise GeneratorException(f'Bad parameter default {actual} for parameter {name}. Expected a {expected}.')
 
     def generate_param_ccl(self) -> ParamRoot:
         params: list[Param] = list()
@@ -535,63 +546,99 @@ class CppCarpetXGenerator(CactusGenerator):
             if py_param_type is set:
                 param_type = ParamType.Keyword
 
-                assert type(py_param_range) is set[str]
-                param_range = KeywordParamRange([String(s) for s in py_param_range], String(''))
+                if not isinstance(py_param_range, set):
+                    self._raise_parameter_range('set[str]', param_name, py_param_range)
 
-                assert type(py_param_default) is str
-                param_default = String(py_param_default)
+                py_param_range_set = cast(set[str], py_param_range)
+                for p in py_param_range_set:
+                    if not isinstance(p, str):
+                        self._raise_parameter_range('set[str]', param_name, py_param_range)
+
+                param_range = KeywordParamRange([String(s) for s in py_param_range_set], String(''))
+
+                if not isinstance(py_param_default, str):
+                    self._raise_parameter_default('str', param_name, py_param_default)
+
+                param_default = String(cast(str, py_param_default))
             elif py_param_type is str:
                 param_type = ParamType.String
 
                 if py_param_range is None:
                     param_range = StringParamRange([String('')], String(''))
                 else:
-                    assert type(py_param_range) is str
-                    param_range = StringParamRange([String(py_param_range)], String(''))
+                    if not isinstance(py_param_range, str):
+                        self._raise_parameter_range('str', param_name, py_param_range)
 
-                assert type(py_param_default) is str
-                param_default = String(py_param_default)
+                    param_range = StringParamRange([String(cast(str, py_param_range))], String(''))
+
+                if not isinstance(py_param_default, str):
+                    self._raise_parameter_default('str', param_name, py_param_default)
+
+                param_default = String(cast(str, py_param_default))
             elif py_param_type is int:
                 param_type = ParamType.Int
 
                 if py_param_range is None:
                     param_range = IntParamRange(IntParamDescWildcard(), String(''))
                 else:
-                    assert type(py_param_range) is tuple[int, int]
-                    lo_i, hi_i = py_param_range
+                    if not isinstance(py_param_range, tuple) or len(py_param_range) != 2:
+                        self._raise_parameter_range('tuple[int, int]', param_name, py_param_range)
+
+                    py_param_range_ii = cast(tuple[int, int], py_param_range)
+                    for pi in py_param_range_ii:
+                        if not isinstance(pi, int):
+                            self._raise_parameter_range('tuple[int, int]', param_name, py_param_range)
+
+                    lo_i, hi_i = py_param_range_ii
                     param_range = IntParamRange(IntParamDescRange(
                         IntParamOpenLowerBound(Integer(lo_i)),
                         IntParamOpenUpperBound(Integer(hi_i))
                     ), String(''))
 
-                assert type(py_param_default) is int
-                param_default = Integer(py_param_default)
+                if not isinstance(py_param_default, int):
+                    self._raise_parameter_default('int', param_name, py_param_default)
+
+                param_default = Integer(cast(int, py_param_default))
             elif py_param_type is float:
                 param_type = ParamType.Real
 
                 if py_param_range is None:
                     param_range = RealParamRange(RealParamDescWildcard(), String(''))
                 else:
-                    assert type(py_param_range) is tuple[float, float]
-                    lo_f, hi_f = py_param_range
+                    if not isinstance(py_param_range, tuple) or len(py_param_range) != 2:
+                        self._raise_parameter_range('tuple[float, float]', param_name, py_param_range)
+
+                    py_param_range_ff = cast(tuple[float, float], py_param_range)
+                    for pf in py_param_range_ff:
+                        if not isinstance(pf, float):
+                            self._raise_parameter_range('tuple[float, float]', param_name, py_param_range)
+
+                    lo_f, hi_f = py_param_range_ff
                     param_range = RealParamRange(RealParamDescRange(
                         RealParamOpenLowerBound(Float(lo_f)),
                         RealParamOpenUpperBound(Float(hi_f))
                     ), String(''))
 
-                assert type(py_param_default) is float
-                param_default = Float(py_param_default)
+                if not isinstance(py_param_default, float):
+                    self._raise_parameter_default('float', param_name, py_param_default)
+
+                param_default = Float(cast(float, py_param_default))
             elif py_param_type is bool:
                 param_type = ParamType.Bool
                 param_range = None
 
-                assert type(py_param_default) is bool
-                param_default = Bool(py_param_default)
+                if not isinstance(py_param_default, bool):
+                    self._raise_parameter_default('bool', param_name, py_param_default)
+
+                param_default = Bool(cast(bool, py_param_default))
             else:
                 raise GeneratorException(f"Didn't expect parameter type {py_param_type}")
 
-            assert param_type is not None
-            assert param_range is not None or param_type is ParamType.Bool
+            if param_type is None:
+                raise GeneratorException(f'Parameter type was not set for parameter {param_name}.')
+
+            if param_range is None and param_type is not ParamType.Bool:
+                raise GeneratorException(f'Parameter range was not set for parameter {param_name}.')
 
             params.append(Param(
                 param_access=ParamAccess.Restricted,

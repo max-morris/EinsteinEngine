@@ -17,7 +17,7 @@
 
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from typing import Literal, TypeAlias, Sequence, Optional
+from typing import Literal, TypeAlias, Sequence, Optional, Any
 
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
@@ -48,7 +48,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
     grid_names: OrderedSet[str]
     read_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
     write_decls: dict[ThornFnName, OrderedDict[SymbolName, IntentRegion]]
-    params: dict[ThornFnName, OrderedDict[SymbolName, VanillaF90Param]]
+    params: dict[ThornFnName, OrderedDict[SymbolName, VanillaF90Param[Any]]]
     local_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
     tile_temp_names: dict[ThornFnName, OrderedSet[SymbolName]]
 
@@ -293,13 +293,14 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
 
             loop_body: list[F90TopLevelNode] = list()
 
-            loop_body.append(VarDecl(
-                type=TypeSpecifier(
-                    type=PrimitiveType.Double,
-                    attributes=[]
-                ),
-                names=[Identifier(temp_name) for temp_name in local_temporaries]
-            ))
+            if len(local_temporaries) > 0:
+                loop_body.append(VarDecl(
+                    type=TypeSpecifier(
+                        type=PrimitiveType.Double,
+                        attributes=[]
+                    ),
+                    names=[Identifier(temp_name) for temp_name in local_temporaries]
+                ))
 
             if (loop_annotation := fn.source_annotations.loops[loop_idx]) != '':
                 loops.append(LineComment(loop_annotation))
@@ -371,7 +372,16 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             )
 
         param_names = sorted(map(str, self.params[fn_name].keys()))
-        deallocate_stmt = ExprStmt(FunctionCall(Identifier('DEALLOCATE'), list(grid_temp_deallocs), []))
+        if len(grid_temp_deallocs) > 0:
+            deallocate_stmt = ExprStmt(
+                FunctionCall(
+                    Identifier('DEALLOCATE'),
+                    list(grid_temp_deallocs),
+                    []
+                )
+            )
+        else:
+            deallocate_stmt = None
 
         return self.FunctionPieces(
             name=Identifier(fn_name),
@@ -412,7 +422,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             loops=loops,
             destructs=[
                 deallocate_stmt
-            ]
+            ] if deallocate_stmt is not None else []
         )
 
     def _generate_all_function_pieces(self) -> OrderedDict[str, FunctionPieces]:
@@ -447,14 +457,34 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
         fn_names = list(self.function_pieces.keys())
         assert sorted(fn_names) == fn_names
 
-        param_decls: list[VarDecl] = list(
-            VarDecl(
-                type=TypeSpecifier(
-                    type=param.get_type(),
-                    attributes=[Public()]
-                ),
-                names=[Identifier(var)],
-            ) for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names)
+        def mk_param_decl[T: int|float](var: str, param: VanillaF90Param[T]) -> F90Decl:
+            if param.default is None:
+                return VarDecl(
+                    type=TypeSpecifier(
+                        type=param.get_type(),
+                        attributes=[Public()]
+                    ),
+                    names=[Identifier(var)],
+                )
+            else:
+                return VarDeclAssign(
+                    type=TypeSpecifier(
+                        type=param.get_type(),
+                        attributes=[Public()]
+                    ),
+                    names=[Identifier(var)],
+                    rhs=param.get_default_expr(),
+                )
+
+        param_usages: dict[str, VanillaF90Param[Any]] = dict()
+
+        for var, param in flatten(self.params[fn_name].items() for fn_name in fn_names):
+            if var in param_usages:
+                assert param_usages[var] == param, f"Conflicting parameter definitions for {var}"
+            param_usages[var] = param
+
+        param_decls: list[F90Decl] = list(
+            mk_param_decl(var, param) for var, param in param_usages.items()
         )
 
         interfaces = [

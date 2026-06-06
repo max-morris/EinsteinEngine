@@ -19,7 +19,8 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
-from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any, Generator, Never
+from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any, Generator, Never, \
+    Sequence
 
 # mypy: disable-error-code=no-redef
 # The above line suppresses an unfortunate interaction between MyPy and multimethod.
@@ -79,6 +80,7 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import (
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.common.util import get_or_compute, pprint, verbose
+from EinsteinEngine.common.util import wprint
 
 
 class OverwriteSymbolRecord(NamedTuple):
@@ -125,7 +127,7 @@ class ClassifyTempsResult[FunctionFrontendT](NamedTuple):
 class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs, FunctionFrontendT: DslFunctionFrontend[Any]](Frontend):
     dimensionality: int
     declarations: dict[str, SymbolDeclaration[SymbolDeclarationKwargsT]]
-    coords: list[Symbol]
+    coordinates: list[Symbol]
     params: dict[str, ParamDataT]
     var2base: dict[str, str]
     functions: dict[str, FunctionFrontendT]
@@ -147,12 +149,17 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     symmetries: Sym
 
     _unique_name_counter: int
+    _default_coords: list[str] = ['x', 'y', 'z', 'w']
 
-    def __init__(self, *, dimensionality: int = 3, derivative_stencil_width: int = 5):
+    def __init__(self, *, dimensionality: int = 3, coords: Optional[Sequence[str]] = None, derivative_stencil_width: int = 5):
         super().__init__()
+
+        if dimensionality < 1:
+            raise DslException(f"Dimensionality must be > 0, got {dimensionality}")
+
         self.dimensionality = dimensionality
         self.declarations = dict()
-        self.coords = list()
+        self._init_coords(coords)
         self.params = dict()
         self.var2base = dict()
         self.functions = dict()
@@ -171,8 +178,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self._set_derivative_stencil(derivative_stencil_width)
 
         self.div_makers = dict()
-        self.div_makers["div"] = DivMakerVisitor(div)
-        self.div_makers["D"] = DivMakerVisitor(D)
+        self.div_makers["div"] = DivMakerVisitor(div, self.coordinates)
+        self.div_makers["D"] = DivMakerVisitor(D, self.coordinates)
 
         for dmv in self.div_makers.values():
             dmv.params = self._mk_param_set()
@@ -183,6 +190,17 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self._populate_globals()
 
         self._unique_name_counter = 0
+
+    def _init_coords(self, coords: Optional[Sequence[str]]) -> None:
+        assert isinstance(self.dimensionality, int) and self.dimensionality > 0, f"Invalid or unset dimensionality {self.dimensionality}"
+        if coords is None:
+            if self.dimensionality > len(self._default_coords):
+                raise DslException(f"For dimensionality > {len(self._default_coords)}, you must supply coordinate names.")
+            self.coordinates = [self._decl_scalar(c) for c in self._default_coords[:self.dimensionality]]
+        else:
+            if len(coords) != self.dimensionality:
+                raise DslException(f"Dimensionality does not match number of provided coordinates: {len(coords)} != {self.dimensionality}")
+            self.coordinates = [self._decl_scalar(c) for c in coords]
 
     # Wart: Proper signature is **kwargs: Unpack[SymbolDeclarationKwargsT] but MyPy does not support this.
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
@@ -268,9 +286,6 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             assert isinstance(arg, Idx)
             out.append(arg)
         return out
-
-    def get_coords(self) -> list[Symbol]:
-        return self.coords
 
     def get_params(self) -> Set[str]:
         return OrderedSet(self.params)
@@ -721,20 +736,16 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         else:
             vprint(colorize(source, "red"), colorize("->", "magenta"), colorize(target, "cyan"))
 
-    def mk_coords(self, with_time: bool = False) -> list[Symbol]:
-        # Note that x, y, and z are special symbols
-        if self.dimensionality == 3:
-            if with_time:
-                self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
-                               self._decl_scalar("z")]
+    def mk_coords(self, with_time: bool = False) -> tuple[Symbol, ...]:
+        if with_time:
+            if 't' in self.declarations:
+                wprint("In mk_coords: with_time was set, and a symbol with the name 't' is already defined. That symbol will be returned as the time coordinate.")
+                t_coord = cast(Symbol, self.declarations['t'].indexed_base.args[0])
             else:
-                self.coords = [self._decl_scalar("x"), self._decl_scalar("y"), self._decl_scalar("z")]
-        elif self.dimensionality == 4:
-            self.coords = [self._decl_scalar("t"), self._decl_scalar("x"), self._decl_scalar("y"),
-                           self._decl_scalar("z")]
+                t_coord = self._decl_scalar('t')
+            return t_coord, *self.coordinates
         else:
-            raise DslException(f"Unsupported dimensionality {self.dimensionality}")
-        return self.coords
+            return tuple(self.coordinates)
 
     def _set_derivative_stencil(self, n: int) -> None:
         assert n % 2 == 1, "n must be odd"
@@ -807,9 +818,12 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 i1 = i - 1
             if tens.args[i] == ix2:
                 i2 = i - 1
-        assert i1 != -1, f"Index {ix1} not in {tens}"
-        assert i2 != -2, f"Index {ix2} not in {tens}"
-        assert i1 != i2, f"Index {ix1} cannot be symmetric with itself in {tens}"
+        if i1 == -1:
+            raise DslException(f"Index {ix1} not in {tens}")
+        if i2 == -1:
+            raise DslException(f"Index {ix2} not in {tens}")
+        if i1 == i2:
+            raise DslException(f"Index {ix1} cannot be symmetric with itself in {tens}")
         if i1 > i2:
             i1, i2 = i2, i1
         self.symmetries.add(tens.base, i1, i2, sgn)
@@ -844,7 +858,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def mk_stencil(self, func_name: str, idx: Idx, expr: Expr) -> UFunc:
         result = self.mk_stencil(func_name, expr, [idx])
         assert isinstance(result, UFunc)
-        self.div_makers[func_name] = DivMakerVisitor(result)
+        self.div_makers[func_name] = DivMakerVisitor(result, self.coordinates)
         return result
 
     @mk_stencil.register
@@ -859,7 +873,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _mk_stencil(self, func_name: str, idx1: Idx, idx2: Idx, expr: Expr) -> UFunc:
         result = self.mk_stencil(func_name, expr, [idx1, idx2])
         assert isinstance(result, UFunc)
-        self.div_makers[func_name] = DivMakerVisitor(result)
+        self.div_makers[func_name] = DivMakerVisitor(result, self.coordinates)
         return result
 
     @mk_stencil.register

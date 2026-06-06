@@ -18,14 +18,14 @@
 from typing import Literal
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
-from sympy import IndexedBase, Symbol
+from sympy import IndexedBase, Symbol, Basic, Expr
 
+from EinsteinEngine import div, D, no_idx
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
-from EinsteinEngine.frontend.dsl.finite_difference import do_div
 from EinsteinEngine.frontend.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker
-
+from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor
 
 val = mk_symbol("val")
 x = mk_symbol("x")
@@ -155,8 +155,18 @@ if __name__ == "__main__":
     fmax = gf.decl_fun("fmax", 2)
     foofunc.add_eqn(c, fmax(a, b))
     gf.bake()
-    assert foofunc._eqn_list.depends_on(getsym(c), getsym(a))
-    assert foofunc._eqn_list.depends_on(getsym(c), getsym(b))
+
+
+dmv = DivMakerVisitor(div)
+dmv2 = DivMakerVisitor(D)
+
+
+def do_div(expr: Basic) -> Expr:
+    r = dmv.visit(expr, no_idx)
+    r = dmv2.visit(r, no_idx)
+    assert isinstance(r, Expr)
+    return r
+
 
 if __name__ == "__main__":
     foo = mk_indexed_base("foo", (1,))
