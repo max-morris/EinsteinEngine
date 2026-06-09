@@ -32,9 +32,8 @@ from EinsteinEngine.frontend.dsl.use_indices import idx_to_int
 
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
-DXI = mk_symbol("DXI")
-DYI = mk_symbol("DYI")
-DZI = mk_symbol("DZI")
+DX, DY, DZ, DT = tuple(map(mk_symbol, ("DX", "DY", "DZ", "DT")))
+DXI, DYI, DZI = tuple(map(mk_symbol, ("DXI", "DYI", "DZI")))
 L0, U0, L1, U1, L2, U2 = cast(Tuple[Idx, Idx, Idx, Idx, Idx, Idx], mk_idxes('l0 u0 l1 u1 l2 u2'))
 
 

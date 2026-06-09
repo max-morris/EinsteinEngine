@@ -54,8 +54,6 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
 
     function_pieces: OrderedDict[str, 'VanillaF90Generator.FunctionPieces']
 
-    vars_to_ignore: set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
-
     def __init__(self, frontend: VanillaF90Module):
         super().__init__(frontend)
         self.grid_names = OrderedSet()
@@ -154,10 +152,10 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                 ),
                 names=list(
                     Identifier(s) for s in (
-                        'dx',
-                        'dy',
-                        'dz',
-                        'dt',
+                        'DX',
+                        'DY',
+                        'DZ',
+                        'DT',
                     )
                 )
             )
@@ -199,9 +197,9 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                 BinOpExpr(
                     FloatLiteralExpr(1.0),
                     BinOp.Div,
-                    IdExpr(Identifier(f'd{d}'))
+                    IdExpr(Identifier(f'D{d}'))
                 )
-            ) for d in ('x', 'y', 'z')
+            ) for d in ('X', 'Y', 'Z')
         ]
 
         grid_dimensions = Dimension(tuple(IdExpr(Identifier(s)) for s in ('nx', 'ny', 'nz')))
@@ -393,10 +391,10 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
                     'ngx',  # number of ghost zones on either side in each direction
                     'ngy',  # "
                     'ngz',  # "
-                    'dx',   # grid spacing in each direction
-                    'dy',   # "
-                    'dz',   # "
-                    'dt',   # time step size
+                    'DX',   # grid spacing in each direction
+                    'DY',   # "
+                    'DZ',   # "
+                    'DT',   # time step size
                     *self.read_decls[fn_name].keys(),
                     *self.write_decls[fn_name].keys(),
                 )

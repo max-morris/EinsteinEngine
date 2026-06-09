@@ -921,10 +921,28 @@ class CppCarpetXGenerator(CactusGenerator):
             for stencil_idx in idxes_with_centerings
         ]
 
+        # DX, DY, DZ, DT decls
+        d_decls = [
+            ConstAssignDecl(
+                Identifier('auto'),
+                Identifier(s),
+                VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))
+            )
+            for n, s in enumerate(['DX', 'DY', 'DZ'])  # todo: DT
+        ]
+
         # DXI, DYI, DZI decls
         di_decls = [
-            ConstAssignDecl(Identifier('auto'), Identifier(s), BinOpExpr(FloatLiteralExpr(1.0), BinOp.Div, VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))))
-            for n, s in enumerate(['DXI', 'DYI', 'DZI'])
+            ConstAssignDecl(
+                Identifier('auto'),
+                Identifier(f'{s}I'),
+                BinOpExpr(
+                    FloatLiteralExpr(1.0),
+                    BinOp.Div,
+                    IdExpr(Identifier(s))
+                )
+            )
+            for s in ['DX', 'DY', 'DZ']
         ]
 
         stencil_limits = thorn_fn.eqn_complex.stencil_limits
@@ -1040,6 +1058,7 @@ class CppCarpetXGenerator(CactusGenerator):
                     ),
                     Verbatim(self._boilerplate_nv_tools_init(fn_name)),
                     *layout_decls,
+                    *d_decls,
                     *di_decls,
                     *stencil_limit_checks,
                     *one_and_zero,

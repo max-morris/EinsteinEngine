@@ -30,6 +30,8 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 
 
 class DslGenerator[F: DslFrontend[Any, Any, Any]](Generator[F], ABC):
+    vars_to_ignore: set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI', 'DX', 'DY', 'DZ', 'DT'}
+
     def __init__(self, frontend: F):
         super().__init__(frontend)
 
