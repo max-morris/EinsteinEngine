@@ -923,12 +923,19 @@ class CppCarpetXGenerator(CactusGenerator):
 
         # DX, DY, DZ, DT decls
         d_decls = [
+            *(
+                ConstAssignDecl(
+                    Identifier('auto'),
+                    Identifier(s),
+                    VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))
+                )
+                for n, s in enumerate(['DX', 'DY', 'DZ'])
+            ),
             ConstAssignDecl(
                 Identifier('auto'),
-                Identifier(s),
-                VerbatimExpr(Verbatim(f'CCTK_DELTA_SPACE({n})'))
+                Identifier('DT'),
+                VerbatimExpr(Verbatim('cctk_delta_time'))
             )
-            for n, s in enumerate(['DX', 'DY', 'DZ'])  # todo: DT
         ]
 
         # DXI, DYI, DZI decls
