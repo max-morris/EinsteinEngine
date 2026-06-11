@@ -46,6 +46,7 @@ from EinsteinEngine.wizards.vanilla_f90_wizard import VanillaF90Wizard
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
+from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 
 from sympy import Idx
 from sympy.core.relational import Relational
@@ -111,7 +112,7 @@ __all__ = [
     "erf", "atan", "pi",
     "D", "div", "idx_to_int", "IndexedSubstFnType", "MkSubstType", "CactusParam", "ThornFunction", "ScheduleBin", "ThornDef",
     "subst_tensor_xyz",
-    "noop", "stencil", "DD", "DDI",
+    "noop", "stencil", "DD", "DDI", "DX", "DY", "DZ", "DT",
     "ui", "uj", "uk", "ua", "ub", "uc", "ud", "u0", "u1", "u2", "u3", "u4", "u5",
     "li", "lj", "lk", "la", "lb", "lc", "ld", "l0", "l1", "l2", "l3", "l4", "l5",
     "Applier", "sqrt", "cbrt", "log", "exp", "Pow", "PowType", "UFunc", "diff",

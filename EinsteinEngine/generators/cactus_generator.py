@@ -53,8 +53,6 @@ class CactusGenerator(DslGenerator[ThornDef]):
     var_names: OrderedSet[str]
     options: CactusGeneratorOptions
 
-    vars_to_ignore: Set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI'}
-
     @property
     def thorn_def(self) -> ThornDef:
         return self.frontend
