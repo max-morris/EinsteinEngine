@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, OrderedDict
-from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack
+from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack, Callable
 
 import EinsteinEngine.common.util as util
 from sympy import Symbol, Expr, Idx, Indexed, IndexedBase, Matrix
@@ -61,7 +61,16 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
     been_late_baked: bool
     intent_override: Optional[IntentOverride]
 
-    def __init__(self, name: str, frontend: FrontendT, intent_override: Optional[IntentOverride], *, owner_name: str) -> None:
+    _add_eqn_count: int
+
+    def __init__(self,
+                 name: str,
+                 frontend: FrontendT,
+                 intent_override: Optional[IntentOverride],
+                 *,
+                 owner_name: str,
+                 auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                 auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> None:
         self.name = name
         self.frontend = frontend
         self.source_annotations = SourceAnnotations()
@@ -81,6 +90,10 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             lambda: self.been_baked,
             owner_name=owner_name,
         )
+
+        self._add_eqn_count = 0
+        self._auto_hard_split_predicate = auto_hard_split_predicate
+        self._auto_soft_split_predicate = auto_soft_split_predicate
 
     def needs_merge(self) -> bool:
         return self.eqn_complex.needs_merge()
@@ -160,6 +173,12 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
     def add_eqn(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
         self._add_eqn_manager.add_eqn(lhs, rhs)
+        self._add_eqn_count += 1
+
+        if self._auto_hard_split_predicate is not None and self._auto_hard_split_predicate(self._add_eqn_count):
+            self.split_loop()
+        elif self._auto_soft_split_predicate is not None and self._auto_soft_split_predicate(self._add_eqn_count):
+            self.soft_split()
 
     def madd(self) -> None:
         self.eqn_complex.do_madd()

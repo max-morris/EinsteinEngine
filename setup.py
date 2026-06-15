@@ -34,6 +34,7 @@ setup(
         'sympy==1.14.0',
         'multimethod>=1.10',
         'numpy>=2.1.0',
+        'scipy>=1.17.1',
         'pdoc==14.6.0',
         'sortedcontainers==2.4.0',
         'sortedcontainers-stubs==2.4.3',

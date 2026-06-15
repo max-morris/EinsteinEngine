@@ -18,7 +18,9 @@
 import argparse
 import functools
 import sys
+import typing
 from pathlib import Path
+from typing import Callable
 
 from sympy import Rational
 
@@ -833,10 +835,29 @@ sync_z4c_pt2 = ExplicitSyncBatch(
 ###
 # Z4 Evolution equations
 ###
-fun_z4c_rhs = cottonmouth_Z4c.create_function(
-    "z4c_rhs",
-    rhs_group
-)
+
+if globals().get('split_tuning', False):
+    assert 'auto_hard_split_predicate' in globals()
+    assert 'auto_soft_split_predicate' in globals()
+
+    print("Using auto-splitting in RHS kernel...")
+
+    auto_hard_split_predicate = typing.cast(Callable[[int], bool], globals()['auto_hard_split_predicate'])
+    auto_soft_split_predicate = typing.cast(Callable[[int], bool], globals()['auto_soft_split_predicate'])
+
+    fun_z4c_rhs = cottonmouth_Z4c.create_function(
+        "z4c_rhs",
+        rhs_group,
+        auto_hard_split_predicate=auto_hard_split_predicate,
+        auto_soft_split_predicate=auto_soft_split_predicate
+    )
+else:
+    raise RuntimeError("Split tuning not enabled!")
+    fun_z4c_rhs = cottonmouth_Z4c.create_function(
+        "z4c_rhs",
+        rhs_group
+    )
+
 
 # Eq (8) of [1]
 fun_z4c_rhs.add_eqn(
@@ -848,7 +869,7 @@ fun_z4c_rhs.add_eqn(
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
@@ -864,7 +885,7 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
@@ -879,7 +900,7 @@ fun_z4c_rhs.add_eqn(
     Rchi[li, lj] + Rt[li, lj]
 )
 
-fun_z4c_rhs.soft_split()
+#fun_z4c_rhs.soft_split()
 
 # Eq. (6) of [1]
 fun_z4c_rhs.add_eqn(
@@ -937,7 +958,7 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
@@ -972,7 +993,7 @@ fun_z4c_rhs.add_eqn(
     + evo_shift[uk] * D(gt[li, lj], lk)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     At_rhs[li, lj],
@@ -1262,8 +1283,8 @@ cottonmouth_Z4c.bake(
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
-    do_recycle_temporaries=True,
-    cse_optimization_level=CseOptimizationLevel.Optimal,
+    do_recycle_temporaries=False,
+    cse_optimization_level=CseOptimizationLevel.Fast,
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0

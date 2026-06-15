@@ -1122,9 +1122,7 @@ cottonmouth_bssnok.bake(
     do_recycle_temporaries=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(150),
-    ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
-    )
+    ordering_fn=prioritize_rare_symbols,
 )
 
 recipe_dir = Path(__file__).resolve().parent

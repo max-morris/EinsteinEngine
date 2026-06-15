@@ -20,7 +20,7 @@ import typing
 from collections import defaultdict
 from enum import auto
 from itertools import chain
-from typing import Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
+from typing import Callable, Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
 
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
@@ -124,12 +124,17 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
                  thorn_def: "ThornDef",
                  schedule_before: Optional[Collection[str]],
                  schedule_after: Optional[Collection[str]],
-                 intent_override: Optional[IntentOverride] = None) -> None:
+                 intent_override: Optional[IntentOverride] = None,
+                 *,
+                 auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                 auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> None:
         self.thorn_def = thorn_def
         self.schedule_target = schedule_target
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
-        super().__init__(name, thorn_def, intent_override, owner_name="ThornFunction")
+        super().__init__(name, thorn_def, intent_override, owner_name="ThornFunction",
+                         auto_hard_split_predicate=auto_hard_split_predicate,
+                         auto_soft_split_predicate=auto_soft_split_predicate)
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -396,8 +401,12 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                         *,
                         schedule_before: Optional[Collection[str]] = None,
                         schedule_after: Optional[Collection[str]] = None,
-                        intent_override: Optional[IntentOverride] = None) -> ThornFunction:
-        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override)
+                        intent_override: Optional[IntentOverride] = None,
+                        auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                        auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> ThornFunction:
+        tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override,
+                           auto_hard_split_predicate=auto_hard_split_predicate,
+                           auto_soft_split_predicate=auto_soft_split_predicate)
         self.functions[name] = tf
         return tf
 
