@@ -17,32 +17,19 @@
 
 import argparse
 import functools
+import sys
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Sequence, Optional
+
+from scipy.optimize import NonlinearConstraint
 
 from EinsteinEngine.common.util import pprint
-from bayes_opt import BayesianOptimization
+from EinsteinEngine.tuning.bayes_checkpoint import CheckpointedBayesianOptimization
 
 from EinsteinEngine.tuning.sum_of_cosines import sum_of_cosines
 
 from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_run
 from tuning.sum_of_cosines import OwnsZero
-
-
-# optimizer = BayesianOptimization(
-#         f=black_box_score,
-#         pbounds={
-#             "complexity_weight": (-5.0, 5.0),
-#             "rarity_weight": (-0.0, 5.0),
-#             "sqrt_rarity_weight": (-5.0, 5.0),
-#             "peak_symbol_distance_weight": (-5.0, 0.0),
-#             "avg_symbol_distance_weight": (-5.0, 0.0),
-#             "symbol_reuse_weight": (0.0, 5.0)
-#         },
-#         #verbose=0
-#     )
-#
-#     optimizer.maximize(init_points=exploration_iter, n_iter=optimization_iter)
-#     assert optimizer.max is not None
-#     pprint(f'Bayesian Optimization result: {optimizer.max}')
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -54,45 +41,106 @@ def main() -> None:
     parser.add_argument("--remote-cactus-path", type=str, default="/home/mmorris/project/Cactus/", help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine.")
+    parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="File to save/restore Bayesian optimization progress.")
 
     args: RemoteFeedbackArgs = parser.parse_args()
 
-    do_tuning(args)
+    #do_tuning(args, SumOfCosinesTuner(order=3), args.checkpoint_file)
+    do_tuning(args, BitTwiddleTuner(max_val=all_ones(15)), args.checkpoint_file)
 
-def do_tuning(args: RemoteFeedbackArgs) -> None:
-    order = 2
+def all_ones(n: int) -> int:
+    num = 1
+    for _ in range(n - 1):
+        num = (num << 1) + 1
+    return num
 
-    p_bounds = dict()
+class Tuner(ABC):
+    @abstractmethod
+    def get_p_bounds(self) -> dict[str, Any]:
+        ...
 
-    for degree in range(1, order + 1):
-        for kind in ['soft', 'hard']:
-            p_bounds[f'outer_{degree}_{kind}'] = (0.0, 5)
-            p_bounds[f'inner_{degree}_{kind}'] = (0.01, 5)
+    @abstractmethod
+    def get_hard_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        ...
 
-    optimizer = BayesianOptimization(
-        f=functools.partial(do_tuning_run, args=args, order=order),
-        pbounds=p_bounds
+    @abstractmethod
+    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        ...
+
+    def get_nonlinear_constraints(self) -> Optional[NonlinearConstraint]:
+        return None
+
+class BitTwiddleTuner(Tuner):
+    def __init__(self, max_val: int) -> None:
+        self.max_val = max_val
+
+    def get_p_bounds(self) -> dict[str, Any]:
+        return {
+            'hard_int': (0, self.max_val),
+            'soft_int': (0, self.max_val)
+        }
+
+    def get_hard_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        return lambda i: ((1 << i) & int(kwargs['hard_int'])) > 0
+
+    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        return lambda i: ((1 << i) & int(kwargs['soft_int'])) > 0
+
+    def get_nonlinear_constraints(self) -> NonlinearConstraint:
+        def constraint_fn(hard_int: int, soft_int: int) -> int:
+            return abs(int(hard_int) & int(soft_int))
+
+        return NonlinearConstraint(constraint_fn, -0.5, 0.5)
+
+class SumOfCosinesTuner(Tuner):
+    def __init__(self, order: int) -> None:
+        self.order = order
+
+    def get_p_bounds(self) -> dict[str, Any]:
+        p_bounds = dict()
+
+        for degree in range(1, self.order + 1):
+            for kind in ['soft', 'hard']:
+                p_bounds[f'outer_{degree}_{kind}'] = (0.0, 5)
+                p_bounds[f'inner_{degree}_{kind}'] = (0.01, 5)
+
+        return p_bounds
+
+    def get_hard_split_predicate(self, **kwargs) -> Callable[[int], bool]:
+        return OwnsZero(
+            sum_of_cosines(
+                [kwargs[f'outer_{degree}_hard'] for degree in range(1, self.order + 1)],
+                [kwargs[f'inner_{degree}_hard'] for degree in range(1, self.order + 1)],
+            )
+        )
+
+    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        return OwnsZero(
+            sum_of_cosines(
+                [kwargs[f'outer_{degree}_soft'] for degree in range(1, self.order + 1)],
+                [kwargs[f'inner_{degree}_soft'] for degree in range(1, self.order + 1)],
+            )
+        )
+
+def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str) -> None:
+    optimizer = CheckpointedBayesianOptimization(
+        f=functools.partial(do_tuning_run, tuner=tuner, args=args),
+        pbounds=tuner.get_p_bounds(),
+        constraint=tuner.get_nonlinear_constraints(),
+        checkpoint_file=checkpoint_file,
     )
+
+    if optimizer.n_checkpoint_loaded:
+        pprint(f'Resumed from checkpoint: {optimizer.n_checkpoint_loaded} observations loaded from {checkpoint_file}')
 
     optimizer.maximize(init_points=10, n_iter=20)
     assert optimizer.max is not None
     pprint(f'Bayesian Optimization result: {optimizer.max}')
 
 # (outer|inner)_{degree}_(soft|hard)
-def do_tuning_run(args: RemoteFeedbackArgs, order: int, **kwargs) -> float:
-    hard_fn = OwnsZero(
-        sum_of_cosines(
-            [kwargs[f'outer_{degree}_hard'] for degree in range(1, order + 1)],
-            [kwargs[f'inner_{degree}_hard'] for degree in range(1, order + 1)],
-        )
-    )
-
-    soft_fn = OwnsZero(
-        sum_of_cosines(
-            [kwargs[f'outer_{degree}_soft'] for degree in range(1, order + 1)],
-            [kwargs[f'inner_{degree}_soft'] for degree in range(1, order + 1)],
-        )
-    )
+def do_tuning_run[T: Tuner](args: RemoteFeedbackArgs, tuner: T, **kwargs) -> float:
+    hard_fn = tuner.get_hard_split_predicate(**kwargs)
+    soft_fn = tuner.get_soft_split_predicate(**kwargs)
 
     try:
         total_time, rhs_time = do_remote_run(args, {

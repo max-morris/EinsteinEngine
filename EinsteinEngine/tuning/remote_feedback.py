@@ -24,6 +24,7 @@ import time
 from typing import Protocol, Any
 
 from EinsteinEngine.tuning.clear_caches import clear_caches
+from common.util import pprint
 
 
 class RemoteFeedbackArgs(Protocol):
@@ -105,6 +106,8 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         )
     slurm_job_id = job_matches[-1]
 
+    pprint(f"Job {slurm_job_id} submitted on {args.remote_host} with Slurm.")
+
     while True:
         squeue_result = subprocess.run(
             ["ssh", args.remote_host, f"squeue -h -j {slurm_job_id}"],
@@ -122,7 +125,10 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         if not squeue_result.stdout.strip():
             break
 
+        pprint(f"Still waiting on job {slurm_job_id}...")
         time.sleep(60)
+
+    pprint(f"Job {slurm_job_id} finished.")
 
     timing_result = subprocess.run(
         ["ssh", args.remote_host, f"cd {args.remote_cactus_path} && {args.remote_timing_command}"],
