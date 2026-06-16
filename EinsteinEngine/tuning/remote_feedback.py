@@ -62,6 +62,8 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
 
     clear_caches()
 
+    pprint("Done generating. Syncing to remote...")
+
     rsync_result = subprocess.run(
         [
             "rsync",
@@ -79,6 +81,8 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         print(rsync_result.stdout)
         print(rsync_result.stderr)
         raise RuntimeError("rsync failed")
+
+    pprint("Done syncing to remote. Building on remote...")
 
     build_and_submit_result = subprocess.run(
         [

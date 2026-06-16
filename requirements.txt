@@ -8,3 +8,4 @@ pdoc==14.6.0
 sortedcontainers==2.4.0
 sortedcontainers-stubs==2.4.3
 bayesian-optimization==3.2.1
+optuna==4.9.0

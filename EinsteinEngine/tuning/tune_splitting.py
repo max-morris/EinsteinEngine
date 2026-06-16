@@ -133,7 +133,7 @@ def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str
     if optimizer.n_checkpoint_loaded:
         pprint(f'Resumed from checkpoint: {optimizer.n_checkpoint_loaded} observations loaded from {checkpoint_file}')
 
-    optimizer.maximize(init_points=10, n_iter=20)
+    optimizer.maximize(init_points=50, n_iter=200)
     assert optimizer.max is not None
     pprint(f'Bayesian Optimization result: {optimizer.max}')
 
