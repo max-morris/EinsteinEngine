@@ -42,12 +42,40 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+_FAILED_VALUE: float = -1e9
+
+
 def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     param_names: list[str] = sorted(records[0]["params"].keys())
     n_params = len(param_names)
     steps = list(range(1, len(records) + 1))
     targets = [r["target"] for r in records]
-    running_max = [max(targets[: i + 1]) for i in range(len(targets))]
+
+    # Separate successful and failed runs.
+    ok_mask = [t != _FAILED_VALUE for t in targets]
+    ok_steps    = [s for s, ok in zip(steps, ok_mask) if ok]
+    ok_targets  = [t for t, ok in zip(targets, ok_mask) if ok]
+    fail_steps  = [s for s, ok in zip(steps, ok_mask) if not ok]
+
+    running_max = []
+    current_max = float("-inf")
+    for t, ok in zip(targets, ok_mask):
+        if ok:
+            current_max = max(current_max, t)
+        running_max.append(current_max if current_max != float("-inf") else None)
+    ok_running_max_steps   = [s for s, v in zip(steps, running_max) if v is not None]
+    ok_running_max_values  = [v for v in running_max if v is not None]
+
+    # Y-axis limits derived from successful runs only.
+    if ok_targets:
+        y_min, y_max = min(ok_targets), max(ok_targets)
+        y_range = y_max - y_min or 1.0
+        # Reserve 10 % of the range at the bottom for failed-run markers.
+        fail_y = y_min - 0.10 * y_range
+        y_lo   = fail_y - 0.02 * y_range
+        y_hi   = y_max + 0.05 * y_range
+    else:
+        fail_y, y_lo, y_hi = 0.0, -1.0, 1.0
 
     params: dict[str, list[float]] = {
         name: [r["params"][name] for r in records] for name in param_names
@@ -66,8 +94,14 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
 
     # --- Target over iterations (spans all columns) ---
     ax_top = fig.add_subplot(gs[0, :])
-    ax_top.plot(steps, targets, "o-", color="steelblue", alpha=0.6, label="target")
-    ax_top.plot(steps, running_max, "--", color="tomato", linewidth=1.5, label="running max")
+    ax_top.plot(ok_steps, ok_targets, "o-", color="steelblue", alpha=0.6, label="target")
+    ax_top.plot(ok_running_max_steps, ok_running_max_values, "--", color="tomato",
+                linewidth=1.5, label="running max")
+    if fail_steps:
+        ax_top.plot(fail_steps, [fail_y] * len(fail_steps), "rx", markersize=8,
+                    markeredgewidth=1.5, label="failed", zorder=4)
+        ax_top.axhline(fail_y, color="salmon", linewidth=0.5, linestyle=":")
+    ax_top.set_ylim(y_lo, y_hi)
     ax_top.set_xlabel("Iteration")
     ax_top.set_ylabel("Target")
     ax_top.set_title("Target over iterations")
@@ -77,6 +111,8 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     # Colour probes by iteration so scatter plots show exploration order.
     cmap = cm.viridis
     colours = cmap(np.linspace(0, 1, len(records)))
+    ok_colours   = [c for c, ok in zip(colours, ok_mask) if ok]
+    fail_colours = [c for c, ok in zip(colours, ok_mask) if not ok]
 
     # --- Per-parameter scatter: param value vs target ---
     param_axes: list[plt.Axes] = []
@@ -84,7 +120,16 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         row = 1 + idx // n_cols
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
-        ax.scatter(params[name], targets, c=colours, s=40, alpha=0.8, zorder=3)
+
+        ok_x   = [v for v, ok in zip(params[name], ok_mask) if ok]
+        fail_x = [v for v, ok in zip(params[name], ok_mask) if not ok]
+
+        if ok_x:
+            ax.scatter(ok_x, ok_targets, c=ok_colours, s=40, alpha=0.8, zorder=3)
+        if fail_x:
+            ax.scatter(fail_x, [fail_y] * len(fail_x), c=fail_colours,
+                       marker="x", s=60, linewidths=1.5, alpha=0.8, zorder=4)
+        ax.set_ylim(y_lo, y_hi)
         ax.set_xlabel(name)
         ax.set_ylabel("Target")
         ax.set_title(f"Target vs {name}")
