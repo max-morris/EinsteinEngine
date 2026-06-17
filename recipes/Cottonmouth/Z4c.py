@@ -1284,7 +1284,7 @@ cottonmouth_Z4c.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=False,
-    cse_optimization_level=CseOptimizationLevel.Fast,
+    cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=functools.partial(
         prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0

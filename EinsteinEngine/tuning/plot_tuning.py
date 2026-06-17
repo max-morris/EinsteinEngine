@@ -55,7 +55,7 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
 
     # Layout: top row is the full-width target-vs-step plot;
     # below that, one subplot per parameter (param value vs target).
-    n_cols = min(n_params, 3)
+    n_cols = min(n_params, 5)
     n_param_rows = math.ceil(n_params / n_cols)
     n_rows = 1 + n_param_rows
 

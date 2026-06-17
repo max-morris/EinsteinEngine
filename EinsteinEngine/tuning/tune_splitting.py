@@ -46,7 +46,8 @@ def main() -> None:
     args: RemoteFeedbackArgs = parser.parse_args()
 
     #do_tuning(args, SumOfCosinesTuner(order=3), args.checkpoint_file)
-    do_tuning(args, BitTwiddleTuner(max_val=all_ones(15)), args.checkpoint_file)
+    #do_tuning(args, BitTwiddleTuner(max_val=all_ones(15)), args.checkpoint_file)
+    do_tuning(args, CombinatorialTuner(n_vars=15), args.checkpoint_file)
 
 def all_ones(n: int) -> int:
     num = 1
@@ -69,6 +70,25 @@ class Tuner(ABC):
 
     def get_nonlinear_constraints(self) -> Optional[NonlinearConstraint]:
         return None
+
+class CombinatorialTuner(Tuner):
+    def __init__(self, n_vars: int) -> None:
+        self.n_vars = n_vars
+
+    def get_p_bounds(self) -> dict[str, Any]:
+        p_bounds = dict()
+
+        for n in range(1, self.n_vars + 1):
+            p_bounds[f'split_{n}'] = (0, 2)
+            p_bounds[f'split_{n}'] = (0, 2)
+
+        return p_bounds
+
+    def get_hard_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        return lambda i: int(kwargs[f'split_{i}']) == 2
+
+    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
+        return lambda i: int(kwargs[f'split_{i}']) == 1
 
 class BitTwiddleTuner(Tuner):
     def __init__(self, max_val: int) -> None:
@@ -133,7 +153,7 @@ def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str
     if optimizer.n_checkpoint_loaded:
         pprint(f'Resumed from checkpoint: {optimizer.n_checkpoint_loaded} observations loaded from {checkpoint_file}')
 
-    optimizer.maximize(init_points=50, n_iter=200)
+    optimizer.maximize(init_points=100, n_iter=2000)
     assert optimizer.max is not None
     pprint(f'Bayesian Optimization result: {optimizer.max}')
 
