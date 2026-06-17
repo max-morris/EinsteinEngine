@@ -849,7 +849,8 @@ if globals().get('split_tuning', False):
         "z4c_rhs",
         rhs_group,
         auto_hard_split_predicate=auto_hard_split_predicate,
-        auto_soft_split_predicate=auto_soft_split_predicate
+        auto_soft_split_predicate=auto_soft_split_predicate,
+        intent_override=IntentOverride.WriteInterior
     )
 else:
     raise RuntimeError("Split tuning not enabled!")
