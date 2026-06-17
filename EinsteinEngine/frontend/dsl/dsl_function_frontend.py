@@ -70,7 +70,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                  *,
                  owner_name: str,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> None:
         self.name = name
         self.frontend = frontend
         self.source_annotations = SourceAnnotations()
@@ -177,8 +177,13 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         if self._auto_hard_split_predicate is not None and self._auto_hard_split_predicate(self._add_eqn_count):
             self.split_loop()
-        elif self._auto_soft_split_predicate is not None and self._auto_soft_split_predicate(self._add_eqn_count):
-            self.soft_split()
+        elif self._auto_soft_split_predicate is not None:
+            strategy: bool|SoftSplitRetainmentStrategy = self._auto_soft_split_predicate(self._add_eqn_count)
+            if isinstance(strategy, bool):
+                if strategy:
+                    self.soft_split()
+            else:
+                self.soft_split(strategy)
 
     def madd(self) -> None:
         self.eqn_complex.do_madd()

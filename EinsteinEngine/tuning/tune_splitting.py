@@ -23,8 +23,10 @@ from typing import Any, Callable, Sequence, Optional
 
 from scipy.optimize import NonlinearConstraint
 
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_rank, \
+    retain_percentile
 from EinsteinEngine.common.util import pprint
-from EinsteinEngine.tuning.bayes_checkpoint import CheckpointedBayesianOptimization
+from EinsteinEngine.tuning.bayes_checkpoint import CheckpointedBayesianOptimization, ConditionalParam
 
 from EinsteinEngine.tuning.sum_of_cosines import sum_of_cosines
 
@@ -71,6 +73,9 @@ class Tuner(ABC):
     def get_nonlinear_constraints(self) -> Optional[NonlinearConstraint]:
         return None
 
+    def get_conditional_params(self) -> list[ConditionalParam]:
+        return []
+
 class CombinatorialTuner(Tuner):
     def __init__(self, n_vars: int) -> None:
         self.n_vars = n_vars
@@ -80,15 +85,27 @@ class CombinatorialTuner(Tuner):
 
         for n in range(1, self.n_vars + 1):
             p_bounds[f'split_{n}'] = (0, 2)
-            p_bounds[f'split_{n}'] = (0, 2)
+            p_bounds[f'soft_retain_percentile_{n}'] = (0.0, 1.0)
 
         return p_bounds
+
+    def get_conditional_params(self) -> list[ConditionalParam]:
+        # soft_retain_percentile_{n} is only meaningful when split_{n} == 1;
+        # for all other split values it is irrelevant and held at 0.0.
+        return [
+            (f'soft_retain_percentile_{n}', f'split_{n}', 1, 0.0)
+            for n in range(1, self.n_vars + 1)
+        ]
 
     def get_hard_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
         return lambda i: int(kwargs[f'split_{i}']) == 2
 
-    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool]:
-        return lambda i: int(kwargs[f'split_{i}']) == 1
+    def get_soft_split_predicate(self, **kwargs: Any) -> Callable[[int], bool|SoftSplitRetainmentStrategy]:
+        def f(i: int) -> bool|SoftSplitRetainmentStrategy:
+            if int(kwargs[f'split_{i}']) != 1:
+                return False
+            return retain_percentile(kwargs[f'soft_retain_percentile_{i}'])
+        return f
 
 class BitTwiddleTuner(Tuner):
     def __init__(self, max_val: int) -> None:
@@ -148,6 +165,7 @@ def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str
         pbounds=tuner.get_p_bounds(),
         constraint=tuner.get_nonlinear_constraints(),
         checkpoint_file=checkpoint_file,
+        conditional_params=tuner.get_conditional_params(),
     )
 
     if optimizer.n_checkpoint_loaded:

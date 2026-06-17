@@ -39,6 +39,12 @@ import optuna
 from optuna.samplers import TPESampler
 from scipy.optimize import NonlinearConstraint
 
+# (dependent_param, control_param, active_value, default_value)
+# The dependent param is only suggested when control_param == active_value;
+# otherwise it is fixed at default_value and excluded from the Optuna trial,
+# shrinking the effective search space.
+ConditionalParam = tuple[str, str, Any, float]
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 # Sentinel returned to the optimizer for runs that fail outright (-inf).
@@ -77,14 +83,71 @@ def _coerce_params(pbounds: dict[str, tuple], raw: dict[str, Any]) -> dict[str, 
     return result
 
 
-def _suggest_params(trial: optuna.Trial, pbounds: dict[str, tuple]) -> dict[str, Any]:
+def _suggest_params(
+    trial: optuna.Trial,
+    pbounds: dict[str, tuple],
+    conditional_params: list[ConditionalParam] | None = None,
+) -> dict[str, Any]:
+    """Suggest all parameters for *trial*, respecting conditional dependencies.
+
+    For each ``ConditionalParam`` ``(dependent, control, active_value, default)``:
+    - If the already-suggested value of *control* equals *active_value*, suggest
+      *dependent* normally from its pbounds range.
+    - Otherwise, skip suggesting *dependent* in Optuna (so TPE ignores it) and
+      return *default* to the objective function.
+
+    Parameters are suggested in two passes so that every control param is
+    resolved before its dependents, regardless of dict insertion order.
+    """
+    dependents: dict[str, tuple[str, Any, float]] = {}  # name -> (control, active_value, default)
+    if conditional_params:
+        for dep, ctrl, act, dflt in conditional_params:
+            dependents[dep] = (ctrl, act, dflt)
+
     params: dict[str, Any] = {}
+
+    # Pass 1: suggest all non-dependent params (includes all control params).
     for name, (low, high) in pbounds.items():
+        if name in dependents:
+            continue
         if _is_int_param(low, high):
             params[name] = trial.suggest_int(name, low, high)
         else:
             params[name] = trial.suggest_float(name, float(low), float(high))
+
+    # Pass 2: suggest dependent params only when their condition is met.
+    for name, (ctrl, act, dflt) in dependents.items():
+        if params.get(ctrl) == act:
+            low, high = pbounds[name]
+            if _is_int_param(low, high):
+                params[name] = trial.suggest_int(name, low, high)
+            else:
+                params[name] = trial.suggest_float(name, float(low), float(high))
+        else:
+            # Condition not met: fix to default without entering Optuna's model.
+            params[name] = dflt
+
     return params
+
+
+def _effective_trial_data(
+    params: dict[str, Any],
+    distributions: dict[str, optuna.distributions.BaseDistribution],
+    conditional_params: list[ConditionalParam] | None,
+) -> tuple[dict[str, Any], dict[str, optuna.distributions.BaseDistribution]]:
+    """Strip conditional dependent params from *params* and *distributions* when
+    their condition is not met, mirroring the behaviour of ``_suggest_params``."""
+    if not conditional_params:
+        return params, distributions
+
+    filtered_params = dict(params)
+    filtered_dists = dict(distributions)
+    for dep, ctrl, act, _dflt in conditional_params:
+        if ctrl in params and params[ctrl] != act:
+            filtered_params.pop(dep, None)
+            filtered_dists.pop(dep, None)
+
+    return filtered_params, filtered_dists
 
 
 def _compute_constraint_violations(
@@ -168,6 +231,7 @@ class CheckpointedBayesianOptimization:
         random_state: int | None = None,
         verbose: int = 2,
         n_startup_trials: int = 10,
+        conditional_params: list[ConditionalParam] | None = None,
         **_kwargs: Any,  # absorb legacy kwargs (acquisition_function, etc.)
     ) -> None:
         self._f = f
@@ -175,6 +239,7 @@ class CheckpointedBayesianOptimization:
         self._constraint = constraint
         self._verbose = verbose
         self._checkpoint_file = checkpoint_file
+        self._conditional_params = conditional_params or []
         self._distributions = _make_distributions(self._pbounds)
 
         constraints_func = _make_constraints_func(constraint)
@@ -225,9 +290,12 @@ class CheckpointedBayesianOptimization:
                 params = _coerce_params(self._pbounds, entry['params'])
                 violations = _compute_constraint_violations(self._constraint, params)
                 system_attrs = {'constraints': violations} if violations else {}
+                trial_params, trial_dists = _effective_trial_data(
+                    params, self._distributions, self._conditional_params
+                )
                 trial = optuna.trial.create_trial(
-                    params=params,
-                    distributions=self._distributions,
+                    params=trial_params,
+                    distributions=trial_dists,
                     value=target,
                     system_attrs=system_attrs,
                 )
@@ -236,7 +304,7 @@ class CheckpointedBayesianOptimization:
         return count
 
     def _objective(self, trial: optuna.Trial) -> float:
-        params = _suggest_params(trial, self._pbounds)
+        params = _suggest_params(trial, self._pbounds, self._conditional_params)
         assert self._f is not None
         result = self._f(**params)
         value = float(result) if np.isfinite(result) else _FAILED_VALUE

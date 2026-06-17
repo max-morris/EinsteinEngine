@@ -22,6 +22,7 @@ from enum import auto
 from itertools import chain
 from typing import Callable, Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
 
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
 from EinsteinEngine.common.intent_override import IntentOverride
@@ -127,7 +128,7 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> None:
         self.thorn_def = thorn_def
         self.schedule_target = schedule_target
         self.schedule_before: Collection[str] = schedule_before or list()
@@ -403,7 +404,7 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                         schedule_after: Optional[Collection[str]] = None,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool]] = None) -> ThornFunction:
+                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> ThornFunction:
         tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override,
                            auto_hard_split_predicate=auto_hard_split_predicate,
                            auto_soft_split_predicate=auto_soft_split_predicate)
