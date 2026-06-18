@@ -81,6 +81,17 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         name: [r["params"][name] for r in records] for name in param_names
     }
 
+    # Build a per-parameter active mask.  For soft_retain_percentile_{n}, a
+    # record is "inactive" when the corresponding split_{n} != 1 — those points
+    # carry the conditional default (0.0) and convey no information.
+    import re as _re
+    def _active_mask(name: str) -> list[bool]:
+        m = _re.fullmatch(r"soft_retain_percentile_(\d+)", name)
+        if m and f"split_{m.group(1)}" in param_names:
+            ctrl = f"split_{m.group(1)}"
+            return [r["params"][ctrl] == 1 for r in records]
+        return [True] * len(records)
+
     # Layout: top row is the full-width target-vs-step plot;
     # below that, one subplot per parameter (param value vs target).
     n_cols = min(n_params, 5)
@@ -121,13 +132,17 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
 
-        ok_x   = [v for v, ok in zip(params[name], ok_mask) if ok]
-        fail_x = [v for v, ok in zip(params[name], ok_mask) if not ok]
+        active = _active_mask(name)
+        ok_x      = [v for v, ok, a in zip(params[name], ok_mask, active) if ok and a]
+        ok_tgts   = [t for t, ok, a in zip(targets,       ok_mask, active) if ok and a]
+        ok_cols   = [c for c, ok, a in zip(colours,       ok_mask, active) if ok and a]
+        fail_x    = [v for v, ok, a in zip(params[name], ok_mask, active) if not ok and a]
+        fail_cols = [c for c, ok, a in zip(colours,       ok_mask, active) if not ok and a]
 
         if ok_x:
-            ax.scatter(ok_x, ok_targets, c=ok_colours, s=40, alpha=0.8, zorder=3)
+            ax.scatter(ok_x, ok_tgts, c=ok_cols, s=40, alpha=0.8, zorder=3)
         if fail_x:
-            ax.scatter(fail_x, [fail_y] * len(fail_x), c=fail_colours,
+            ax.scatter(fail_x, [fail_y] * len(fail_x), c=fail_cols,
                        marker="x", s=60, linewidths=1.5, alpha=0.8, zorder=4)
         ax.set_ylim(y_lo, y_hi)
         ax.set_xlabel(name)

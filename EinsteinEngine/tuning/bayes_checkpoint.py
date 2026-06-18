@@ -30,6 +30,7 @@ Optuna's TPESampler is used instead of a GP, which makes it robust to:
 
 import json
 import os
+import subprocess
 import warnings
 from collections.abc import Callable, Mapping
 from typing import Any, Optional
@@ -306,8 +307,19 @@ class CheckpointedBayesianOptimization:
     def _objective(self, trial: optuna.Trial) -> float:
         params = _suggest_params(trial, self._pbounds, self._conditional_params)
         assert self._f is not None
+
+        # Capture the best value so far *before* this trial so we can detect
+        # whether this trial sets a new record.
+        try:
+            prev_best = self._study.best_value
+        except ValueError:
+            prev_best = None
+
         result = self._f(**params)
         value = float(result) if np.isfinite(result) else _FAILED_VALUE
+
+        if value != _FAILED_VALUE and (prev_best is None or value > prev_best):
+            self._notify_new_best(value)
 
         # Append to JSONL checkpoint (same format as before).
         entry: dict[str, Any] = {
@@ -325,6 +337,24 @@ class CheckpointedBayesianOptimization:
             print(f'  trial {trial.number:4d} | value: {value:+.6f} | best: {best:+.6f} | {params}')
 
         return value
+
+    @staticmethod
+    def _notify_new_best(value: float) -> None:
+        """Send a Telegram message announcing a new best target.
+
+        Best-effort: failures to invoke telegram-send must never interrupt the
+        optimization run.
+        """
+        message = f'New best time found: {abs(value)} seconds'
+        try:
+            subprocess.run(
+                ['telegram-send', message],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:  # noqa: BLE001 - notification is best-effort
+            warnings.warn(f'Failed to send Telegram notification: {exc}')
 
     def maximize(self, init_points: int = 5, n_iter: int = 25) -> None:
         """Run optimization, deducting already-loaded probes from the budget.

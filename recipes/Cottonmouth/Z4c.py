@@ -1282,7 +1282,11 @@ nrx_evo_shift = NewRadXBoundaryBatch(
 ###
 cottonmouth_Z4c.bake(
     do_cse=True,
-    temporary_promotion_strategy=promote_none(),
+    temporary_promotion_strategy=promote_percentile(
+        1.0,
+        globals().get('tile_percentile', 1.0),
+        globals().get('local_percentile', 0.0)
+    ),
     do_madd=False,
     do_recycle_temporaries=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
