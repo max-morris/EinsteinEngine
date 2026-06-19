@@ -372,13 +372,21 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
 
             for td in new_temp_dependents[new_temp]:
-                if temp_kinds.get(td, None) == TempKind.Global:
+                td_kind = temp_kinds.get(td, None)
+                if td_kind == TempKind.Global:
                     synthetic_global_dependents[new_temp].add(td)
                 else:
                     if len(synthetic_global_dependents[td]) > 0:
                         synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
                     for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
-                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
+                        # If the dependent td is a tile temp, new_temp is read in the kernel which mutates the tile temp (the first read).
+                        # If td is a local or inline, then it will be computed in every kernel that reads it, and so new_temp is transitively read in all those kernels.
+                        if td_kind == TempKind.Tile:
+                            if len(transitive_read_els) > 0:
+                                get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).add(min(transitive_read_els))
+                        else:
+                            assert td_kind in (TempKind.Local, TempKind.Inline), f"Expected td_kind to be Local or Inline here, found {td_kind} for td {td}; new_temp {new_temp}; transitive_read_tf {transitive_read_tf}; transitive_read_els {transitive_read_els}"
+                            get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
 
             assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
 
