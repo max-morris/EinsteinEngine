@@ -1120,7 +1120,7 @@ class CppCarpetXGenerator(CactusGenerator):
             final_loop_centerings.append(loop_centering)
 
             for tile_temp in eqn_list.preinitialized_tile_temporaries:
-                assert tile_temp in tile_temps_to_centering
+                assert tile_temp in tile_temps_to_centering, f"Tile temporary '{tile_temp}' was not found in tile_temps_to_centering."
                 if tile_temps_to_centering[tile_temp] != loop_centering:
                     raise GeneratorException(
                         f"In {thorn_fn}: All loops accessing tile temporary '{tile_temp}' must have the same centering."
