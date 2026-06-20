@@ -87,9 +87,6 @@ class CombinatorialTuner(Tuner):
             p_bounds[f'split_{n}'] = (0, 2)
             p_bounds[f'soft_retain_percentile_{n}'] = (0.0, 1.0)
 
-        p_bounds['tile_percentile'] = (0.0, 1.0)
-        p_bounds['local_percentile'] = (0.0, 1.0)
-
         return p_bounds
 
     def get_conditional_params(self) -> list[ConditionalParam]:
@@ -188,8 +185,6 @@ def do_tuning_run[T: Tuner](args: RemoteFeedbackArgs, tuner: T, **kwargs) -> flo
             'split_tuning': True,
             'auto_hard_split_predicate': hard_fn,
             'auto_soft_split_predicate': soft_fn,
-            'tile_percentile': kwargs['tile_percentile'],
-            'local_percentile': kwargs['local_percentile']
         })
     except RuntimeError as e:
         # Probably created a bad split (empty loop, loop with no outputs) so discard this result
