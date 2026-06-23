@@ -24,7 +24,7 @@ import time
 from typing import Protocol, Any
 
 from EinsteinEngine.tuning.clear_caches import clear_caches
-from common.util import pprint
+from EinsteinEngine.common.util import pprint
 
 
 class RemoteFeedbackArgs(Protocol):

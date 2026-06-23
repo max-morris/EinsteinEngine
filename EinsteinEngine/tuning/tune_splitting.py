@@ -31,7 +31,7 @@ from EinsteinEngine.tuning.bayes_checkpoint import CheckpointedBayesianOptimizat
 from EinsteinEngine.tuning.sum_of_cosines import sum_of_cosines
 
 from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_run
-from tuning.sum_of_cosines import OwnsZero
+from EinsteinEngine.tuning.sum_of_cosines import OwnsZero
 
 def main() -> None:
     parser = argparse.ArgumentParser(

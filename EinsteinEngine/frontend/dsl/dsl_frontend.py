@@ -591,7 +591,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     global_eqn_idx += 1
 
         for new_temp in substitutions.keys():
-            if new_temp not in temp_kinds or temp_kinds[new_temp] in [TempKind.Inline, TempKind.Global]:
+            if new_temp not in temp_kinds or temp_kinds[new_temp] == TempKind.Inline:
                 continue
             elif temp_kinds[new_temp] == TempKind.Local:
                 for tf, els_reading in tfs_active_reads[new_temp].items():
@@ -600,12 +600,14 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     for el in (ec.eqn_lists[el_idx] for el_idx in els_reading):
                         el.add_eqn(new_temp, substitutions[new_temp])
                         el.temporaries.add(new_temp)
+                        el.synthetic_symbols.add(new_temp)
             elif temp_kinds[new_temp] == TempKind.Tile:
                 self.tile_temporaries.add(new_temp)
 
                 for tf, els_reading in tfs_active_reads[new_temp].items():
                     ec = tf.eqn_complex
                     primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+                    primary_el.synthetic_symbols.add(new_temp)
 
                     if len(els_reading) == 1:
                         primary_el.add_eqn(new_temp, substitutions[new_temp])
@@ -616,6 +618,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                         primary_el.uninitialized_tile_temporaries.add(new_temp)
                         for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
                             eqn_list.preinitialized_tile_temporaries.add(new_temp)
+                            eqn_list.synthetic_symbols.add(new_temp)
+            elif temp_kinds[new_temp] == TempKind.Global:
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    for eqn_list in [tf.eqn_complex.eqn_lists[el_idx] for el_idx in els_reading]:
+                        eqn_list.synthetic_symbols.add(new_temp)
 
         self._global_cse_handle_global_temps(
             substitutions=substitutions,

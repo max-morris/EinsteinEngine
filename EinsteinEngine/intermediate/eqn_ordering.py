@@ -264,6 +264,24 @@ def _get_symbol_reuse_stats(free_symbols: set[Symbol], in_memory: dict[Symbol, i
     return _SymbolReuseStats(count, peak, (total / count if count > 0 else 0.0))
 
 
+def cartesian_product(*ordering_fns: EqnOrderingFn) -> EqnOrderingFn:
+    def fn(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[tuple[Symbol, str]]:
+        order: OrderedDict[Symbol, str] = OrderedDict()
+
+        for ordering_fn in ordering_fns:
+            for item in ordering_fn(eqns, eqn_list):
+                if isinstance(item, tuple):
+                    sym, msg = item
+                else:
+                    sym, msg = item, ''
+                if sym not in order:
+                    order[sym] = msg
+
+        yield from order.items()
+
+    return fn
+
+
 def prioritize_rare_symbols(eqns: dict[Symbol, Expr],
                             eqn_list: EqnList,
                             consider_frequency: bool = True,
@@ -309,14 +327,17 @@ def lexicographical_order(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Itera
 
     yield from sorted(eqns.keys(), key=str)
 
-def insertion_order(eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+def insertion_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
     """
     Orders equations based on their insertion order in the EqnList.
     """
 
     assert (keyset := set(eqns.keys())).intersection(eqn_list.eqn_insertion_order.keys()) == keyset, "EqnList insertion order dict is missing keys"
 
-    yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns)
+    if exclude_synthetic_symbols:
+        yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns and lhs not in eqn_list.synthetic_symbols)
+    else:
+        yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns)
 
 @cache
 def _dummy_stencil_symbol(call: Basic) -> Symbol:

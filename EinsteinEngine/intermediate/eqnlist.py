@@ -596,6 +596,7 @@ class EqnList:
         self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
         self.set_eqn_annotation = set_eqn_annotation
         self.eqn_insertion_order: OrderedDict[Symbol, int] = OrderedDict()
+        self.synthetic_symbols: Set[Symbol] = OrderedSet()
 
         # The modeling system treats these special
         # symbols as parameters.

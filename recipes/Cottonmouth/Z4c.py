@@ -856,7 +856,8 @@ else:
     raise RuntimeError("Split tuning not enabled!")
     fun_z4c_rhs = cottonmouth_Z4c.create_function(
         "z4c_rhs",
-        rhs_group
+        rhs_group,
+        intent_override=IntentOverride.WriteInterior
     )
 
 
@@ -1287,8 +1288,12 @@ cottonmouth_Z4c.bake(
     do_recycle_temporaries=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
-    ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    #ordering_fn=functools.partial(
+    #    prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    #)
+    ordering_fn=cartesian_product(
+        functools.partial(insertion_order, exclude_synthetic_symbols=True),
+        prioritize_rare_symbols
     )
 )
 
