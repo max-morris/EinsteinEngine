@@ -71,7 +71,7 @@ class DslGenerator[F: DslFrontend[Any, Any, Any]](Generator[F], ABC):
                 raise GeneratorException(f"In {frontend.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
 
             for rhs in eqn_list.eqns.values():
-                for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
+                for sten in rhs.find(stencil):
                     if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
                         return IntentRegion.Interior
 

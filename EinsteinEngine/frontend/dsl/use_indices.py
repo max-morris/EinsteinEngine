@@ -21,13 +21,13 @@ Use the Sympy Indexed type for relativity expressions.
 import typing
 from typing import *
 
-import sympy.logic.boolalg
+import sympy.logic.boolalg  # type: ignore[import-untyped]
 from multimethod import multimethod
 from mypy_extensions import VarArg
 # noinspection PyUnusedImports
 # (MyPy needs Idx, Expr)
 from sympy import Symbol, Indexed, IndexedBase, Basic, MatrixBase, ImmutableDenseMatrix, Idx, Expr
-from sympy.core.relational import Relational
+from sympy.core.relational import Relational  # type: ignore[import-untyped]
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import *

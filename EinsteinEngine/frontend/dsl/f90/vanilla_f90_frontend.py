@@ -20,7 +20,7 @@ from typing import Type, Never, Optional, Any, cast, Sequence
 
 from EinsteinEngine.emit.code.common.code_tree import IntLiteralExpr, FloatLiteralExpr
 from multimethod import multimethod
-from sympy import Symbol
+from sympy import Symbol  # type: ignore[import-untyped]
 
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend

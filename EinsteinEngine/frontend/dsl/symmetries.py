@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from EinsteinEngine.common.sympywrap import *
-from sympy import IndexedBase, Basic, Expr, Indexed, Idx
+from sympy import IndexedBase, Basic, Expr, Indexed, Idx  # type: ignore[import-untyped]
 from typing import Dict, List, cast, Tuple
 
 

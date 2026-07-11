@@ -18,7 +18,7 @@
 import gc
 
 from EinsteinEngine.intermediate import eqn_ordering
-from sympy.core.cache import clear_cache as clear_sympy_cache
+from sympy.core.cache import clear_cache as clear_sympy_cache  # type: ignore[import-untyped]
 
 def clear_caches() -> None:
     """Clear unbounded symbolic caches."""
@@ -32,5 +32,5 @@ def clear_caches() -> None:
         fn = getattr(eqn_ordering, fn_name, None)
         if fn is not None and hasattr(fn, "cache_clear"):
             fn.cache_clear()
-    clear_sympy_cache()  # type: ignore[no-untyped-call]
+    clear_sympy_cache()
     gc.collect()

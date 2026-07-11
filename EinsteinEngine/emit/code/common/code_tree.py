@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from enum import auto
 from typing import Union, List, TypeAlias, Sequence
 
-import sympy as sy
+import sympy as sy  # type: ignore[import-untyped]
 
 from EinsteinEngine.emit.tree import Node, Identifier, Verbatim, CommonNode, BlockComment, LineComment
 from EinsteinEngine.common.util import ReprEnum

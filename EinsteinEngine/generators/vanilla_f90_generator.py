@@ -34,7 +34,7 @@ from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeElem, SubroutineDecl, TypeSpecifier, Dimension, DoLoop, Assignment, F90ExprNode
 from EinsteinEngine.generators.dsl_generator import DslGenerator
 
-import sympy as sy
+import sympy as sy  # type: ignore[import-untyped]
 
 from EinsteinEngine.emit.code.f90.f90_tree import IntentOut
 from EinsteinEngine.emit.code.f90.f90_tree import Allocatable, ArrayAccess
@@ -280,7 +280,7 @@ class VanillaF90Generator(DslGenerator[VanillaF90Module]):
             reassigned_lhses = {subst.eqn_idx: subst for subst in subst_result.substitutions}
 
             def _resolve_overwrite(s: sy.Symbol) -> sy.Symbol:
-                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
+                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))
 
             eqns: list[tuple[sy.Symbol, F90ExprNode]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
             annotations: dict[str, str] = {str(lhs): ann for lhs, ann in fn.source_annotations.eqns[loop_idx].items()}

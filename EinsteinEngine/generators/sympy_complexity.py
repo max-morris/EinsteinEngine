@@ -18,9 +18,9 @@
 from math import log2
 from typing import cast, Protocol
 
-import sympy as sy
+import sympy as sy  # type: ignore[import-untyped]
 from multimethod import multimethod
-from sympy.core.function import UndefinedFunction
+from sympy.core.function import UndefinedFunction  # type: ignore[import-untyped]
 
 
 class IsGridVariableFn(Protocol):
@@ -79,7 +79,7 @@ class SympyComplexityVisitor:
     def _complexity_undefined_fn(self, n: sy.Function) -> int:
         assert isinstance(n.func, UndefinedFunction)
 
-        if n.name == 'stencil':  # type: ignore[attr-defined]
+        if n.name == 'stencil':
             sym, x, y, z = n.args
             assert isinstance(x, sy.Number)
             assert isinstance(y, sy.Number)

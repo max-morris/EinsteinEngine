@@ -18,7 +18,7 @@
 from typing import Union
 
 from multimethod import multimethod
-from sympy import Expr, Add, Mul, Symbol, Idx, Rational, Integer
+from sympy import Expr, Add, Mul, Symbol, Idx, Rational, Integer  # type: ignore[import-untyped]
 
 from EinsteinEngine.common.sympywrap import sympify, simplify, mk_symbol, mk_idx
 

@@ -21,6 +21,7 @@ import runpy
 import subprocess
 import sys
 import time
+import traceback
 from typing import Protocol, Any
 
 from EinsteinEngine.tuning.clear_caches import clear_caches
@@ -35,6 +36,7 @@ class RemoteFeedbackArgs(Protocol):
     remote_cactus_path: str
     remote_command: str
     remote_timing_command: str
+    checkpoint_file: str
 
 
 def main() -> None:
@@ -50,14 +52,14 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    do_remote_run(args)
+    do_remote_run(args, {})
 
 def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -> tuple[float, ...]:
     sys.argv = [args.recipe]
     try:
         runpy.run_path(args.recipe, run_name="__main__", init_globals=globals_to_inject)
     except Exception as e:
-        print(e)
+        traceback.print_exception(e)
         raise RuntimeError(f"Error when executing recipe")
 
     clear_caches()

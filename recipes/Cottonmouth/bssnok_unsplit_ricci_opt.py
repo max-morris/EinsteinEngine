@@ -18,7 +18,7 @@
 import functools
 from pathlib import Path
 
-from sympy import Rational, Idx
+from sympy import Rational, Idx  # type: ignore[import-untyped]
 
 from EinsteinEngine import *
 

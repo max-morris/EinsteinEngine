@@ -22,7 +22,7 @@ import typing
 from pathlib import Path
 from typing import Callable
 
-from sympy import Rational
+from sympy import Rational  # type: ignore[import-untyped]
 
 from EinsteinEngine import *
 
@@ -836,30 +836,13 @@ sync_z4c_pt2 = ExplicitSyncBatch(
 # Z4 Evolution equations
 ###
 
-if globals().get('split_tuning', False):
-    assert 'auto_hard_split_predicate' in globals()
-    assert 'auto_soft_split_predicate' in globals()
-
-    print("Using auto-splitting in RHS kernel...")
-
-    auto_hard_split_predicate = typing.cast(Callable[[int], bool], globals()['auto_hard_split_predicate'])
-    auto_soft_split_predicate = typing.cast(Callable[[int], bool], globals()['auto_soft_split_predicate'])
-
-    fun_z4c_rhs = cottonmouth_Z4c.create_function(
-        "z4c_rhs",
-        rhs_group,
-        auto_hard_split_predicate=auto_hard_split_predicate,
-        auto_soft_split_predicate=auto_soft_split_predicate,
-        intent_override=IntentOverride.WriteInterior
-    )
-else:
-    raise RuntimeError("Split tuning not enabled!")
-    fun_z4c_rhs = cottonmouth_Z4c.create_function(
-        "z4c_rhs",
-        rhs_group,
-        intent_override=IntentOverride.WriteInterior
-    )
-
+fun_z4c_rhs = cottonmouth_Z4c.create_function(
+    "z4c_rhs",
+    rhs_group,
+    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
+    auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    intent_override=IntentOverride.WriteInterior
+)
 
 # Eq (8) of [1]
 fun_z4c_rhs.add_eqn(

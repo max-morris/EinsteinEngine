@@ -19,7 +19,7 @@ from collections import defaultdict
 from functools import cache
 from typing import Callable, Optional, cast
 
-from sympy import Symbol, Expr
+from sympy import Symbol, Expr  # type: ignore[import-untyped]
 
 
 class Dependencies:

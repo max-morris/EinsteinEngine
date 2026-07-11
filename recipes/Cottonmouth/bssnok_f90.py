@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from sympy import Rational, Idx
+from sympy import Rational, Idx  # type: ignore[import-untyped]
 
 from EinsteinEngine import *
 

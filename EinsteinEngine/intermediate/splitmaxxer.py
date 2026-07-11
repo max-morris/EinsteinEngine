@@ -19,10 +19,10 @@ from collections import OrderedDict
 from typing import cast
 
 from multimethod import multimethod
-from sympy import (Symbol, Expr, Basic, Pow, IndexedBase, Function, Piecewise)
-from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Rational
-from sympy.core.operations import AssocOp
-from sympy.core.relational import Relational
+from sympy import (Symbol, Expr, Basic, Pow, IndexedBase, Function, Piecewise)  # type: ignore[import-untyped]
+from sympy.core.numbers import Zero, One, NegativeOne, Integer, Float, Pi, Rational  # type: ignore[import-untyped]
+from sympy.core.operations import AssocOp  # type: ignore[import-untyped]
+from sympy.core.relational import Relational  # type: ignore[import-untyped]
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.common.sympywrap import mk_symbol

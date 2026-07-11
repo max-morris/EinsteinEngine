@@ -21,7 +21,7 @@ if __name__ == "__main__":
     """
 
     from EinsteinEngine import *
-    from sympy import Expr, sin, Indexed
+    from sympy import Expr, Indexed  # type: ignore[import-untyped]
     import nrpy.helpers.conditional_file_updater as cfu
     from math import pi
 

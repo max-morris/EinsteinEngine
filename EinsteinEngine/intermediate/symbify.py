@@ -17,7 +17,7 @@
 
 from typing import Never
 
-import sympy
+import sympy  # type: ignore[import-untyped]
 from multimethod import multimethod
 from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow, Idx, Indexed
 

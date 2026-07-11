@@ -27,6 +27,8 @@ import math
 from pathlib import Path
 from typing import Any
 
+import matplotlib.axes
+import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
@@ -46,7 +48,7 @@ _FAILED_VALUE: float = -1e9
 
 
 def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
-    param_names: list[str] = sorted(records[0]["params"].keys())
+    param_names: list[str] = sorted({k for r in records for k in r["params"]})
     n_params = len(param_names)
     steps = list(range(1, len(records) + 1))
     targets = [r["target"] for r in records]
@@ -77,20 +79,12 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     else:
         fail_y, y_lo, y_hi = 0.0, -1.0, 1.0
 
-    params: dict[str, list[float]] = {
-        name: [r["params"][name] for r in records] for name in param_names
+    params: dict[str, list[float | None]] = {
+        name: [r["params"].get(name) for r in records] for name in param_names
     }
 
-    # Build a per-parameter active mask.  For soft_retain_percentile_{n}, a
-    # record is "inactive" when the corresponding split_{n} != 1 — those points
-    # carry the conditional default (0.0) and convey no information.
-    import re as _re
     def _active_mask(name: str) -> list[bool]:
-        m = _re.fullmatch(r"soft_retain_percentile_(\d+)", name)
-        if m and f"split_{m.group(1)}" in param_names:
-            ctrl = f"split_{m.group(1)}"
-            return [r["params"][ctrl] == 1 for r in records]
-        return [True] * len(records)
+        return [v is not None for v in params[name]]
 
     # Layout: top row is the full-width target-vs-step plot;
     # below that, one subplot per parameter (param value vs target).
@@ -126,17 +120,17 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     fail_colours = [c for c, ok in zip(colours, ok_mask) if not ok]
 
     # --- Per-parameter scatter: param value vs target ---
-    param_axes: list[plt.Axes] = []
+    param_axes: list[matplotlib.axes.Axes] = []
     for idx, name in enumerate(param_names):
         row = 1 + idx // n_cols
         col = idx % n_cols
         ax = fig.add_subplot(gs[row, col])
 
         active = _active_mask(name)
-        ok_x      = [v for v, ok, a in zip(params[name], ok_mask, active) if ok and a]
+        ok_x      = [v for v, ok, a in zip(params[name], ok_mask, active) if ok and a and v is not None]
         ok_tgts   = [t for t, ok, a in zip(targets,       ok_mask, active) if ok and a]
         ok_cols   = [c for c, ok, a in zip(colours,       ok_mask, active) if ok and a]
-        fail_x    = [v for v, ok, a in zip(params[name], ok_mask, active) if not ok and a]
+        fail_x    = [v for v, ok, a in zip(params[name], ok_mask, active) if not ok and a and v is not None]
         fail_cols = [c for c, ok, a in zip(colours,       ok_mask, active) if not ok and a]
 
         if ok_x:
@@ -152,7 +146,7 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         param_axes.append(ax)
 
     # Shared colourbar showing iteration order.
-    sm = cm.ScalarMappable(cmap=cmap, norm=plt.Normalize(vmin=1, vmax=len(records)))
+    sm = cm.ScalarMappable(cmap=cmap, norm=matplotlib.colors.Normalize(vmin=1, vmax=len(records)))
     sm.set_array([])
     fig.colorbar(sm, ax=param_axes, label="Iteration", shrink=0.6)
 
