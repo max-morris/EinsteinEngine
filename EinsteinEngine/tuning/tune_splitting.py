@@ -39,10 +39,10 @@ def main() -> None:
 
     args: RemoteFeedbackArgs = parser.parse_args()
 
-    do_tuning(args, CombinatorialTuner(n_vars=15), args.checkpoint_file)
+    do_tuning(args, CombinatorialSplitTuner(n_vars=15), args.checkpoint_file)
 
 
-class CombinatorialTuner(Tuner):
+class CombinatorialSplitTuner(Tuner):
     def __init__(self, n_vars: int) -> None:
         self.n_vars = n_vars
 
