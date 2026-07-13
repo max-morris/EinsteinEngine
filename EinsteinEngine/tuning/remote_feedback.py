@@ -55,6 +55,18 @@ def main() -> None:
     do_remote_run(args, {})
 
 def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -> tuple[float, ...]:
+    # When the "remote" host is localhost, skip scp/ssh entirely and run
+    # everything locally. rsync still runs (to a local destination path) and
+    # commands are executed through the local shell instead of over ssh.
+    is_local = args.remote_host == "localhost"
+
+    def run_command(cmd: str) -> subprocess.CompletedProcess[str]:
+        if is_local:
+            invocation = ["bash", "-c", cmd]
+        else:
+            invocation = ["ssh", args.remote_host, cmd]
+        return subprocess.run(invocation, capture_output=True, text=True)
+
     sys.argv = [args.recipe]
     try:
         runpy.run_path(args.recipe, run_name="__main__", init_globals=globals_to_inject)
@@ -64,8 +76,9 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
 
     clear_caches()
 
-    pprint("Done generating. Syncing to remote...")
+    pprint("Done generating. Syncing to remote..." if not is_local else "Done generating. Syncing locally...")
 
+    rsync_destination = args.remote_path if is_local else f"{args.remote_host}:{args.remote_path}"
     rsync_result = subprocess.run(
         [
             "rsync",
@@ -73,7 +86,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
             "--delete",
             "--itemize-changes",
             args.local_path,
-            f"{args.remote_host}:{args.remote_path}"
+            rsync_destination
         ],
         capture_output=True,
         text=True
@@ -84,16 +97,10 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         print(rsync_result.stderr)
         raise RuntimeError("rsync failed")
 
-    pprint("Done syncing to remote. Building on remote...")
+    pprint("Done syncing. Building..." if is_local else "Done syncing to remote. Building on remote...")
 
-    build_and_submit_result = subprocess.run(
-        [
-            "ssh",
-            args.remote_host,
-            f"cd {args.remote_cactus_path} && {args.remote_command}"
-        ],
-        capture_output=True,
-        text=True
+    build_and_submit_result = run_command(
+        f"cd {args.remote_cactus_path} && {args.remote_command}"
     )
 
     build_and_submit_output = f"{build_and_submit_result.stdout}\n{build_and_submit_result.stderr}"
@@ -115,11 +122,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     pprint(f"Job {slurm_job_id} submitted on {args.remote_host} with Slurm.")
 
     while True:
-        squeue_result = subprocess.run(
-            ["ssh", args.remote_host, f"squeue -h -j {slurm_job_id}"],
-            capture_output=True,
-            text=True
-        )
+        squeue_result = run_command(f"squeue -h -j {slurm_job_id}")
 
         if squeue_result.returncode != 0:
             raise RuntimeError(
@@ -136,10 +139,8 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
 
     pprint(f"Job {slurm_job_id} finished.")
 
-    timing_result = subprocess.run(
-        ["ssh", args.remote_host, f"cd {args.remote_cactus_path} && {args.remote_timing_command}"],
-        capture_output=True,
-        text=True
+    timing_result = run_command(
+        f"cd {args.remote_cactus_path} && {args.remote_timing_command}"
     )
     timing_output = f"{timing_result.stdout}\n{timing_result.stderr}"
     if timing_result.returncode != 0:
