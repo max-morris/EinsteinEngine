@@ -39,6 +39,7 @@ setup(
         'sortedcontainers==2.4.0',
         'sortedcontainers-stubs==2.4.3',
         'optuna==4.9.0',
+        'bayesian-optimization==3.3.0',
         'termcolor==3.3.0'
     ]
 )

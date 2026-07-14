@@ -31,7 +31,6 @@ Optuna's TPESampler is used instead of a GP, which makes it robust to:
 import json
 import os
 import subprocess
-import typing
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -39,8 +38,10 @@ from typing import Any
 import numpy as np
 import optuna
 from optuna.samplers import TPESampler
+from optuna.study import MaxTrialsCallback
+from optuna.trial import TrialState
 
-from EinsteinEngine.tuning.experiment import Experiment
+from EinsteinEngine.tuning.experiment import CoordSpec, Experiment, InfeasibleParamError
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -48,21 +49,17 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 # Large-but-finite so TPE still learns these are bad regions.
 _FAILED_VALUE: float = -1e9
 
-def _is_int_param(low: Any, high: Any) -> bool:
-    """Return True when both bounds are plain ints (not float)."""
-    return isinstance(low, int) and isinstance(high, int)
+# Infeasible (pruned) trials don't consume the iteration budget, so cap total
+# attempts at this multiple of the budget in case a constraint rejects nearly
+# the entire search space.
+_MAX_ATTEMPT_FACTOR: int = 100
 
 
-def _make_distributions(param_bounds: dict[str, tuple[int | float, int | float]]) -> dict[str, optuna.distributions.BaseDistribution]:
-    distributions: dict[str, optuna.distributions.BaseDistribution] = {}
-    for name, (low, high) in param_bounds.items():
-        if _is_int_param(low, high):
-            low = typing.cast(int, low)
-            high = typing.cast(int, high)
-            distributions[name] = optuna.distributions.IntDistribution(low, high)
-        else:
-            distributions[name] = optuna.distributions.FloatDistribution(float(low), float(high))
-    return distributions
+def _distribution_of(spec: CoordSpec) -> optuna.distributions.BaseDistribution:
+    """Build the Optuna distribution for a param's raw-coordinate CoordSpec."""
+    if spec.kind is int:
+        return optuna.distributions.IntDistribution(int(spec.lo), int(spec.hi))
+    return optuna.distributions.FloatDistribution(float(spec.lo), float(spec.hi))
 
 
 class CheckpointedOptimizer:
@@ -84,8 +81,6 @@ class CheckpointedOptimizer:
         self._verbose = verbose
         self._checkpoint_file = checkpoint_file
         self._experiment = experiment
-        self._param_bounds = {param.name: param.bounds for param in self._experiment.in_params.values()}
-        self._distributions = _make_distributions(self._param_bounds)
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
@@ -122,11 +117,13 @@ class CheckpointedOptimizer:
                 entry: dict[str, Any] = json.loads(line)
                 raw_target: float = float(entry['target'])
                 target = raw_target if np.isfinite(raw_target) else _FAILED_VALUE
-                trial_params = entry['params']
-                trial_dists = _make_distributions({p: b for p, b in self._param_bounds.items() if p in trial_params})
+                # Replay the stored raw coordinates through the experiment so
+                # dynamic domains recover their exact per-trial coordinate ranges
+                # (for plain Intervals a coordinate is just its value).
+                coords, specs = self._experiment.reconstruct_coords(entry['params'])
                 trial = optuna.trial.create_trial(
-                    params=trial_params,
-                    distributions=trial_dists,
+                    params=dict(coords),
+                    distributions={name: _distribution_of(spec) for name, spec in specs.items()},
                     value=target,
                 )
                 self._study.add_trial(trial)
@@ -134,7 +131,12 @@ class CheckpointedOptimizer:
         return count
 
     def _objective(self, trial: optuna.Trial) -> float:
-        in_args, out_args = self._experiment.suggest_params(trial)
+        try:
+            in_args, out_args = self._experiment.suggest_params(trial)
+        except InfeasibleParamError as e:
+            # Reject the trial before running the (expensive) objective.
+            # Pruned trials are not checkpointed and don't feed the sampler.
+            raise optuna.TrialPruned(str(e)) from e
         assert self._f is not None
 
         # Capture the best value so far *before* this trial so we can detect
@@ -187,10 +189,30 @@ class CheckpointedOptimizer:
             warnings.warn(f'Failed to send Telegram notification: {exc}')
 
     def maximize(self, warmup_iterations: int = 10, iterations: int = 20) -> None:
-        """Run optimization, deducting already-loaded probes from the budget."""
+        """Run optimization, deducting already-loaded probes from the budget.
+
+        Trials pruned for violating a parameter constraint do not consume the
+        budget: optimization continues until the study holds
+        ``warmup_iterations + iterations`` completed trials, subject to a hard
+        cap on total attempts.
+        """
 
         n = self._n_checkpoint_loaded
         total = warmup_iterations + iterations
         n_remaining = max(0, total - n)
+        if n_remaining == 0:
+            return
 
-        self._study.optimize(self._objective, n_trials=n_remaining)
+        self._study.optimize(
+            self._objective,
+            n_trials=_MAX_ATTEMPT_FACTOR * n_remaining,
+            callbacks=[MaxTrialsCallback(total, states=(TrialState.COMPLETE,))],
+        )
+
+        n_completed = sum(1 for t in self._study.trials if t.state == TrialState.COMPLETE)
+        if n_completed < total:
+            warnings.warn(
+                f'Stopped after {n_completed}/{total} completed trials; the attempt cap '
+                f'({_MAX_ATTEMPT_FACTOR * n_remaining}) was reached. Parameter constraints '
+                f'may reject too much of the search space.'
+            )
