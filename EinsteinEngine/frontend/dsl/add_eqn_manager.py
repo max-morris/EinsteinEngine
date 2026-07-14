@@ -20,7 +20,7 @@ from typing import Any, Callable, cast, List
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from multimethod import multimethod
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sympy import Symbol, Expr, Basic, Indexed, Idx, IndexedBase, Matrix  # type: ignore[import-untyped]
 
 from EinsteinEngine.common.util import vprint
@@ -72,7 +72,7 @@ class AddEqnManager:
         rhs2 = rhs2_
 
         self._eqn_list.add_eqn(lhs2, rhs2)
-        vprint(colorize("Add eqn:", "green"), lhs2, colorize("->", "cyan"), rhs2)
+        vprint(colored("Add eqn:", "green"), lhs2, colored("->", "cyan"), rhs2)
 
     @multimethod
     def add_eqn(self, lhs: Indexed, rhs: Expr) -> None:

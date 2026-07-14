@@ -22,7 +22,7 @@ from enum import Enum, auto
 from time import time
 from types import TracebackType
 from typing import Any, Optional, Callable, Generic, Iterator, Set, Literal, TYPE_CHECKING, Iterable
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 
 if TYPE_CHECKING:
     from _typeshed import SupportsWrite
@@ -200,7 +200,7 @@ def wprint(
     file: SupportsWrite[str] | None = None,
     flush: Literal[False] = False,
 ) -> None:
-    print(colorize("Warning: " + " ".join(map(str, values)), "yellow"), sep=sep, end=end, file=file, flush=flush)
+    print(colored("Warning: " + " ".join(map(str, values)), "yellow"), sep=sep, end=end, file=file, flush=flush)
 
 
 def pprint(

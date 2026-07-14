@@ -25,7 +25,7 @@ from statistics import mean, median
 from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple, Never, Generator
 
 from multimethod import multimethod
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sortedcontainers import SortedDict
 # noinspection PyUnusedImports
 from sympy import Basic, IndexedBase, Symbol, Integer, Expr
@@ -1019,9 +1019,9 @@ class EqnList:
                 if lhs in self.outputs:
                     self.write_decls[lhs] = IntentRegion.Everywhere
 
-        vprint(colorize("Inputs:", "green"), self.inputs)
-        vprint(colorize("Outputs:", "green"), self.outputs)
-        vprint(colorize("Params:", "green"), self.params)
+        vprint(colored("Inputs:", "green"), self.inputs)
+        vprint(colored("Outputs:", "green"), self.outputs)
+        vprint(colored("Params:", "green"), self.params)
 
         for k in self.eqns:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -1029,8 +1029,8 @@ class EqnList:
             for q in free_symbols(self.eqns[k]):
                 read.add(q)
 
-        vprint(colorize("Read:", "green"), read)
-        vprint(colorize("Written:", "green"), written)
+        vprint(colored("Read:", "green"), read)
+        vprint(colored("Written:", "green"), written)
 
         for k in self.inputs:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -1062,9 +1062,9 @@ class EqnList:
                     and k not in self.preinitialized_tile_temporaries):
                 self.temporaries.add(k)
 
-        vprint(colorize("Temps:", "green"), self.temporaries)
-        vprint(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
-        vprint(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
+        vprint(colored("Temps:", "green"), self.temporaries)
+        vprint(colored("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
+        vprint(colored("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
 
         class FindBad:
             def __init__(self, outer: EqnList) -> None:
@@ -1111,11 +1111,11 @@ class EqnList:
 
         self.order_builder(complete, **order_builder_kwargs)
 
-        vprint(colorize("Order:", "green"), self.order)
+        vprint(colored("Order:", "green"), self.order)
 
         try:
             memory_pressure = score_memory_pressure(self.eqns, self.order)
-            vprint(colorize("Memory Pressure:", "magenta"))
+            vprint(colored("Memory Pressure:", "magenta"))
             vprint(f"  Total: {sorted(memory_pressure.items(), key=lambda kv: kv[1], reverse=True)}")
             vprint(f"  Mean: {mean(memory_pressure.values())}")
             vprint(f"  Median: {median(memory_pressure.values())}")
@@ -1132,15 +1132,15 @@ class EqnList:
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
-        vprint(colorize("READS:", "green"), end="")
+        vprint(colored("READS:", "green"), end="")
         for var, spec in self.read_decls.items():
             if var in self.inputs:
-                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+                vprint(" ", var, "=", colored(repr(spec), "yellow"), sep="", end="")
         vprint()
-        vprint(colorize("WRITES:", "green"), end="")
+        vprint(colored("WRITES:", "green"), end="")
         for var, spec in self.write_decls.items():
             if var in self.outputs:
-                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+                vprint(" ", var, "=", colored(repr(spec), "yellow"), sep="", end="")
         vprint()
 
         for k, v in self.eqns.items():
@@ -1161,7 +1161,7 @@ class EqnList:
         for lhs in self.eqns:
             assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
             rhs = self.eqns[lhs]
-            vprint(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs, " ", colorize(f"[complexity = {self.complexity[lhs]}]", "magenta"))
+            vprint(colored("EQN:", "cyan"), lhs, colored("=", "cyan"), rhs, " ", colored(f"[complexity = {self.complexity[lhs]}]", "magenta"))
 
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
@@ -1260,6 +1260,6 @@ class EqnList:
             result.add(StencilIdxWithName(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]), str(call.args[0])))  # type: ignore[arg-type]
 
     def dump(self) -> None:
-        print(colorize("Dumping Equations:", "green"))
+        print(colored("Dumping Equations:", "green"))
         for k in self.order:
-            print(" ", colorize(k, "cyan"), "=", self.eqns[k])
+            print(" ", colored(k, "cyan"), "=", self.eqns[k])

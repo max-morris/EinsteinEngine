@@ -27,7 +27,7 @@ from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack,
 
 import sympy as sy  # type: ignore[import-untyped]
 from multimethod import multimethod
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sympy import Symbol, Idx, Expr, IndexedBase, Indexed, Function, Basic, Matrix, ImmutableDenseMatrix, MatrixBase
 
 from EinsteinEngine.common.sympywrap import (
@@ -562,7 +562,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                                              temp_kinds=temp_kinds)
 
         for new_temp in substitutions.keys():
-            vprint(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+            vprint(colored("Temporary:", "cyan"), new_temp, colored(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
 
         inline_temps: list[tuple[Symbol, Expr]] = list()
         for new_temp, new_rhs in sorted(substitutions.items(),
@@ -747,9 +747,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     def _on_substitution_mapping(self, source: Indexed | IndexedBase, target: Expr) -> None:
         if isinstance(source, IndexedBase):
-            vprint(colorize(source, "cyan"), colorize("->", "green"), colorize(target, "yellow"))
+            vprint(colored(source, "cyan"), colored("->", "green"), colored(target, "yellow"))
         else:
-            vprint(colorize(source, "red"), colorize("->", "magenta"), colorize(target, "cyan"))
+            vprint(colored(source, "red"), colored("->", "magenta"), colored(target, "cyan"))
 
     def mk_coords(self, with_time: bool = False) -> tuple[Symbol, ...]:
         if with_time:

@@ -23,7 +23,7 @@ from itertools import chain
 from typing import Callable, Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
 
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq  # type: ignore[import-untyped]
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
@@ -155,8 +155,8 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
             keys.add(str(k2))
         for k in keys:
             group, indices, members = self.get_tensor_type(k)
-            print(colorize(k, "green"), "is a member of", colorize(group, "green"), "with indices",
-                  colorize(indices, "cyan"), "and members", colorize(members, "magenta"))
+            print(colored(k, "green"), "is a member of", colored(group, "green"), "with indices",
+                  colored(indices, "cyan"), "and members", colored(members, "magenta"))
 
     def get_tensor_type(self, item: Union[str, Symbol]) -> tuple[str, tuple[Idx, ...], tuple[str, ...]]:
         return self.thorn_def.get_tensor_type(item)
