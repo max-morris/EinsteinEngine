@@ -24,6 +24,7 @@ Usage:
 import argparse
 import json
 import math
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,9 @@ import matplotlib.colors
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
+
+from EinsteinEngine.tuning.experiment import Experiment
+from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -42,6 +46,26 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if line:
                 records.append(json.loads(line))
     return records
+
+
+def map_coords_to_values(records: list[dict[str, Any]], experiment: Experiment) -> list[dict[str, Any]]:
+    """Return records with each ``params`` dict remapped from raw search
+    coordinates to human-meaningful domain values via the experiment's domains.
+
+    Checkpoints store the coordinates Optuna searched over; for reparameterized
+    domains (e.g. Union) those differ from the values the recipe saw.  A record
+    that can't be remapped (e.g. the experiment definition has since changed) is
+    left with its raw coordinates so the plot still renders.
+    """
+    mapped: list[dict[str, Any]] = []
+    for record in records:
+        try:
+            values = experiment.reconstruct_values(record["params"])
+            mapped.append({**record, "params": dict(values)})
+        except Exception as exc:
+            warnings.warn(f"Could not map coordinates to values for a record; plotting raw coordinates: {exc}")
+            mapped.append(record)
+    return mapped
 
 
 _FAILED_VALUE: float = -1e9
@@ -162,12 +186,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Plot bayes_checkpoint JSONL tuning results.")
     parser.add_argument("checkpoint", type=Path, help="Path to the JSONL checkpoint file.")
     parser.add_argument("--out", type=Path, default=None, help="Save plot to file instead of displaying it.")
+    parser.add_argument("--tuner", type=str, default=None,
+                        help="Path to the Tuner file (same one used with remote_tuner/generate_best). "
+                             "When given, reparameterized params (e.g. Union domains) are plotted as their "
+                             "actual values instead of the raw search coordinates stored in the checkpoint.")
     args = parser.parse_args()
 
     records = load_jsonl(args.checkpoint)
     if not records:
         print("No records found in checkpoint file.")
         return
+
+    if args.tuner is not None:
+        experiment = load_tuner_from_file(args.tuner).get_experiment()
+        records = map_coords_to_values(records, experiment)
 
     plot(records, title=args.checkpoint.name, out=args.out)
 

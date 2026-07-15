@@ -356,3 +356,18 @@ class Experiment:
 
         _, coords, specs = self._walk_in_params(get_coord, present=lambda name: name in stored)
         return coords, specs
+
+    def reconstruct_values(self, stored: dict[str, ParamType]) -> OrderedDict[str, Value]:
+        """Map a stored trial's raw coordinates back to their domain values.
+
+        For plain ``Interval`` params a value equals its coordinate; for ``Union``
+        and other reparameterized domains this recovers the human-meaningful value
+        (e.g. the actual number on either side of a union's gap).  Used for
+        plotting.  Params absent from ``stored`` are skipped.
+        """
+        def get_coord(name: str, spec: CoordSpec) -> Coord:
+            raw = stored[name]
+            return int(raw) if spec.kind is int else float(raw)
+
+        values, _, _ = self._walk_in_params(get_coord, present=lambda name: name in stored)
+        return values
