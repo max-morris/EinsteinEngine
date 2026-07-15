@@ -31,6 +31,8 @@ Optuna's TPESampler is used instead of a GP, which makes it robust to:
 import json
 import os
 import subprocess
+import time
+import urllib.request
 import warnings
 from collections.abc import Callable
 from typing import Any
@@ -74,11 +76,13 @@ class CheckpointedOptimizer:
         checkpoint_file: str,
         random_state: int | None = None,
         verbose: int = 2,
+        telegram_verbosity: int = 1,
         n_startup_trials: int = 10,
         **_kwargs: Any,  # absorb legacy kwargs (acquisition_function, etc.)
     ) -> None:
         self._f = f
         self._verbose = verbose
+        self._telegram_verbosity = telegram_verbosity
         self._checkpoint_file = checkpoint_file
         self._experiment = experiment
 
@@ -146,11 +150,26 @@ class CheckpointedOptimizer:
         except ValueError:
             prev_best = None
 
+        run_start = time.perf_counter()
         result = self._f(**out_args)
+        elapsed = time.perf_counter() - run_start
         value = float(result) if np.isfinite(result) else _FAILED_VALUE
 
-        if value != _FAILED_VALUE and (prev_best is None or value > prev_best):
-            self._notify_new_best(value)
+        is_new_best = value != _FAILED_VALUE and (prev_best is None or value > prev_best)
+        best_value = value if is_new_best else prev_best
+
+        # Total completed iterations including checkpointed/resumed trials, plus
+        # this one (which is still RUNNING and so not yet counted by the study).
+        total_iterations = sum(
+            1 for t in self._study.trials if t.state == TrialState.COMPLETE) + 1
+
+        self._notify(
+            value=value,
+            is_new_best=is_new_best,
+            best_value=best_value,
+            elapsed=elapsed,
+            total_iterations=total_iterations,
+        )
 
         # Append to JSONL checkpoint (same format as before).
         rendered_in_args = {k: v for k, v in in_args.items()}
@@ -170,14 +189,67 @@ class CheckpointedOptimizer:
 
         return value
 
+    def _notify(
+        self,
+        *,
+        value: float,
+        is_new_best: bool,
+        best_value: float | None,
+        elapsed: float,
+        total_iterations: int,
+    ) -> None:
+        """Send a Telegram message about a completed run, per the configured
+        telegram verbosity level.
+
+          0: never send.
+          1: send only when a new best is found (legacy behavior).
+          2: send after every run: the time found and whether it's a new best;
+             if not, also the current best.
+          3: as 2, plus how long the run took, how many iterations have run in
+             total (including resumed ones), and the current Baton Rouge, LA
+             temperature and rain chance.
+        """
+        v = self._telegram_verbosity
+        if v <= 0:
+            return
+
+        if v == 1:
+            if is_new_best:
+                self._telegram_send(f'New best time found: {abs(value)} seconds')
+            return
+
+        # v >= 2: report on every run.
+        lines: list[str] = []
+        if value == _FAILED_VALUE:
+            lines.append('Run finished but produced no valid time (discarded).')
+        else:
+            lines.append(f'Run finished: {abs(value)} seconds.')
+            lines.append('This is a new best!' if is_new_best else 'This is not a new best.')
+
+        if not is_new_best and best_value is not None:
+            lines.append(f'Current best: {abs(best_value)} seconds.')
+
+        if v >= 3:
+            lines.append(f'Run took {elapsed:.1f} seconds.')
+            lines.append(f'Total iterations so far: {total_iterations}.')
+            weather = self._get_baton_rouge_weather()
+            if weather is not None:
+                temperature, rain_chance = weather
+                lines.append(
+                    f'Baton Rouge, LA: {temperature}\N{DEGREE SIGN}F, '
+                    f'{rain_chance}% chance of rain.')
+            else:
+                lines.append('Baton Rouge, LA weather: unavailable.')
+
+        self._telegram_send('\n'.join(lines))
+
     @staticmethod
-    def _notify_new_best(value: float) -> None:
-        """Send a Telegram message announcing a new best target.
+    def _telegram_send(message: str) -> None:
+        """Invoke telegram-send with a message.
 
         Best-effort: failures to invoke telegram-send must never interrupt the
         optimization run.
         """
-        message = f'New best time found: {abs(value)} seconds'
         try:
             subprocess.run(
                 ['telegram-send', message],
@@ -187,6 +259,41 @@ class CheckpointedOptimizer:
             )
         except Exception as exc:
             warnings.warn(f'Failed to send Telegram notification: {exc}')
+
+    @staticmethod
+    def _get_baton_rouge_weather() -> tuple[float, float] | None:
+        """Return ``(temperature_fahrenheit, rain_chance_percent)`` for Baton
+        Rouge, LA, or ``None`` if the lookup fails.
+
+        Best-effort and dependency-free: uses only the standard library
+        (urllib) against the keyless Open-Meteo API, and never raises.
+        """
+        url = (
+            'https://api.open-meteo.com/v1/forecast'
+            '?latitude=30.4515&longitude=-91.1871'
+            '&current=temperature_2m'
+            '&hourly=precipitation_probability'
+            '&temperature_unit=fahrenheit'
+            '&timezone=America%2FChicago'
+            '&forecast_days=1'
+        )
+        try:
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+            temperature = data['current']['temperature_2m']
+            # 'current.time' is minute-resolution ('...THH:MM'); hourly times are
+            # hour-resolution ('...THH:00'), so match on the 'YYYY-MM-DDTHH' prefix.
+            current_hour = data['current']['time'][:13]
+            hourly = data['hourly']
+            times = hourly['time']
+            probabilities = hourly['precipitation_probability']
+            rain_chance = next(
+                (p for t, p in zip(times, probabilities) if t.startswith(current_hour)),
+                probabilities[0],
+            )
+            return temperature, rain_chance
+        except Exception:
+            return None
 
     def maximize(self, warmup_iterations: int = 10, iterations: int = 20) -> None:
         """Run optimization, deducting already-loaded probes from the budget.

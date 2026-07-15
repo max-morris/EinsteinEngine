@@ -42,11 +42,12 @@ class Tuner(ABC):
         ...
 
 
-def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20) -> None:
+def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:
     optimizer = CheckpointedOptimizer(
         f=functools.partial(do_tuning_run, args=args),
         experiment=tuner.get_experiment(),
-        checkpoint_file=checkpoint_file
+        checkpoint_file=checkpoint_file,
+        telegram_verbosity=telegram_verbosity,
     )
 
     if optimizer.n_checkpoint_loaded:

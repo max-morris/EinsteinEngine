@@ -27,6 +27,7 @@ class RemoteTunerArgs(RemoteFeedbackArgs, Protocol):
     tuner: str
     warmup_iterations: int
     iterations: int
+    telegram_verbosity_level: int
 
 
 def load_tuner_from_file(path: str) -> Tuner:
@@ -68,13 +69,21 @@ def main() -> None:
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="File to save/restore tuning progress.")
     parser.add_argument("--warmup-iterations", type=int, default=10, help="Number of warmup iterations.")
     parser.add_argument("--iterations", type=int, default=20, help="Number of iterations.")
+    parser.add_argument(
+        "--telegram-verbosity-level", type=int, default=1, choices=[0, 1, 2, 3],
+        help="Verbosity of telegram-send notifications. "
+             "0: never send. "
+             "1 (default): send only when a new best is found. "
+             "2: send after every run with the time found and whether it's a new best. "
+             "3: as 2, plus run duration and total iterations.")
 
     args: RemoteTunerArgs = parser.parse_args()
 
     tuner_inst = load_tuner_from_file(args.tuner)
 
     do_tuning(args, tuner_inst, args.checkpoint_file,
-              warmup_iterations=args.warmup_iterations, iterations=args.iterations)
+              warmup_iterations=args.warmup_iterations, iterations=args.iterations,
+              telegram_verbosity=args.telegram_verbosity_level)
 
 if __name__ == "__main__":
     main()
