@@ -14,11 +14,11 @@ You point it at three things:
 | **Tuner file**   | A standalone `.py` that hands the optimizer an `Experiment`.      |
 | **Checkpoint**   | A JSON-lines log of every trial; resumed automatically on rerun.  |
 
-The optimizer *maximizes*, and the objective is `-rhs_time`, so lower RHS time
-wins.
+The optimizer *maximizes*, and the objective is `-timing_value` (the single
+number your timing command prints), so a lower reported time wins.
 
-A complete, working example lives in `tuning/z4c_splitting/` (recipe
-`recipes/Cottonmouth/Z4c.py`, tuner `tuning/z4c_splitting/tuner.py`, plus the
+A complete, working example lives in `tuning/z4c_splitting_qbd/` (recipe
+`recipes/Cottonmouth/Z4c.py`, tuner `tuning/z4c_splitting_qbd/tuner.py`, plus the
 `run-tuning.sh` / `generate-best.sh` wrappers). This guide walks through the
 smallest possible version of that, then covers the richer domain features.
 
@@ -127,7 +127,7 @@ PYTHONPATH="$REPO_ROOT" python -m EinsteinEngine.tuning.remote_tuner \
 ```
 
 The cleanest way to keep this reproducible is to copy `run-tuning.sh` from
-`tuning/z4c_splitting/` and edit the paths; `"$@"` at the end lets you pass extra
+`tuning/z4c_splitting_qbd/` and edit the paths; `"$@"` at the end lets you pass extra
 flags through (e.g. `./run-tuning.sh --iterations 50`).
 
 What each trial does, in order (see `remote_feedback.py:do_remote_run`):
@@ -137,10 +137,11 @@ What each trial does, in order (see `remote_feedback.py:do_remote_run`):
 3. Run `--remote-command` under `--remote-cactus-path`; parse the Slurm job id
    from a line matching `Submit finished, job id is <N>`.
 4. Poll `squeue` every 60 s until the job leaves the queue.
-5. Run `--remote-timing-command`; the **second** numeric row's total-time column
-   is taken as the RHS time (the `run-all.sh`/`timings.sh` in the sample produce
-   exactly this layout).
-6. Record `{"target": -rhs_time, "params": {...}}` to the checkpoint.
+5. Run `--remote-timing-command`; its stdout must be a **single number**, which
+   is taken as the value to optimize for. All format-specific parsing lives in
+   the timing script, so any run layout can be supported by editing that script
+   alone. The sample `timings.sh` extracts the RHS solve time.
+6. Record `{"target": -timing_value, "params": {...}}` to the checkpoint.
 
 A trial that throws (e.g. the recipe produced a degenerate split) is scored
 `-inf` and discarded, so the search simply avoids that region.
@@ -307,7 +308,7 @@ the far side of a `Union` gap).
 | `--remote-path`            | —                              | Destination dir for the generated code.            |
 | `--remote-cactus-path`     | —                              | Cactus install dir the commands run under.         |
 | `--remote-command`         | `./build.sh && ./run-all.sh`   | Build + submit; must print the Slurm job id.        |
-| `--remote-timing-command`  | `./timings.sh`                 | Prints the timing table.                            |
+| `--remote-timing-command`  | `./timings.sh`                 | Prints a single number to optimize for.             |
 | `--checkpoint-file`        | `split_tuning_checkpt.jsonl`   | Trial log; resumed automatically.                   |
 | `--warmup-iterations`      | `10`                           | Exploration trials.                                 |
 | `--iterations`             | `20`                           | Guided trials after warmup.                         |

@@ -62,7 +62,7 @@ def do_tuning_run(args: RemoteFeedbackArgs, **recipe_facing_args: dict[str, Any]
     global _tuning_params
     _tuning_params = recipe_facing_args
     try:
-        total_time, rhs_time = do_remote_run(args, {})
+        timing_value = do_remote_run(args, {})
     except RuntimeError as e:
         traceback.print_exception(e)
         # Probably created a bad split (empty loop, loop with no outputs) so discard this result
@@ -70,4 +70,4 @@ def do_tuning_run(args: RemoteFeedbackArgs, **recipe_facing_args: dict[str, Any]
     finally:
         _tuning_params = None
 
-    return -rhs_time  # Optimizer tries to maximize; lower time is better
+    return -timing_value  # Optimizer tries to maximize; lower time is better

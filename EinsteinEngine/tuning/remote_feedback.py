@@ -48,13 +48,13 @@ def main() -> None:
     parser.add_argument("--remote-path", type=str, default="/home/mmorris/project/Cottonmouth/", help="Remote path into which generated code should be copied.")
     parser.add_argument("--remote-cactus-path", type=str, default="/home/mmorris/project/Cactus/", help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
-    parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine.")
+    parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine. Must print a single number to optimize for.")
 
     args = parser.parse_args()
 
     do_remote_run(args, {})
 
-def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -> tuple[float, ...]:
+def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -> float:
     # When the "remote" host is localhost, skip scp/ssh entirely and run
     # everything locally. rsync still runs (to a local destination path) and
     # commands are executed through the local shell instead of over ssh.
@@ -146,28 +146,20 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     if timing_result.returncode != 0:
         raise RuntimeError(f"Remote timing run failed:\n{timing_output}")
 
-    timing_rows: list[tuple[str, str, str, str]] = []
-    for line in timing_output.splitlines():
-        match = re.match(
-            r"^\s*([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+([+-]?\d+(?:\.\d+)?)\s+.+$",
-            line
-        )
-        if match:
-            timing_rows.append(match.groups())  # type: ignore[arg-type]
-
-    if len(timing_rows) < 2:
+    # The timing command is expected to print a single number (the value to
+    # optimize for). Any parsing of a particular report format lives in the
+    # timing script itself, keeping this workflow generic.
+    try:
+        timing_value = float(timing_result.stdout.strip())
+    except ValueError:
         raise RuntimeError(
-            "Could not parse timing table rows from ./timings.sh output.\n"
-            f"Output:\n{timing_output}"
+            f"Expected a single number from '{args.remote_timing_command}', "
+            f"but could not parse one.\nOutput:\n{timing_output}"
         )
 
-    sim_total_time = float(timing_rows[0][1])
-    rhs_total_time = float(timing_rows[1][1])
+    print(f"Timing value: {timing_value:.3f}")
 
-    print(f"Simulation time: {sim_total_time:.3f}")
-    print(f"RHS time: {rhs_total_time:.3f}")
-
-    return sim_total_time, rhs_total_time
+    return timing_value
 
 
 if __name__ == "__main__":

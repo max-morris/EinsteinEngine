@@ -65,7 +65,7 @@ def main() -> None:
     parser.add_argument("--remote-path", type=str, help="Remote path into which generated code should be copied.")
     parser.add_argument("--remote-cactus-path", type=str, help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine. Relative to Cactus path.")
-    parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to print timing information on the remote machine. Relative to Cactus path.")
+    parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to print timing information on the remote machine. Relative to Cactus path. Must print a single number to optimize for.")
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="File to save/restore tuning progress.")
     parser.add_argument("--warmup-iterations", type=int, default=10, help="Number of warmup iterations.")
     parser.add_argument("--iterations", type=int, default=20, help="Number of iterations.")
