@@ -16,7 +16,9 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from dataclasses import dataclass
-from typing import Type, Never, Optional, Any, cast, Sequence
+from typing import Type, Never, Optional, Any, cast, Sequence, Callable
+
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 
 from EinsteinEngine.emit.code.common.code_tree import IntLiteralExpr, FloatLiteralExpr
 from multimethod import multimethod
@@ -62,8 +64,18 @@ class VanillaF90Function(DslFunctionFrontend["VanillaF90Module"]):
     def __init__(self,
                  name: str,
                  frontend: "VanillaF90Module",
-                 intent_override: Optional[IntentOverride] = None) -> None:
-        super().__init__(name, frontend, intent_override, owner_name="VanillaF90Function")
+                 intent_override: Optional[IntentOverride] = None,
+                 *,
+                 auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                 auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> None:
+        super().__init__(
+            name,
+            frontend,
+            intent_override,
+            owner_name="VanillaF90Function",
+            auto_hard_split_predicate=auto_hard_split_predicate,
+            auto_soft_split_predicate=auto_soft_split_predicate
+        )
 
 class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Function]):
     name: str
