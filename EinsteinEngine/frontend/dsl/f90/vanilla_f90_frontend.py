@@ -86,7 +86,7 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
             *,
             dimensionality: int = 3,
             coords: Optional[Sequence[str]] = None,
-            derivative_stencil_width: int = 5
+            derivative_stencil_width: int = 5,
     ) -> None:
         super().__init__(
             dimensionality=dimensionality,
@@ -99,8 +99,16 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
     def create_function(self,
                         name: str,
                         *,
-                        intent_override: Optional[IntentOverride] = None) -> VanillaF90Function:
-        tf = VanillaF90Function(name, self, intent_override)
+                        intent_override: Optional[IntentOverride] = None,
+                        auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> VanillaF90Function:
+        tf = VanillaF90Function(
+            name,
+            self,
+            intent_override,
+            auto_hard_split_predicate=auto_hard_split_predicate,
+            auto_soft_split_predicate=auto_soft_split_predicate
+        )
         self.functions[name] = tf
         return tf
 
