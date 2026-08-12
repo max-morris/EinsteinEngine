@@ -40,6 +40,7 @@ setup(
         'sortedcontainers-stubs==2.4.3',
         'optuna==4.9.0',
         'bayesian-optimization==3.3.0',
-        'termcolor==3.3.0'
+        'termcolor==3.3.0',
+        'matplotlib==3.11.0'
     ]
 )
