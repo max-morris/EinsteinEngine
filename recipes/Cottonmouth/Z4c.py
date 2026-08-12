@@ -22,7 +22,7 @@ import typing
 from pathlib import Path
 from typing import Callable
 
-from sympy import Rational  # type: ignore[import-untyped]
+from sympy import Rational
 
 from EinsteinEngine import *
 

@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from EinsteinEngine.common.sympywrap import mk_function, sympify, mk_idx, mk_symbol
-from sympy import Idx, Expr, Rational  # type: ignore[import-untyped]
+from sympy import Idx, Expr, Rational
 from math import comb
 
 one = sympify(1)

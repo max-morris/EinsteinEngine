@@ -17,7 +17,7 @@
 
 from typing import Any, Collection, Optional, TYPE_CHECKING
 
-import sympy  # type: ignore[import-untyped]
+import sympy
 from sympy import IndexedBase, Indexed
 
 if TYPE_CHECKING:

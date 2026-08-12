@@ -20,7 +20,7 @@ from bisect import bisect_left
 from functools import lru_cache
 from typing import Protocol, Any, Optional
 
-from sympy import Symbol  # type: ignore[import-untyped]
+from sympy import Symbol
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.intermediate.temp_kind import TempKind

@@ -18,7 +18,7 @@
 from math import ceil
 from typing import Callable, Protocol, Any
 
-from sympy import Symbol  # type: ignore[import-untyped]
+from sympy import Symbol
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 

@@ -26,7 +26,7 @@ from math import sqrt
 from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast, Optional, Any
 
 from bayes_opt import BayesianOptimization
-from sympy import Symbol, Expr, Basic, preorder_traversal  # type: ignore[import-untyped]
+from sympy import Symbol, Expr, Basic, preorder_traversal
 
 from EinsteinEngine.intermediate.dependencies import Dependencies
 from EinsteinEngine.frontend.definitions import stencil
@@ -341,20 +341,20 @@ def insertion_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthet
 
 @cache
 def _dummy_stencil_symbol(call: Basic) -> Symbol:
-    return Symbol(_NON_C_IDENTIFIER_RE.sub('_', f'__dummy_stencil_{call.args}'.replace('-', 'm')))
+    return Symbol(_NON_C_IDENTIFIER_RE.sub('_', f'__dummy_stencil_{call.args}'.replace('-', 'm')))  # type: ignore[no-untyped-call]
 
 @cache
 def _expr_with_stencil_dummies(expr: Expr) -> Expr:
-    stencil_calls: set[Basic] = expr.find(stencil)
+    stencil_calls: set[Basic] = expr.find(stencil)  # type: ignore[no-untyped-call]
     if len(stencil_calls) == 0:
         return expr
     else:
-        return expr.xreplace({call: _dummy_stencil_symbol(call) for call in stencil_calls})
+        return expr.xreplace({call: _dummy_stencil_symbol(call) for call in stencil_calls})  # type: ignore[no-any-return,no-untyped-call]
 
 @cache
 def _symbol_frequency(expr: Expr) -> dict[Symbol, int]:
     freq: dict[Symbol, int] = defaultdict(int)
-    for node in preorder_traversal(_expr_with_stencil_dummies(expr)):
+    for node in preorder_traversal(_expr_with_stencil_dummies(expr)):  # type: ignore[no-untyped-call]
         if isinstance(node, Symbol):
             freq[node] += 1
     return freq

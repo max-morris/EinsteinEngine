@@ -18,7 +18,7 @@
 from dataclasses import dataclass
 from typing import Optional, List, Collection, Tuple, TypeAlias
 
-import sympy as sy  # type: ignore[import-untyped]
+import sympy as sy
 
 from EinsteinEngine import Identifier, Centering, IntentRegion
 from EinsteinEngine.emit.tree import LineComment, BlockComment, Verbatim

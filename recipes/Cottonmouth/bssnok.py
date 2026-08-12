@@ -20,7 +20,7 @@ import functools
 import sys
 from pathlib import Path
 
-from sympy import Rational, Idx  # type: ignore[import-untyped]
+from sympy import Rational, Idx
 
 from EinsteinEngine import *
 

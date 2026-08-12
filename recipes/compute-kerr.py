@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from sympy import Expr  # type: ignore[import-untyped]
+from sympy import Expr
 
 if __name__ == "__main__":
     from EinsteinEngine import *

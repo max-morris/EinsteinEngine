@@ -17,7 +17,7 @@
 
 from typing import Set, Dict, Optional
 
-import sympy as sy  # type: ignore[import-untyped]
+import sympy as sy
 from multimethod import multimethod
 from sympy import Symbol
 

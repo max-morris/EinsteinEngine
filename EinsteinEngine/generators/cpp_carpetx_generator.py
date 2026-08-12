@@ -19,7 +19,7 @@ import functools
 from dataclasses import dataclass
 from typing import Optional, List, Collection, Protocol, NamedTuple, Any, cast
 
-import sympy as sy  # type: ignore[import-untyped]
+import sympy as sy
 from sympy import IndexedBase, Indexed
 from typing_extensions import Unpack, OrderedDict
 
@@ -1002,7 +1002,7 @@ class CppCarpetXGenerator(CactusGenerator):
             subst_result = substitute_recycled_temporaries(eqn_list)
 
             def _resolve_overwrite(s: sy.Symbol) -> sy.Symbol:
-                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))
+                return s if "'" not in str(s) else sy.Symbol(str(s).replace("'", ""))  # type: ignore[no-untyped-call]
 
             eqns: list[tuple[sy.Symbol, CppCarpetXExprNode]] = [(_resolve_overwrite(lhs), sympy_visitor.visit(rhs)) for lhs, rhs in subst_result.eqns]
             annotations: dict[str, str] = {str(lhs): ann for lhs, ann in thorn_fn.source_annotations.eqns[loop_idx].items()}

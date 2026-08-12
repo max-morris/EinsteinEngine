@@ -21,7 +21,7 @@ from collections import defaultdict, OrderedDict
 from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack, Callable
 
 import EinsteinEngine.common.util as util
-from sympy import Symbol, Expr, Idx, Indexed, IndexedBase, Matrix  # type: ignore[import-untyped]
+from sympy import Symbol, Expr, Idx, Indexed, IndexedBase, Matrix
 
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.util import OrderedSet, pprint

@@ -21,7 +21,7 @@ from typing import Any, Callable, cast, List
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from multimethod import multimethod
 from termcolor import colored
-from sympy import Symbol, Expr, Basic, Indexed, Idx, IndexedBase, Matrix  # type: ignore[import-untyped]
+from sympy import Symbol, Expr, Basic, Indexed, Idx, IndexedBase, Matrix
 
 from EinsteinEngine.common.util import vprint
 from EinsteinEngine.common.sympywrap import free_symbols

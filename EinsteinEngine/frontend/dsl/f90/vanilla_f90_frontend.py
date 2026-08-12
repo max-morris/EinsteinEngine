@@ -22,7 +22,7 @@ from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSpli
 
 from EinsteinEngine.emit.code.common.code_tree import IntLiteralExpr, FloatLiteralExpr
 from multimethod import multimethod
-from sympy import Symbol  # type: ignore[import-untyped]
+from sympy import Symbol
 
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend

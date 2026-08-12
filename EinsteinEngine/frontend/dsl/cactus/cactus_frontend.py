@@ -24,7 +24,7 @@ from typing import Callable, Collection, Optional, cast, List, Unpack, Set, Unio
 
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from termcolor import colored
-from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq  # type: ignore[import-untyped]
+from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
     free_symbols, mk_eq, mk_indexed_base, mk_symbol

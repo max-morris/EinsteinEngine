@@ -17,7 +17,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from sympy import Expr  # type: ignore[import-untyped]
+from sympy import Expr
 
 from EinsteinEngine import *
 
@@ -76,7 +76,7 @@ def radius(X: Expr, Y: Expr, Z: Expr) -> Expr:
 
 
 def gaussian(r: Expr) -> Expr:
-    return GAUSSIAN_AMPLITUDE * exp(-r**2 / (2 * GAUSSIAN_WIDTH**2))
+    return GAUSSIAN_AMPLITUDE * exp(-r**2 / (2 * GAUSSIAN_WIDTH**2))  # type: ignore[no-any-return]
 
 
 test_newradx_init = newradx_weq.create_function(

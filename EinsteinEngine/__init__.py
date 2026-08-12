@@ -49,8 +49,8 @@ from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param
 
-from sympy import Idx  # type: ignore[import-untyped]
-from sympy.core.relational import Relational  # type: ignore[import-untyped]
+from sympy import Idx
+from sympy.core.relational import Relational
 
 ui: Idx
 li: Idx

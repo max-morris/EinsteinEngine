@@ -25,7 +25,7 @@ from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack,
 # mypy: disable-error-code=no-redef
 # The above line suppresses an unfortunate interaction between MyPy and multimethod.
 
-import sympy as sy  # type: ignore[import-untyped]
+import sympy as sy
 from multimethod import multimethod
 from termcolor import colored
 from sympy import Symbol, Idx, Expr, IndexedBase, Indexed, Function, Basic, Matrix, ImmutableDenseMatrix, MatrixBase

@@ -17,7 +17,7 @@
 
 from typing import Optional
 
-import sympy as sy  # type: ignore[import-untyped]
+import sympy as sy
 
 from EinsteinEngine import Identifier
 from EinsteinEngine.common.stencil_idx import StencilIdx

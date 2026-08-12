@@ -19,7 +19,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     from EinsteinEngine import *
-    from sympy import Rational  # type: ignore[import-untyped]
+    from sympy import Rational
 
     ###
     # Thorn definition

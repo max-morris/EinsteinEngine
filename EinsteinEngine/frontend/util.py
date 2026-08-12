@@ -18,7 +18,7 @@
 from functools import wraps, partial
 from typing import overload, Optional, Callable, cast, Collection, List
 
-from sympy import Function, Symbol, Expr  # type: ignore[import-untyped]
+from sympy import Function, Symbol, Expr
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import stencil
@@ -51,7 +51,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
         dummy = Function('isolated_symbol_dummy')
         iso_map = {s: dummy(s) for s in symbols_to_isolate}
         inv_iso_map = {v: k for k, v in iso_map.items()}
-        exprs_sub = [e.xreplace(iso_map) for e in exprs]
+        exprs_sub = [e.xreplace(iso_map) for e in exprs]  # type: ignore[no-untyped-call]
 
         # When calling `stencil()`, we must use the naked GF name as declared -- i.e., not wrapped in `access()` -- so don't pull those out.
         exprs_sub = [e.replace(
@@ -62,8 +62,8 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
         new_syms, new_exprs = cse(exprs_sub)
 
         # Restore original symbols
-        new_syms = [(lhs, rhs.xreplace(inv_iso_map)) for lhs, rhs in new_syms]
-        new_exprs = [e.xreplace(inv_iso_map) for e in new_exprs]
+        new_syms = [(lhs, rhs.xreplace(inv_iso_map)) for lhs, rhs in new_syms]  # type: ignore[no-untyped-call]
+        new_exprs = [e.xreplace(inv_iso_map) for e in new_exprs]  # type: ignore[no-untyped-call]
 
         return new_syms, new_exprs
     else:
