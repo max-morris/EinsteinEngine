@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Set, Dict, Optional
+from typing import cast, Iterable, Set, Dict, Optional, Tuple
 
 import sympy as sy
 from multimethod import multimethod
@@ -73,6 +73,30 @@ class AnalyticFunctionChecker:
             assert b is None or type(b) == bool
             if b != True:
                 return b
+        return True
+
+    @visit.register
+    def _(self, a: sy.Piecewise) -> Optional[bool]:
+        pw_args = cast(Iterable[Tuple[sy.Expr, sy.Expr]], a.args)
+        for e, c in pw_args:
+            for part in (e, c):
+                b = self.visit(part)
+                assert b is None or type(b) == bool
+                if b != True:
+                    return b
+        return True
+
+    @visit.register
+    def _(self, a: sy.core.relational.Relational) -> Optional[bool]:
+        for arg in a.args:
+            b = self.visit(arg)
+            assert b is None or type(b) == bool
+            if b != True:
+                return b
+        return True
+
+    @visit.register
+    def _(self, _a: sy.logic.boolalg.BooleanTrue | sy.logic.boolalg.BooleanFalse) -> Optional[bool]:
         return True
 
 

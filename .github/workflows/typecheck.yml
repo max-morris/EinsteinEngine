@@ -34,3 +34,8 @@ jobs:
 
       - name: Run Typecheck Script
         run: bash typecheck.sh -c
+
+      - name: Run Unit Tests
+        run: |
+          . ./venv/bin/activate
+          python unit_tests/test_use_indices.py

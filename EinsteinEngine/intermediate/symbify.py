@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Never
+from typing import cast, Iterable, Never, Tuple
 
 import sympy
 from multimethod import multimethod
@@ -88,3 +88,26 @@ def _(a: Pow) -> Expr:
     r = Pow(symbify(a.args[0]), a.args[1])
     assert isinstance(r, Expr)
     return r
+
+
+@symbify.register
+def _(_a: sympy.logic.boolalg.BooleanTrue) -> Expr:
+    return sympify(True)
+
+
+@symbify.register
+def _(_a: sympy.logic.boolalg.BooleanFalse) -> Expr:
+    return sympify(False)
+
+
+@symbify.register
+def _(a: sympy.core.relational.Relational) -> Expr:
+    arglist = [symbify(b) for b in a.args]
+    return cast(Expr, a.func(*arglist))
+
+
+@symbify.register
+def _(a: sympy.Piecewise) -> Expr:
+    pw_args = cast(Iterable[Tuple[Expr, Expr]], a.args)
+    new_args = tuple((symbify(e), symbify(c)) for e, c in pw_args)
+    return mk_piecewise(*new_args)

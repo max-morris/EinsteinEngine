@@ -32,7 +32,7 @@ from sympy import Symbol, Idx, Expr, IndexedBase, Indexed, Function, Basic, Matr
 
 from EinsteinEngine.common.sympywrap import (
     mk_symbol, Applier, UFunc, mk_function, mk_idxes, Pow, mk_idx, mk_zeros, do_subs, mk_indexed_base, mk_indexed,
-    simplify
+    mk_piecewise, simplify, sympify
 )
 from EinsteinEngine.common.util import checked_cast, vprint, OrderedSet
 from EinsteinEngine.frontend.frontend import Frontend
@@ -945,6 +945,39 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             return retval
 
         @mk_sten.register
+        def _mk_sten(idx_map: dict[Idx, Idx], expr_: Indexed) -> Expr:
+            indexes: list[Idx] = list()
+            for a in expr_.args[1:]:
+                assert isinstance(a, Idx)
+                indexes.append(idx_map.get(a, a))
+            result: Expr = mk_indexed(expr_.base, *indexes)
+            return result
+
+        @mk_sten.register
+        def _mk_sten(idx_map: dict[Idx, Idx], expr_: sy.core.relational.Relational) -> Basic:
+            new_args = tuple(mk_sten(idx_map, a) for a in expr_.args)
+            result = expr_.func(*new_args)
+            assert isinstance(result, Basic)
+            return result
+
+        @mk_sten.register
+        def _mk_sten(idx_map: dict[Idx, Idx], expr_: sy.Piecewise) -> Expr:
+            new_args = []
+            for pair in expr_.args:
+                assert isinstance(pair, tuple) and len(pair) == 2
+                e, c = pair
+                new_args.append((mk_sten(idx_map, e), mk_sten(idx_map, c)))
+            return mk_piecewise(*new_args)
+
+        @mk_sten.register
+        def _mk_sten(_idx_map: dict[Idx, Idx], _expr_: sy.logic.boolalg.BooleanTrue) -> Expr:
+            return sympify(True)
+
+        @mk_sten.register
+        def _mk_sten(_idx_map: dict[Idx, Idx], _expr_: sy.logic.boolalg.BooleanFalse) -> Expr:
+            return sympify(False)
+
+        @mk_sten.register
         def _mk_sten(idx_map: dict[Idx, Idx], expr_: sy.Add) -> Expr:
             ret = zero
             for a in expr_.args:
@@ -968,6 +1001,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             for i in range(self.dimensionality):
                 idx0 = mk_idx(f'l{i}') if is_down_idx else mk_idx(f'u{i}')
                 result = mk_sten({idx: idx0}, expr)
+                # Resolve any indexed grid-variable references (e.g. from a Piecewise/h_step
+                # condition) left in the recipe into their canonical flat symbols.
+                result = self._do_subs(result)
                 self.unary_custom_stencils[(func, idx0)] = result
         elif len(idx_list) == 2:
             idx1 = idx_list[0]
@@ -981,6 +1017,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                         continue
                     idx20 = mk_idx(f'l{j}') if is_down_idx2 else mk_idx(f'u{j}')
                     result = mk_sten({idx1: idx10, idx2: idx20}, expr)
+                    result = self._do_subs(result)
                     self.binary_custom_stencils[(func, idx10, idx20)] = result
 
         return func
