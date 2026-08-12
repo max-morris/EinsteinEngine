@@ -57,7 +57,7 @@ class SympyComplexityVisitor:
     def _(self, n: sy.Pow) -> int:
         c: int = 15
         if (power := n.args[1]).is_Integer:
-            c = max(2, int(log2(abs(power.evalf()))))  # type: ignore[no-untyped-call]
+            c = max(2, int(log2(abs(power.evalf()))))
         return int(c + sum([self.complexity(arg) for arg in n.args]))
 
     @complexity.register
@@ -85,9 +85,9 @@ class SympyComplexityVisitor:
             assert isinstance(y, sy.Number)
             assert isinstance(z, sy.Number)
 
-            if y.evalf() != 0 or z.evalf() != 0:  # type: ignore[no-untyped-call]
+            if y.evalf() != 0 or z.evalf() != 0:
                 return 100
-            elif x.evalf() != 0:  # type: ignore[no-untyped-call]
+            elif x.evalf() != 0:
                 return 40
             else:
                 return 10

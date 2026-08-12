@@ -398,4 +398,4 @@ class ApplyDivN(Applier):
         return self.val
 
     def apply(self, arg: Basic) -> Basic:
-        return cast(Basic, arg.replace(self.m, self.r))  # type: ignore[no-untyped-call]
+        return arg.replace(self.m, self.r)

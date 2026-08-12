@@ -1,6 +1,6 @@
-mypy==1.16.1
+mypy==2.3.0
 nrpy==2.0.18
-sympy==1.12.1
+sympy==1.14.0
 multimethod>=1.10
 numpy>=2.1.0
 pdoc==14.6.0
