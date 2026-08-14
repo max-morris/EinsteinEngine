@@ -979,7 +979,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         def _mk_sten(idx_map: dict[Idx, Idx], expr_: sy.Piecewise) -> Expr:
             new_args = []
             for pair in expr_.args:
-                assert isinstance(pair, tuple) and len(pair) == 2
+                assert isinstance(pair, sy.core.containers.Tuple) and len(pair) == 2
                 e, c = pair
                 new_args.append((mk_sten(idx_map, e), mk_sten(idx_map, c)))
             return mk_piecewise(*new_args)

@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from math import log2
-from typing import cast, Iterable, Protocol, Tuple
+from typing import cast, Protocol
 
 import sympy as sy
 from multimethod import multimethod
@@ -78,8 +78,12 @@ class SympyComplexityVisitor:
 
     @complexity.register
     def _(self, n: sy.Piecewise) -> int:
-        pw_args = cast(Iterable[Tuple[sy.Expr, sy.Expr]], n.args)
-        return sum([self.complexity(e) + self.complexity(c) for e, c in pw_args])
+        total = 0
+        for pair in n.args:
+            assert isinstance(pair, sy.core.containers.Tuple) and len(pair) == 2
+            e, c = pair
+            total += self.complexity(e) + self.complexity(c)
+        return total
 
     @complexity.register
     def _(self, n: sy.core.relational.Relational) -> int:
