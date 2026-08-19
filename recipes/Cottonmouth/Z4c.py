@@ -323,13 +323,34 @@ gt_rhs = cottonmouth_Z4c.decl(
     parity=parity_sym2ten
 )
 
-gt = cottonmouth_Z4c.decl(
-    "gt",
+gt_m1 = cottonmouth_Z4c.decl(
+    "gt_m1",
     [li, lj],
     symmetries=[(li, lj)],
     rhs=gt_rhs,
     parity=parity_sym2ten
 )
+
+flat_mat = mk_matrix([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+])
+
+flat_gt = cottonmouth_Z4c.decl(
+    "flat_gt",
+    [li, lj],
+    symmetries=[(li, lj)],
+    substitution_rule=flat_mat
+)
+
+gt = cottonmouth_Z4c.decl(
+    "gt",
+    [li, lj],
+    symmetries=[(li, lj)]
+)
+
+cottonmouth_Z4c.add_substitution_rule(gt[li, lj], gt_m1[li, lj] + flat_gt[li, lj])
 
 # \tilde{A}_{ij}
 At_rhs = cottonmouth_Z4c.decl(
@@ -612,8 +633,8 @@ fun_adm_to_z4c_pt1.add_eqn(
 
 # Eq. (11) of [2], left
 fun_adm_to_z4c_pt1.add_eqn(
-    gt[li, lj],
-    (1 / cbrt(detg)) * g[li, lj]
+    gt_m1[li, lj],
+    1 / cbrt(detg) * g[li, lj] - flat_gt[li, lj]
 )
 
 # Eq. (12) of [2], right
@@ -672,11 +693,11 @@ fun_z4c_enforce_pt1.add_eqn(
 )
 
 # Enforce \det(\tilde{\gamma}) = 1
-gt_enforce = cottonmouth_Z4c.overwrite(gt)
+gt_enforce = cottonmouth_Z4c.overwrite(gt_m1)
 
 fun_z4c_enforce_pt1.add_eqn(
     gt_enforce[li, lj],
-    gt[li, lj] / (cbrt(detgt))
+    gt[li, lj] / cbrt(detgt) - flat_gt[li, lj]
 )
 
 fun_z4c_enforce_pt2 = cottonmouth_Z4c.create_function(
@@ -817,13 +838,13 @@ sync_state = ExplicitSyncBatch(
     name="sync_state",
 )
 sync_z4c = ExplicitSyncBatch(
-    [At, gt, chi, evo_lapse, evo_shift, trK],
+    [At, gt_m1, chi, evo_lapse, evo_shift, trK],
     "z4c_to_adm_group",
     schedule_before=["z4c_to_adm"],
     name="sync_z4c",
 )
 sync_z4c_pt2 = ExplicitSyncBatch(
-    [gt],
+    [gt_m1],
     "adm_to_z4c_pt2_group",
     schedule_before=["adm_to_z4c_pt2"],
     name="sync_z4c_pt2",
@@ -1162,7 +1183,7 @@ nrx_evo_Gammat = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xx = NewRadXBoundaryBatch(
-    gt[l0, l0],
+    gt_m1[l0, l0],
     sympify(1),
     sympify(1),
     radpower_gt,
@@ -1173,7 +1194,7 @@ nrx_gt_xx = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xy = NewRadXBoundaryBatch(
-    gt[l0, l1],
+    gt_m1[l0, l1],
     sympify(0),
     sympify(1),
     radpower_gt,
@@ -1184,7 +1205,7 @@ nrx_gt_xy = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xz = NewRadXBoundaryBatch(
-    gt[l0, l2],
+    gt_m1[l0, l2],
     sympify(-0),
     sympify(1),
     radpower_gt,
@@ -1195,7 +1216,7 @@ nrx_gt_xz = NewRadXBoundaryBatch(
 )
 
 nrx_gt_yy = NewRadXBoundaryBatch(
-    gt[l1, l1],
+    gt_m1[l1, l1],
     sympify(1),
     sympify(1),
     radpower_gt,
@@ -1206,7 +1227,7 @@ nrx_gt_yy = NewRadXBoundaryBatch(
 )
 
 nrx_gt_yz = NewRadXBoundaryBatch(
-    gt[l1, l2],
+    gt_m1[l1, l2],
     sympify(0),
     sympify(1),
     radpower_gt,
@@ -1217,7 +1238,7 @@ nrx_gt_yz = NewRadXBoundaryBatch(
 )
 
 nrx_gt_zz = NewRadXBoundaryBatch(
-    gt[l2, l2],
+    gt_m1[l2, l2],
     sympify(1),
     sympify(1),
     radpower_gt,
