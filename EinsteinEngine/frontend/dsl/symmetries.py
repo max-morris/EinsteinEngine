@@ -18,6 +18,7 @@
 from EinsteinEngine.common.sympywrap import *
 from sympy import IndexedBase, Basic, Expr, Indexed, Idx
 from typing import Dict, List, cast, Tuple
+from EinsteinEngine.frontend.dsl.indices import *
 
 
 class Sym(Applier):
@@ -94,7 +95,6 @@ class Sym(Applier):
 
 
 def test() -> None:
-    u0, u1, u2, u3 = mk_idxes('u0 u1 u2 u3')
     sym = Sym()
     eps = mk_indexed_base("eps", shape=(3, 3, 3))
     sym.add(eps, 0, 1, -1)

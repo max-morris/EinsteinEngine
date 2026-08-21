@@ -48,21 +48,23 @@ gf = ThornDef("TestEinsteinEngine", "OsDivTest", derivative_stencil_width=5)
 
 # Declare gfs
 o0 = gf.decl("o0", [])
-o1 = gf.decl("o1", [la])
+o1 = gf.decl("o1", [ua])
 o2 = gf.decl("o2", [la])
 o3 = gf.decl("o3", [la])
 ZeroVal = gf.decl("ZeroVal", [], from_thorn="ZeroTest")
 
 x, y, z = gf.mk_coords()
 
+kdelta = gf.mk_kdelta()
+
 # Custom upwind/downwind derivative operator (same recipe as in test_use_indices.py).
-osdiv = gf.mk_stencil("osdiv", la, (h_step(o1[la]) * (stencil(la) - stencil(0)) +
-                                    h_step(-o1[la]) * (stencil(0) - stencil(-la))) * DDI(la))
+osdiv = gf.mk_stencil("osdiv", la, h_step( o1[ub]*kdelta[la,lb]) * finite_difference_stencil(2,1, 1,la)+
+                                   h_step(-o1[ub]*kdelta[la,lb]) * finite_difference_stencil(2,1,-1,la))
 
 set_o1 = gf.create_function("set_o1", ScheduleBin.Analysis)
-set_o1.add_eqn(o1[l0], x - 1)
-set_o1.add_eqn(o1[l1], y - 1)
-set_o1.add_eqn(o1[l2], z - 1)
+set_o1.add_eqn(o1[u0], x - 1)
+set_o1.add_eqn(o1[u1], y - 1)
+set_o1.add_eqn(o1[u2], z - 1)
 
 set_o0 = gf.create_function("set_o0", ScheduleBin.Analysis)
 set_o0.add_eqn(o0,

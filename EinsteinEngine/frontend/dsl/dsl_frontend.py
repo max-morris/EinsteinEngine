@@ -49,6 +49,7 @@ from EinsteinEngine.frontend.dsl.use_indices import (
     subst_tensor,
 )
 from EinsteinEngine.frontend.dsl.symmetries import Sym
+from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import (
     D,
     div,
@@ -65,7 +66,7 @@ from EinsteinEngine.frontend.definitions import (
     DZI,
     noop,
     zero,
-    one,
+    one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.common.sympywrap import cse, free_symbols
@@ -946,11 +947,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
         @mk_sten.register
         def _mk_sten(idx_map: dict[Idx, Idx], expr_: Indexed) -> Expr:
-            indexes: list[Idx] = list()
+            indices: list[Idx] = list()
             for a in expr_.args[1:]:
-                assert isinstance(a, Idx)
-                indexes.append(idx_map.get(a, a))
-            result: Expr = mk_indexed(expr_.base, *indexes)
+                assert isinstance(a, Idx), f"a={a}"
+                indices.append(idx_map.get(a, a))
+            result: Expr = mk_indexed(expr_.base, *indices)
             return result
 
         @mk_sten.register
