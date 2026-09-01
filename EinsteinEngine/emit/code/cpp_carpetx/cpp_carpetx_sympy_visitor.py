@@ -15,23 +15,30 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional
+from typing import Optional, Callable
 
 import sympy as sy
+from sympy.core.function import UndefinedFunction as UFunc
 
-from EinsteinEngine import Identifier
+from EinsteinEngine import Identifier, as_f64, as_f32, as_f16
 from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilIdx
 from EinsteinEngine.emit.code.common.code_tree import Expr, IdExpr, FunctionCall
 from EinsteinEngine.emit.code.sympy_visitor import BaseSympyExprVisitor
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.frontend.util import require
 from EinsteinEngine.generators.util import SymbolInStencilArgsPredicate, VarCenteringFn
-from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXExprNode
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXExprNode, StaticCast
 
 
 class CppCarpetXSympyVisitor(BaseSympyExprVisitor[CppCarpetXExprNode]):
     should_wrap_with_access_fn: SymbolInStencilArgsPredicate
     centering_fn: VarCenteringFn
+
+    numeric_conversion_rewrite: dict[UFunc, Callable[[CppCarpetXExprNode], CppCarpetXExprNode]] = {
+        as_f64: lambda expr: StaticCast(Identifier("CCTK_REAL8"), expr),
+        as_f32: lambda expr: StaticCast(Identifier("CCTK_REAL4"), expr),
+        as_f16: lambda expr: StaticCast(Identifier("CCTK_REAL2"), expr)
+    }
 
     def __init__(
             self,
