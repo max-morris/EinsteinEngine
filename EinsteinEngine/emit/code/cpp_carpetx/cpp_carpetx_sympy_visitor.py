@@ -34,7 +34,7 @@ class CppCarpetXSympyVisitor(BaseSympyExprVisitor[CppCarpetXExprNode]):
     should_wrap_with_access_fn: SymbolInStencilArgsPredicate
     centering_fn: VarCenteringFn
 
-    numeric_conversion_rewrite: dict[UFunc, Callable[[Expr], Expr]] = {
+    numeric_conversion_rewrite: dict[UFunc, Callable[[CppCarpetXExprNode], CppCarpetXExprNode]] = {
         as_f64: lambda expr: StaticCast(Identifier("CCTK_REAL8"), expr),
         as_f32: lambda expr: StaticCast(Identifier("CCTK_REAL4"), expr),
         as_f16: lambda expr: StaticCast(Identifier("CCTK_REAL2"), expr)

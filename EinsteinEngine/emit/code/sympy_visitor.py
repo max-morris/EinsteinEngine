@@ -57,7 +57,7 @@ class BaseSympyExprVisitor[ExprT: Expr]:
         sy.csch: lambda a, *_: 1 / sy.sinh(a)
     }
 
-    numeric_conversion_rewrite: dict[UFunc, Callable[[Expr], Expr]] = dict()
+    numeric_conversion_rewrite: dict[UFunc, Callable[[ExprT], ExprT]] = dict()
 
     def __init__(
             self,

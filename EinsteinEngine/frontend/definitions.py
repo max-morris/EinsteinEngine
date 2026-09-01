@@ -39,13 +39,13 @@ muladd = mk_function("muladd")
 pull_out = mk_function("pull_out")
 
 as_f16 = mk_function("as_f16")
-as_f16.numeric_conversion_fn = True  # ignore: type[attr-defined]
+as_f16.numeric_conversion_fn = True  # type: ignore[attr-defined]
 
 as_f32 = mk_function("as_f32")
-as_f32.numeric_conversion_fn = True  # ignore: type[attr-defined]
+as_f32.numeric_conversion_fn = True  # type: ignore[attr-defined]
 
 as_f64 = mk_function("as_f64")
-as_f64.numeric_conversion_fn = True  # ignore: type[attr-defined]
+as_f64.numeric_conversion_fn = True  # type: ignore[attr-defined]
 
 
 # These symbols represent the inverse of the spatial discretization.
