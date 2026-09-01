@@ -15,9 +15,12 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Tuple, Dict, Any, List
+
 from EinsteinEngine.common.sympywrap import mk_function, sympify, mk_idx, mk_symbol
-from sympy import Idx, Expr, Rational
+from sympy import Idx, Expr, Rational, Matrix
 from math import comb
+from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 one = sympify(1)
 zero = sympify(0)
@@ -50,6 +53,34 @@ DZ = mk_symbol("DZ")
 for func in [stencil, DD, DDI, noop, div, D, muladd]:
     if func.__module__ is None:
         func.__module__ = "functions"
+
+def finite_difference_stencil(accuracy: int, ndivs: int, offset: int, la: Idx)->Expr:
+    width = accuracy + 1
+    coefs: Matrix = setup_FD_matrix__return_inverse_lowlevel(width, offset).col(ndivs)
+    formula = sympify(0)
+    n = len(coefs)
+    cdict: dict[int, List[Tuple[Rational,int]]] = dict()
+    for i in range(n):
+        term: int = i - n//2 + offset
+        ci: Rational = coefs[i]
+        aterm = abs(term)
+        if aterm not in cdict:
+            cdict[aterm] = []
+        cdict[aterm] += [(ci, term)]
+    for cterm in cdict.values():
+        if len(cterm) == 1:
+            formula += cterm[0][0]*stencil(la*cterm[0][1])
+        elif len(cterm) == 2:
+            if cterm[0][0] == cterm[1][0]:
+                formula += cterm[0][0]*noop(stencil(la*cterm[0][1]) + stencil(la*cterm[1][1]))
+            elif cterm[0][0] == -cterm[1][0]:
+                formula += cterm[0][0]*noop(stencil(la*cterm[0][1]) - stencil(la*cterm[1][1]))
+            else:
+                formula += cterm[0][0]*stencil(la*cterm[0][1]) + cterm[1][0]*stencil(la*cterm[1][1])
+        else:
+            assert False, "Should never happen"
+    result : Expr = formula * DDI(la)**ndivs
+    return result
 
 def kreiss_oliger_stencil(stencil_width: int, la: Idx) -> Expr:
     n = (stencil_width + 1) // 2

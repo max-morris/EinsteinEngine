@@ -1,0 +1,38 @@
+name: Unit Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  dedupe:
+    uses: ./.github/workflows/skip-duplicate.yml
+
+  unit-tests:
+    name: Run Unit Tests
+    needs: dedupe
+    if: needs.dedupe.outputs.should_skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Create Virtual Environment
+        run: python -m venv venv
+
+      - name: Install Dependencies
+        run: |
+          . ./venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install .
+
+      - name: Run Unit Tests
+        run: |
+          . ./venv/bin/activate
+          python unit_tests/test_use_indices.py

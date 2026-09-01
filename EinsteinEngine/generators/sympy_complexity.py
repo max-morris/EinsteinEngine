@@ -76,6 +76,27 @@ class SympyComplexityVisitor:
     def _(self, _n: sy.Number) -> int:
         return 1
 
+    @complexity.register
+    def _(self, n: sy.Piecewise) -> int:
+        total = 0
+        for pair in n.args:
+            assert isinstance(pair, sy.core.containers.Tuple) and len(pair) == 2
+            e, c = pair
+            total += self.complexity(e) + self.complexity(c)
+        return total
+
+    @complexity.register
+    def _(self, n: sy.core.relational.Relational) -> int:
+        return sum([self.complexity(arg) for arg in n.args])
+
+    @complexity.register
+    def _(self, _n: sy.logic.boolalg.BooleanTrue) -> int:
+        return 1
+
+    @complexity.register
+    def _(self, _n: sy.logic.boolalg.BooleanFalse) -> int:
+        return 1
+
     def _complexity_undefined_fn(self, n: sy.Function) -> int:
         assert isinstance(n.func, UndefinedFunction)
 
