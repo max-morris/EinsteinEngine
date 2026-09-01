@@ -27,7 +27,7 @@ from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunc
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
     StandardizedFunctionCall, VerbatimExpr, IfElseExpr, IfElseStmt, GroupedExpr
 from EinsteinEngine.emit.code.common.literals import real_literal
-from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot, StaticCast
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_named_roots import named_root
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_sympy_visitor import CppCarpetXSympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float, LineComment, BlockComment
@@ -201,6 +201,10 @@ class CppVisitor(Visitor[CodeNode]):
         template_args = ", ".join(visit_each(self, n.template_args))
 
         return f'{fn_name}<{template_args}>({fn_args})'
+
+    @visit.register
+    def _(self, n: StaticCast) -> str:
+        return f'static_cast<{self.visit(n.type)}>({self.visit(n.expr)})'
 
     @visit.register
     def _(self, n: GroupedExpr) -> str:

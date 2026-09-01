@@ -85,4 +85,4 @@ __all__ = [
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
     "get_tuning_param", "get_optional_tuning_param", "CseOptimization", "cse_basic", "cse_collect_greedy",
-    "CsePreset", "default_cse_optimizations"]
+    "CsePreset", "default_cse_optimizations", "as_f16", "as_f32", "as_f64"]
