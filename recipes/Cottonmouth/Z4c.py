@@ -350,7 +350,14 @@ gt = cottonmouth_Z4c.decl(
     symmetries=[(li, lj)]
 )
 
+gt_f64 = cottonmouth_Z4c.decl(
+    "gt_f64",
+    [li, lj],
+    symmetries=[(li, lj)]
+)
+
 cottonmouth_Z4c.add_substitution_rule(gt[li, lj], gt_m1[li, lj] + flat_gt[li, lj])
+cottonmouth_Z4c.add_substitution_rule(gt_f64[li, lj], as_f64(gt_m1[li, lj]) + flat_gt[li, lj])
 
 # \tilde{A}_{ij}
 At_rhs = cottonmouth_Z4c.decl(
@@ -727,7 +734,7 @@ fun_z4c_to_adm = cottonmouth_Z4c.create_function(
 # Eq. (2.4) of [1]
 fun_z4c_to_adm.add_eqn(
     g[li, lj],
-    (1 / chi) * gt[li, lj]
+    (1 / chi) * gt_f64[li, lj]
 )
 
 # Eq. (2.5) of [1]

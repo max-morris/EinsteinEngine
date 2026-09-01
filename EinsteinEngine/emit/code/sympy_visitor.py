@@ -22,6 +22,7 @@ from typing import List, Optional, cast, Callable
 import sympy as sy
 from multimethod import multimethod
 from sympy.logic.boolalg import Boolean
+from sympy.core.function import UndefinedFunction as UFunc
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.common.stencil_idx import StencilIdx
@@ -55,6 +56,8 @@ class BaseSympyExprVisitor[ExprT: Expr]:
         sy.sech: lambda a, *_: 1 / sy.cosh(a),
         sy.csch: lambda a, *_: 1 / sy.sinh(a)
     }
+
+    numeric_conversion_rewrite: dict[UFunc, Callable[[Expr], Expr]] = dict()
 
     def __init__(
             self,
@@ -190,8 +193,16 @@ class BaseSympyExprVisitor[ExprT: Expr]:
             assert hasattr(expr.func, 'name')
             if expr.func.name in self.stencil_fns:
                 return self._visit_stencil_call(expr)
+            elif hasattr(expr.func, 'numeric_conversion_fn') and expr.func.numeric_conversion_fn:
+                if (get_rewritten := self.numeric_conversion_rewrite[expr.func]) is None:
+                    raise DslException(f"No numeric conversion rewrite defined for {expr.func} in {self.__class__.__name__}.")
+                if len(expr.args) != 1:
+                    raise DslException(f"{expr.func.name}() expects 1 arg, got {len(expr.args)}.")
+                return get_rewritten(self.visit(expr.args[0]))
+
             elif expr.func.name == 'noop':
-                assert len(expr.args) == 1
+                if len(expr.args) != 1:
+                    raise DslException(f"noop() expects 1 arg, got {len(expr.args)}.")
                 return GroupedExpr(self.visit(expr.args[0]))
             else:
                 arg_list = [self.visit(a) for a in expr.args]

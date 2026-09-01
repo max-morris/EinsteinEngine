@@ -142,6 +142,10 @@ class CarpetXGridLoopLambda(CppCarpetXExpr):
     temporaries: Collection[str]
     reassigned_lhses: dict[int, RecycledTemporarySubstitution]
 
+@dataclass
+class StaticCast(CppCarpetXExpr):
+    type: Identifier
+    expr: CppCarpetXExprNode
 
 @dataclass
 class CarpetXGridLoopCall(CppCarpetXStmt):
