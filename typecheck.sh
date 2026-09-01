@@ -43,6 +43,35 @@ cd "$SCRIPT_DIR"
 
 . ./venv/bin/activate
 
+# Typecheck results depend on the exact versions of mypy and of typed
+# dependencies (e.g. sympy 1.12.1 ships py.typed; later releases do not),
+# so refuse to run against a venv that has drifted from the pins.
+python - "$SCRIPT_DIR/requirements.txt" <<'EOF'
+import re, sys
+from importlib import metadata
+
+drift = []
+with open(sys.argv[1]) as f:
+    for line in f:
+        m = re.fullmatch(r'([A-Za-z0-9._-]+)==([^\s;#]+)', line.split('#')[0].strip())
+        if not m:
+            continue
+        name, pinned = m.groups()
+        try:
+            installed = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            drift.append(f"  {name}: pinned {pinned}, but not installed")
+            continue
+        if installed != pinned:
+            drift.append(f"  {name}: pinned {pinned}, but {installed} is installed")
+
+if drift:
+    print("The venv has drifted from the versions pinned in requirements.txt:")
+    print("\n".join(drift))
+    print("Run './venv/bin/pip install -r requirements.txt', then re-run this script.")
+    sys.exit(3)
+EOF
+
 echo "Checking EinsteinEngine..."
 mypy 
 
