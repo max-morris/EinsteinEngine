@@ -14,6 +14,7 @@
 #
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 from typing import Tuple, Dict, Any, List
 
 from EinsteinEngine.common.sympywrap import mk_function, sympify, mk_idx, mk_symbol

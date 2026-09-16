@@ -155,7 +155,9 @@ class BaseSympyExprVisitor[ExprT: Expr]:
         if isinstance(v, sy.Integer):
             return int(v)
 
-        if not (f := cast(sy.Expr, v).evalf()).is_integer():  # type: ignore[no-untyped-call]
+        # Not sympy's assumption-based is_integer, which is False for every
+        # Float: an offset like 3.0 must be accepted, only 2.5 rejected.
+        if not (f := cast(sy.Expr, v).evalf()).is_real or not float(f).is_integer():
             raise DslException(f"Stencil offset {v} is not an integer.")
 
         return int(f)
@@ -252,11 +254,13 @@ class BaseSympyExprVisitor[ExprT: Expr]:
 
     @visit.register
     def _(self, expr: sy.core.numbers.Float) -> Expr:
-        return FloatLiteralExpr(expr.n()) # type: ignore[no-untyped-call]
+        # Deliberately passes sympy's Float through so the emitted literal keeps
+        # sympy's decimal representation rather than Python float repr.
+        return FloatLiteralExpr(expr.n())  # type: ignore[arg-type]
 
     @visit.register
     def _(self, expr: sy.core.numbers.Pi) -> Expr:
-        return FloatLiteralExpr(expr.n())  # type: ignore[no-untyped-call]
+        return FloatLiteralExpr(expr.n())  # type: ignore[arg-type]
 
     @visit.register
     def _(self, expr: sy.core.numbers.Rational) -> Expr:

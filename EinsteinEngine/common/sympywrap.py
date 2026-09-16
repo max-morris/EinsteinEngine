@@ -179,7 +179,9 @@ def do_subs(sym: Expr, *tables: do_subs_table_type) -> Expr:
         if isinstance(table, Applier):
             result = cast(Expr, table.apply(result))
         else:
-            result = cast(Expr, result.subs(table))  # type: ignore[no-untyped-call]
+            # Mapping is invariant in its key type, so the union members don't
+            # unify with subs's Mapping[Basic | complex, ...] parameter.
+            result = result.subs(table)  # type: ignore[arg-type]
     return result
 
 
@@ -212,7 +214,7 @@ call_replace = Union[
 
 
 def do_replace(sym: Expr, func_m: call_match, func_r: call_replace) -> Expr:
-    ret = sym.replace(func_m, func_r)  # type: ignore[no-untyped-call]
+    ret = sym.replace(func_m, func_r)
     assert isinstance(ret, Expr)
     return ret
 

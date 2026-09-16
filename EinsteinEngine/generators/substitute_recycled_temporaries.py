@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from dataclasses import dataclass
-from typing import Optional, cast
+from typing import cast
 
 import sympy as sy
 
@@ -45,11 +45,10 @@ def substitute_recycled_temporaries(eqn_list: EqnList) -> SubstituteRecycledTemp
             eqn_list.temporary_replacements
         ))
 
-        current_line_replacement = cast(Optional[TemporaryReplacement],
-                                        next(filter(lambda r: r.begin_eqn == eqn_idx, active_replacements), None))
+        current_line_replacement = next((r for r in active_replacements if r.begin_eqn == eqn_idx), None)
 
         for replacement in active_replacements:
-            rhs = rhs.replace(replacement.old, replacement.new)  # type: ignore[no-untyped-call]
+            rhs = cast(sy.Expr, rhs.replace(replacement.old, replacement.new))
 
         if current_line_replacement:
             assert lhs == current_line_replacement.old, "Current line replacement target doesn't match LHS"

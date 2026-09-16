@@ -1256,7 +1256,7 @@ class EqnList:
 
         for call in stencil_calls:
             assert len(call.args) == 4, "Stencil function should have 4 arguments"
-            result.add(StencilIdxWithName(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]), str(call.args[0])))  # type: ignore[arg-type, no-untyped-call]
+            result.add(StencilIdxWithName(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]), str(call.args[0])))  # type: ignore[arg-type]
 
     def dump(self) -> None:
         print(colorize("Dumping Equations:", "green"))

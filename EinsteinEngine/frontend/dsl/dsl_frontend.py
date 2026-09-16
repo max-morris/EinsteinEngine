@@ -331,7 +331,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
         my_opts = self._mk_default_bake_options()
-        my_opts.update(opts)  # type: ignore[typeddict-item]
+        my_opts.update(opts)
         my_tf_opts = self._mk_function_bake_options(my_opts)
 
         for _, tf in sorted(self.functions.items(), key=lambda kv: kv[0]):
@@ -564,10 +564,10 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             if temp_kinds.get(new_temp, None) == TempKind.Inline:
                 inline_temps.append((new_temp, new_rhs))
 
-        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]  # type: ignore[no-untyped-call]
+        new_rhses = [rhs.subs(inline_temps) for rhs in new_rhses]
 
         for lhs in substitutions.keys():
-            substitutions[lhs] = substitutions[lhs].subs(inline_temps)  # type: ignore[no-untyped-call]
+            substitutions[lhs] = substitutions[lhs].subs(inline_temps)
 
         for temp, _ in inline_temps:
             del substitutions[temp]
