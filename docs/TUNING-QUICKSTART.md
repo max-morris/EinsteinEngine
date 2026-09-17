@@ -42,7 +42,7 @@ fun = mod.create_function(
 ```
 
 The `name` here must match an **out_param** name declared in the tuner (below).
-See `recipes/Cottonmouth/Z4c.py:842` for the real usage.
+See `recipes/Cottonmouth/Z4c.py:870` for the real usage (and lines 41-56 for the `precision_policy` hook, which falls back to `--precision-policy` when the recipe runs standalone).
 
 ---
 

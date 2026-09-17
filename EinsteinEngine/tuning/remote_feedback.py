@@ -16,6 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import os
 import re
 import runpy
 import subprocess
@@ -37,6 +38,13 @@ class RemoteFeedbackArgs(Protocol):
     remote_command: str
     remote_timing_command: str
     checkpoint_file: str
+    # Optional: a result file the timing command writes on the remote side
+    # (relative to remote_cactus_path), copied back after the timing command
+    # into local_result_dir. The kit's `trial-gate` stage writes
+    # trial-<hash8>.result.json with E_wave, E_cons, casts and the timings;
+    # the objective alone comes back through the timing command's stdout.
+    remote_result_file: str | None
+    local_result_dir: str | None
 
 
 def main() -> None:
@@ -49,6 +57,8 @@ def main() -> None:
     parser.add_argument("--remote-cactus-path", type=str, default="/home/mmorris/project/Cactus/", help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine. Must print a single number to optimize for.")
+    parser.add_argument("--remote-result-file", type=str, default=None, help="File the timing command writes on the remote machine (relative to --remote-cactus-path), copied back after it runs (e.g. trial-<hash8>.result.json from the kit's trial-gate stage).")
+    parser.add_argument("--local-result-dir", type=str, default=None, help="Where --remote-result-file is copied to (default: <local-path>/../trial-results).")
 
     args = parser.parse_args()
 
@@ -158,6 +168,25 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         )
 
     print(f"Timing value: {timing_value:.3f}")
+
+    # Bring back the full trial record when the timing command wrote one, so
+    # the stage-A script can log E_wave, E_cons, casts and the per-loop
+    # times per trial rather than the single objective float.
+    result_file = getattr(args, "remote_result_file", None)
+    if result_file:
+        local_dir = getattr(args, "local_result_dir", None) or os.path.join(
+            os.path.dirname(os.path.abspath(args.local_path.rstrip("/"))), "trial-results")
+        os.makedirs(local_dir, exist_ok=True)
+        remote_file = os.path.join(args.remote_cactus_path, result_file)
+        if is_local:
+            copy_result = subprocess.run(["cp", remote_file, local_dir], capture_output=True, text=True)
+        else:
+            copy_result = subprocess.run(["scp", "-q", f"{args.remote_host}:{remote_file}", local_dir],
+                                         capture_output=True, text=True)
+        if copy_result.returncode != 0:
+            pprint(f"WARNING: could not copy {result_file} back: {copy_result.stderr.strip()}")
+        else:
+            pprint(f"Copied {result_file} to {local_dir}")
 
     return timing_value
 
