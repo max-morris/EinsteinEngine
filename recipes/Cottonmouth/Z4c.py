@@ -94,7 +94,35 @@ dissipation_epsilon = cottonmouth_Z4c.add_param(
 eta_beta = cottonmouth_Z4c.add_param(
     "eta_beta",
     default=2.0,
-    desc="Standard Gamma driver eta gauge parameter. Must be of order 2 / M_ADM"
+    desc="Standard Gamma driver eta gauge parameter. Must be of order 2 / M_ADM. Only used when use_radial_eta = no"
+)
+
+# Radially dependent Gamma driver damping. When enabled, eta_beta is replaced by
+# eta(r) = eta_outer + (eta_central - eta_outer) * exp(-(r / eta_width)^4)
+# where r is the coordinate distance from the grid origin.
+use_radial_eta = cottonmouth_Z4c.add_param(
+    "use_radial_eta",
+    default=False,
+    desc="Use the radially dependent eta(r) (set by eta_central, eta_outer and eta_width) instead of the constant eta_beta"
+)
+
+eta_central = cottonmouth_Z4c.add_param(
+    "eta_central",
+    default=2.0,
+    desc="Value of eta(r) at the grid origin (r = 0). Only used when use_radial_eta = yes"
+)
+
+eta_outer = cottonmouth_Z4c.add_param(
+    "eta_outer",
+    default=0.25,
+    desc="Asymptotic value of eta(r) for r >> eta_width. Only used when use_radial_eta = yes"
+)
+
+eta_width = cottonmouth_Z4c.add_param(
+    "eta_width",
+    default=50.0,
+    values=(0.0, sys.float_info.max),
+    desc="Radius over which eta(r) transitions from eta_central to eta_outer. Only used when use_radial_eta = yes"
 )
 
 # See Refs. [1,2] for the default
@@ -999,11 +1027,20 @@ fun_z4c_rhs.add_eqn(
     + evo_shift[ui] * D(evo_lapse, li)
 )
 
+# Gamma driver damping coefficient. h_step(use_radial_eta) is 0 when the radial
+# profile is disabled (eta = eta_beta) and 1 when it is enabled (eta = eta(r)).
+# (r / eta_width)^4 is written as (r^2 / eta_width^2)^2 to avoid a sqrt.
+x, y, z = cottonmouth_Z4c.mk_coords()
+eta_radial = eta_outer + (eta_central - eta_outer) * exp(
+    -((x**2 + y**2 + z**2) / eta_width**2)**2
+)
+eta = (1 - use_radial_eta) * eta_beta + use_radial_eta * eta_radial
+
 # Eq. (12) of [1]
 fun_z4c_rhs.add_eqn(
     evo_shift_rhs[ui],
     + evo_Gammat[ui]
-    - eta_beta * evo_shift[ui]
+    - eta * evo_shift[ui]
     # Advection
     + evo_shift[uj] * D(evo_shift[ui], lj)
 )
