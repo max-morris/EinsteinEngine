@@ -1034,7 +1034,7 @@ x, y, z = cottonmouth_Z4c.mk_coords()
 eta_radial = eta_outer + (eta_central - eta_outer) * exp(
     -((x**2 + y**2 + z**2) / eta_width**2)**2
 )
-eta = (1 - h_step(use_radial_eta)) * eta_beta + h_step(use_radial_eta) * eta_radial
+eta = (1 - use_radial_eta) * eta_beta + use_radial_eta * eta_radial
 
 # Eq. (12) of [1]
 fun_z4c_rhs.add_eqn(
