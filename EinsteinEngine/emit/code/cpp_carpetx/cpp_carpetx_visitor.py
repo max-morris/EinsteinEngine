@@ -235,6 +235,21 @@ class CppVisitor(Visitor[CodeNode]):
                     equations_list.append(f'{lhs} = {self.visit(rhs)};')
                 else:
                     equations_list.append(f'vreal {lhs} = {self.visit(rhs)};')
+                    if n.range_probes is not None and str(lhs) in n.range_probes:
+                        # --instrument-ranges: running max |x|, max |term| over the
+                        # top-level summands, and the count below fp16's minimum
+                        # normal, into the thread-local slot the enclosing function
+                        # set up before the loop. Host builds only; a device lambda
+                        # is one thread per cell and cannot accumulate anything.
+                        slot, terms = n.range_probes[str(lhs)]
+                        term_expr = f'std::fabs(double({self.visit(terms[0])}))'
+                        for term in terms[1:]:
+                            term_expr = f'std::fmax({term_expr}, std::fabs(double({self.visit(term)})))'
+                        equations_list.append(
+                            '#ifndef __CUDACC__\n'
+                            f'if (ee_ranges_on) ee_ranges_slots[{slot}].update(double({lhs}), {term_expr});\n'
+                            '#endif'
+                        )
             else:
                 stencil_idx_node = Identifier(
                     encode_stencil_idx(

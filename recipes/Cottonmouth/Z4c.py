@@ -43,12 +43,17 @@ parser.add_argument('--fd-order', type=int, default=4, help='Order of the finite
 parser.add_argument('--precision-policy', type=str, default=None, metavar='PATH',
                     help='Precision policy file (JSON) whose hash is recorded in kernel_manifest.json. '
                          'Under the tuner the tuning parameter "precision_policy" takes precedence.')
+parser.add_argument('--instrument-ranges', action='store_true', default=False,
+                    help='Emit the f64 range dump (CPU builds only): per (loop, level, temporary) max |x|, '
+                         'max |term| and the count below the fp16 minimum normal, written to '
+                         '<IO::out_dir>/ranges/<function>.tsv on iterations <= 64 and every 1024th after.')
 pres=parser.parse_args(sys.argv[1:])
 
 # The tuning driver re-runs this recipe with sys.argv reset to the recipe path
 # alone, so under the tuner these come from the tuning parameters, and the
 # command-line flags only apply when the recipe is run standalone.
 precision_policy_path: str | None = get_tuning_param('precision_policy', pres.precision_policy)
+instrument_ranges: bool = get_tuning_param('instrument_ranges', pres.instrument_ranges)
 
 precision_policy_hash: str | None = None
 if precision_policy_path is not None:
@@ -1310,6 +1315,7 @@ CppCarpetXWizard(
     cottonmouth_Z4c,
     CppCarpetXGenerator(
         cottonmouth_Z4c,
+        instrument_ranges=instrument_ranges,
         sync_mode=SyncMode.HandsOff,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
@@ -1345,12 +1351,13 @@ CppCarpetXWizard(
 
 # Manifest next to src/: the policy this generation consumed (the stage-A
 # driver compares the hash with the one it sent and fails the trial on a
-# mismatch).
+# mismatch), and which instrumentation is compiled in.
 with (Path(cottonmouth_Z4c.arrangement) / cottonmouth_Z4c.name / 'kernel_manifest.json').open('w') as _manifest_fd:
     json.dump({
         'thorn': cottonmouth_Z4c.name,
         'precision_policy_path': precision_policy_path,
         'precision_policy_hash': precision_policy_hash,
+        'instrument_ranges': instrument_ranges,
     }, _manifest_fd, indent=2)
     _manifest_fd.write('\n')
 
