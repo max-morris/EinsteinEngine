@@ -29,11 +29,33 @@ from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_
 
 _tuning_params: dict[str, Any] | None = None
 
-def get_tuning_param[T](param_name: str, default: T) -> T:
+
+class _Missing:
+    """Sentinel for get_tuning_param: no default was supplied."""
+
+
+_MISSING: Any = _Missing()
+
+
+def get_tuning_param[T](param_name: str, default: T = _MISSING) -> T:
+    """Read a recipe-facing tuning parameter.
+
+    Outside a tuning run (`_tuning_params is None`) the default is returned.
+    Inside one, a parameter the tuner did not supply falls back to the
+    default too, unless no default was given, in which case it is an error:
+    a recipe that must not silently run with a default passes none. The
+    stage-A driver additionally compares the policy hash the recipe writes
+    into kernel_manifest.json with the one it sent, which catches a default
+    slipping in where a policy was intended.
+    """
     if _tuning_params is None:
+        if default is _MISSING:
+            raise RuntimeError(f"Tuning parameter {param_name} has no default and no tuning run is active.")
         return default
     if param_name not in _tuning_params:
-        raise RuntimeError(f"Tuning parameter {param_name} not found.")
+        if default is _MISSING:
+            raise RuntimeError(f"Tuning parameter {param_name} not found.")
+        return default
     return typing.cast(T, _tuning_params[param_name])
 
 class Tuner(ABC):

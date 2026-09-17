@@ -17,6 +17,8 @@
 
 import argparse
 import functools
+import hashlib
+import json
 import sys
 import typing
 from pathlib import Path
@@ -38,7 +40,20 @@ from EinsteinEngine import *
 parser = argparse.ArgumentParser(prog='Cottonmouth Z4c', description='A code generator for the Z4c equations')
 parser.add_argument('--vacuum', action='store_true', default=False, help='Whether to generate matter terms.')
 parser.add_argument('--fd-order', type=int, default=4, help='Order of the finite difference equations to use.')
+parser.add_argument('--precision-policy', type=str, default=None, metavar='PATH',
+                    help='Precision policy file (JSON) whose hash is recorded in kernel_manifest.json. '
+                         'Under the tuner the tuning parameter "precision_policy" takes precedence.')
 pres=parser.parse_args(sys.argv[1:])
+
+# The tuning driver re-runs this recipe with sys.argv reset to the recipe path
+# alone, so under the tuner these come from the tuning parameters, and the
+# command-line flags only apply when the recipe is run standalone.
+precision_policy_path: str | None = get_tuning_param('precision_policy', pres.precision_policy)
+
+precision_policy_hash: str | None = None
+if precision_policy_path is not None:
+    with open(precision_policy_path, 'rb') as _fd:
+        precision_policy_hash = hashlib.sha256(_fd.read()).hexdigest()
 
 stencil_order = pres.fd_order
 use_matter_terms = 0 if pres.vacuum else 1
@@ -1327,6 +1342,17 @@ CppCarpetXWizard(
     license_header=license_header,
     license_file=license_file
 ).generate_thorn()
+
+# Manifest next to src/: the policy this generation consumed (the stage-A
+# driver compares the hash with the one it sent and fails the trial on a
+# mismatch).
+with (Path(cottonmouth_Z4c.arrangement) / cottonmouth_Z4c.name / 'kernel_manifest.json').open('w') as _manifest_fd:
+    json.dump({
+        'thorn': cottonmouth_Z4c.name,
+        'precision_policy_path': precision_policy_path,
+        'precision_policy_hash': precision_policy_hash,
+    }, _manifest_fd, indent=2)
+    _manifest_fd.write('\n')
 
 # References
 # [1] https://arxiv.org/pdf/1212.2901 (typo in constraints, refer to [2])
