@@ -67,14 +67,16 @@ class VanillaF90Function(DslFunctionFrontend["VanillaF90Module"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                 auto_order_key: Optional[Callable[[int], float]] = None) -> None:
         super().__init__(
             name,
             frontend,
             intent_override,
             owner_name="VanillaF90Function",
             auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate
+            auto_soft_split_predicate=auto_soft_split_predicate,
+            auto_order_key=auto_order_key
         )
 
 class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Function]):
@@ -101,13 +103,15 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
                         *,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> VanillaF90Function:
+                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                        auto_order_key: Optional[Callable[[int], float]] = None) -> VanillaF90Function:
         tf = VanillaF90Function(
             name,
             self,
             intent_override,
             auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate
+            auto_soft_split_predicate=auto_soft_split_predicate,
+            auto_order_key=auto_order_key
         )
         self.functions[name] = tf
         return tf

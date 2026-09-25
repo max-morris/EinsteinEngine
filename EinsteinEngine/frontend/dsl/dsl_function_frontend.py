@@ -70,7 +70,8 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                  *,
                  owner_name: str,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                 auto_order_key: Optional[Callable[[int], float]] = None) -> None:
         self.name = name
         self.frontend = frontend
         self.source_annotations = SourceAnnotations()
@@ -92,6 +93,15 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         )
 
         self._add_eqn_count = 0
+        #  When set, add_eqn() buffers instead of acting: at bake time the
+        #  buffered equations are sorted by this key and only then added for
+        #  real, so the function behaves as though they had been written in
+        #  that order -- including where the auto-split predicates fire, since
+        #  those run off the position in the replayed sequence.
+        #  The key is called with the equation's ORIGINAL 1-based position,
+        #  matching the split predicates' convention.
+        self._auto_order_key = auto_order_key
+        self._buffered_eqns: list[tuple[int, Indexed | IndexedBase, Expr | Matrix | list[Expr]]] = []
         self._auto_hard_split_predicate = auto_hard_split_predicate
         self._auto_soft_split_predicate = auto_soft_split_predicate
 
@@ -172,6 +182,104 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 eqn_list.dump()
 
     def add_eqn(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
+        if self._auto_order_key is not None:
+            #  Defer: the order is not known until every equation has been seen.
+            self._buffered_eqns.append((len(self._buffered_eqns) + 1, lhs, rhs))
+            return
+        self._add_eqn_now(lhs, rhs)
+
+    @staticmethod
+    def _referenced_bases(rhs: Expr | Matrix | list[Expr]) -> set[str]:
+        """Names of everything an equation's RHS reads.
+
+        Compared by name, not identity: sympy reports an IndexedBase in
+        free_symbols as a plain Symbol carrying the same name, so the declared
+        IndexedBase and the one seen in an RHS are unequal objects. Matching on
+        objects silently finds no dependencies at all.
+        """
+        if isinstance(rhs, list):
+            exprs: list[Any] = list(rhs)
+        elif isinstance(rhs, Matrix):
+            #  Matrix is not typed as Iterable; its entries are what we want.
+            exprs = [rhs[i] for i in range(len(rhs))]
+        else:
+            exprs = [rhs]
+
+        bases: set[str] = set()
+        for e in exprs:
+            if not hasattr(e, 'free_symbols'):
+                continue
+            bases |= {str(sym) for sym in e.free_symbols}
+            if hasattr(e, 'atoms'):
+                bases |= {str(a.base) for a in e.atoms(Indexed)}
+        return bases
+
+    def _order_buffered_eqns(self) -> list[tuple[int, Indexed | IndexedBase, Expr | Matrix | list[Expr]]]:
+        """Order the buffered equations by key, respecting their dependencies.
+
+        A plain sort by key will not do. Within one loop a dependency landing
+        after its use is repaired, but once a split falls between the two it is
+        not, and generation fails. For the Z4c RHS only ~0.18% of random
+        permutations respect the dependencies, so a plain sort would spend
+        essentially the whole search on failed trials.
+
+        So the key is used as a *priority* in a topological sort: repeatedly
+        emit the lowest-keyed equation whose dependencies have all been emitted.
+        Every assignment of keys therefore yields a valid order, the tuner never
+        samples an infeasible point, and the reachable orders are exactly the
+        linear extensions of the dependency graph -- which is the only part of
+        the permutation space worth searching.
+        """
+        assert self._auto_order_key is not None
+        key = self._auto_order_key
+
+        items = self._buffered_eqns
+        produced = {self._eqn_base(lhs): idx for idx, (_, lhs, _) in enumerate(items)}
+
+        #  deps[i] = indices of buffered equations that equation i reads from.
+        deps: list[set[int]] = []
+        for idx, (_, _, rhs) in enumerate(items):
+            refs = self._referenced_bases(rhs)
+            deps.append({produced[r] for r in refs if r in produced and produced[r] != idx})
+
+        remaining = set(range(len(items)))
+        emitted: set[int] = set()
+        out: list[tuple[int, Indexed | IndexedBase, Expr | Matrix | list[Expr]]] = []
+        while remaining:
+            ready = [i for i in remaining if deps[i] <= emitted]
+            if not ready:
+                #  A cycle among the buffered equations; nothing to do but keep
+                #  source order for the rest rather than fail here.
+                ready = sorted(remaining)
+            #  Original position breaks ties, so equal keys keep source order
+            #  and the resulting permutation is always well defined.
+            pick = min(ready, key=lambda i: (key(items[i][0]), items[i][0]))
+            out.append(items[pick])
+            emitted.add(pick)
+            remaining.discard(pick)
+        return out
+
+    @staticmethod
+    def _eqn_base(lhs: Indexed | IndexedBase) -> str:
+        """Name an equation writes to: Rt[li,lj] -> "Rt", and a scalar -> its name."""
+        return str(lhs.base) if hasattr(lhs, 'base') else str(lhs)
+
+    def _flush_buffered_eqns(self) -> None:
+        """Add the buffered equations in the tuned order."""
+        if self._auto_order_key is None or not self._buffered_eqns:
+            return
+
+        ordered = self._order_buffered_eqns()
+        pprint(f"Adding {len(ordered)} buffered equations to {self.name} in tuned order: "
+               f"{[item[0] for item in ordered]}")
+
+        #  Clear first: _add_eqn_now must not re-enter the buffer.
+        self._buffered_eqns = []
+        self._auto_order_key = None
+        for _, lhs, rhs in ordered:
+            self._add_eqn_now(lhs, rhs)
+
+    def _add_eqn_now(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
         self._add_eqn_manager.add_eqn(lhs, rhs)
         self._add_eqn_count += 1
 
@@ -218,6 +326,9 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         if self.been_baked:
             raise DslException("_early_bake should not be called more than once")
         pprint(f"Early Baking {self.name}...")
+
+        #  Before anything inspects the equations, replay them in tuned order.
+        self._flush_buffered_eqns()
 
         options = self._mk_default_dsl_function_frontend_bake_options()
         options.update(kwargs)

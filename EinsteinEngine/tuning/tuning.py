@@ -36,6 +36,23 @@ def get_tuning_param[T](param_name: str, default: T) -> T:
         raise RuntimeError(f"Tuning parameter {param_name} not found.")
     return typing.cast(T, _tuning_params[param_name])
 
+def get_optional_tuning_param[T](param_name: str, default: T) -> T:
+    """Like get_tuning_param, but falls back to the default when a run does not
+    supply the parameter, instead of raising.
+
+    get_tuning_param is deliberately strict: during a run, asking for a knob the
+    tuner never declared is a recipe/tuner mismatch and should fail loudly
+    rather than silently benchmark the default.
+
+    That is wrong for a knob only *some* tuners search. Adding such a knob to a
+    shared recipe with the strict accessor breaks every existing tuner file at
+    once, because none of them declare it.
+    """
+    if _tuning_params is None or param_name not in _tuning_params:
+        return default
+    return typing.cast(T, _tuning_params[param_name])
+
+
 class Tuner(ABC):
     @abstractmethod
     def get_experiment(self) -> Experiment:

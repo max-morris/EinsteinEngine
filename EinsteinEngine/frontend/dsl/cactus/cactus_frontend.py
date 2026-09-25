@@ -128,14 +128,16 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                 auto_order_key: Optional[Callable[[int], float]] = None) -> None:
         self.thorn_def = thorn_def
         self.schedule_target = schedule_target
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
         super().__init__(name, thorn_def, intent_override, owner_name="ThornFunction",
                          auto_hard_split_predicate=auto_hard_split_predicate,
-                         auto_soft_split_predicate=auto_soft_split_predicate)
+                         auto_soft_split_predicate=auto_soft_split_predicate,
+                         auto_order_key=auto_order_key)
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -404,10 +406,12 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                         schedule_after: Optional[Collection[str]] = None,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> ThornFunction:
+                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                        auto_order_key: Optional[Callable[[int], float]] = None) -> ThornFunction:
         tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override,
                            auto_hard_split_predicate=auto_hard_split_predicate,
-                           auto_soft_split_predicate=auto_soft_split_predicate)
+                           auto_soft_split_predicate=auto_soft_split_predicate,
+                         auto_order_key=auto_order_key)
         self.functions[name] = tf
         return tf
 

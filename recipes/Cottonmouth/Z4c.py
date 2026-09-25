@@ -841,6 +841,10 @@ fun_z4c_rhs = cottonmouth_Z4c.create_function(
     rhs_group,
     auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
     auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    #  Buffer the add_eqn calls and replay them in a tuned order; the split
+    #  predicates above then fire at positions in THAT order. Optional accessor
+    #  so tuners that only search splits keep working unchanged.
+    auto_order_key=get_optional_tuning_param('auto_order_key', None),
     intent_override=IntentOverride.WriteInterior
 )
 

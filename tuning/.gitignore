@@ -1,1 +1,9 @@
 **/*.jsonl*
+**/Cottonmouth/
+**/logs/
+**/master_gen/
+**/cuttest/
+**/*.out
+**/*.err
+**/.*_job
+**/.*_smoke
