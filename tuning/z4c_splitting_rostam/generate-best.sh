@@ -29,8 +29,26 @@ source "${SCRIPT_DIR}/config.sh"
 
 cd "${SCRIPT_DIR}"
 
+#  Which result to bake. Defaults to the best known configuration
+#  (tuner_fixed_order.py + split_tuning_fixed_order.jsonl, 4.933 s at 128^3).
+#  Override for a different search, e.g.
+#    TUNER_FILE=tuner.py CHECKPOINT_FILE=split_tuning_checkpt.jsonl ./generate-best.sh
+#  The tuner file must be the one that produced the checkpoint: it supplies the
+#  ordering the trials were measured under, so pairing a checkpoint with the
+#  wrong tuner silently bakes something other than what was measured.
+TUNER_FILE="${TUNER_FILE:-tuner_fixed_order.py}"
+CHECKPOINT_FILE="${CHECKPOINT_FILE:-split_tuning_fixed_order.jsonl}"
+
+if [ ! -s "${SCRIPT_DIR}/${CHECKPOINT_FILE}" ]; then
+    echo "No checkpoint at ${SCRIPT_DIR}/${CHECKPOINT_FILE}" >&2
+    echo "Committed checkpoints in this directory:" >&2
+    ls -1 "${SCRIPT_DIR}"/*.jsonl 2>/dev/null | sed 's|.*/|  |' >&2 || echo "  (none)" >&2
+    exit 1
+fi
+
+echo "baking best of ${CHECKPOINT_FILE} using ${TUNER_FILE}"
 PYTHONPATH="${REPO_ROOT}" "${PYTHON}" -m EinsteinEngine.tuning.generate_best \
     "${REPO_ROOT}/recipes/Cottonmouth/Z4c.py" \
-    "${SCRIPT_DIR}/tuner.py" \
-    --checkpoint-file "${SCRIPT_DIR}/split_tuning_checkpt.jsonl" \
+    "${SCRIPT_DIR}/${TUNER_FILE}" \
+    --checkpoint-file "${SCRIPT_DIR}/${CHECKPOINT_FILE}" \
     "$@"

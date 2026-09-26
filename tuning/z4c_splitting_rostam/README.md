@@ -237,6 +237,29 @@ When finished:
 
 ---
 
+### Baking a tuned Z4c without running a search
+
+The result checkpoints are committed, so another machine can generate the tuned
+code directly:
+
+    ./generate-best.sh              # best known: 4.933 s at 128^3
+
+That writes generated code under `./Cottonmouth/` and runs nothing. Pair a
+checkpoint only with the tuner that produced it -- the tuner supplies the
+equation ordering the trials were measured under:
+
+| checkpoint | tuner | best |
+|---|---|---|
+| `split_tuning_fixed_order.jsonl` | `tuner_fixed_order.py` | **4.933 s** @128³ (default) |
+| `split_tuning_checkpt.jsonl` | `tuner.py` | 5.332 s @128³, recipe order |
+| `split_tuning_256.jsonl` | `tuner_fixed_order.py` | 39.505 s @256³ |
+
+    TUNER_FILE=tuner.py CHECKPOINT_FILE=split_tuning_checkpt.jsonl ./generate-best.sh
+
+Note `generate-best.sh` needs no Cactus, no Slurm and no `config.sh` edits --
+it only regenerates the recipe locally. `setup-arrangement.sh` and the search
+scripts are the parts that need porting.
+
 ## Porting to another machine
 
 Everything machine-specific lives in `config.sh`. Nothing else should need
