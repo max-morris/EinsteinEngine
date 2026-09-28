@@ -1,0 +1,42 @@
+ActiveThorns = "OsDivTest CarpetX ZeroTest ODESolvers"
+Cactus::presync_mode = "mixed-error"
+Cactus::cctk_itlast = 1
+
+ZeroTest::verbose = true
+
+CarpetX::boundary_x = "none"
+CarpetX::boundary_y = "none"
+CarpetX::boundary_z = "none"
+CarpetX::boundary_upper_x = "none"
+CarpetX::boundary_upper_y = "none"
+CarpetX::boundary_upper_z = "none"
+CarpetX::verbose = true
+
+# ncells must be a multiple of CarpetX's blocking_factor (8 by default), and
+# the domain/resolution must be chosen so that x == 1, y == 1, and z == 1 (the
+# jump discontinuities in OsDivTest::o0) are never hit exactly by a (vertex
+# centered) grid point: dx = 4.2/48 = 0.0875, and (1 - (-$bnd)) / dx =
+# 3.1 / 0.0875 = 35.4285..., not an integer.
+$bnd = 2.1
+CarpetX::xmin = -$bnd
+CarpetX::xmax =  $bnd
+#
+CarpetX::ymin = -$bnd
+CarpetX::ymax =  $bnd
+#
+CarpetX::zmin = -$bnd
+CarpetX::zmax =  $bnd
+
+$nn = 48
+CarpetX::ncells_x = $nn
+CarpetX::ncells_y = $nn
+CarpetX::ncells_z = $nn
+CarpetX::max_tile_size_x = $nn
+CarpetX::max_tile_size_y = $nn
+CarpetX::max_tile_size_z = $nn
+CarpetX::max_grid_size_x = $nn
+CarpetX::max_grid_size_y = $nn
+CarpetX::max_grid_size_z = $nn
+CarpetX::ghost_size_x = 2
+CarpetX::ghost_size_y = 2
+CarpetX::ghost_size_z = 2

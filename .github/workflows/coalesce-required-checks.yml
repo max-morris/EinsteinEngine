@@ -25,6 +25,7 @@ jobs:
               "Build Cactus And Run Cottonmouth Tests",
               "Enforce Type Checks",
               "Enforce Copyright Headers",
+              "Run Unit Tests",
             ];
 
             const owner = context.repo.owner;

@@ -573,11 +573,11 @@ class IndexSubsVisitor:
     def _(self, expr: sy.Indexed) -> Expr:
         r: Indexed = expr
         if len(self.idx_subs) > 0:
-            indexes: List[Idx] = list()
+            indices: List[Idx] = list()
             for a in expr.args[1:]:
                 assert isinstance(a, Idx)
-                indexes.append(self.idx_subs.get(a, a))
-            r = mk_indexed(expr.base, *indexes)
+                indices.append(self.idx_subs.get(a, a))
+            r = mk_indexed(expr.base, *indices)
         res = self.defn.get(r, None)
         if res is None:
             return r

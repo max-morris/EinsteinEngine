@@ -19,7 +19,7 @@ from typing import Never
 
 import sympy
 from multimethod import multimethod
-from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow, Idx, Indexed
+from sympy import NumberSymbol, Number, Symbol, Function, IndexedBase, Expr, Mul, Add, Pow, Idx, Indexed, Basic
 
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
@@ -88,3 +88,31 @@ def _(a: Pow) -> Expr:
     r = Pow(symbify(a.args[0]), a.args[1])
     assert isinstance(r, Expr)
     return r
+
+
+@symbify.register
+def _(_a: sympy.logic.boolalg.BooleanTrue) -> Expr:
+    return sympify(True)
+
+
+@symbify.register
+def _(_a: sympy.logic.boolalg.BooleanFalse) -> Expr:
+    return sympify(False)
+
+
+@symbify.register
+def _(a: sympy.core.relational.Relational) -> Basic:
+    arglist = [symbify(b) for b in a.args]
+    r = a.func(*arglist)
+    assert isinstance(r, Basic)
+    return r
+
+
+@symbify.register
+def _(a: sympy.Piecewise) -> Expr:
+    new_args = []
+    for pair in a.args:
+        assert isinstance(pair, sympy.core.containers.Tuple) and len(pair) == 2
+        e, c = pair
+        new_args.append((symbify(e), symbify(c)))
+    return mk_piecewise(*new_args)

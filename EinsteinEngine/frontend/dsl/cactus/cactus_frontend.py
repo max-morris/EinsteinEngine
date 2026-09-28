@@ -26,10 +26,11 @@ from nrpy.helpers.coloring import coloring_is_enabled as colorize
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
-    free_symbols, mk_eq, mk_indexed_base, mk_symbol
+    free_symbols, mk_eq, mk_indexed_base, mk_symbol, mk_matrix
 )
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
 from EinsteinEngine.emit.tree import Centering, Identifier
+from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.dsl.use_indices import subst_tensor_xyz
 from EinsteinEngine.intermediate.temp_kind import TempKind
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
@@ -472,6 +473,20 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
         # MyPy unfortunately does not let us express this in the type system.
         the_symbol = super().decl(basename, indices_tup, **cast(Any, kwargs))
         return the_symbol
+
+    def mk_kdelta(self) -> IndexedBase:
+        """
+        Declares (and returns) the canonical Kronecker delta tensor `kdelta`, a symmetric
+        rank-2 tensor equal to the identity matrix. Substitution rules are registered for both its
+        down-down (`kdelta[la, lb]`) and up-up (`kdelta[ua, ub]`) index forms.
+        """
+        kdelta_metric = mk_matrix([
+            [1 if i == j else 0 for j in range(self.dimensionality)]
+            for i in range(self.dimensionality)
+        ])
+        kdelta = self.decl("kdelta", [la, lb], symmetries=[(la, lb)], substitution_rule=kdelta_metric)
+        self.add_substitution_rule(kdelta[ua, ub], kdelta_metric)
+        return kdelta
 
     def _add_symbol(self, the_symbol: Symbol, centering: Optional[Centering]) -> None:
         basename = str(the_symbol)

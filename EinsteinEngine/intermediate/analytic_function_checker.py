@@ -75,6 +75,31 @@ class AnalyticFunctionChecker:
                 return b
         return True
 
+    @visit.register
+    def _(self, a: sy.Piecewise) -> Optional[bool]:
+        for pair in a.args:
+            assert isinstance(pair, sy.core.containers.Tuple) and len(pair) == 2
+            e, c = pair
+            for part in (e, c):
+                b = self.visit(part)
+                assert b is None or type(b) == bool
+                if b != True:
+                    return b
+        return True
+
+    @visit.register
+    def _(self, a: sy.core.relational.Relational) -> Optional[bool]:
+        for arg in a.args:
+            b = self.visit(arg)
+            assert b is None or type(b) == bool
+            if b != True:
+                return b
+        return True
+
+    @visit.register
+    def _(self, _a: sy.logic.boolalg.BooleanTrue | sy.logic.boolalg.BooleanFalse) -> Optional[bool]:
+        return True
+
 
 if __name__ == "__main__":
     u = mk_symbol("u")
