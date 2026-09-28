@@ -35,6 +35,7 @@ from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
+from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EinsteinEngine.common.util import indent
 
 
@@ -71,7 +72,8 @@ class CppVisitor(Visitor[CodeNode]):
         self.sympy_visitor = CppCarpetXSympyVisitor(
             stencil_fns=stencil_fns,
             should_wrap_with_access_fn=should_wrap_with_access_fn,
-            centering_fn=lambda vn: self.generator.thorn_def.get_centering_from_var_name(vn)
+            centering_fn=lambda vn: self.generator.thorn_def.get_centering_from_var_name(vn),
+            enable_cctk_real2=isinstance(generator, CppCarpetXGenerator) and generator.options.get('enable_cctk_real2', False)
         )
 
     @multimethod

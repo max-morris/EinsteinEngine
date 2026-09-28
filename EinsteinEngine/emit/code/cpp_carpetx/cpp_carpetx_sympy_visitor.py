@@ -25,6 +25,7 @@ from EinsteinEngine.common.stencil_idx import StencilIdxWithCentering, StencilId
 from EinsteinEngine.emit.code.common.code_tree import Expr, IdExpr, FunctionCall
 from EinsteinEngine.emit.code.sympy_visitor import BaseSympyExprVisitor
 from EinsteinEngine.emit.util import encode_stencil_idx
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.util import require
 from EinsteinEngine.generators.util import SymbolInStencilArgsPredicate, VarCenteringFn
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import CppCarpetXExprNode, StaticCast
@@ -36,8 +37,7 @@ class CppCarpetXSympyVisitor(BaseSympyExprVisitor[CppCarpetXExprNode]):
 
     numeric_conversion_rewrite: dict[UFunc, Callable[[CppCarpetXExprNode], CppCarpetXExprNode]] = {
         as_f64: lambda expr: StaticCast(Identifier("CCTK_REAL8"), expr),
-        as_f32: lambda expr: StaticCast(Identifier("CCTK_REAL4"), expr),
-        as_f16: lambda expr: StaticCast(Identifier("CCTK_REAL2"), expr)
+        as_f32: lambda expr: StaticCast(Identifier("CCTK_REAL4"), expr)
     }
 
     def __init__(
@@ -45,11 +45,24 @@ class CppCarpetXSympyVisitor(BaseSympyExprVisitor[CppCarpetXExprNode]):
             *,
             stencil_fns: Optional[set[str]] = None,
             should_wrap_with_access_fn: Optional[SymbolInStencilArgsPredicate] = None,
-            centering_fn: Optional[VarCenteringFn] = None
+            centering_fn: Optional[VarCenteringFn] = None,
+            enable_cctk_real2: bool = False
     ):
         super().__init__(stencil_fns=stencil_fns)
         self.should_wrap_with_access_fn = should_wrap_with_access_fn if should_wrap_with_access_fn is not None else lambda _0, _1: False
         self.centering_fn = centering_fn if centering_fn is not None else lambda _: None
+
+        # Standard Cactus does not define CCTK_REAL2, so as_f16() is only lowered when explicitly enabled.
+        self.numeric_conversion_rewrite = dict(CppCarpetXSympyVisitor.numeric_conversion_rewrite)
+        if enable_cctk_real2:
+            self.numeric_conversion_rewrite[as_f16] = lambda expr: StaticCast(Identifier("CCTK_REAL2"), expr)
+        else:
+            self.numeric_conversion_rewrite[as_f16] = CppCarpetXSympyVisitor._reject_cctk_real2
+
+    @staticmethod
+    def _reject_cctk_real2(_: CppCarpetXExprNode) -> CppCarpetXExprNode:
+        raise DslException("as_f16() emits CCTK_REAL2, which standard Cactus does not define. "
+                           "Pass enable_cctk_real2=True to CppCarpetXGenerator if your Cactus provides it.")
 
     def _visit_symbol(self, symbol_name: str) -> Expr:
         if not self.should_wrap_with_access_fn(symbol_name, self.visiting_stencil_fn_args):

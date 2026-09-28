@@ -68,6 +68,11 @@ class CppCarpetXGeneratorOptions(CactusGeneratorOptions, total=False):
     explicit_syncs: Collection[ExplicitSyncBatch]
     new_rad_x_boundary_fns: Collection[NewRadXBoundaryBatch]
     simd: bool
+    # Lower as_f16() to static_cast<CCTK_REAL2>. Standard Cactus does not
+    # define CCTK_REAL2, so this is off by default and as_f16() is rejected at
+    # generation time; enable it only when building against a Cactus that
+    # provides the type.
+    enable_cctk_real2: bool
 
 class _HasName(Protocol):
     name: str
@@ -672,7 +677,7 @@ class CppCarpetXGenerator(CactusGenerator):
 
         base_name, rhs_name, var_names, rhs_names = self._get_names_from_new_rad_x_batch(batch)
 
-        sympy_visitor = CppCarpetXSympyVisitor()
+        sympy_visitor = CppCarpetXSympyVisitor(enable_cctk_real2=self.options.get('enable_cctk_real2', False))
         val_at_infinity = sympy_visitor.visit(batch.val_at_infinity)
         propagation_speed = sympy_visitor.visit(batch.propagation_speed)
         radial_falloff_exponent = sympy_visitor.visit(batch.radial_falloff_exponent)
@@ -1144,7 +1149,8 @@ class CppCarpetXGenerator(CactusGenerator):
         sympy_visitor = CppCarpetXSympyVisitor(
             stencil_fns=stencil_fn_names,
             should_wrap_with_access_fn=should_wrap_with_access_fn,
-            centering_fn=centering_fn
+            centering_fn=centering_fn,
+            enable_cctk_real2=self.options.get('enable_cctk_real2', False)
         )
         return sympy_visitor
 
