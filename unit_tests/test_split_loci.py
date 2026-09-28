@@ -20,10 +20,12 @@ Tests for the early and pre-population ordering/split loci and for the EqnComple
 Run as a plain script.
 """
 
+import contextlib
 import functools
+import io
 import os
 import tempfile
-from typing import Callable, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional
 
 from sympy import Symbol
 
@@ -32,6 +34,7 @@ from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef, ThornFunction
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.intermediate.eqn_grouping import CutHazard, cut_hazards
 from EinsteinEngine.intermediate.eqn_ordering import pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnListPiece, SplitBoundary
 from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
@@ -541,6 +544,75 @@ def test_overwrite_validation() -> None:
         raise AssertionError("Expected an IntermediateException for a second rebake_refined()")
 
 
+def test_cut_hazards() -> None:
+    """Backward reads forbid hard cuts only, over every position between the reader and the writer; overwrites forbid
+    every cut between the overwrite and a later read of an earlier version."""
+    a, b, c, X, Xp = [mk_symbol(n) for n in ("a", "b", "c", "X", "X'")]
+    # Elements: 0 writes a and reads c (written by element 2); 1 writes X'; 2 writes c; 3 writes b and reads X.
+    hazards = cut_hazards([{c}, set(), set(), {X}], [{a}, {Xp}, {c}, {b}])
+    overwrite_hazard = CutHazard(X, overwrite=Xp)
+    assert hazards == {0: {CutHazard(c)}, 1: {CutHazard(c), overwrite_hazard}, 2: {overwrite_hazard}}, hazards
+    assert CutHazard(c).forbids(soft=False) and not CutHazard(c).forbids(soft=True)
+    assert overwrite_hazard.forbids(soft=False) and overwrite_hazard.forbids(soft=True)
+    # A dependency-respecting order has no backward reads.
+    assert cut_hazards([set(), {a}, {a, b}], [{a}, {b}, {c}]) == dict()
+
+
+def test_early_backward_reads() -> None:
+    """
+    At the early locus without an early ordering function, the add_eqn calls are cut in recipe order, which need not
+    respect their dependencies: a hard cut that would put a read before its write is ignored with a warning (the
+    predicates are still queried everywhere), a soft cut is kept, and an early ordering function makes the calls one
+    super-group, so the question never arises.
+    """
+    def build(name: str, early_ordering_fn: Optional[EqnOrderingFn] = None, **kwargs: Any) -> tuple[ThornFunction, str]:
+        gf = ThornDef("ARR", name)
+        v = gf.decl("v", [li])
+        a, a2, b, src = gf.decl("a", []), gf.decl("a2", []), gf.decl("b", []), gf.decl("src", [])
+        fun = gf.create_function("fn", ScheduleBin.Evolve, **kwargs)
+        fun.add_eqn(a, b * 2)  # reads b, which the next call writes
+        fun.add_eqn(b, src * 3)
+        fun.add_eqn(v[li], [src, a2 * 2, src * 3])  # reads a2, which the next call writes from vD0
+        fun.add_eqn(a2, v[l0] * 3 + a)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            fun._early_bake(early_ordering_fn=early_ordering_fn, ordering_fn=pre_population_order)
+        return fun, out.getvalue()
+
+    hard = Recorder(lambda i: True)
+    fun, out = build("EARLYBACKHARD", auto_hard_split_predicate=hard)
+    assert hard.calls == [0, 1, 2, 3], hard.calls
+    # Positions 0 and 2 are refused, 1 is cut, and the cut at 3, after the last call, leaves an empty piece.
+    assert lists_of(fun) == [["b", "a"], ["vD0", "a2", "vD1", "vD2"]], lists_of(fun)
+    assert "fn: ignoring the auto splits at positions [0, 2] of the Early locus, which would put reads of a2, b before " \
+           "their writes." in out, out
+
+    soft = Recorder(lambda i: i == 0)
+    fun, out = build("EARLYBACKSOFT", auto_soft_split_predicate=soft)
+    assert soft.calls == [0, 1, 2, 3], soft.calls
+    assert lists_of(fun) == [["a"], ["b", "vD0", "a2", "vD1", "vD2"]], lists_of(fun)
+    assert fun.eqn_complex.needs_merge() and "ignoring" not in out, out
+
+    # With an early ordering function, the mutually dependent calls 2 and 3 form one super-group (one position), and
+    # b's call is ordered before a's.
+    hard = Recorder(lambda i: True)
+    fun, out = build("EARLYBACKORDERED", add_eqn_order([0, 1, 2, 3]), auto_hard_split_predicate=hard)
+    assert hard.calls == [0, 1, 2], hard.calls
+    assert lists_of(fun) == [["b"], ["a"], ["vD0", "a2", "vD1", "vD2"]], lists_of(fun)
+    assert "ignoring" not in out, out
+
+
+def test_manual_backward_split_rejected() -> None:
+    """A manual split_loop() between a read and the later equation that writes the value is a clear DslException."""
+    gf = ThornDef("ARR", "MANUALBACK")
+    a, b, src = gf.decl("a", []), gf.decl("b", []), gf.decl("src", [])
+    fun = gf.create_function("fn", ScheduleBin.Evolve)
+    fun.add_eqn(a, b * 2)
+    fun.split_loop()
+    fun.add_eqn(b, src * 3)
+    expect_dsl_exception(lambda: gf.bake(), "'b' is written in loop 1 after it is read in loop(s) [0]")
+
+
 def test_duplicate_lhs_in_segment() -> None:
     gf = ThornDef("ARR", "DUPLHS")
     a, src = gf.decl("a", []), gf.decl("src", [])
@@ -634,6 +706,9 @@ if __name__ == "__main__":
         test_params_repartitioning,
         test_validation_errors,
         test_overwrite_validation,
+        test_cut_hazards,
+        test_early_backward_reads,
+        test_manual_backward_split_rejected,
         test_duplicate_lhs_in_segment,
         test_bayesian_stand_in_before_cse,
         test_add_eqn_order_validation,

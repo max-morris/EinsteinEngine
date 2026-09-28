@@ -434,6 +434,111 @@ def add_eqn_order(order: Sequence[int]) -> EqnOrderingFn:
     return _AddEqnOrder(order)
 
 
+class RankByPostPopulation:
+    """
+    The early ordering value returned by `rank_by_post_population` (see there for what it does). It holds the ordering
+    function the trial bake ranks with, `ordering_fn`. ``DslFrontend.bake`` resolves it, before the early locus runs,
+    into an ``add_eqn_order`` of the order it derives (see ``DslFrontend._derive_early_orders``).
+
+    It has the signature of an ordering function, so that it type-checks wherever an early ordering function is
+    accepted (bake options, tuner out-params), but it cannot order anything by itself: calling it raises, and so does
+    passing it as ``ordering_fn`` or ``pre_population_ordering_fn``, or passing it to ``_early_bake`` directly instead
+    of through ``DslFrontend.bake``. Its repr, ``rank_by_post_population(<description of ordering_fn>)``, is stable
+    across runs, so that tuners can record it to detect a changed configuration.
+
+    It deliberately has no ``func`` or ``__name__`` attribute, so that `pre_cse_stand_in` and
+    `respects_dependency_order` never mistake it for the function it holds.
+    """
+
+    def __init__(self, ordering_fn: EqnOrderingFn) -> None:
+        if isinstance(ordering_fn, RankByPostPopulation):
+            raise DslException("rank_by_post_population cannot be nested: the trial bake needs a plain ordering function.")
+        if pre_cse_stand_in(ordering_fn) is not ordering_fn:
+            raise DslException(
+                f"rank_by_post_population({describe_param(ordering_fn)}): Bayesian optimization cannot rank the add_eqn "
+                f"calls. It is nondeterministic, so the derived order (which tuners record and compare) would change "
+                f"from run to run, and it would run on the whole post-CSE list in an extra bake. Rank with a "
+                f"deterministic function (e.g. prioritize_rare_symbols) instead."
+            )
+        self.ordering_fn = ordering_fn
+
+    def __call__(self, eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+        raise DslException(
+            f"{self!r} is not an ordering function by itself. Use it only as early_ordering_fn in the bake options of "
+            f"a frontend (bake-wide or per function), which derives an add_eqn order from a trial bake before the "
+            f"early locus runs."
+        )
+
+    def __repr__(self) -> str:
+        return f'rank_by_post_population({describe_param(self.ordering_fn)})'
+
+
+def rank_by_post_population(ordering_fn: EqnOrderingFn) -> RankByPostPopulation:
+    """
+    An early ordering function (for the ``early_ordering_fn`` bake option, bake-wide or per function) that orders the
+    author-level add_eqn calls by where `ordering_fn` places their equations after CSE, in a trial bake.
+
+    **Why a trial bake.** The early locus reorders whole add_eqn groups at the very start of the bake, before pull-out,
+    the pre-CSE bake and CSE. But the order worth imitating is the one an ordering function such as
+    `prioritize_rare_symbols` gives the equations after CSE, when the list also holds the CSE temporaries and the RHSes
+    are rewritten in terms of them. That order does not exist yet when the early locus runs: it depends on CSE, which
+    depends on the order before CSE, which the early locus is about to decide. So the frontend bakes twice:
+
+    1. **Trial bake** (``DslFrontend._derive_early_orders``). Every function of the frontend is baked up to and
+       including global CSE, on throwaway copies, exactly as the real bake would bake it with its bake options,
+       except that:
+       - each function that uses ``rank_by_post_population`` has no early and no pre-population ordering function,
+         and uses `ordering_fn` as its ordering function, for the pre-CSE bake and the post-CSE rebake alike (as a
+         plain ``ordering_fn=...`` bake would; one trial serves all such functions);
+       - no function evaluates its auto split predicates (manual ``split_loop``/``soft_split`` calls are kept);
+       - the frontend's CSE hooks (declaring global temporaries and creating their synthetic functions, inferring
+         centerings) are skipped, and only the ranked functions are rebaked after CSE. Neither can change the ranked
+         functions' post-CSE orders.
+    2. **Ranking** (``eqn_grouping.rank_add_eqn_calls``). In each list of a ranked function, each add_eqn call is
+       ranked by the median position, in that list's post-CSE order, of the equations the call itself produced (its
+       scalar components, but not the pull-out temporaries made from them later, nor CSE temporaries). Ties go to the
+       lower call index, and a call none of whose equations survive goes last. The result is a 0-based order of all
+       of the function's add_eqn calls, list by list.
+    3. **Real bake**, with ``early_ordering_fn=add_eqn_order(<the derived order>)`` for that function. From here on
+       nothing differs from passing that ``add_eqn_order`` explicitly: ``order_groups`` ranks the groups by it and
+       repairs dependencies (a group never comes before a group it reads; groups in a dependency cycle merge), and
+       auto splits, CSE and the rest proceed as usual. The engine prints the derived order in one line and reports it
+       to the tuning probe (``probe.report_derived_order``), which records it next to the checkpoint.
+
+    **Worked example.** A function with the calls ``0: u = src``, ``1: v[li] = [...]`` (components vD0, vD1, vD2) and
+    ``2: a = u + 1``, baked without CSE, with ``early_ordering_fn=rank_by_post_population(lexicographical_order)``.
+    The trial's order is ``[u, a, vD0, vD1, vD2]``: lexicographic, with u moved in front of a, which reads it. The
+    median positions are 0 for call 0, 3 for call 1 and 1 for call 2, so the derived order is ``[0, 2, 1]``, and the
+    real bake runs with ``early_ordering_fn=add_eqn_order([0, 2, 1])``.
+
+    **Where this comes from, and fidelity.** It builds into the engine the offline script that derived the Z4c order
+    in ``tuning/z4c_derived_order/tuner.py``. That script baked the whole recipe unsplit with ``prioritize_rare_symbols``
+    as the ordering function of every function, and ranked the z4c_rhs add_eqn calls by the median position of the
+    equations each produced. The trial bakes the whole thorn, not just the ranked function, because global CSE
+    works across functions: baked alone, z4c_rhs has 759 equations after CSE instead of 1068, and ranks as
+    ``[1, 8, 2, 0, ...]`` instead of ``[8, 1, 0, 2, ...]``. Unlike the script, the trial bakes the other functions
+    with their own ordering functions, as the real bake does. For Z4c, the trial's z4c_rhs list has 1068 equations
+    after CSE, the offline script's 1061; the derived order is the same.
+
+    **Cost.** About one extra bake of the frontend up to CSE, paid on every run of the recipe, including every tuning
+    trial and every probe. For Z4c the trial takes about 17 s, on a generation of about 62 s (bake and code) with the
+    explicit order. Passing the derived order explicitly with ``add_eqn_order`` avoids it.
+
+    **Isolation.** The trial leaves no trace in the real bake. It works on copies of the functions' EqnComplexes, and
+    afterward restores the frontend's automatic name counter (so pull-out temporaries get the same names), its CSE
+    results (tile and global temporaries, temporary kinds, promotion predicate) and each function's annotations,
+    predicates and flags. So the generated code, temporary names included, is identical to a bake with the explicit
+    ``add_eqn_order``. The trial calls no probe hook and no auto split predicate, and prints only warnings (its
+    progress messages, and its verbose output with EINSTEINENGINE_VERBOSE, are silenced); the derived order is
+    printed afterward, in one line.
+
+    `ordering_fn` must be deterministic, so Bayesian optimization is refused (see `RankByPostPopulation`). The result's
+    repr is ``rank_by_post_population(<ordering_fn>)``, naming a function by its qualified name.
+    """
+
+    return RankByPostPopulation(ordering_fn)
+
+
 def fixed_order(order: Sequence[Symbol]) -> EqnOrderingFn:
     """
     Yields the equations in exactly the given order (equations not listed follow in dict order). It is not marked as

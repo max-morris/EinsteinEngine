@@ -31,8 +31,9 @@ reorders whole groups, never the equations inside one:
 
 Besides the dependencies through RHS free symbols, a group reading ``X`` gets an explicit "reader before overwriter"
 edge to a group writing ``X'`` (see ``DslFrontend.overwrite``), since no free symbol connects the two. For the same
-reason, `overwrite_hazards` tells the split loci where a cut would separate a writer of ``X'`` from a later reader of
-``X``.
+reason, `cut_hazards` tells the split loci where a cut would separate a writer of ``X'`` from a later reader of ``X``;
+it also finds the cuts that would put a read before its write, which the early locus meets without an early ordering
+function, since the recipe order of the add_eqn calls need not respect their dependencies.
 
 Ordering functions run here directly, never through ``EqnList.order_builder`` or ``set_eqn_annotation``; any
 annotations they yield are ignored.
@@ -43,8 +44,9 @@ from __future__ import annotations
 import heapq
 from statistics import median
 from collections import defaultdict
-from collections.abc import Collection, Sequence
-from typing import TYPE_CHECKING, Iterable
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from sympy import Symbol
 
@@ -89,24 +91,111 @@ def scalar_positions(eqn_list: EqnList, ordering_fn: EqnOrderingFn) -> dict[Symb
     return positions
 
 
+def median_rank_key(positions: Collection[int], tiebreak: int) -> tuple[float, int]:
+    """
+    The sort key of a group whose members sit at `positions` in some order: their median position, then `tiebreak`
+    (lower first). A group with no positions (e.g., whose equations were all optimized away) ranks after every other.
+    Used both to rank groups at the early locus (`order_groups`) and to derive an early order from a trial bake
+    (`rank_add_eqn_calls`), so that the two agree on medians and ties.
+    """
+    return (float(median(positions)) if len(positions) > 0 else float('inf')), tiebreak
+
+
+def rank_add_eqn_calls(origins_by_list: Sequence[Mapping[Symbol, int]],
+                       orders: Sequence[Sequence[Symbol]],
+                       origin_count: int) -> list[int]:
+    """
+    Rank a function's add_eqn calls by the median position of their equations; this is the ranking step of
+    ``rank_by_post_population`` (see there and ``DslFrontend._derive_early_orders``).
+
+    - origins_by_list[i]: for list i, the equations each add_eqn call produced, mapped to the call's 0-based index.
+      The trial bake snapshots this before the bake, so that pull-out temporaries (which inherit the origin of the
+      equation they were pulled out of) and CSE temporaries (which have none) do not count.
+    - orders[i]: list i's order after the trial's post-CSE rebake. An equation missing from it does not count.
+    - origin_count: the function's number of add_eqn calls.
+
+    Within each list, the calls are sorted by `median_rank_key` of their equations' positions, ties going to the lower
+    call index; a call none of whose equations is in the order goes last (in call-index order). The lists' rankings
+    are concatenated in list order. A call that produced no equation at all ranks with the last list's calls that
+    have none in the order, by call index, as in the offline derivation (which ranked one list and gave every call
+    without a position the median ``inf``). So the result is a permutation of ``range(origin_count)``. Only the
+    relative order of the calls within a list matters to the early locus, which orders each list's groups on its own.
+
+    Example: with one list whose order is ``[u, a, vD0, vD1, vD2]`` and origins ``{u: 0, vD0: 1, vD1: 1, vD2: 1,
+    a: 2}``, the medians are 0 (call 0), 3 (call 1) and 1 (call 2), so the result is ``[0, 2, 1]``.
+    """
+    present = {origin for origins in origins_by_list for origin in origins.values()}
+    ranked: list[int] = list()
+    for list_idx, (origins, order) in enumerate(zip(origins_by_list, orders, strict=True)):
+        position = {lhs: idx for idx, lhs in enumerate(order)}
+        # A call with no surviving equation still gets an (empty) entry, so that it ranks last.
+        members: dict[int, list[int]] = dict()
+        for lhs, origin in origins.items():
+            here = members.setdefault(origin, list())
+            if lhs in position:
+                here.append(position[lhs])
+        if list_idx == len(origins_by_list) - 1:
+            # Calls that produced no equation at all rank last with this list's calls that have none in the order.
+            for origin in range(origin_count):
+                if origin not in present:
+                    members[origin] = list()
+        ranked.extend(sorted(members, key=lambda origin: median_rank_key(members[origin], origin)))
+    if len(origins_by_list) == 0:
+        ranked.extend(range(origin_count))
+    return ranked
+
+
 def overwrite_version(sym: Symbol) -> tuple[str, int]:
     """For an overwrite symbol X'' return ('X', 2); for a plain symbol X return ('X', 0)."""
     name = str(sym)
     return name.replace("'", ""), name.count("'")
 
 
-def overwrite_hazards(reads: Sequence[Collection[Symbol]],
-                      writes: Sequence[Collection[Symbol]]) -> dict[int, set[tuple[Symbol, Symbol]]]:
+@dataclass(frozen=True)
+class CutHazard:
     """
-    The cut positions in a sequence of elements that an overwrite forbids. Element i reads `reads[i]` and writes
-    `writes[i]`, and position p means "cut after element p". A cut at p is forbidden if an element at or before p writes
-    a version of X (X', X'', ...) and an element after p reads an earlier version (X, X', ...), since the later loop
-    would read the overwritten value. Maps each forbidden position to the (overwrite, earlier version read) pairs that
-    forbid it.
+    A reason not to cut at a position (see `cut_hazards`).
+
+    - An overwrite (`overwrite` is X'): an element at or before the cut writes X', and an element after it reads `read`,
+      an earlier version of X (X, ...), which the later loop would find already overwritten. This forbids every cut.
+    - A backward read (`overwrite` is None): an element at or before the cut reads `read`, which an element after it
+      writes, so the earlier loop would read a value that only the later loop computes. This forbids hard cuts only: a
+      soft cut is harmless, since merge_soft_splits rejoins the two loops and the rebake of the merged loop puts the
+      write first, as it did before the split loci existed.
     """
+    read: Symbol
+    overwrite: Optional[Symbol] = field(default=None, kw_only=True)
+
+    def forbids(self, *, soft: bool) -> bool:
+        """Whether this hazard forbids a hard (`soft` False) or soft (`soft` True) cut."""
+        return self.overwrite is not None or not soft
+
+
+def cut_hazards(reads: Sequence[Collection[Symbol]],
+                writes: Sequence[Collection[Symbol]]) -> dict[int, set[CutHazard]]:
+    """
+    The cut positions in a sequence of elements that a hazard (see `CutHazard`) forbids, at least for hard cuts. Element
+    i reads `reads[i]` and writes `writes[i]`, and position p means "cut after element p". A cut at p is hazardous if:
+    - an element at or before p writes a version of X (X', X'', ...) and an element after p reads an earlier version
+      (X, X', ...), since the later loop would read the overwritten value; or
+    - an element at or before p reads a symbol that an element after p writes (a backward read).
+    Maps each hazardous position to its hazards. An order in which every element follows what it reads (e.g., a baked
+    order) has no backward reads.
+    """
+    forbidden: dict[int, set[CutHazard]] = defaultdict(set)
+
+    # Backward reads. A symbol read by the element that writes it is not a hazard (a cut never splits an element).
+    writer_of = {sym: idx for idx, syms in enumerate(writes) for sym in syms}
+    for reader_idx, syms in enumerate(reads):
+        for sym in syms:
+            if (writer_idx := writer_of.get(sym)) is not None and writer_idx > reader_idx:
+                for position in range(reader_idx, writer_idx):
+                    forbidden[position].add(CutHazard(sym))
+
+    # Overwrites.
     overwritten = {base for syms in writes for base, version in map(overwrite_version, syms) if version > 0}
     if len(overwritten) == 0:
-        return dict()
+        return dict(forbidden)
 
     # readers[base]: the (element, version, symbol) triples that read a version of base.
     readers: dict[str, list[tuple[int, int, Symbol]]] = {base: list() for base in overwritten}
@@ -116,7 +205,6 @@ def overwrite_hazards(reads: Sequence[Collection[Symbol]],
             if base in readers:
                 readers[base].append((idx, version, sym))
 
-    forbidden: dict[int, set[tuple[Symbol, Symbol]]] = defaultdict(set)
     for writer_idx, syms in enumerate(writes):
         for sym in syms:
             base, version = overwrite_version(sym)
@@ -125,7 +213,7 @@ def overwrite_hazards(reads: Sequence[Collection[Symbol]],
             for reader_idx, read_version, read_sym in readers[base]:
                 if read_version < version and reader_idx > writer_idx:
                     for position in range(writer_idx, reader_idx):
-                        forbidden[position].add((sym, read_sym))
+                        forbidden[position].add(CutHazard(read_sym, overwrite=sym))
     return dict(forbidden)
 
 
@@ -234,7 +322,7 @@ def order_groups(eqn_list: EqnList, ordering_fn: EqnOrderingFn) -> list[tuple[Sy
         members = tuple(sorted((lhs for group_idx in component for lhs in groups[group_idx]),
                                key=lambda lhs: recipe_positions[lhs]))
         component_members.append(members)
-        component_keys.append((float(median(positions[lhs] for lhs in members)), recipe_positions[members[0]]))
+        component_keys.append(median_rank_key([positions[lhs] for lhs in members], recipe_positions[members[0]]))
 
     component_successors: list[set[int]] = [set() for _ in components]
     indegree = [0] * len(components)

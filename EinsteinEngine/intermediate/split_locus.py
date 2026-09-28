@@ -32,7 +32,11 @@ class SplitLocus(Enum):
                     recipe order) when it is None. This is the historical behavior.
     PrePopulation:  Elements are scalar equations before CSE temporaries are populated, in the order of the pre-CSE
                     bake: by the ``pre_population_ordering_fn`` bake option, or by ``ordering_fn`` when it is None.
-    PostPopulation: Elements are scalar equations after global CSE, ordered by the ``ordering_fn`` bake option.
+    PostPopulation: Elements are scalar equations after global CSE, in the order of the post-CSE rebake, which uses the
+                    ``ordering_fn`` bake option. The exception is a function with (manual) soft splits: its post-CSE
+                    rebake is a fast one, since merge_soft_splits rebakes afterward, so a Bayesian ``ordering_fn`` is
+                    replaced there by its stand-in, prioritize_rare_symbols (see eqn_ordering.pre_cse_stand_in), and
+                    the positions follow the stand-in's order. (Without CSE, the elements are the pre-CSE baked order.)
     """
     Early = 0
     PrePopulation = 1

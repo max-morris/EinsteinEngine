@@ -18,7 +18,8 @@
 from __future__ import annotations
 
 from collections import defaultdict, OrderedDict
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack, Callable, Collection, Sequence
 
 import EinsteinEngine.common.util as util
@@ -28,8 +29,9 @@ from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import free_symbols
 from EinsteinEngine.common.util import OrderedSet, pprint, wprint
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.intermediate.eqn_grouping import author_groups, order_groups, overwrite_hazards
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, pre_cse_stand_in
+from EinsteinEngine.intermediate.eqn_grouping import CutHazard, author_groups, cut_hazards, order_groups
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, RankByPostPopulation, maximize_symbol_reuse, \
+    pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, EqnListPiece, SplitBoundary
 from EinsteinEngine.intermediate.post_population_split import assign_pieces, local_cse_temps
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
@@ -50,10 +52,13 @@ class DslFunctionFrontendBakeOptions(TypedDict, total=False):
     # The post-population ordering function. It is also used for the pre-CSE bake unless pre_population_ordering_fn
     # is set. Before CSE, i.e., at the early locus and the pre-CSE bake, an ordering function whose name contains
     # 'bayesian' is replaced by prioritize_rare_symbols (see eqn_ordering.pre_cse_stand_in), since CSE rewrites that
-    # order anyway; this applies to early_ordering_fn and pre_population_ordering_fn too.
+    # order anyway; this applies to early_ordering_fn and pre_population_ordering_fn too. The same happens at the
+    # post-CSE rebake of a function with soft splits, which is a fast one because merge_soft_splits rebakes afterward,
+    # so there the post-population locus cuts the stand-in's order.
     ordering_fn: EqnOrderingFn
     # Orders the author-level add_eqn groups of each list at the start of the bake (the early locus); None keeps the
-    # recipe order.
+    # recipe order. rank_by_post_population(fn) derives an add_eqn order from a trial bake; DslFrontend.bake resolves
+    # it before calling _early_bake (see DslFrontend._derive_early_orders).
     early_ordering_fn: Optional[EqnOrderingFn]
     # Orders the scalar equations for the pre-CSE bake (the pre-population locus), and the resulting order becomes the
     # pre-population order; None uses ordering_fn for the pre-CSE bake and leaves the pre-population order alone.
@@ -237,7 +242,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
     def _query_auto_splits(self,
                            counts: Sequence[int],
-                           uncuttable: Sequence[Mapping[int, Collection[tuple[Symbol, Symbol]]]]
+                           hazards: Sequence[Mapping[int, Collection[CutHazard]]]
                            ) -> list[list[tuple[int, SplitBoundary]]]:
         """
         Evaluate the auto split predicates at the function's locus, where list i has `counts[i]` positions. Positions
@@ -245,14 +250,21 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         to the probe with the total count. At each position, the hard predicate is queried first and the soft one only
         if the hard one is absent or declined.
 
-        `uncuttable[i]` maps the positions within list i at which a cut would separate an overwrite from a later read
-        of what it overwrites to those (overwrite, read) pairs (see `_overwrite_hazards`). The predicates are still
-        queried there, so the probe counts and what a tuner sees are unchanged, but a split they request there is
-        ignored, with one warning per function.
-        At the early locus without an early ordering function, this departs from the historical behavior of splitting
-        in add_eqn wherever a cut would separate an overwrite X' from a later read of X. For a hard cut whose read of X
-        is not promoted to a tile temporary, the historical code read the already overwritten variable; elsewhere (soft
-        cuts, which the merge rejoins, or reads CSE promotes) the refusal is merely conservative.
+        `hazards[i]` maps each position within list i at which a cut would be unsafe to the reasons (see `_cut_hazards`
+        and eqn_grouping.CutHazard): separating an overwrite from a later read of what it overwrites (which forbids hard
+        and soft cuts), or putting a read before its write (which forbids hard cuts). The predicates are still queried
+        there, so the probe counts and what a tuner sees are unchanged, but a split they request there that a hazard
+        forbids is ignored, with one warning per function.
+
+        At the early locus without an early ordering function, where the historical code split in add_eqn, the
+        refusals depart from that behavior only where it went wrong or where the refusal is conservative:
+        - Where a cut would separate an overwrite X' from a later read of X: for a hard cut whose read of X is not
+          promoted to a tile temporary, the historical code read the already overwritten variable; elsewhere (soft
+          cuts, which the merge rejoins, or reads CSE promotes) the refusal is merely conservative.
+        - Where a hard cut would put a read of b before the add_eqn call that writes it (a later call, or one that
+          depends on the reading call in turn): the historical bake failed with an AssertionError. Soft cuts there
+          are still made, since the merge rejoins the loops, and so they generate the same code as before.
+        Every other locus cuts an order that respects dependencies, so only the overwrite refusal applies there.
 
         Returns, for each list, its cuts as (position within the list, boundary) pairs in order.
         """
@@ -266,9 +278,9 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 probe.report_split_positions(predicate, self.name, sum(counts))
 
         ignored: list[int] = list()
-        hazards: set[tuple[Symbol, Symbol]] = set()
+        reasons: set[CutHazard] = set()
         position = 0
-        for cuts, count, forbidden in zip(cuts_by_list, counts, uncuttable):
+        for cuts, count, list_hazards in zip(cuts_by_list, counts, hazards):
             for local_position in range(count):
                 boundary: Optional[SplitBoundary] = None
                 if hard is not None and hard(position):
@@ -280,32 +292,45 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                     elif strategy:
                         boundary = SplitBoundary(soft=True)
                 if boundary is not None:
-                    if local_position in forbidden:
+                    forbidding = [h for h in list_hazards.get(local_position, ()) if h.forbids(soft=boundary.soft)]
+                    if len(forbidding) > 0:
                         ignored.append(position)
-                        hazards.update(forbidden[local_position])
+                        reasons.update(forbidding)
                     else:
                         cuts.append((local_position, boundary))
                 position += 1
 
         if len(ignored) > 0:
-            pairs = ", ".join(f"{w} from a later read of {r}" for w, r in sorted(hazards, key=str))
+            overwrites = sorted((h for h in reasons if h.overwrite is not None), key=lambda h: str((h.overwrite, h.read)))
+            backward = sorted({str(h.read) for h in reasons if h.overwrite is None})
+            why: list[str] = list()
+            if len(overwrites) > 0:
+                why.append("separate " + ", ".join(f"{h.overwrite} from a later read of {h.read}" for h in overwrites))
+            if len(backward) == 1:
+                why.append(f"put a read of {backward[0]} before its write")
+            elif len(backward) > 1:
+                why.append(f"put reads of {', '.join(backward)} before their writes")
             wprint(f"{self.name}: ignoring the auto splits at positions {ignored} of the {self.auto_split_locus.name} "
-                   f"locus, which would separate {pairs}.")
+                   f"locus, which would {' and '.join(why)}.")
         return cuts_by_list
 
     @staticmethod
-    def _overwrite_hazards(eqn_list: EqnList,
-                           elements: Sequence[tuple[Symbol, ...]],
-                           movable: Collection[Symbol] = ()) -> dict[int, set[tuple[Symbol, Symbol]]]:
+    def _cut_hazards(eqn_list: EqnList,
+                     elements: Sequence[tuple[Symbol, ...]],
+                     movable: Collection[Symbol] = ()) -> dict[int, set[CutHazard]]:
         """
-        The positions in `elements` (the elements of `eqn_list` in order, see `_apply_auto_splits`) at which a cut
-        would separate an overwrite X' from a later read of X, each mapped to the (X', X) pairs it would separate (see
-        eqn_grouping.overwrite_hazards). An element also reads, transitively, what the temporaries in `movable` that it
-        reads read, since the closure assignment at the post-population locus may move or duplicate those temporaries
-        into its piece. `elements` must respect dependencies on the `movable` temporaries, as a baked order does.
+        The positions in `elements` (the elements of `eqn_list` in order, see `_apply_auto_splits`) at which a cut would
+        be unsafe, each mapped to its hazards (see eqn_grouping.cut_hazards): a cut that would separate an overwrite X'
+        from a later read of X, or put a read before its write. The latter only happens at the early locus without an
+        early ordering function, where the elements follow the recipe order; every other locus cuts an order that
+        respects dependencies (a baked order, or the early groups sorted by order_groups).
+
+        For overwrites, an element also reads, transitively, what the temporaries in `movable` that it reads read, since
+        the closure assignment at the post-population locus may move or duplicate those temporaries into its piece.
+        `elements` must respect dependencies on the `movable` temporaries, as a baked order does.
         """
-        if not any("'" in str(lhs) for element in elements for lhs in element):
-            return dict()
+        # The transitive reads only matter to overwrites; without any, the direct reads suffice.
+        has_overwrites = any("'" in str(lhs) for element in elements for lhs in element)
 
         movable = set(movable)
         reads_through: dict[Symbol, set[Symbol]] = dict()
@@ -314,12 +339,13 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             reads: set[Symbol] = set()
             for lhs in element:
                 lhs_reads = set(free_symbols(eqn_list.eqns[lhs]))
-                for temp in lhs_reads.intersection(movable):
-                    lhs_reads |= reads_through.get(temp, set())
-                reads_through[lhs] = lhs_reads
+                if has_overwrites:
+                    for temp in lhs_reads.intersection(movable):
+                        lhs_reads |= reads_through.get(temp, set())
+                    reads_through[lhs] = lhs_reads
                 reads |= lhs_reads
             element_reads.append(reads)
-        return overwrite_hazards(element_reads, elements)
+        return cut_hazards(element_reads, elements)
 
     def _apply_auto_splits(self, elements_by_list: Sequence[Sequence[tuple[Symbol, ...]]]) -> bool:
         """
@@ -332,7 +358,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         """
         cuts_by_list = self._query_auto_splits(
             [len(elements) for elements in elements_by_list],
-            [self._overwrite_hazards(eqn_list, elements) for eqn_list, elements in zip(self.eqn_complex.eqn_lists, elements_by_list)]
+            [self._cut_hazards(eqn_list, elements) for eqn_list, elements in zip(self.eqn_complex.eqn_lists, elements_by_list)]
         )
         if not any(cuts_by_list):
             return False
@@ -381,7 +407,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         cuts_by_list = self._query_auto_splits(
             [len(el.order) for el in ec.eqn_lists],
-            [self._overwrite_hazards(eqn_list, [(lhs,) for lhs in eqn_list.order], movable=[*local_temps, *tile_temps])
+            [self._cut_hazards(eqn_list, [(lhs,) for lhs in eqn_list.order], movable=[*local_temps, *tile_temps])
              for eqn_list, local_temps, tile_temps in zip(ec.eqn_lists, local_temps_by_list, tile_temps_by_list)]
         )
         if not any(cuts_by_list):
@@ -481,6 +507,57 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             "soft_split_retainment_strategy": retain_none(),
         }
 
+    @contextmanager
+    def _trial_bake_state(self) -> Iterator[None]:
+        """
+        Within this block, the function can be baked (``_early_bake``, global CSE) as a trial, without leaving a trace;
+        used by ``DslFrontend._derive_early_orders`` for ``rank_by_post_population``. On entry, the function's
+        EqnComplex is replaced by an independent copy (``EqnComplex.trial_copy``), its annotations by copies, its
+        baked flags are cleared, and its auto split predicates are removed, so that the trial neither splits nor
+        calls a predicate or the probe. On exit, even if the trial raised, all of that is restored.
+
+        The copy's annotation callbacks are the function's own; they write into ``self.source_annotations``, which
+        during the block is the copy, so the trial's annotations are discarded too. The function must not have been
+        baked yet.
+        """
+        if self.been_baked or self.been_late_baked:
+            raise DslException(f"Cannot run a trial bake of {self.name}, which has already been baked.")
+        saved = (self.eqn_complex, self.source_annotations, self._loop_annotations, self._refined_eqn_annotations,
+                 self._auto_hard_split_predicate, self._auto_soft_split_predicate)
+
+        trial_annotations = SourceAnnotations()
+        trial_annotations.loops.update(self.source_annotations.loops)
+        for loop_idx, annotations in self.source_annotations.eqns.items():
+            trial_annotations.eqns[loop_idx].update(annotations)
+
+        self.eqn_complex = self.eqn_complex.trial_copy()
+        self.source_annotations = trial_annotations
+        self._loop_annotations = list(self._loop_annotations)
+        self._refined_eqn_annotations = dict()
+        self._auto_hard_split_predicate = self._auto_soft_split_predicate = None
+        try:
+            yield
+        finally:
+            (self.eqn_complex, self.source_annotations, self._loop_annotations, self._refined_eqn_annotations,
+             self._auto_hard_split_predicate, self._auto_soft_split_predicate) = saved
+            self.been_baked = self.been_late_baked = False
+
+    def _check_rank_by_post_population(self, options: DslFunctionFrontendBakeOptions, *, early_resolved: bool) -> None:
+        """
+        Raise a DslException if `options` misuse rank_by_post_population, which is valid only as the early_ordering_fn
+        of a frontend's bake(): as pre_population_ordering_fn or ordering_fn, or, if `early_resolved` (in
+        `_early_bake`, after bake() should have resolved it), as early_ordering_fn. ``DslFrontend._derive_early_orders``
+        also runs it (without `early_resolved`), so that misuse fails before the trial bake.
+        """
+        for option in ("early_ordering_fn", "pre_population_ordering_fn", "ordering_fn"):
+            if option == "early_ordering_fn" and not early_resolved:
+                continue
+            if isinstance(value := options.get(option), RankByPostPopulation):
+                where = ("must be resolved by the frontend's bake(), which derives the order from a trial bake of the "
+                         "whole thorn; it cannot be passed to _early_bake directly"
+                         if option == "early_ordering_fn" else "can only be the early_ordering_fn")
+                raise DslException(f"{self.name}: {option}={value!r} {where}.")
+
     def _early_bake(self, **kwargs: Unpack[DslFunctionFrontendBakeOptions]) -> None:
         if self.been_baked:
             raise DslException("_early_bake should not be called more than once")
@@ -488,6 +565,10 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         options = self._mk_default_dsl_function_frontend_bake_options()
         options.update(kwargs)
+
+        # DslFrontend.bake replaces an early rank_by_post_population by the add_eqn_order it derives; anywhere else, it
+        #  is a mistake.
+        self._check_rank_by_post_population(options, early_resolved=True)
 
         ordering_fn = options["ordering_fn"]
         early_ordering_fn = options["early_ordering_fn"]

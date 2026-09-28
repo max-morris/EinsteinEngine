@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from enum import Enum, auto
 from time import time
 from types import TracebackType
@@ -189,7 +190,7 @@ def vprint(
     file: SupportsWrite[str] | None = None,
     flush: Literal[False] = False,
 ) -> None:
-    if verbose():
+    if verbose() and _output_suppression_depth == 0:
         print(*values, sep=sep, end=end, file=file, flush=flush)
 
 
@@ -203,6 +204,22 @@ def wprint(
     print(colored("Warning: " + " ".join(map(str, values)), "yellow"), sep=sep, end=end, file=file, flush=flush)
 
 
+# The depth of nested suppressed_output() blocks; pprint and vprint print nothing while it is positive.
+_output_suppression_depth = 0
+
+
+@contextmanager
+def suppressed_output() -> Iterator[None]:
+    """Within this block, pprint and vprint print nothing (wprint is unaffected, so warnings still appear). Used by the
+    trial bake of rank_by_post_population, whose progress messages and verbose output would repeat the real bake's."""
+    global _output_suppression_depth
+    _output_suppression_depth += 1
+    try:
+        yield
+    finally:
+        _output_suppression_depth -= 1
+
+
 def pprint(
     *values: object,
     sep: str | None = " ",
@@ -210,6 +227,8 @@ def pprint(
     file: SupportsWrite[str] | None = None,
     flush: Literal[False] = False,
 ) -> None:
+    if _output_suppression_depth > 0:
+        return
     if verbose():
         print("***", *values, "***", sep=sep, end=end, file=file, flush=flush)
     else:

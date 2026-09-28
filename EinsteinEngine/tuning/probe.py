@@ -23,6 +23,12 @@ each probed out-param. When a function evaluates its auto split predicates at it
 ``report_split_positions`` with the predicate object and the number of positions; the probe maps the object back to
 its out-param name. At the end of every ``DslFrontend.bake`` the engine calls ``bake_finished``.
 
+A function whose early ordering function is ``rank_by_post_population(fn)`` gets its add_eqn order from a trial bake at
+the start of the bake, and the engine reports that order with ``report_derived_order``. The probe records it, in
+``ProbeResult.derived_orders``, because a checkpoint's split coordinates mean different cuts under a different group
+order: ``build_experiment`` stores the derived orders in the checkpoint's probe file and flags a changed one like a
+changed count. (The count itself does not depend on the order at the early locus; the meaning of each position does.)
+
 Limitations:
 
 - The recipe is stopped at the end of the first bake after which every placeholder has been reported. Everything the
@@ -39,8 +45,9 @@ This module is imported by the engine, so it must stay lightweight: no optuna, a
 
 import runpy
 import sys
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 # Re-exported: describe_param lives in common so that the intermediate layer can use it without importing tuning.
@@ -76,6 +83,8 @@ class _ProbeState:
     reports: dict[str, dict[str, set[int]]] = field(default_factory=dict)
     # The names the recipe asked for (through get_tuning_param / get_optional_tuning_param)
     read: set[str] = field(default_factory=set)
+    # function name -> the distinct add_eqn orders rank_by_post_population derived for it
+    derived_orders: dict[str, set[tuple[int, ...]]] = field(default_factory=dict)
 
     def name_of(self, predicate: object) -> str | None:
         for name, placeholder in self.placeholders.items():
@@ -118,6 +127,18 @@ def report_split_positions(predicate: object, function_name: str, count: int) ->
     _state.reports.setdefault(name, {}).setdefault(function_name, set()).add(count)
 
 
+def report_derived_order(function_name: str, order: Sequence[int]) -> None:
+    """Engine hook: ``rank_by_post_population`` derived the 0-based add_eqn order ``order`` for ``function_name``.
+
+    Called by ``DslFrontend._derive_early_orders`` after the trial bake, before the real bake of the function (and so
+    before any of its split positions are reported). No-op unless probing; while probing, the order is recorded in the
+    probe result's ``derived_orders``.
+    """
+    if _state is None:
+        return
+    _state.derived_orders.setdefault(function_name, set()).add(tuple(order))
+
+
 def bake_finished() -> None:
     """Engine hook, called at the very end of ``DslFrontend.bake``.
 
@@ -129,10 +150,22 @@ def bake_finished() -> None:
 
 
 class ProbeResult(Mapping[str, int]):
-    """An immutable mapping from probed out-param name to the number of split positions at its locus."""
+    """An immutable mapping from probed out-param name to the number of split positions at its locus.
 
-    def __init__(self, counts: Mapping[str, int] | None = None) -> None:
+    ``derived_orders`` maps the name of each function whose early order ``rank_by_post_population`` derived during the
+    probe to that 0-based add_eqn order (see ``report_derived_order``); it is empty otherwise. It is not part of the
+    mapping, so equality with a plain dict compares the counts only.
+    """
+
+    def __init__(self, counts: Mapping[str, int] | None = None,
+                 derived_orders: Mapping[str, Sequence[int]] | None = None) -> None:
         self._counts: dict[str, int] = dict(sorted((counts or {}).items()))
+        self._derived_orders: dict[str, tuple[int, ...]] = {
+            name: tuple(order) for name, order in sorted((derived_orders or {}).items())}
+
+    @property
+    def derived_orders(self) -> Mapping[str, tuple[int, ...]]:
+        return MappingProxyType(self._derived_orders)
 
     def __getitem__(self, name: str) -> int:
         return self._counts[name]
@@ -144,6 +177,8 @@ class ProbeResult(Mapping[str, int]):
         return len(self._counts)
 
     def __repr__(self) -> str:
+        if self._derived_orders:
+            return f'ProbeResult({self._counts!r}, derived_orders={self._derived_orders!r})'
         return f'ProbeResult({self._counts!r})'
 
     @staticmethod
@@ -172,9 +207,12 @@ def probe_recipe(recipe_path: str, predicate_names: Collection[str],
     automatic name counters of ``ExplicitSyncBatch`` and ``NewRadXBoundaryBatch`` are restored, and the symbolic
     caches are cleared.
 
+    The result also records the add_eqn order that ``rank_by_post_population`` derived for each function that uses it
+    (``ProbeResult.derived_orders``; see ``report_derived_order``).
+
     Raises RuntimeError if the recipe fails, never reads one of the provided names (an ordering function or locus it
-    ignores would make the count wrong), never evaluates a placeholder, or evaluates one placeholder with different
-    counts in different functions.
+    ignores would make the count wrong), never evaluates a placeholder, evaluates one placeholder with different
+    counts in different functions, or derives different orders for one function name (e.g. in two thorns).
     """
     global _state
     if _state is not None:
@@ -238,4 +276,12 @@ def _validate(state: _ProbeState) -> ProbeResult:
                 f'The predicate for out-param {name!r} was evaluated with different numbers of split positions: '
                 f'{detail}. Give each function its own out-param.')
         counts[name] = distinct.pop()
-    return ProbeResult(counts)
+    derived_orders: dict[str, tuple[int, ...]] = {}
+    for function_name, orders in state.derived_orders.items():
+        if len(orders) != 1:
+            raise RuntimeError(
+                f'rank_by_post_population derived different add_eqn orders for functions named {function_name!r} '
+                f'while probing: {" and ".join(str(list(order)) for order in sorted(orders))}. Give the functions '
+                f'distinct names.')
+        derived_orders[function_name] = next(iter(orders))
+    return ProbeResult(counts, derived_orders)

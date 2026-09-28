@@ -22,7 +22,9 @@ Cut positions depend on the post-CSE order, so each test bakes an unsplit twin o
 positions from the twin's lists.
 """
 
+import contextlib
 import functools
+import io
 import os
 import tempfile
 from typing import Any, Callable, Iterator, Optional
@@ -136,6 +138,22 @@ def mk_recipe_overwrite(locus: SplitLocus) -> Recipe:
         fun.add_eqn(a, u * 2 + 1)
         fun.add_eqn(Xp, X / (X + Y))
         fun.add_eqn(Yp, Y / (X + Y))
+    return recipe
+
+
+# add_eqn calls that read later calls: call 0 reads b, which call 1 writes, and calls 2 and 3 depend on each other
+#  (vD1 reads c, and c reads vD0). At the early locus without an early ordering function each call is its own position,
+#  so a hard cut after call 0 or after call 2 would put a read before its write.
+def mk_recipe_backward(locus: SplitLocus) -> Recipe:
+    def recipe(gf: ThornDef, hard: Optional[HardPredicate], soft: Optional[SoftPredicate]) -> None:
+        v = gf.decl("v", [li])
+        a, b, c, u = decl(gf, "abcu")
+        fun = gf.create_function("f", ScheduleBin.Evolve, auto_split_locus=locus,
+                                 auto_hard_split_predicate=hard, auto_soft_split_predicate=soft)
+        fun.add_eqn(a, b * 2 + sin(u))
+        fun.add_eqn(b, u * 3 + cos(u))
+        fun.add_eqn(v[li], [u * sin(u), c * 2, u * 3])
+        fun.add_eqn(c, v[l0] * 3 + a)
     return recipe
 
 
@@ -575,6 +593,48 @@ def test_overwrite_never_separated() -> None:
                     stored |= {var for var in "XY" if f"store({var}," in loop}
 
 
+def test_backward_reads_never_hard_cut() -> None:
+    """
+    A hard cut that would put a read before its write (add_eqn calls that read later calls, at the early locus without
+    an early ordering function) is ignored with a warning, while the predicates are still queried at every position;
+    soft cuts there are kept, since the merge rejoins the loops. The pre- and post-population loci cut baked orders,
+    which respect dependencies, so they never refuse a cut for this reason.
+    """
+    inputs = dict(u=-0.4)
+    outputs = ("a", "b", "c", "vD0", "vD1", "vD2")
+    for locus in (SplitLocus.Early, SplitLocus.PrePopulation, SplitLocus.PostPopulation):
+        recipe = mk_recipe_backward(locus)
+        twin = build(recipe, f"BW{locus.name}Twin")
+        expected = simulate(twin, "f", **inputs)
+
+        for kind in ("hard", "soft"):
+            calls: list[int] = list()
+
+            def everywhere(i: int) -> bool:
+                calls.append(i)
+                return True
+
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                gf = build(recipe, f"BW{locus.name}{kind}", **{kind: everywhere})
+            ec = gf.functions["f"].eqn_complex
+            assert calls == list(range(len(calls))) and len(calls) >= 4, calls
+            warnings = [line for line in out.getvalue().splitlines() if "ignoring the auto splits" in line]
+
+            if locus is SplitLocus.Early and kind == "hard":
+                # Positions 0 and 2 are refused; the cut after call 1 is legitimate, and the one after call 3 is at the end.
+                assert len(warnings) == 1 and "positions [0, 2] of the Early locus" in warnings[0] \
+                       and "put reads of b, c before their writes." in warnings[0], warnings
+                named = [sorted(str(lhs) for lhs in el.eqns if str(lhs) in outputs) for el in ec.eqn_lists]
+                assert named == [["a", "b"], ["c", "vD0", "vD1", "vD2"]], named
+            else:
+                assert len(warnings) == 0, (locus, kind, warnings)
+
+            result = simulate(gf, "f", **inputs)
+            for name in outputs:
+                assert abs(float(result[sym(name)]) - float(expected[sym(name)])) <= 1e-12, (locus, kind, name)
+
+
 def test_no_cut_is_identity() -> None:
     twin = build(recipe_chain, "IdTwin")
     gf = build(recipe_chain, "Id", hard=lambda i: False, soft=lambda i: False)
@@ -599,6 +659,7 @@ if __name__ == "__main__":
         test_cut_at_list_end,
         test_pull_out_temp_crosses_hard_cut,
         test_overwrite_never_separated,
+        test_backward_reads_never_hard_cut,
         test_no_cut_is_identity,
     ]
     for test in tests:
