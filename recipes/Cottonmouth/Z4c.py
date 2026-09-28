@@ -323,13 +323,62 @@ gt_rhs = cottonmouth_Z4c.decl(
     parity=parity_sym2ten
 )
 
-gt = cottonmouth_Z4c.decl(
-    "gt",
+# "Zach Trick": evolve gt_m1_ij = gt_ij - delta_ij instead of gt_ij. Since delta_ij is
+# constant, D(gt) = D(gt_m1) and the equations are analytically unchanged, but the O(1)
+# diagonal part is never stored or finite-differenced, so all mantissa bits go to the
+# small deviation. This reduces roundoff in the weak-field region, which matters most
+# in single/mixed precision.
+#   Z. B. Etienne, PRD 110, 064045 (2024), arXiv:2404.01137, Sec. II.A, Eqs. (3)-(4).
+#   J. T. Giblin Jr., J. B. Mertens, G. D. Starkman, CQG 34, 214001 (2017),
+#     arXiv:1704.04307, Eq. (8) and App. B.
+# Reference-metric decomposition gbar = ghat + eps (curvilinear origin):
+#   T. W. Baumgarte et al., PRD 87, 044026 (2013), arXiv:1211.6632, Eq. (19).
+#   I. Ruchlin, Z. B. Etienne, T. W. Baumgarte, PRD 97, 064036 (2018), arXiv:1712.07658.
+gt_m1 = cottonmouth_Z4c.decl(
+    "gt_m1",
     [li, lj],
     symmetries=[(li, lj)],
     rhs=gt_rhs,
     parity=parity_sym2ten
 )
+
+flat_mat = mk_matrix([
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1]
+])
+
+flat_gt = cottonmouth_Z4c.decl(
+    "flat_gt",
+    [li, lj],
+    symmetries=[(li, lj)],
+    substitution_rule=flat_mat
+)
+
+gt = cottonmouth_Z4c.decl(
+    "gt",
+    [li, lj],
+    symmetries=[(li, lj)]
+)
+
+# gt_f64 is gt reconstructed in double. It exists for the still-experimental
+# mixed-precision work, in which Cottonmouth's grid functions are stored as REAL4 or
+# REAL2 while ADMBaseX's grid functions are assumed to be left untouched as REAL8.
+# Adding delta back at REAL4/REAL2 would round the diagonal to ~6e-8 (REAL4) or ~1e-3
+# (REAL2) absolute and throw away exactly the bits the Zach Trick preserves. It is used
+# only where delta is added back and the deviation must survive:
+#   - z4c_to_adm, which widens gt into the REAL8 ADM metric;
+#   - the det(gt) = 1 enforcement, which adds delta, rescales, and subtracts delta again.
+# Everywhere else gt appears only multiplicatively, where rounding 1 + gt_m1 is a
+# one-ulp relative error. In an all-REAL8 build as_f64() is a no-op.
+gt_f64 = cottonmouth_Z4c.decl(
+    "gt_f64",
+    [li, lj],
+    symmetries=[(li, lj)]
+)
+
+cottonmouth_Z4c.add_substitution_rule(gt[li, lj], gt_m1[li, lj] + flat_gt[li, lj])
+cottonmouth_Z4c.add_substitution_rule(gt_f64[li, lj], as_f64(gt_m1[li, lj]) + flat_gt[li, lj])
 
 # \tilde{A}_{ij}
 At_rhs = cottonmouth_Z4c.decl(
@@ -472,6 +521,7 @@ cottonmouth_Z4c.add_substitution_rule(g[ui, uj], g_imat)
 # Conformal metric and its inverse
 gt_mat = cottonmouth_Z4c.get_matrix(gt[li, lj])
 detgt = det(gt_mat)
+detgt_f64 = det(cottonmouth_Z4c.get_matrix(gt_f64[li, lj]))
 
 # Use the fact that det(gt) = 1 to simplify the inverse expression
 # Note that det(gt) = 1 is an *enforced* constraint
@@ -612,8 +662,8 @@ fun_adm_to_z4c_pt1.add_eqn(
 
 # Eq. (11) of [2], left
 fun_adm_to_z4c_pt1.add_eqn(
-    gt[li, lj],
-    (1 / cbrt(detg)) * g[li, lj]
+    gt_m1[li, lj],
+    1 / cbrt(detg) * g[li, lj] - flat_gt[li, lj]
 )
 
 # Eq. (12) of [2], right
@@ -672,11 +722,11 @@ fun_z4c_enforce_pt1.add_eqn(
 )
 
 # Enforce \det(\tilde{\gamma}) = 1
-gt_enforce = cottonmouth_Z4c.overwrite(gt)
+gt_enforce = cottonmouth_Z4c.overwrite(gt_m1)
 
 fun_z4c_enforce_pt1.add_eqn(
     gt_enforce[li, lj],
-    gt[li, lj] / (cbrt(detgt))
+    gt_f64[li, lj] / cbrt(detgt_f64) - flat_gt[li, lj]
 )
 
 fun_z4c_enforce_pt2 = cottonmouth_Z4c.create_function(
@@ -706,7 +756,7 @@ fun_z4c_to_adm = cottonmouth_Z4c.create_function(
 # Eq. (2.4) of [1]
 fun_z4c_to_adm.add_eqn(
     g[li, lj],
-    (1 / chi) * gt[li, lj]
+    (1 / chi) * gt_f64[li, lj]
 )
 
 # Eq. (2.5) of [1]
@@ -817,13 +867,13 @@ sync_state = ExplicitSyncBatch(
     name="sync_state",
 )
 sync_z4c = ExplicitSyncBatch(
-    [At, gt, chi, evo_lapse, evo_shift, trK],
+    [At, gt_m1, chi, evo_lapse, evo_shift, trK],
     "z4c_to_adm_group",
     schedule_before=["z4c_to_adm"],
     name="sync_z4c",
 )
 sync_z4c_pt2 = ExplicitSyncBatch(
-    [gt],
+    [gt_m1],
     "adm_to_z4c_pt2_group",
     schedule_before=["adm_to_z4c_pt2"],
     name="sync_z4c_pt2",
@@ -1157,8 +1207,8 @@ nrx_evo_Gammat = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xx = NewRadXBoundaryBatch(
-    gt[l0, l0],
-    sympify(1),
+    gt_m1[l0, l0],
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
@@ -1168,7 +1218,7 @@ nrx_gt_xx = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xy = NewRadXBoundaryBatch(
-    gt[l0, l1],
+    gt_m1[l0, l1],
     sympify(0),
     sympify(1),
     radpower_gt,
@@ -1179,7 +1229,7 @@ nrx_gt_xy = NewRadXBoundaryBatch(
 )
 
 nrx_gt_xz = NewRadXBoundaryBatch(
-    gt[l0, l2],
+    gt_m1[l0, l2],
     sympify(-0),
     sympify(1),
     radpower_gt,
@@ -1190,8 +1240,8 @@ nrx_gt_xz = NewRadXBoundaryBatch(
 )
 
 nrx_gt_yy = NewRadXBoundaryBatch(
-    gt[l1, l1],
-    sympify(1),
+    gt_m1[l1, l1],
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
@@ -1201,7 +1251,7 @@ nrx_gt_yy = NewRadXBoundaryBatch(
 )
 
 nrx_gt_yz = NewRadXBoundaryBatch(
-    gt[l1, l2],
+    gt_m1[l1, l2],
     sympify(0),
     sympify(1),
     radpower_gt,
@@ -1212,8 +1262,8 @@ nrx_gt_yz = NewRadXBoundaryBatch(
 )
 
 nrx_gt_zz = NewRadXBoundaryBatch(
-    gt[l2, l2],
-    sympify(1),
+    gt_m1[l2, l2],
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
