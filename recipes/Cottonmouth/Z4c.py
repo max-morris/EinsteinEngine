@@ -1203,7 +1203,7 @@ nrx_evo_Gammat = NewRadXBoundaryBatch(
 
 nrx_gt_xx = NewRadXBoundaryBatch(
     gt_m1[l0, l0],
-    sympify(1),
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
@@ -1236,7 +1236,7 @@ nrx_gt_xz = NewRadXBoundaryBatch(
 
 nrx_gt_yy = NewRadXBoundaryBatch(
     gt_m1[l1, l1],
-    sympify(1),
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
@@ -1258,7 +1258,7 @@ nrx_gt_yz = NewRadXBoundaryBatch(
 
 nrx_gt_zz = NewRadXBoundaryBatch(
     gt_m1[l2, l2],
-    sympify(1),
+    sympify(0),
     sympify(1),
     radpower_gt,
     rhs_group,
