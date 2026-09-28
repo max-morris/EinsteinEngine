@@ -91,11 +91,12 @@ from the tuning parameters instead (`precision_policy`,
      tuning parameters, which are `None` outside the tuner. So this branch
      emits the RHS as 2 loops where PR 100 emits 6, with the `AtTF` and
      `Rchi` intermediates kept as temporaries instead of stored grid
-     functions (129 stores over the thorn against 147). This is a
-     benchmark-relevant choice: the plan's stage-A base is "splits at the
-     current Z4c setting", and on this branch that setting is "no split
-     unless the tuner says so". Re-enable the line if the manual split is
-     the intended baseline.
+     functions (129 stores over the thorn against 147). This is the
+     benchmark baseline by decision (2026-09-28): it is what the
+     step-0 generation was already using before this branch existed,
+     and the plan's stage-A base of "splits at the current Z4c setting"
+     means "no split unless the tuner says so". Do not re-enable the
+     manual split here; a split is a tuner knob.
   2. Temporary order and numbering differ in the other affected files
      from the feature branch's equation-ordering changes; the CCL files,
      the stored variables and the expressions are the same.
