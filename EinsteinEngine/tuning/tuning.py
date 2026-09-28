@@ -23,7 +23,6 @@ from typing import Any
 
 from EinsteinEngine.common.util import pprint
 
-from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
 from EinsteinEngine.tuning.experiment import Experiment
 from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_run
 
@@ -65,6 +64,11 @@ class Tuner(ABC):
 
 
 def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:
+    # Optuna (and through it sqlite3) is needed only to run a study, not to
+    # read a tuning parameter from a recipe, so it is imported here rather
+    # than at module load: `from EinsteinEngine import *` must work on a
+    # Python without sqlite3 (qbd's pyenv build is one).
+    from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
     optimizer = CheckpointedOptimizer(
         f=functools.partial(do_tuning_run, args=args),
         experiment=tuner.get_experiment(),
