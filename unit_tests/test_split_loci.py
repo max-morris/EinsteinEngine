@@ -35,6 +35,7 @@ from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.intermediate.eqn_ordering import pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnListPiece, SplitBoundary
 from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
+from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 
 x = mk_symbol("x")
 
@@ -75,8 +76,11 @@ class Recorder:
 
 def test_no_reorder_equivalence() -> None:
     """Deferred early-locus predicates give the same lists as splitting right after each add_eqn (the old behavior)."""
-    hard = lambda i: i in (1, 4)
-    soft = lambda i: retain_all() if i == 2 else (i == 5)
+    def hard(i: int) -> bool:
+        return i in (1, 4)
+
+    def soft(i: int) -> bool | SoftSplitRetainmentStrategy:
+        return retain_all() if i == 2 else (i == 5)
 
     def build(name: str, deferred: bool) -> ThornFunction:
         gf = ThornDef("ARR", name)
@@ -269,6 +273,40 @@ def test_boundary_folding() -> None:
     fun, sa, sb = mk_direct("FOLDDIRECTTRAIL")
     fun._refine([[EqnListPiece((sa, sb), None), EqnListPiece((), SplitBoundary(soft=True))]])
     assert [len(el.eqns) for el in fun.eqn_complex.eqn_lists] == [2]
+
+
+def test_leading_custom_annotation_kept() -> None:
+    """
+    A split_loop() before the first add_eqn leaves an empty first list. When a cut drops it, the list that becomes the
+    first one loses its boundary but keeps its custom annotation.
+    """
+    for locus in (SplitLocus.Early, SplitLocus.PrePopulation):
+        gf = ThornDef("ARR", f"LEADANNOT{locus.name.upper()}")
+        a, b, c, src = gf.decl("a", []), gf.decl("b", []), gf.decl("c", []), gf.decl("src", [])
+        fun = gf.create_function("fn", ScheduleBin.Evolve, auto_split_locus=locus,
+                                 auto_hard_split_predicate=lambda i: i == 0)
+        fun.split_loop(annotation="Custom")
+        fun.add_eqn(a, src)
+        fun.add_eqn(b, src * 2)
+        fun.add_eqn(c, src * 3)
+        fun._early_bake(ordering_fn=recipe_order)
+        assert lists_of(fun) == [["a"], ["b", "c"]], lists_of(fun)
+        assert fun.eqn_complex._hard_splits == {1}
+        assert dict(fun.source_annotations.loops) == {0: "Custom", 1: "fn loop 1"}, dict(fun.source_annotations.loops)
+
+    # Direct refine: the annotation folded in from dropped pieces survives on the new first list, too.
+    gf = ThornDef("ARR", "LEADANNOTDIRECT")
+    a, b, src = gf.decl("a", []), gf.decl("b", []), gf.decl("src", [])
+    fun = gf.create_function("fn", ScheduleBin.Evolve)
+    fun.split_loop(annotation="Custom")
+    fun.add_eqn(a, src)
+    fun.add_eqn(b, src * 2)
+    [sa, sb] = list(fun.eqn_complex.eqn_lists[1].eqns.keys())
+    fun._refine([[EqnListPiece((), None)],
+                 [EqnListPiece((), None), EqnListPiece((sa,), SplitBoundary(soft=False)),
+                  EqnListPiece((sb,), SplitBoundary(soft=False))]])
+    assert [len(el.eqns) for el in fun.eqn_complex.eqn_lists] == [1, 1]
+    assert dict(fun.source_annotations.loops) == {0: "Custom", 1: "fn loop 1"}, dict(fun.source_annotations.loops)
 
 
 def test_empty_soft_piece_dropped_before_manual_soft_split() -> None:
@@ -517,7 +555,7 @@ def test_duplicate_lhs_in_segment() -> None:
 
 def test_bayesian_stand_in_before_cse() -> None:
     assert pre_cse_stand_in(bayesian_optimization) is prioritize_rare_symbols
-    assert pre_cse_stand_in(functools.partial(bayesian_optimization, init_points=1)) is prioritize_rare_symbols
+    assert pre_cse_stand_in(functools.partial(bayesian_optimization, exploration_iter=1)) is prioritize_rare_symbols
     assert pre_cse_stand_in(maximize_symbol_reuse) is maximize_symbol_reuse
 
     # Used as the early ordering function, Bayesian optimization is replaced before it can run.
@@ -544,6 +582,15 @@ def test_add_eqn_order_validation() -> None:
     fun = gf.create_function("fn", ScheduleBin.Evolve)
     fun.add_eqn(a, src)
     expect_dsl_exception(lambda: fun._early_bake(early_ordering_fn=add_eqn_order([1, 0])), "out of range")
+
+
+def test_unknown_function_bake_options() -> None:
+    """Per-function bake options must name an existing function, so a typo cannot silently drop them."""
+    gf = ThornDef("ARR", "UNKNOWNFN")
+    a, src = gf.decl("a", []), gf.decl("src", [])
+    fun = gf.create_function("my_rhs", ScheduleBin.Evolve)
+    fun.add_eqn(a, src)
+    expect_dsl_exception(lambda: gf.bake(functions={"my_rsh": {"ordering_fn": recipe_order}}), "my_rsh")
 
 
 def test_full_bake_with_cse() -> None:
@@ -577,6 +624,7 @@ if __name__ == "__main__":
         test_manual_splits_never_crossed,
         test_trailing_split_dropped,
         test_boundary_folding,
+        test_leading_custom_annotation_kept,
         test_empty_soft_piece_dropped_before_manual_soft_split,
         test_merge_keeps_provenance,
         test_early_cuts_see_new_order,
@@ -589,6 +637,7 @@ if __name__ == "__main__":
         test_duplicate_lhs_in_segment,
         test_bayesian_stand_in_before_cse,
         test_add_eqn_order_validation,
+        test_unknown_function_bake_options,
         test_full_bake_with_cse,
     ]
     for test in tests:

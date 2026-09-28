@@ -137,6 +137,14 @@ class RefinedList:
     inherits_boundary: bool
     boundary: Optional[SplitBoundary]  # None only for the first list of the complex
     piece_order: tuple[Symbol, ...]  # Its LHSes in the order of its piece, which rebake_refined preserves
+    # The first list of the complex has no boundary, but keeps the annotation of the boundary it had before the lists
+    #  in front of it were dropped (e.g., a custom annotation on a leading manual split)
+    first_annotation: Optional[str] = None
+
+    @property
+    def annotation(self) -> Optional[str]:
+        """The list's loop annotation: None = default annotation by final index; '' = none."""
+        return self.boundary.annotation if self.boundary is not None else self.first_annotation
 
     def fold_into(self, kept: 'RefinedList') -> 'RefinedList':
         """
@@ -558,7 +566,8 @@ class EqnComplex:
         wins; see `RefinedList.fold_into`). An empty piece computes nothing, so this deliberately departs from the
         historical behavior of splitting in add_eqn, which kept such lists: an auto split right before a manual split
         (or after the last equation) emitted an empty loop if hard, and if soft, merge_soft_splits applied the auto
-        split's retainment strategy at the empty list before applying the manual split's.
+        split's retainment strategy at the empty list before applying the manual split's. If every list in front of a
+        list is dropped, it becomes the first list and loses its boundary, but keeps the boundary's annotation.
 
         If a source list had already been baked, each of its pieces is seeded with the source's analytic symbols so
         that the inferred write regions of its outputs do not change, and `rebake_refined` validates the result.
@@ -649,7 +658,8 @@ class EqnComplex:
                                               annotation=inherited_annotations[src_idx] if len(inherited_annotations) > 0 else None)
                     candidates.append(RefinedList(src_idx, True, inherited, piece.lhses))
                 else:
-                    candidates.append(RefinedList(src_idx, True, None, piece.lhses))
+                    candidates.append(RefinedList(src_idx, True, None, piece.lhses,
+                                                  first_annotation=inherited_annotations[0] if len(inherited_annotations) > 0 else None))
 
         refined: list[RefinedList] = list()
         dropped: Optional[RefinedList] = None  # The last dropped empty piece, with every earlier one folded into it
@@ -666,8 +676,9 @@ class EqnComplex:
         if len(refined) == 0:
             refined.append(RefinedList(0, True, None, tuple()))
 
-        # The first list of the complex has no boundary, even if it now starts with a later source list.
-        refined[0] = replace(refined[0], boundary=None)
+        # The first list of the complex has no boundary, even if it now starts with a later source list; it keeps that
+        # boundary's annotation.
+        refined[0] = replace(refined[0], boundary=None, first_annotation=refined[0].annotation)
         return refined
 
     def _rebuild_tile_sets(self, new_lists: list['EqnList'], tile_kind_temps: Collection[Symbol]) -> set[Symbol]:

@@ -34,10 +34,7 @@ raises (this catches typos). A knob that a tuner may leave out is read with
 the tuner does not provide it.
 
 ```python
-from EinsteinEngine import get_tuning_param
-from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse
-from EinsteinEngine.intermediate.split_locus import SplitLocus
-from EinsteinEngine.tuning.tuning import get_optional_tuning_param
+from EinsteinEngine import SplitLocus, get_optional_tuning_param, get_tuning_param, maximize_symbol_reuse
 
 fun = mod.create_function(
     "my_rhs",
@@ -50,10 +47,14 @@ fun = mod.create_function(
 )
 
 mod.bake(
-    # Optional ordering functions, one per locus (section 5). The defaults keep the usual bake.
-    early_ordering_fn=get_optional_tuning_param('early_ordering_fn', None),
-    pre_population_ordering_fn=get_optional_tuning_param('pre_population_ordering_fn', None),
-    ordering_fn=get_optional_tuning_param('ordering_fn', maximize_symbol_reuse),
+    ordering_fn=maximize_symbol_reuse,
+    # Optional ordering functions, one per locus (section 5). The defaults keep the usual bake. They are passed
+    # for the tuned function only, since an add_eqn_order([...]) refers to that function's add_eqn calls.
+    functions={"my_rhs": {
+        "early_ordering_fn": get_optional_tuning_param('early_ordering_fn', None),
+        "pre_population_ordering_fn": get_optional_tuning_param('pre_population_ordering_fn', None),
+        "ordering_fn": get_optional_tuning_param('ordering_fn', maximize_symbol_reuse),
+    }},
 )
 ```
 
@@ -249,13 +250,12 @@ no locus reorders equations across them.
 
 | `SplitLocus`     | Elements                                                               | Order of the elements                                                                                   | Z4c N |
 |------------------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|-------|
-| `Early`          | `add_eqn` calls (a tensor equation's components stay together)          | `early_ordering_fn`, applied to groups; without it, recipe order                                        | TBD   |
-| `PrePopulation`  | scalar equations and pull-out temporaries, before CSE temporaries exist | the pre-CSE bake order: `pre_population_ordering_fn`, or `ordering_fn` when that is None               | TBD   |
-| `PostPopulation` | scalar equations and temporaries after global CSE                       | `ordering_fn` (the post-CSE order)                                                                      | TBD   |
+| `Early`          | `add_eqn` calls (a tensor equation's components stay together)          | `early_ordering_fn`, applied to groups; without it, recipe order                                        | 13    |
+| `PrePopulation`  | scalar equations and pull-out temporaries, before CSE temporaries exist | the pre-CSE bake order: `pre_population_ordering_fn`, or `ordering_fn` when that is None               | 64    |
+| `PostPopulation` | scalar equations and temporaries after global CSE                       | `ordering_fn` (the post-CSE order)                                                                      | 1061  |
 
-(The Z4c numbers are filled in from a probe of `recipes/Cottonmouth/Z4c.py` at
-each locus.) With two params per position, `CombinatorialSplitTuner` is only
-practical at the `Early` locus; use `CutPositionSplitTuner` at the others.
+With two params per position, `CombinatorialSplitTuner` is only practical at the `Early` locus; use
+`CutPositionSplitTuner` at the others.
 
 ### Probing
 

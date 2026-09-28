@@ -364,7 +364,10 @@ def test_soft_cut_never_promotes() -> None:
                      soft_split_retainment_strategy=retainment)
         order = function_order(twin)
         cut = order.index(a)
-        gf = build(recipe_shared, "SoftProm", soft=lambda i, cut=cut: i == cut, temporary_promotion_strategy=promote_all(),
+        def at_cut(i: int, cut: int = cut) -> bool:
+            return i == cut
+
+        gf = build(recipe_shared, "SoftProm", soft=at_cut, temporary_promotion_strategy=promote_all(),
                    soft_split_retainment_strategy=retainment)
         ec = gf.functions["f"].eqn_complex
         check_consistent(gf)
@@ -538,7 +541,7 @@ def test_overwrite_never_separated() -> None:
     for locus in (SplitLocus.Early, SplitLocus.PrePopulation, SplitLocus.PostPopulation):
         recipe = mk_recipe_overwrite(locus)
         twin = build(recipe, f"OW{locus.name}Twin")
-        expected = simulate(twin, **inputs)
+        expected = simulate(twin, "f", **inputs)
 
         for kind in ("hard", "soft"):
             calls: list[int] = list()
@@ -557,7 +560,7 @@ def test_overwrite_never_separated() -> None:
                 # The cut between a and the writers is legitimate and still made.
                 assert len(ec.eqn_lists) == 2 and writers_list == 1, [el.order for el in ec.eqn_lists]
 
-            result = simulate(gf, **inputs)
+            result = simulate(gf, "f", **inputs)
             for out in ("X'", "Y'", "a"):
                 assert abs(float(result[sym(out)]) - float(expected[sym(out)])) <= 1e-12, (locus, kind, out)
 

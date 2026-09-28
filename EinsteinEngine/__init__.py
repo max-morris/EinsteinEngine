@@ -49,7 +49,7 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
-from EinsteinEngine.tuning.tuning import get_tuning_param
+from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
 from sympy import Idx
 from sympy.core.relational import Relational
@@ -128,4 +128,5 @@ __all__ = [
     "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
     "recipe_order", "pre_population_order", "add_eqn_key_order", "add_eqn_order", "SplitLocus",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
-    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "pull_out", "get_tuning_param"]
+    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "pull_out", "get_tuning_param",
+    "get_optional_tuning_param"]

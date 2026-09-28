@@ -208,7 +208,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         refined = self.eqn_complex.refine(pieces_by_source, tile_kind_temps=tile_kind_temps,
                                           inherited_annotations=self._loop_annotations)
 
-        self._loop_annotations = [r.boundary.annotation if r.boundary is not None else None for r in refined]
+        self._loop_annotations = [r.annotation for r in refined]
         self._sync_loop_annotations()
 
         self._refined_eqn_annotations = {
@@ -237,16 +237,18 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
     def _query_auto_splits(self,
                            counts: Sequence[int],
-                           uncuttable: Sequence[Collection[int]]) -> list[list[tuple[int, SplitBoundary]]]:
+                           uncuttable: Sequence[Mapping[int, Collection[tuple[Symbol, Symbol]]]]
+                           ) -> list[list[tuple[int, SplitBoundary]]]:
         """
         Evaluate the auto split predicates at the function's locus, where list i has `counts[i]` positions. Positions
         are 0-based and run across lists; position p means "split after element p". Each predicate is first reported
         to the probe with the total count. At each position, the hard predicate is queried first and the soft one only
         if the hard one is absent or declined.
 
-        `uncuttable[i]` holds the positions within list i at which a cut would separate an overwrite from a later read
-        of what it overwrites (see `_overwrite_hazards`). The predicates are still queried there, so the probe counts
-        and what a tuner sees are unchanged, but a split they request there is ignored, with one warning per function.
+        `uncuttable[i]` maps the positions within list i at which a cut would separate an overwrite from a later read
+        of what it overwrites to those (overwrite, read) pairs (see `_overwrite_hazards`). The predicates are still
+        queried there, so the probe counts and what a tuner sees are unchanged, but a split they request there is
+        ignored, with one warning per function.
         At the early locus without an early ordering function, this departs from the historical behavior of splitting
         in add_eqn wherever a cut would separate an overwrite X' from a later read of X. For a hard cut whose read of X
         is not promoted to a tile temporary, the historical code read the already overwritten variable; elsewhere (soft
@@ -264,6 +266,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 probe.report_split_positions(predicate, self.name, sum(counts))
 
         ignored: list[int] = list()
+        hazards: set[tuple[Symbol, Symbol]] = set()
         position = 0
         for cuts, count, forbidden in zip(cuts_by_list, counts, uncuttable):
             for local_position in range(count):
@@ -279,28 +282,30 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 if boundary is not None:
                     if local_position in forbidden:
                         ignored.append(position)
+                        hazards.update(forbidden[local_position])
                     else:
                         cuts.append((local_position, boundary))
                 position += 1
 
         if len(ignored) > 0:
+            pairs = ", ".join(f"{w} from a later read of {r}" for w, r in sorted(hazards, key=str))
             wprint(f"{self.name}: ignoring the auto splits at positions {ignored} of the {self.auto_split_locus.name} "
-                   f"locus, which would separate an overwrite X' from a later read of X.")
+                   f"locus, which would separate {pairs}.")
         return cuts_by_list
 
     @staticmethod
     def _overwrite_hazards(eqn_list: EqnList,
                            elements: Sequence[tuple[Symbol, ...]],
-                           movable: Collection[Symbol] = ()) -> set[int]:
+                           movable: Collection[Symbol] = ()) -> dict[int, set[tuple[Symbol, Symbol]]]:
         """
         The positions in `elements` (the elements of `eqn_list` in order, see `_apply_auto_splits`) at which a cut
-        would separate an overwrite X' from a later read of X (see eqn_grouping.overwrite_hazards). An element also
-        reads, transitively, what the temporaries in `movable` that it reads read, since the closure assignment at the
-        post-population locus may move or duplicate those temporaries into its piece. `elements` must respect
-        dependencies on the `movable` temporaries, as a baked order does.
+        would separate an overwrite X' from a later read of X, each mapped to the (X', X) pairs it would separate (see
+        eqn_grouping.overwrite_hazards). An element also reads, transitively, what the temporaries in `movable` that it
+        reads read, since the closure assignment at the post-population locus may move or duplicate those temporaries
+        into its piece. `elements` must respect dependencies on the `movable` temporaries, as a baked order does.
         """
         if not any("'" in str(lhs) for element in elements for lhs in element):
-            return set()
+            return dict()
 
         movable = set(movable)
         reads_through: dict[Symbol, set[Symbol]] = dict()

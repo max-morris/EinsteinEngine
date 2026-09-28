@@ -333,6 +333,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     ) -> dict[str, DslFunctionFrontendBakeOptions]:
         my_tf_opts: dict[str, DslFunctionFrontendBakeOptions] = dict()
 
+        if unknown := sorted(opts.get("functions", dict()).keys() - self.functions.keys()):
+            raise DslException(f"The bake options name unknown functions {unknown}; the functions are {sorted(self.functions.keys())}.")
+
         for tf in self.functions.values():
             tf_opts = self._mk_default_function_bake_options()
             tf_opts.update(cast(DslFunctionFrontendBakeOptions, opts))

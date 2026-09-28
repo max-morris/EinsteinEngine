@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import heapq
 from statistics import median
+from collections import defaultdict
 from collections.abc import Collection, Sequence
 from typing import TYPE_CHECKING, Iterable
 
@@ -94,33 +95,38 @@ def overwrite_version(sym: Symbol) -> tuple[str, int]:
     return name.replace("'", ""), name.count("'")
 
 
-def overwrite_hazards(reads: Sequence[Collection[Symbol]], writes: Sequence[Collection[Symbol]]) -> set[int]:
+def overwrite_hazards(reads: Sequence[Collection[Symbol]],
+                      writes: Sequence[Collection[Symbol]]) -> dict[int, set[tuple[Symbol, Symbol]]]:
     """
     The cut positions in a sequence of elements that an overwrite forbids. Element i reads `reads[i]` and writes
     `writes[i]`, and position p means "cut after element p". A cut at p is forbidden if an element at or before p writes
     a version of X (X', X'', ...) and an element after p reads an earlier version (X, X', ...), since the later loop
-    would read the overwritten value.
+    would read the overwritten value. Maps each forbidden position to the (overwrite, earlier version read) pairs that
+    forbid it.
     """
     overwritten = {base for syms in writes for base, version in map(overwrite_version, syms) if version > 0}
     if len(overwritten) == 0:
-        return set()
+        return dict()
 
-    # readers[base]: the (element, version) pairs that read a version of base.
-    readers: dict[str, list[tuple[int, int]]] = {base: list() for base in overwritten}
+    # readers[base]: the (element, version, symbol) triples that read a version of base.
+    readers: dict[str, list[tuple[int, int, Symbol]]] = {base: list() for base in overwritten}
     for idx, syms in enumerate(reads):
-        for base, version in map(overwrite_version, syms):
+        for sym in syms:
+            base, version = overwrite_version(sym)
             if base in readers:
-                readers[base].append((idx, version))
+                readers[base].append((idx, version, sym))
 
-    forbidden: set[int] = set()
+    forbidden: dict[int, set[tuple[Symbol, Symbol]]] = defaultdict(set)
     for writer_idx, syms in enumerate(writes):
-        for base, version in map(overwrite_version, syms):
+        for sym in syms:
+            base, version = overwrite_version(sym)
             if version == 0:
                 continue
-            last_reader = max((idx for idx, v in readers[base] if v < version and idx > writer_idx), default=None)
-            if last_reader is not None:
-                forbidden.update(range(writer_idx, last_reader))
-    return forbidden
+            for reader_idx, read_version, read_sym in readers[base]:
+                if read_version < version and reader_idx > writer_idx:
+                    for position in range(writer_idx, reader_idx):
+                        forbidden[position].add((sym, read_sym))
+    return dict(forbidden)
 
 
 def _strongly_connected_components(successors: list[set[int]]) -> list[list[int]]:
