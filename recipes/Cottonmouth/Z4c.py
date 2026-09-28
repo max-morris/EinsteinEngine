@@ -17,8 +17,12 @@
 
 import argparse
 import functools
+import hashlib
+import json
 import sys
+import typing
 from pathlib import Path
+from typing import Callable
 
 from sympy import Rational
 
@@ -36,7 +40,25 @@ from EinsteinEngine import *
 parser = argparse.ArgumentParser(prog='Cottonmouth Z4c', description='A code generator for the Z4c equations')
 parser.add_argument('--vacuum', action='store_true', default=False, help='Whether to generate matter terms.')
 parser.add_argument('--fd-order', type=int, default=4, help='Order of the finite difference equations to use.')
+parser.add_argument('--precision-policy', type=str, default=None, metavar='PATH',
+                    help='Precision policy file (JSON) whose hash is recorded in kernel_manifest.json. '
+                         'Under the tuner the tuning parameter "precision_policy" takes precedence.')
+parser.add_argument('--instrument-ranges', action='store_true', default=False,
+                    help='Emit the f64 range dump (CPU builds only): per (loop, level, temporary) max |x|, '
+                         'max |term| and the count below the fp16 minimum normal, written to '
+                         '<IO::out_dir>/ranges/<function>.tsv on iterations <= 64 and every 1024th after.')
 pres=parser.parse_args(sys.argv[1:])
+
+# The tuning driver re-runs this recipe with sys.argv reset to the recipe path
+# alone, so under the tuner these come from the tuning parameters, and the
+# command-line flags only apply when the recipe is run standalone.
+precision_policy_path: str | None = get_tuning_param('precision_policy', pres.precision_policy)
+instrument_ranges: bool = get_tuning_param('instrument_ranges', pres.instrument_ranges)
+
+precision_policy_hash: str | None = None
+if precision_policy_path is not None:
+    with open(precision_policy_path, 'rb') as _fd:
+        precision_policy_hash = hashlib.sha256(_fd.read()).hexdigest()
 
 stencil_order = pres.fd_order
 use_matter_terms = 0 if pres.vacuum else 1
@@ -883,9 +905,13 @@ sync_z4c_pt2 = ExplicitSyncBatch(
 ###
 # Z4 Evolution equations
 ###
+
 fun_z4c_rhs = cottonmouth_Z4c.create_function(
     "z4c_rhs",
-    rhs_group
+    rhs_group,
+    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
+    auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    intent_override=IntentOverride.WriteInterior
 )
 
 # Eq (8) of [1]
@@ -898,7 +924,7 @@ fun_z4c_rhs.add_eqn(
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
@@ -914,7 +940,7 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
@@ -929,7 +955,7 @@ fun_z4c_rhs.add_eqn(
     Rchi[li, lj] + Rt[li, lj]
 )
 
-fun_z4c_rhs.soft_split()
+#fun_z4c_rhs.soft_split()
 
 # Eq. (6) of [1]
 fun_z4c_rhs.add_eqn(
@@ -987,7 +1013,7 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
@@ -1022,7 +1048,7 @@ fun_z4c_rhs.add_eqn(
     + evo_shift[uk] * D(gt[li, lj], lk)
 )
 
-fun_z4c_rhs.split_loop()
+#fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     At_rhs[li, lj],
@@ -1312,11 +1338,15 @@ cottonmouth_Z4c.bake(
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
-    do_recycle_temporaries=True,
+    do_recycle_temporaries=False,
     cse_optimization_level=CseOptimizationLevel.Optimal,
     soft_split_retainment_strategy=retain_rank(50),
-    ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    #ordering_fn=functools.partial(
+    #    prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+    #)
+    ordering_fn=cartesian_product(
+        functools.partial(insertion_order, exclude_synthetic_symbols=True),
+        prioritize_rare_symbols
     )
 )
 
@@ -1335,6 +1365,7 @@ CppCarpetXWizard(
     cottonmouth_Z4c,
     CppCarpetXGenerator(
         cottonmouth_Z4c,
+        instrument_ranges=instrument_ranges,
         sync_mode=SyncMode.HandsOff,
         interior_sync_schedule_target=post_step_group,
         extra_schedule_blocks=[
@@ -1367,6 +1398,18 @@ CppCarpetXWizard(
     license_header=license_header,
     license_file=license_file
 ).generate_thorn()
+
+# Manifest next to src/: the policy this generation consumed (the stage-A
+# driver compares the hash with the one it sent and fails the trial on a
+# mismatch), and which instrumentation is compiled in.
+with (Path(cottonmouth_Z4c.arrangement) / cottonmouth_Z4c.name / 'kernel_manifest.json').open('w') as _manifest_fd:
+    json.dump({
+        'thorn': cottonmouth_Z4c.name,
+        'precision_policy_path': precision_policy_path,
+        'precision_policy_hash': precision_policy_hash,
+        'instrument_ranges': instrument_ranges,
+    }, _manifest_fd, indent=2)
+    _manifest_fd.write('\n')
 
 # References
 # [1] https://arxiv.org/pdf/1212.2901 (typo in constraints, refer to [2])

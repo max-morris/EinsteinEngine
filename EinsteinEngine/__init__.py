@@ -19,7 +19,7 @@
 
 # Export dynamic derivative functions
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order, cartesian_product
 from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
@@ -48,6 +48,7 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
+from EinsteinEngine.tuning.tuning import get_tuning_param
 
 from sympy.core.relational import Relational
 
@@ -75,7 +76,7 @@ __all__ = [
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold", "retain_all", "retain_none",
     "NewRadXBoundaryBatch", "TempKind",
-    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "promote_all", "promote_none", "promote_rank",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
-    "as_f16", "as_f32", "as_f64"]
+    "as_f16", "as_f32", "as_f64", "get_tuning_param"]

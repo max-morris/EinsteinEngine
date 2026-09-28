@@ -141,6 +141,11 @@ class CarpetXGridLoopLambda(CppCarpetXExpr):
     succeeding: Collection[CppCarpetXCodeElem]
     temporaries: Collection[str]
     reassigned_lhses: dict[int, RecycledTemporarySubstitution]
+    # --instrument-ranges (CPU builds only): temporary name -> (slot index in
+    # the function's range table, the top-level summands of its defining
+    # expression). None when the instrumentation is off, which leaves the
+    # emitted code byte-identical.
+    range_probes: Optional[dict[str, tuple[int, List[CppCarpetXExprNode]]]] = None
 
 @dataclass
 class StaticCast(CppCarpetXExpr):
