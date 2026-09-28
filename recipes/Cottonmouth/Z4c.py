@@ -323,6 +323,18 @@ gt_rhs = cottonmouth_Z4c.decl(
     parity=parity_sym2ten
 )
 
+# "Zach Trick": evolve gt_m1_ij = gt_ij - delta_ij instead of gt_ij. Since delta_ij is
+# constant, D(gt) = D(gt_m1) and the equations are analytically unchanged, but the O(1)
+# diagonal part is never stored or finite-differenced, so all mantissa bits go to the
+# small deviation. This reduces roundoff in the weak-field region, which matters most
+# in single/mixed precision. gt_f64 reconstructs gt in double for places where delta is
+# added back and must not round away the deviation.
+#   Z. B. Etienne, PRD 110, 064045 (2024), arXiv:2404.01137, Sec. II.A, Eqs. (3)-(4).
+#   J. T. Giblin Jr., J. B. Mertens, G. D. Starkman, CQG 34, 214001 (2017),
+#     arXiv:1704.04307, Eq. (8) and App. B.
+# Reference-metric decomposition gbar = ghat + eps (curvilinear origin):
+#   T. W. Baumgarte et al., PRD 87, 044026 (2013), arXiv:1211.6632, Eq. (19).
+#   I. Ruchlin, Z. B. Etienne, T. W. Baumgarte, PRD 97, 064036 (2018), arXiv:1712.07658.
 gt_m1 = cottonmouth_Z4c.decl(
     "gt_m1",
     [li, lj],
