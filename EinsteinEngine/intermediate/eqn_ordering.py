@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from functools import cache
 from itertools import chain
 from math import sqrt
-from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast, Optional, Any
+from typing import Iterator, Callable, TYPE_CHECKING, NamedTuple, cast, Optional, Any, Sequence
 
 from bayes_opt import BayesianOptimization
 from sympy import Symbol, Expr, Basic, preorder_traversal
@@ -31,6 +31,8 @@ from sympy import Symbol, Expr, Basic, preorder_traversal
 from EinsteinEngine.intermediate.dependencies import Dependencies
 from EinsteinEngine.frontend.definitions import stencil
 from EinsteinEngine.common.util import pprint
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.common.describe_param import describe_param
 
 if TYPE_CHECKING:
     from EinsteinEngine.intermediate.eqnlist import EqnList
@@ -327,17 +329,129 @@ def lexicographical_order(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Itera
 
     yield from sorted(eqns.keys(), key=str)
 
-def insertion_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
+def _order_by_keys(order: dict[Symbol, int], eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool, what: str) -> Iterator[Symbol]:
+    """The equations in the key order of `order`, optionally without the list's synthetic symbols."""
+
+    assert (keyset := set(eqns.keys())).intersection(order.keys()) == keyset, f"EqnList {what} order dict is missing keys"
+
+    for lhs in order.keys():
+        if lhs in eqns and not (exclude_synthetic_symbols and lhs in eqn_list.synthetic_symbols):
+            yield lhs
+
+
+def recipe_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
     """
-    Orders equations based on their insertion order in the EqnList.
+    Orders equations based on their recipe order, i.e., the order in which they were added to the function.
+    Temporaries (pull-out, CSE, etc.) come after the recipe equations, in the order they were created.
+    The recipe order is never rewritten; see `pre_population_order` for the order the ordering loci act on.
+
+    If `exclude_synthetic_symbols` is true, synthetic symbols are not yielded; dependency repair places them.
     """
 
-    assert (keyset := set(eqns.keys())).intersection(eqn_list.eqn_insertion_order.keys()) == keyset, "EqnList insertion order dict is missing keys"
+    yield from _order_by_keys(eqn_list.eqn_recipe_order, eqns, eqn_list, exclude_synthetic_symbols, "recipe")
 
-    if exclude_synthetic_symbols:
-        yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns and lhs not in eqn_list.synthetic_symbols)
-    else:
-        yield from (lhs for lhs in eqn_list.eqn_insertion_order.keys() if lhs in eqns)
+
+def pre_population_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
+    """
+    Orders equations based on their pre-population order. This starts equal to the recipe order and is rewritten by
+    the ``early_ordering_fn`` and ``pre_population_ordering_fn`` bake options; without them, it is the recipe order.
+    Temporaries come after, in the order they were created, and equations a soft-split merge moves into a list are
+    appended in the pre-population order of the list they come from.
+
+    If `exclude_synthetic_symbols` is true, synthetic symbols are not yielded; dependency repair places them.
+    """
+
+    yield from _order_by_keys(eqn_list.eqn_pre_population_order, eqns, eqn_list, exclude_synthetic_symbols, "pre-population")
+
+
+class _AddEqnKeyOrder:
+    """The ordering function returned by `add_eqn_key_order`. Its repr names the key, so it is informative and stable
+    across runs (tuners record it to detect a changed configuration)."""
+
+    def __init__(self, key: Callable[[int], float]) -> None:
+        self.key = key
+
+    def __call__(self, eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+        origins = eqn_list.eqn_origin
+        recipe_positions = eqn_list.eqn_recipe_order
+        with_origin = sorted(
+            (lhs for lhs in eqns.keys() if lhs in origins),
+            key=lambda lhs: (self.key(origins[lhs]), recipe_positions[lhs])
+        )
+        yield from with_origin
+        yield from (lhs for lhs in pre_population_order(eqns, eqn_list) if lhs not in origins)
+
+    def __repr__(self) -> str:
+        return f'add_eqn_key_order({describe_param(self.key)})'
+
+
+class _AddEqnOrder(_AddEqnKeyOrder):
+    """The ordering function returned by `add_eqn_order`; its repr is ``add_eqn_order([...])``."""
+
+    def __init__(self, order: Sequence[int]) -> None:
+        self.order = tuple(order)
+        for idx in self.order:
+            if isinstance(idx, bool) or not isinstance(idx, int) or idx < 0:
+                raise DslException(f"add_eqn_order: {idx!r} is not a valid 0-based add_eqn call index.")
+        if len(duplicates := sorted({idx for idx in self.order if self.order.count(idx) > 1})) > 0:
+            raise DslException(f"add_eqn_order: the call indices {duplicates} are listed more than once.")
+
+        rank = {idx: position for position, idx in enumerate(self.order)}
+        super().__init__(lambda origin: rank.get(origin, len(rank) + origin))
+
+    def __call__(self, eqns: dict[Symbol, Expr], eqn_list: EqnList) -> Iterator[Symbol]:
+        if len(self.order) > 0 and (max_idx := max(self.order)) >= (n_calls := eqn_list.parent.origin_count):
+            raise DslException(f"add_eqn_order: call index {max_idx} is out of range; the function has {n_calls} add_eqn calls (valid indices are 0..{n_calls - 1}).")
+        yield from super().__call__(eqns, eqn_list)
+
+    def __repr__(self) -> str:
+        return f'add_eqn_order({list(self.order)!r})'
+
+
+def add_eqn_key_order(key: Callable[[int], float]) -> EqnOrderingFn:
+    """
+    Orders equations by `key` applied to the 0-based index of the add_eqn call that created them (their origin);
+    ties go to recipe order. Equations without an origin (e.g., CSE temps) follow, in pre-population order;
+    dependency repair pulls them earlier as needed.
+
+    Used as the ``early_ordering_fn``, this orders the author-level add_eqn calls themselves.
+    The result's repr is ``add_eqn_key_order(<key>)``, naming a function key by its qualified name.
+    """
+
+    return _AddEqnKeyOrder(key)
+
+
+def add_eqn_order(order: Sequence[int]) -> EqnOrderingFn:
+    """
+    Orders equations by an explicit order of add_eqn calls, given as 0-based call indices: the equations of call
+    ``order[0]`` come first, then those of ``order[1]``, and so on. Calls not listed keep their recipe order after the
+    listed ones. Equations without an origin follow, as in `add_eqn_key_order`.
+
+    The indices refer to one function's add_eqn calls, so pass this per function (``functions={name: {...}}``) when a
+    thorn has several functions. The result's repr is ``add_eqn_order([...])``.
+    """
+
+    return _AddEqnOrder(order)
+
+
+def fixed_order(order: Sequence[Symbol]) -> EqnOrderingFn:
+    """
+    Yields the equations in exactly the given order (equations not listed follow in dict order). It is not marked as
+    respecting dependency order, so order_builder still repairs dependencies. Used to rebake refined EqnLists so that
+    the order a cut was made in is the order the pieces keep.
+    """
+
+    fixed = tuple(order)
+
+    def fn(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Iterator[Symbol]:
+        seen: set[Symbol] = set()
+        for lhs in fixed:
+            if lhs in eqns and lhs not in seen:
+                seen.add(lhs)
+                yield lhs
+        yield from (lhs for lhs in eqns.keys() if lhs not in seen)
+
+    return fn
 
 @cache
 def _dummy_stencil_symbol(call: Basic) -> Symbol:
@@ -517,3 +631,15 @@ def respects_dependency_order(fn: Any) -> bool:
         hasattr(fn, 'respects_dependency_order') and fn.respects_dependency_order
         or hasattr(fn, 'func') and respects_dependency_order(fn.func)
     )
+
+
+def pre_cse_stand_in(fn: EqnOrderingFn) -> EqnOrderingFn:
+    """
+    The ordering function to run in place of `fn` before CSE. Bayesian optimization (a function, or a partial of one,
+    whose name contains 'bayesian') is too expensive to run on the equations before CSE, whose order CSE rewrites
+    anyway, so it is replaced by prioritize_rare_symbols; any other function is returned unchanged.
+    """
+    for candidate in (fn, getattr(fn, 'func', None)):
+        if 'bayesian' in getattr(candidate, '__name__', ''):
+            return prioritize_rare_symbols
+    return fn

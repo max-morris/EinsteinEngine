@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable, OrderedDict, NamedTuple, Optional, Sequence, runtime_checkable
 
@@ -50,6 +51,42 @@ class InfeasibleParamError(Exception):
         super().__init__(f"Value {value!r} for parameter '{param_name}' violates its constraint")
         self.param_name = param_name
         self.value = value
+
+# Split tuner params, whose indices are split positions (see tune_splitting.py).
+_SPLIT_PARAM_RE = re.compile(r'(split|soft_retain_percentile)_\d+')
+
+class UndeclaredParamError(ValueError):
+    """A stored trial (e.g. a checkpoint entry) names params the Experiment does not declare.
+
+    Replaying it would silently drop those params, so the stored trial was almost certainly recorded against a
+    different Experiment.
+    """
+    def __init__(self, source: str, names: Sequence[str]):
+        message = (f"{source} has params the experiment does not declare: {', '.join(names)}. It was probably "
+                   f"recorded against a different tuner or recipe.")
+        if any(_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+            message += (" For split params, the two usual causes are a checkpoint recorded with 1-based split params "
+                        "(split_1..N), and one recorded with more split positions than the recipe has now (e.g. "
+                        "the old 15-position Z4c tuner, where the recipe has 13 add_eqn calls). Convert it into a "
+                        "new file with scripts/shift_checkpoint_indices.py IN OUT, adding --n-positions N to drop "
+                        "the positions >= N.")
+        super().__init__(message)
+        self.source = source
+        self.names = list(names)
+
+class MissingParamError(ValueError):
+    """A stored trial lacks a param that the Experiment declares and whose condition holds for that trial."""
+    def __init__(self, source: str, names: Sequence[str]):
+        message = (f"{source} is missing params that the experiment declares (and whose conditions hold): "
+                   f"{', '.join(names)}. It was probably recorded against a different tuner or recipe.")
+        if any(re.fullmatch(r'soft_retain_percentile_\d+', name) for name in names):
+            message += (" A split checkpoint without soft_retain_percentile params predates them, and cannot be "
+                        "replayed by the current split tuners.")
+        elif any(_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+            message += " For split params, it may have been recorded with fewer split positions than the recipe has."
+        super().__init__(message)
+        self.source = source
+        self.names = list(names)
 
 @runtime_checkable
 class ParamMapping[O](Protocol):
@@ -288,6 +325,36 @@ class Experiment:
                 return Discrete([v for v in pool_sorted if v not in used])
             self.add_in_param(name, resolve)
         return names
+
+    def check_declared(self, stored: dict[str, Any], source: str) -> None:
+        """Check that a stored trial replays through this experiment exactly as it was recorded.
+
+        Raises UndeclaredParamError if ``stored`` names a param that is not a declared in_param, MissingParamError if
+        it lacks a declared in_param whose condition holds (only the first such param is reported, since later
+        conditions may depend on it), and ValueError if a coordinate lies outside the range its domain gives it for
+        this trial (for example, ``add_distinct_sorted`` positions that are not strictly increasing). A declared
+        in_param whose condition does not hold is accepted and dropped: some old split checkpoints store a percentile
+        for every position. ``source`` names the trial in the error message.
+        """
+        if undeclared := [name for name in stored if name not in self.in_params]:
+            raise UndeclaredParamError(source, undeclared)
+
+        def present(name: str) -> bool:
+            if name not in stored:
+                raise MissingParamError(source, [name])
+            return True
+
+        def get_coord(name: str, spec: CoordSpec) -> Coord:
+            raw = stored[name]
+            coord = int(raw) if spec.kind is int else float(raw)
+            if coord != raw or not spec.lo <= coord <= spec.hi:
+                kind = 'an integer' if spec.kind is int else 'a number'
+                raise ValueError(f"{source} has {name} = {raw!r}, but the experiment expects {kind} in "
+                                 f"[{spec.lo}, {spec.hi}] for this trial. It was probably recorded against a "
+                                 f"different tuner or recipe.")
+            return coord
+
+        self._walk_in_params(get_coord, present)
 
     def _walk_in_params(
         self,

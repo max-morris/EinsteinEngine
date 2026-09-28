@@ -19,7 +19,9 @@
 
 # Export dynamic derivative functions
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order, cartesian_product
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, cartesian_product, \
+    recipe_order, pre_population_order, add_eqn_key_order, add_eqn_order
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import *
@@ -123,6 +125,7 @@ __all__ = [
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold", "retain_all", "retain_none",
     "NewRadXBoundaryBatch", "TempKind",
-    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
+    "recipe_order", "pre_population_order", "add_eqn_key_order", "add_eqn_order", "SplitLocus",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "pull_out", "get_tuning_param"]

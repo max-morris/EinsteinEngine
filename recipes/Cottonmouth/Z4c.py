@@ -1275,7 +1275,7 @@ cottonmouth_Z4c.bake(
     #    prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
     #)
     ordering_fn=cartesian_product(
-        functools.partial(insertion_order, exclude_synthetic_symbols=True),
+        functools.partial(pre_population_order, exclude_synthetic_symbols=True),
         prioritize_rare_symbols
     )
 )

@@ -79,6 +79,8 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import (
 )
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.tuning import probe
 from EinsteinEngine.common.util import get_or_compute, pprint, verbose
 from EinsteinEngine.common.util import wprint
 
@@ -103,7 +105,12 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     do_madd: bool
     do_recycle_temporaries: bool
     splitmaxxing: bool
-    ordering_fn: EqnOrderingFn
+    ordering_fn: EqnOrderingFn  # The post-population ordering function (see DslFunctionFrontendBakeOptions)
+    # Orders each function's author-level add_eqn groups (the early locus). add_eqn_order refers to one function's
+    # add_eqn calls, so pass it per function through `functions`.
+    early_ordering_fn: Optional[EqnOrderingFn]
+    # Orders each function's scalar equations before CSE (the pre-population locus); None uses ordering_fn.
+    pre_population_ordering_fn: Optional[EqnOrderingFn]
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
     # Overrides for function frontend default opts
@@ -133,6 +140,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     functions: dict[str, FunctionFrontendT]
     tile_temporaries: OrderedSet[Symbol]
     global_temporaries: OrderedSet[Symbol]
+
+    # Saved by global CSE for post-population splits: the kind of each CSE temporary (Inline temps are absent), and
+    #  the predicate the kinds were clamped by. Empty and None if CSE did not run.
+    cse_temp_kinds: dict[Symbol, TempKind]
+    cse_promotion_predicate: Optional[TemporaryPromotionPredicate]
 
     overwrite_symbols: dict[str, OverwriteSymbolRecord]
 
@@ -165,6 +177,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self.functions = dict()
         self.tile_temporaries = OrderedSet()
         self.global_temporaries = OrderedSet()
+        self.cse_temp_kinds = dict()
+        self.cse_promotion_predicate = None
 
         self.overwrite_symbols = dict()
 
@@ -342,6 +356,13 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
 
         for tf in self.functions.values():
+            if tf.auto_split_locus is SplitLocus.PostPopulation:
+                # Like _do_global_cse, the frontend records every Tile-kind CSE temporary, including promoted ones.
+                self.tile_temporaries.update(tf._apply_post_population_splits(temp_kinds=self.cse_temp_kinds,
+                                                                              promotion_predicate=self.cse_promotion_predicate,
+                                                                              tile_temporaries=self.tile_temporaries))
+
+        for tf in self.functions.values():
             if tf.needs_merge():
                 pprint(f"Merging soft splits in {tf.name}...")
                 tf.merge_soft_splits(my_tf_opts[tf.name]["soft_split_retainment_strategy"])
@@ -353,6 +374,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 if my_tf_opts[tf.name]["splitmaxxing"]:
                     tf._do_splitmaxxing()
                 tf._late_bake(**my_tf_opts[tf.name])
+
+        probe.bake_finished()
 
     @staticmethod
     def _classify_temps(
@@ -630,6 +653,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             tfs_active_reads=tfs_active_reads,
             new_temp_dependencies=new_temp_dependencies
         )
+
+        self.cse_temp_kinds = {t: k for t, k in temp_kinds.items() if t in substitutions}
+        self.cse_promotion_predicate = promotion_predicate
 
         for tf in self.functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
