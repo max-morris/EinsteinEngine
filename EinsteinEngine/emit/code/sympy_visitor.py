@@ -194,7 +194,7 @@ class BaseSympyExprVisitor[ExprT: Expr]:
             if expr.func.name in self.stencil_fns:
                 return self._visit_stencil_call(expr)
             elif hasattr(expr.func, 'numeric_conversion_fn') and expr.func.numeric_conversion_fn:
-                if (get_rewritten := self.numeric_conversion_rewrite[expr.func]) is None:
+                if (get_rewritten := self.numeric_conversion_rewrite.get(expr.func)) is None:
                     raise DslException(f"No numeric conversion rewrite defined for {expr.func} in {self.__class__.__name__}.")
                 if len(expr.args) != 1:
                     raise DslException(f"{expr.func.name}() expects 1 arg, got {len(expr.args)}.")
