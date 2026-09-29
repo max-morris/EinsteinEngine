@@ -1466,12 +1466,6 @@ faster per generation and never changes on its own.
 
 These predate the split loci, or are deliberate; none of them is caused by the loci unless stated.
 
-- **Dead mangled temporaries after soft split merges.** With a retainment strategy that forgets temporaries,
-  `merge_soft_splits` can leave mangled copies (names like `x1022_ss960`) that nothing reads. They are emitted as
-  Interior outputs, i.e. as real grid functions with storage, which wastes memory bandwidth, and in some recipes they
-  cause a "mixed write regions" `GeneratorException`. Z4c with the best configuration of Steve's recipe-order
-  checkpoint has six of them. A fix (pruning unread mangled copies) exists but is not applied, because it changes the
-  generated code of existing configurations.
 - **One loop's order does not respect reader-before-overwriter.** Only the early grouping (section 3) adds the edge
   that keeps a read of `X` before the write of `X'`. The ordering functions that order the equations *within* a loop do
   not, so a loop can compute `X'` before a later read of `X` in the same loop. This affects unsplit functions too. A
