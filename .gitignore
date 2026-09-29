@@ -5,3 +5,6 @@ html/
 *.egg-info/
 build/
 venv/*
+# microbenchmark outputs (binaries, result JSON)
+/microbenchmarks/ee_microbench
+/microbenchmarks/*.json

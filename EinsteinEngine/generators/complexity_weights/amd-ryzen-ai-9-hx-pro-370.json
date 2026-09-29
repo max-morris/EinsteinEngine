@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "profile": "amd-ryzen-ai-9-hx-pro-370",
+  "description": "Calibrated from microbenchmarks on this machine. ALU/libm weights (pow_default, transcendental) are measured. Memory/stencil weights retain the guestimates: a single-node streaming loop cannot reproduce the distributed-memory ghost-exchange costs those weights encode; see measurements.decisions. Previously unweighted functions (tan/sinh/cosh/tanh/erf) now carry measured weights.",
+  "architecture": {
+    "cpu": "AMD Ryzen AI 9 HX PRO 370 w/ Radeon 890M",
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2 x86_64",
+    "cores_visible": 1,
+    "memory_gb": 15,
+    "compiler": "g++ (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+    "cxxflags": "-O3 -Wall -Wextra -fno-math-errno -std=c++17",
+    "vreal": "double",
+    "date": "2026-09-29",
+    "benchmark_command": "./ee_microbench --json <file> (full defaults: n_stream=1048576, repeats=15, grid 128^3)",
+    "reference_add_ns_per_elem": 1.1732
+  },
+  "weights": {
+    "atom": 1,
+    "symbol_grid": 10,
+    "symbol_local": 1,
+    "pow_default": 8,
+    "pow_integer_floor": 2,
+    "stencil_center": 10,
+    "stencil_x": 40,
+    "stencil_yz": 100,
+    "transcendental": {
+      "sin": 7,
+      "cos": 7,
+      "exp": 3,
+      "log": 4,
+      "sqrt": 2,
+      "cbrt": 12,
+      "tan": 7,
+      "sinh": 6,
+      "cosh": 5,
+      "tanh": 5,
+      "erf": 23
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 1.1732},
+    "arith": {
+      "sub_stream": 1.2222,
+      "mul_stream": 1.3065,
+      "div_stream": 1.2575,
+      "neg_stream": 0.2625,
+      "add_reg": 1.1753,
+      "mul_reg": 1.1613,
+      "div_reg": 3.4766
+    },
+    "pow": {
+      "pow2_stream": 0.2749,
+      "pown3_stream": 0.2672,
+      "pown4_stream": 0.2765,
+      "pown8_stream": 0.496,
+      "pown16_stream": 1.0509,
+      "sqrt_stream": 1.0212,
+      "cbrt_stream": 11.7151,
+      "powvar_stream": 9.5589,
+      "pow2p5_stream": 9.4439
+    },
+    "transcendental": {
+      "sin_stream": 8.5067,
+      "cos_stream": 8.4567,
+      "tan_stream": 7.8698,
+      "sinh_stream": 6.9619,
+      "cosh_stream": 5.3251,
+      "tanh_stream": 6.2065,
+      "exp_stream": 3.5709,
+      "log_stream": 4.5634,
+      "erf_stream": 26.4383,
+      "sqrt_stream": 2.2455,
+      "cbrt_stream": 13.937
+    },
+    "memory": {
+      "const_stream": 0.185,
+      "center_stream": 0.4777,
+      "grid_add_stream": 0.4567,
+      "stencil_x_stream": 0.4435,
+      "stencil_y_stream": 0.5262,
+      "stencil_z_stream": 0.5365
+    },
+    "branch": {
+      "cmp_lt_stream": 0.3112,
+      "if_else_stream": 0.7577,
+      "if_else_branch_stream": 0.7523
+    },
+    "decisions": {
+      "pow_default": "measured 8.15x add (powvar_stream); was 15.",
+      "pow_integer_floor": "retained 2: integer-power streaming runs are bandwidth-bound (~1x add) and cannot resolve ALU scaling; log2 formula kept.",
+      "transcendental": "measured per-function ratios; sqrt run varied 0.87x/1.91x across probes (kept 2, conservative); cbrt 10x/12x across probes (kept 12).",
+      "symbol_grid": "retained 10: measured grid load is ~0.4x add single-node, but the weight guides global-vs-local promotion where distributed costs dominate.",
+      "stencil": "retained 10/40/100: measured center/x/y/z differ by <15% single-node; the guestimates encode ghost-exchange costs this loop cannot reproduce.",
+      "div": "streaming div is bandwidth-bound (1.07x); register-isolated div is 3.0x add. div reaches the model via Pow[x**-1] with floor 2; left as is."
+    }
+  }
+}

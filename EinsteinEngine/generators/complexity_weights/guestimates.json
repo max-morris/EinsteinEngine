@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "profile": "guestimates",
+  "description": "Original hand-picked weights from sympy_complexity.py. Default profile; preserves the documented intent of the cost model. Note: the transcendental surcharge (sin/cos/exp/log/sqrt/cbrt = 15) never applied in the old code because `n in [sy.sin, ...]` compared an applied function against function classes; the lookup is now by function name so these values take effect.",
+  "architecture": null,
+  "weights": {
+    "atom": 1,
+    "symbol_grid": 10,
+    "symbol_local": 1,
+    "pow_default": 15,
+    "pow_integer_floor": 2,
+    "stencil_center": 10,
+    "stencil_x": 40,
+    "stencil_yz": 100,
+    "transcendental": {
+      "sin": 15,
+      "cos": 15,
+      "exp": 15,
+      "log": 15,
+      "sqrt": 15,
+      "cbrt": 15
+    },
+    "transcendental_default": 0
+  },
+  "measurements": null
+}
