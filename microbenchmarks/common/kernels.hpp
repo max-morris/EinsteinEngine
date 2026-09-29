@@ -30,8 +30,8 @@
 //  * Only EE_HD_INLINE scalar functions + index-based functors.
 //  * <cmath> scalar calls only (all exist in CUDA/HIP device code).
 //  * No <chrono>, no printf, no std::vector, no exceptions here.
-//  * Host drivers in src/*.cpp time these; GPU drivers launch the same
-//    functor from a __global__ kernel (see skeletons in each bench file).
+//  * Host drivers in src/*.cpp time these. The CUDA and ROCm builds launch the
+//    same functors from __global__ kernels (see ee_device.hpp).
 
 #pragma once
 

@@ -17,6 +17,11 @@
 #include <vector>
 
 #include "../common/ee_bench.hpp"
+#if defined(EE_HAVE_CUDA)
+#include <cuda_runtime.h>
+#elif defined(EE_HAVE_HIP)
+#include <hip/hip_runtime.h>
+#endif
 
 std::vector<ee_bench::BenchResult> bench_arith(const ee_bench::BenchConfig &);
 std::vector<ee_bench::BenchResult> bench_pow(const ee_bench::BenchConfig &);
@@ -37,7 +42,7 @@ bool want_group(const std::string &filter, const std::string &group) {
 } // namespace
 
 int main(int argc, char **argv) {
-  ee_bench::BenchConfig cfg;
+  ee_bench::BenchConfig cfg = ee_bench::default_config();
   std::string json_path;
   std::string group_filter;
   bool emit_json_stdout = false;
@@ -71,6 +76,44 @@ int main(int argc, char **argv) {
       return 2;
     }
   }
+
+#if defined(EE_HAVE_CUDA)
+  {
+    int ndev = 0;
+    cudaError_t err = cudaGetDeviceCount(&ndev);
+    if (err != cudaSuccess || ndev <= 0) {
+      std::fprintf(stderr, "FATAL: no CUDA device (%s)\n",
+                   err == cudaSuccess ? "count is 0" : cudaGetErrorString(err));
+      return 2;
+    }
+    cudaDeviceProp prop{};
+    err = cudaGetDeviceProperties(&prop, 0);
+    if (err != cudaSuccess) {
+      std::fprintf(stderr, "FATAL: cudaGetDeviceProperties: %s\n", cudaGetErrorString(err));
+      return 2;
+    }
+    std::fprintf(stderr, "ee_cuda: device 0: %s (cc %d.%d, %.1f GiB)\n", prop.name, prop.major,
+                 prop.minor, static_cast<double>(prop.totalGlobalMem) / (1024.0 * 1024.0 * 1024.0));
+  }
+#elif defined(EE_HAVE_HIP)
+  {
+    int ndev = 0;
+    hipError_t err = hipGetDeviceCount(&ndev);
+    if (err != hipSuccess || ndev <= 0) {
+      std::fprintf(stderr, "FATAL: no HIP device (%s)\n",
+                   err == hipSuccess ? "count is 0" : hipGetErrorString(err));
+      return 2;
+    }
+    hipDeviceProp_t prop{};
+    err = hipGetDeviceProperties(&prop, 0);
+    if (err != hipSuccess) {
+      std::fprintf(stderr, "FATAL: hipGetDeviceProperties: %s\n", hipGetErrorString(err));
+      return 2;
+    }
+    std::fprintf(stderr, "ee_hip: device 0: %s (%s, %.1f GiB)\n", prop.name, prop.gcnArchName,
+                 static_cast<double>(prop.totalGlobalMem) / (1024.0 * 1024.0 * 1024.0));
+  }
+#endif
 
   std::vector<ee_bench::BenchResult> all;
   auto append = [&](const std::vector<ee_bench::BenchResult> &v) {

@@ -23,8 +23,10 @@ The active weight profile is selected once at import time:
   * otherwise the bundled ``guestimates.json`` profile is used.
 
 Call :func:`set_weights` (or point the env var at another file and reimport)
-to switch profiles, e.g. to a machine-calibrated file produced by
-``microbenchmarks/scripts/fit_weights.py``. :func:`available_profiles`
+to switch profiles. Measured profiles live next to ``guestimates.json``;
+``microbenchmarks/README.md`` says which runs produced them.
+``microbenchmarks/scripts/fit_weights.py`` only suggests integers from a
+results file — it does not write a profile. :func:`available_profiles`
 lists the JSON profiles shipped with the package.
 """
 

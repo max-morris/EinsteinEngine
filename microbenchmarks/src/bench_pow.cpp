@@ -12,14 +12,17 @@
 // c=max(2, log2(|p|)). We measure N in {2,3,4,8,16} plus generic pow with a
 // variable exponent, pow(x, 2.5), sqrt, cbrt.
 //
-// GPU port: same expressions inside a __global__ kernel; pow/sqrt/cbrt all
-// exist in CUDA/HIP device libm.
+// CUDA/ROCm build: same expressions, launched from ee_device.hpp. pow/sqrt/cbrt
+// exist in the device libm.
 
 #include <cstddef>
 #include <vector>
 
 #include "../common/ee_bench.hpp"
 #include "../common/kernels.hpp"
+#if defined(EE_DEVICE_BUILD)
+#include "../common/ee_device.hpp"
+#endif
 
 namespace {
 
@@ -30,11 +33,15 @@ using ee_bench::vreal;
 template <typename Op>
 BenchResult run_stream(const char *name, const char *node, const BenchConfig &cfg, Op op) {
   const std::size_t n = cfg.n_stream;
-  std::vector<vreal> a(n), b(n), c(n);
+  std::vector<vreal> a(n), b(n);
   ee_bench::fill_inputs(a.data(), b.data(), n);
   // Keep variable exponents in a safe range for pow().
   for (std::size_t i = 0; i < n; ++i)
     b[i] = static_cast<vreal>(0.5 + (b[i] - 0.25));
+#if defined(EE_DEVICE_BUILD)
+  return ee_device::time_binary("pow", name, node, cfg, a.data(), b.data(), n, op, 1);
+#else
+  std::vector<vreal> c(n);
   for (int w = 0; w < cfg.warmup; ++w)
     for (std::size_t i = 0; i < n; ++i)
       c[i] = op(a[i], b[i]);
@@ -53,13 +60,59 @@ BenchResult run_stream(const char *name, const char *node, const BenchConfig &cf
     sum += static_cast<double>(c[i]);
   ee_escape(&sum);
   return ee_bench::summarize("pow", node, name, runs, n, 1, sum);
+#endif
 }
 
 } // namespace
 
+#if defined(EE_DEVICE_BUILD)
+namespace {
+struct Pow2Op {
+  EE_HD_INLINE vreal operator()(vreal a, vreal) const { return ee_kernels::ee_pow2(a); }
+};
+template <int N>
+struct PownOp {
+  EE_HD_INLINE vreal operator()(vreal x, vreal) const {
+    vreal r = static_cast<vreal>(1);
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
+#pragma unroll
+#endif
+    for (int i = 0; i < N; ++i)
+      r *= x;
+    return r;
+  }
+};
+struct SqrtOp {
+  EE_HD_INLINE vreal operator()(vreal a, vreal) const { return ee_kernels::ee_sqrt(a); }
+};
+struct CbrtOp {
+  EE_HD_INLINE vreal operator()(vreal a, vreal) const { return ee_kernels::ee_cbrt(a); }
+};
+struct PowVarOp {
+  EE_HD_INLINE vreal operator()(vreal a, vreal b) const { return ee_kernels::ee_pow_generic(a, b); }
+};
+struct Pow2p5Op {
+  EE_HD_INLINE vreal operator()(vreal a, vreal) const {
+    return ee_kernels::ee_pow_generic(a, static_cast<vreal>(2.5));
+  }
+};
+} // namespace
+#endif
+
 std::vector<BenchResult> bench_pow(const BenchConfig &cfg) {
   using namespace ee_kernels;
   std::vector<BenchResult> out;
+#if defined(EE_DEVICE_BUILD)
+  out.push_back(run_stream("pow2_stream", "Pow[x**2]", cfg, Pow2Op{}));
+  out.push_back(run_stream("pown3_stream", "Pow[x**3]", cfg, PownOp<3>{}));
+  out.push_back(run_stream("pown4_stream", "Pow[x**4]", cfg, PownOp<4>{}));
+  out.push_back(run_stream("pown8_stream", "Pow[x**8]", cfg, PownOp<8>{}));
+  out.push_back(run_stream("pown16_stream", "Pow[x**16]", cfg, PownOp<16>{}));
+  out.push_back(run_stream("sqrt_stream", "Pow[sqrt]", cfg, SqrtOp{}));
+  out.push_back(run_stream("cbrt_stream", "Pow[cbrt]", cfg, CbrtOp{}));
+  out.push_back(run_stream("powvar_stream", "Pow[generic]", cfg, PowVarOp{}));
+  out.push_back(run_stream("pow2p5_stream", "Pow[x**2.5]", cfg, Pow2p5Op{}));
+#else
   out.push_back(run_stream("pow2_stream", "Pow[x**2]", cfg,
                            [](vreal a, vreal) { return ee_pow2(a); }));
   out.push_back(run_stream("pown3_stream", "Pow[x**3]", cfg,
@@ -80,5 +133,6 @@ std::vector<BenchResult> bench_pow(const BenchConfig &cfg) {
                            [](vreal a, vreal) {
                              return ee_pow_generic(a, static_cast<vreal>(2.5));
                            }));
+#endif
   return out;
 }

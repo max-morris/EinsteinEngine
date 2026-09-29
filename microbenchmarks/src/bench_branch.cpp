@@ -9,14 +9,38 @@
 // branchless ternary the emitter actually generates (if_else). The branchless
 // form is what Piecewise costs in generated code; the branching if/else form
 // is included to quantify mispredict penalties for runtime conditionals.
-// GPU port: prefer the if_else (ternary) case — GPUs execute both sides under
-// divergence; the branchless timing is the portable number.
+// CUDA/ROCm build: both the ternary and the real if/else run as device kernels.
+// Divergence is part of the if/else measurement.
 
 #include <cstddef>
 #include <vector>
 
 #include "../common/ee_bench.hpp"
 #include "../common/kernels.hpp"
+#if defined(EE_DEVICE_BUILD)
+#include "../common/ee_device.hpp"
+namespace {
+struct CmpOp {
+  EE_HD_INLINE char operator()(ee_bench::vreal a, ee_bench::vreal b) const {
+    return static_cast<char>(a < b);
+  }
+};
+struct IfElseOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b,
+                                          ee_bench::vreal c) const {
+    return ee_kernels::ee_if_else(a < b, c, -c);
+  }
+};
+struct IfBranchOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b,
+                                          ee_bench::vreal c) const {
+    if (a < b)
+      return c;
+    return -c;
+  }
+};
+} // namespace
+#endif
 
 namespace {
 
@@ -25,6 +49,12 @@ using ee_bench::BenchResult;
 using ee_bench::vreal;
 
 BenchResult run_compare(const BenchConfig &cfg) {
+#if defined(EE_DEVICE_BUILD)
+  const std::size_t n = cfg.n_stream;
+  std::vector<vreal> a(n), b(n);
+  ee_bench::fill_inputs(a.data(), b.data(), n);
+  return ee_device::time_compare(cfg, a.data(), b.data(), n, CmpOp{});
+#else
   const std::size_t n = cfg.n_stream;
   std::vector<vreal> a(n), b(n);
   std::vector<char> out(n);
@@ -46,6 +76,7 @@ BenchResult run_compare(const BenchConfig &cfg) {
   for (std::size_t i = 0; i < n; ++i)
     sum += out[i];
   return ee_bench::summarize("branch", "Relational", "cmp_lt_stream", runs, n, 1, sum);
+#endif
 }
 
 BenchResult run_if_else(const BenchConfig &cfg) {
@@ -53,6 +84,10 @@ BenchResult run_if_else(const BenchConfig &cfg) {
   std::vector<vreal> a(n), b(n), c(n), d(n);
   ee_bench::fill_inputs(a.data(), b.data(), n);
   ee_bench::fill_inputs(c.data(), d.data(), n);
+#if defined(EE_DEVICE_BUILD)
+  return ee_device::time_ternary("branch", "if_else_stream", "Piecewise", cfg, a.data(), b.data(),
+                               c.data(), n, IfElseOp{});
+#else
   for (int w = 0; w < cfg.warmup; ++w)
     for (std::size_t i = 0; i < n; ++i)
       d[i] = ee_kernels::ee_if_else(a[i] < b[i], c[i], -c[i]);
@@ -71,6 +106,7 @@ BenchResult run_if_else(const BenchConfig &cfg) {
     sum += static_cast<double>(d[i]);
   ee_escape(&sum);
   return ee_bench::summarize("branch", "Piecewise", "if_else_stream", runs, n, 1, sum);
+#endif
 }
 
 BenchResult run_branching(const BenchConfig &cfg) {
@@ -78,6 +114,10 @@ BenchResult run_branching(const BenchConfig &cfg) {
   std::vector<vreal> a(n), b(n), c(n), d(n);
   ee_bench::fill_inputs(a.data(), b.data(), n);
   ee_bench::fill_inputs(c.data(), d.data(), n);
+#if defined(EE_DEVICE_BUILD)
+  return ee_device::time_ternary("branch", "if_else_branch_stream", "Piecewise[if/else]", cfg,
+                               a.data(), b.data(), c.data(), n, IfBranchOp{});
+#else
   for (int w = 0; w < cfg.warmup; ++w)
     for (std::size_t i = 0; i < n; ++i) {
       if (a[i] < b[i])
@@ -105,6 +145,7 @@ BenchResult run_branching(const BenchConfig &cfg) {
   ee_escape(&sum);
   return ee_bench::summarize("branch", "Piecewise[if/else]", "if_else_branch_stream",
                              runs, n, 1, sum);
+#endif
 }
 
 } // namespace

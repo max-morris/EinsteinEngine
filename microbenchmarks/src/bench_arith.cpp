@@ -8,22 +8,16 @@
 //  * *_stream: c[i] = op(a[i], b[i]) — grid-loop-like, includes memory traffic.
 //  * *_reg:    x = op(x, k) chained accumulation — isolates ALU throughput.
 //
-// GPU port: the inner scalar expression (ee_kernels::ee_*) is shared; a CUDA/HIP
-// driver would wrap the same expression in a __global__ kernel over i and time
-// with events. Skeleton:
-//
-//   template <typename Op>
-//   __global__ void ee_stream_kernel(const vreal* a, const vreal* b, vreal* c,
-//                                    std::size_t n, Op op) {
-//     std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (i < n) c[i] = op(a[i], b[i]);
-//   }
+// CUDA/ROCm build: same expressions, launched from ee_device.hpp and timed with events.
 
 #include <cstddef>
 #include <vector>
 
 #include "../common/ee_bench.hpp"
 #include "../common/kernels.hpp"
+#if defined(EE_DEVICE_BUILD)
+#include "../common/ee_device.hpp"
+#endif
 
 namespace {
 
@@ -34,6 +28,12 @@ using ee_bench::vreal;
 template <typename Op>
 BenchResult run_stream(const char *name, const char *node, const BenchConfig &cfg, Op op,
                        int ops_per_elem = 1) {
+#if defined(EE_DEVICE_BUILD)
+  const std::size_t n = cfg.n_stream;
+  std::vector<vreal> a(n), b(n);
+  ee_bench::fill_inputs(a.data(), b.data(), n);
+  return ee_device::time_binary("arith", name, node, cfg, a.data(), b.data(), n, op, ops_per_elem);
+#else
   const std::size_t n = cfg.n_stream;
   std::vector<vreal> a(n), b(n), c(n);
   ee_bench::fill_inputs(a.data(), b.data(), n);
@@ -56,12 +56,17 @@ BenchResult run_stream(const char *name, const char *node, const BenchConfig &cf
     sum += static_cast<double>(c[i]);
   ee_escape(&sum);
   return ee_bench::summarize("arith", node, name, runs, n, ops_per_elem, sum);
+#endif
 }
 
 // Chained accumulation; REPEAT>1 amplifies ALU cost so loop overhead is negligible.
 template <typename Op>
 BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, Op op,
                     int ops_per_elem = 1) {
+#if defined(EE_DEVICE_BUILD)
+  (void)ops_per_elem;
+  return ee_device::time_reg(name, node, cfg, op);
+#else
   constexpr int REPEAT = 16;
   std::size_t iters = cfg.quick ? (1u << 20) : (1u << 24);
   vreal x = static_cast<vreal>(1.000001);
@@ -91,13 +96,54 @@ BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, 
   BenchResult r =
       ee_bench::summarize("arith", node, name, scaled, iters, ops_per_elem, sum);
   return r;
+#endif
 }
 
 } // namespace
 
-std::vector<BenchResult> bench_arith(const BenchConfig &cfg) {
+#if defined(EE_DEVICE_BUILD)
+namespace {
+struct AddOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b) const {
+    return ee_kernels::ee_add(a, b);
+  }
+};
+struct SubOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b) const {
+    return ee_kernels::ee_sub(a, b);
+  }
+};
+struct MulOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b) const {
+    return ee_kernels::ee_mul(a, b);
+  }
+};
+struct DivOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b) const {
+    return ee_kernels::ee_div(a, b);
+  }
+};
+struct NegOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal) const {
+    return ee_kernels::ee_neg(a);
+  }
+};
+} // namespace
+#endif
+
+std::vector<ee_bench::BenchResult> bench_arith(const ee_bench::BenchConfig &cfg) {
   using namespace ee_kernels;
   std::vector<BenchResult> out;
+#if defined(EE_DEVICE_BUILD)
+  out.push_back(run_stream("add_stream", "Add", cfg, AddOp{}));
+  out.push_back(run_stream("sub_stream", "Add", cfg, SubOp{}));
+  out.push_back(run_stream("mul_stream", "Mul", cfg, MulOp{}));
+  out.push_back(run_stream("div_stream", "Mul[div]", cfg, DivOp{}));
+  out.push_back(run_stream("neg_stream", "Mul[neg]", cfg, NegOp{}));
+  out.push_back(run_reg("add_reg", "Add", cfg, AddOp{}));
+  out.push_back(run_reg("mul_reg", "Mul", cfg, MulOp{}));
+  out.push_back(run_reg("div_reg", "Mul[div]", cfg, DivOp{}));
+#else
   out.push_back(run_stream("add_stream", "Add", cfg, ee_add));
   out.push_back(run_stream("sub_stream", "Add", cfg, ee_sub));
   out.push_back(run_stream("mul_stream", "Mul", cfg, ee_mul));
@@ -107,5 +153,6 @@ std::vector<BenchResult> bench_arith(const BenchConfig &cfg) {
   out.push_back(run_reg("add_reg", "Add", cfg, ee_add));
   out.push_back(run_reg("mul_reg", "Mul", cfg, ee_mul));
   out.push_back(run_reg("div_reg", "Mul[div]", cfg, ee_div));
+#endif
   return out;
 }

@@ -5,6 +5,8 @@ html/
 *.egg-info/
 build/
 venv/*
-# microbenchmark outputs (binaries, result JSON)
+# microbenchmark outputs (binaries, result JSON, local cmake trees)
 /microbenchmarks/ee_microbench
 /microbenchmarks/*.json
+/microbenchmarks/build-cuda/
+/microbenchmarks/build-hip/

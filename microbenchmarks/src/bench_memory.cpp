@@ -16,16 +16,18 @@
 //  * constant:    c = 1.0 + a[i]*0 (baseline Atom=1)
 // The x/y/z cost ratios are the data behind the 10/40/100 stencil guestimates.
 //
-// GPU port: same index arithmetic (ee_lin) inside a __global__ kernel with one
-// thread per interior point; time with events instead of chrono. Coalescing and
-// cache behavior will differ from CPU — that is exactly why the weights must be
-// re-measured per device (see README).
+// CUDA/ROCm build: one thread per interior point (ee_device::time_grid).
+// Consecutive threads step in x, so each of center/x/y/z is a coalesced load.
+// That is a different cost from the CPU walk; re-measure per device.
 
 #include <cstddef>
 #include <vector>
 
 #include "../common/ee_bench.hpp"
 #include "../common/kernels.hpp"
+#if defined(EE_DEVICE_BUILD)
+#include "../common/ee_device.hpp"
+#endif
 
 namespace {
 
@@ -41,6 +43,12 @@ struct Grid {
 template <typename Op>
 BenchResult run_grid(const char *name, const char *node, const BenchConfig &cfg, Grid g,
                      Op op) {
+#if defined(EE_DEVICE_BUILD)
+  const std::size_t n = g.n();
+  std::vector<vreal> gf(n), scratch(n);
+  ee_bench::fill_inputs(gf.data(), scratch.data(), n);
+  return ee_device::time_grid(name, node, cfg, gf.data(), g.nx, g.ny, g.nz, op);
+#else
   const std::size_t n = g.n();
   std::vector<vreal> gf(n), out(n);
   std::vector<vreal> scratch(n);
@@ -76,19 +84,78 @@ BenchResult run_grid(const char *name, const char *node, const BenchConfig &cfg,
     sum += static_cast<double>(out[i]);
   ee_escape(&sum);
   return ee_bench::summarize("memory", node, name, runs, n_eval, 1, sum);
+#endif
 }
 
 } // namespace
 
+#if defined(EE_DEVICE_BUILD)
+namespace {
+struct ConstOp {
+  EE_HD_INLINE vreal operator()(const vreal *, const vreal *, std::size_t, std::size_t,
+                                std::size_t) const {
+    return static_cast<vreal>(1.0);
+  }
+};
+struct CenterOp {
+  EE_HD_INLINE vreal operator()(const vreal *gf, const vreal *, std::size_t c, std::size_t,
+                                std::size_t) const {
+    return gf[c];
+  }
+};
+struct GridAddOp {
+  EE_HD_INLINE vreal operator()(const vreal *gf, const vreal *, std::size_t c, std::size_t,
+                                std::size_t) const {
+    return gf[c] + static_cast<vreal>(1.0);
+  }
+};
+struct StencilXOp {
+  EE_HD_INLINE vreal operator()(const vreal *gf, const vreal *, std::size_t c, std::size_t,
+                                std::size_t) const {
+    return gf[c] + gf[c + 1];
+  }
+};
+struct StencilYOp {
+  EE_HD_INLINE vreal operator()(const vreal *gf, const vreal *, std::size_t c, std::size_t nx,
+                                std::size_t) const {
+    return gf[c] + gf[c + nx];
+  }
+};
+struct StencilZOp {
+  EE_HD_INLINE vreal operator()(const vreal *gf, const vreal *, std::size_t c, std::size_t nx,
+                                std::size_t ny) const {
+    return gf[c] + gf[c + nx * ny];
+  }
+};
+} // namespace
+#endif
+
 std::vector<BenchResult> bench_memory(const BenchConfig &cfg) {
   using namespace ee_kernels;
   Grid g;
+#if defined(EE_DEVICE_BUILD)
+  // Large enough that the launch is not the whole measurement on an A100.
+  if (cfg.quick) {
+    g.nx = g.ny = g.nz = 256;
+  } else {
+    g.nx = g.ny = g.nz = 512;
+  }
+#else
   if (cfg.quick) {
     g.nx = 64;
     g.ny = 64;
     g.nz = 64;
   }
+#endif
   std::vector<BenchResult> out;
+#if defined(EE_DEVICE_BUILD)
+  out.push_back(run_grid("const_stream", "Atom", cfg, g, ConstOp{}));
+  out.push_back(run_grid("center_stream", "stencil[center]", cfg, g, CenterOp{}));
+  out.push_back(run_grid("grid_add_stream", "Symbol[grid]", cfg, g, GridAddOp{}));
+  out.push_back(run_grid("stencil_x_stream", "stencil[x]", cfg, g, StencilXOp{}));
+  out.push_back(run_grid("stencil_y_stream", "stencil[y]", cfg, g, StencilYOp{}));
+  out.push_back(run_grid("stencil_z_stream", "stencil[z]", cfg, g, StencilZOp{}));
+#else
   // Baseline: constant (Atom=1) and pure-local register update (Symbol local=1).
   out.push_back(run_grid(
       "const_stream", "Atom", cfg, g,
@@ -123,5 +190,6 @@ std::vector<BenchResult> bench_memory(const BenchConfig &cfg) {
       [](const vreal *gf, const vreal *, std::size_t c, std::size_t nx, std::size_t ny) {
         return gf[c] + gf[c + nx * ny];
       }));
+#endif
   return out;
 }

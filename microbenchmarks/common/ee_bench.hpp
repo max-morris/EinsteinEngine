@@ -42,14 +42,24 @@
 // ---------------------------------------------------------------------------
 // Device-annotation macros (GPU-portable)
 // ---------------------------------------------------------------------------
-#if defined(__CUDACC__) || defined(__HIPCC__)
+// EE_DEVICE_BUILD selects the kernel driver (ee_device.hpp). One binary is
+// either host, CUDA, or ROCm — never more than one. hipcc is tested first
+// because some versions also define __CUDACC__.
+#if defined(__HIPCC__)
 #define EE_HD_INLINE __host__ __device__ inline
 #define EE_DEVICE_INLINE __device__ inline
 #define EE_HAVE_GPU 1
-#if defined(__CUDACC__)
-#define EE_HAVE_CUDA 1
-#elif defined(__HIPCC__)
+#define EE_DEVICE_BUILD 1
+#if !defined(EE_HAVE_HIP)
 #define EE_HAVE_HIP 1
+#endif
+#elif defined(__CUDACC__)
+#define EE_HD_INLINE __host__ __device__ inline
+#define EE_DEVICE_INLINE __device__ inline
+#define EE_HAVE_GPU 1
+#define EE_DEVICE_BUILD 1
+#if !defined(EE_HAVE_CUDA)
+#define EE_HAVE_CUDA 1
 #endif
 #else
 #define EE_HD_INLINE inline
@@ -94,9 +104,24 @@ struct BenchConfig {
   bool quick = false;              // shrink work for smoke tests
 };
 
+inline BenchConfig default_config() {
+  BenchConfig c;
+#if defined(EE_HAVE_CUDA) || defined(EE_HAVE_HIP)
+  // 2^27 elements keeps a GPU kernel in the millisecond range so launch
+  // overhead is not the measurement. Host builds keep the member default.
+  c.n_stream = std::size_t{1} << 27;
+  c.warmup = 3;
+#endif
+  return c;
+}
+
 inline BenchConfig default_config_quick() {
   BenchConfig c;
-  c.n_stream = 1u << 18;
+#if defined(EE_HAVE_CUDA) || defined(EE_HAVE_HIP)
+  c.n_stream = std::size_t{1} << 24;
+#else
+  c.n_stream = std::size_t{1} << 18;
+#endif
   c.repeats = 5;
   c.warmup = 1;
   c.quick = true;

@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "profile": "nvidia-a100-80gb-pcie",
+  "description": "Device-kernel timings on an NVIDIA A100 80GB PCIe (nasrin0). Streamed math kernels repeat the functor 256 times per element and report ns per repetition, so the result is not HBM bandwidth. Memory kernels are one evaluation per interior point with threads stepped along x, which makes x/y/z neighbor loads equally coalesced. ALU/libm weights are measured. Stencil x/y/z are not given the 40/100 ghost-exchange guestimates: this launch cannot see that cost, and the measured spread is under 2%. Previously unweighted functions (tan/sinh/cosh/tanh/erf) carry measured weights.",
+  "architecture": {
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "cuda_arch": "sm_80",
+    "host": "nasrin0.rostam.cct.lsu.edu",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "os": "Linux 5.14.0-570.37.1.el9_6.x86_64",
+    "cores_visible": 128,
+    "memory_gb": 503,
+    "compiler": "nvcc 12.9.86, host g++ (GCC) 11.5.0",
+    "cxxflags": "-O3 -std=c++17 --generate-code arch=compute_80,code=sm_80 -Xcompiler=-Wall,-Wextra,-fno-math-errno",
+    "vreal": "double",
+    "date": "2026-09-29",
+    "benchmark_command": "./ee_microbench --json <file> (CUDA defaults: n_stream=134217728, 256 reps per streamed math op, repeats=15, memory grid 512^3)",
+    "reference_add_ns_per_elem": 0.000912
+  },
+  "weights": {
+    "atom": 1,
+    "symbol_grid": 12,
+    "symbol_local": 1,
+    "pow_default": 21,
+    "pow_integer_floor": 1,
+    "stencil_center": 12,
+    "stencil_x": 12,
+    "stencil_yz": 12,
+    "transcendental": {
+      "sin": 5,
+      "cos": 5,
+      "exp": 4,
+      "log": 8,
+      "sqrt": 3,
+      "cbrt": 4,
+      "tan": 6,
+      "sinh": 3,
+      "cosh": 6,
+      "tanh": 4,
+      "erf": 10
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 0.000912},
+    "arith": {
+      "sub_stream": 0.000912,
+      "mul_stream": 0.000918,
+      "div_stream": 0.00249,
+      "neg_stream": 0.000884,
+      "add_reg": 0.000207,
+      "mul_reg": 0.000207,
+      "div_reg": 0.002034
+    },
+    "pow": {
+      "pow2_stream": 0.000905,
+      "pown3_stream": 0.001019,
+      "pown4_stream": 0.001225,
+      "pown8_stream": 0.00205,
+      "pown16_stream": 0.003668,
+      "sqrt_stream": 0.002559,
+      "cbrt_stream": 0.003881,
+      "powvar_stream": 0.019525,
+      "pow2p5_stream": 0.019332
+    },
+    "transcendental": {
+      "sin_stream": 0.004707,
+      "cos_stream": 0.004935,
+      "tan_stream": 0.005612,
+      "sinh_stream": 0.00298,
+      "cosh_stream": 0.005354,
+      "tanh_stream": 0.003672,
+      "exp_stream": 0.004045,
+      "log_stream": 0.007562,
+      "erf_stream": 0.00952,
+      "sqrt_stream": 0.002609,
+      "cbrt_stream": 0.003922
+    },
+    "memory": {
+      "const_stream": 0.006237,
+      "center_stream": 0.010529,
+      "grid_add_stream": 0.010583,
+      "stencil_x_stream": 0.010568,
+      "stencil_y_stream": 0.010676,
+      "stencil_z_stream": 0.010668
+    },
+    "branch": {
+      "cmp_lt_stream": 0.000702,
+      "if_else_stream": 0.001148,
+      "if_else_branch_stream": 0.001148
+    },
+    "decisions": {
+      "pow_default": "measured 21.41x add (powvar_stream); was 15. pow(x, 2.5) is 21.20x.",
+      "pow_integer_floor": "set to 1. Device pown scales as N=2,3,4,8,16 -> 0.99x, 1.12x, 1.34x, 2.25x, 4.02x add, i.e. about log2(N). Floor 2 would charge x**2 as two adds; the multiply measures as one.",
+      "transcendental": "measured per-function ratios against streamed add. sqrt 2.86x (pow sqrt 2.81x) -> 3; cbrt 4.30x (pow cbrt 4.26x) -> 4.",
+      "symbol_grid": "set to 12: grid_add_stream is 11.60x a compute add. This is the device load, not a ghost exchange.",
+      "stencil": "set to 12/12/12. center/x/y/z are 11.54x/11.59x/11.71x/11.70x add. Threads run along x, so each neighbor load is coalesced; the 40/100 guestimates are not visible here.",
+      "div": "streaming div is 2.73x add. The register chain is 9.8x its own add chain (0.002034 ns vs 0.000207 ns). No separate div weight; x**-1 still goes through Pow."
+    }
+  }
+}

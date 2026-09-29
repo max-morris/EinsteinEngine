@@ -10,11 +10,11 @@ as the reference unit:
 
     weight(op) = max(1, round(ns_op / ns_add))
 
-It also reports:
-  * pow integer-exponent scaling vs the max(2, log2(|p|)) guestimate,
-  * stencil center/x/y/z ratios vs the 10/40/100 guestimate,
-  * transcendental costs vs the flat 15 guestimate,
-  * grid-vs-local Symbol ratio vs the 10-vs-1 guestimate.
+It also reports ratios against the guestimate profile (integer powers vs
+max(2, log2(|p|)), stencil center/x/y/z vs 10/40/100, transcendentals vs a
+flat 15, grid Symbol vs local 1). Those lines are comparisons, not
+instructions to copy the guestimates onto a new machine. A device run whose
+x/y/z stencil timings are flat should not inherit 40/100.
 
 Usage:
     ./build/ee_microbench --json results.json > table.txt  # (JSON goes to stdout)

@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "profile": "amd-epyc-7763",
+  "description": "Calibrated from microbenchmarks on nasrin0 (AMD EPYC 7763, host CPU). ALU/libm weights (pow_default, transcendental) are measured. The job had an NVIDIA A100 80GB PCIe and the binary was configured with CUDA 12.9 (sm_80), but the benchmark sources are host loops and did not run on the device; these are not A100 device weights. Memory/stencil weights retain the guestimates: a single-node streaming loop cannot reproduce the distributed-memory ghost-exchange costs those weights encode; see measurements.decisions. Previously unweighted functions (tan/sinh/cosh/tanh/erf) now carry measured weights.",
+  "architecture": {
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "host": "nasrin0.rostam.cct.lsu.edu",
+    "os": "Linux 5.14.0-570.37.1.el9_6.x86_64",
+    "cores_visible": 128,
+    "memory_gb": 503,
+    "compiler": "g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-5)",
+    "cxxflags": "-O3 -DNDEBUG -std=gnu++17 -Wall -Wextra -fno-math-errno",
+    "vreal": "double",
+    "date": "2026-09-29",
+    "benchmark_command": "./ee_microbench --json <file> (full defaults: n_stream=1048576, repeats=15, grid 128^3)",
+    "reference_add_ns_per_elem": 1.861
+  },
+  "weights": {
+    "atom": 1,
+    "symbol_grid": 10,
+    "symbol_local": 1,
+    "pow_default": 7,
+    "pow_integer_floor": 2,
+    "stencil_center": 10,
+    "stencil_x": 40,
+    "stencil_yz": 100,
+    "transcendental": {
+      "sin": 5,
+      "cos": 5,
+      "exp": 4,
+      "log": 4,
+      "sqrt": 1,
+      "cbrt": 10,
+      "tan": 5,
+      "sinh": 7,
+      "cosh": 6,
+      "tanh": 6,
+      "erf": 3
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 1.861},
+    "arith": {
+      "sub_stream": 1.8899,
+      "mul_stream": 2.7938,
+      "div_stream": 2.7933,
+      "neg_stream": 0.2595,
+      "add_reg": 3.713,
+      "mul_reg": 3.7132,
+      "div_reg": 6.8894
+    },
+    "pow": {
+      "pow2_stream": 0.1937,
+      "pown3_stream": 0.3105,
+      "pown4_stream": 0.2359,
+      "pown8_stream": 0.5706,
+      "pown16_stream": 1.2461,
+      "sqrt_stream": 1.343,
+      "cbrt_stream": 17.1193,
+      "powvar_stream": 13.8204,
+      "pow2p5_stream": 13.709
+    },
+    "transcendental": {
+      "sin_stream": 9.7103,
+      "cos_stream": 9.6298,
+      "tan_stream": 9.8461,
+      "sinh_stream": 12.2128,
+      "cosh_stream": 10.2555,
+      "tanh_stream": 11.4012,
+      "exp_stream": 7.4533,
+      "log_stream": 7.8546,
+      "erf_stream": 5.5985,
+      "sqrt_stream": 2.7907,
+      "cbrt_stream": 18.087
+    },
+    "memory": {
+      "const_stream": 0.1905,
+      "center_stream": 0.329,
+      "grid_add_stream": 0.3631,
+      "stencil_x_stream": 0.3339,
+      "stencil_y_stream": 0.4686,
+      "stencil_z_stream": 0.417
+    },
+    "branch": {
+      "cmp_lt_stream": 0.3005,
+      "if_else_stream": 0.5997,
+      "if_else_branch_stream": 0.5982
+    },
+    "decisions": {
+      "pow_default": "measured 7.43x add (powvar_stream); was 15.",
+      "pow_integer_floor": "retained 2: integer-power streaming runs are at or below 1x add (pow2 0.10x through pown16 0.67x) and cannot resolve ALU scaling; log2 formula kept.",
+      "transcendental": "measured per-function ratios. sqrt is 1.50x add on the transcendental probe (rounds to 1; pow sqrt_stream was 0.72x). cbrt is 9.72x on the transcendental probe (weight 10; pow cbrt_stream was 9.20x).",
+      "symbol_grid": "retained 10: measured grid load is 0.20x add single-node, but the weight guides global-vs-local promotion where distributed costs dominate.",
+      "stencil": "retained 10/40/100: measured center/x/y/z are 0.18x/0.18x/0.25x/0.22x add. The guestimates encode ghost-exchange costs this loop cannot reproduce.",
+      "div": "streaming div is 1.50x add; register-isolated div is 3.70x add. div reaches the model via Pow[x**-1] with floor 2; left as is."
+    }
+  }
+}
