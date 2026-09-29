@@ -337,6 +337,46 @@ def test_empty_soft_piece_dropped_before_manual_soft_split() -> None:
         assert set(ec._soft_split_retainment_strategies) == {1}
 
 
+def test_merge_drops_dead_mangled_temps() -> None:
+    """
+    merge_soft_splits drops a mangled copy (x_ssN) of a forgotten temporary when nothing reads it, which happens when
+    the temporary's only reader in that list was a retained temporary whose copy the merge skips. Left in, the copy
+    became an output of the merged loop (with an Everywhere write region, so code generation failed with "Output vars
+    have mixed write regions"). The recipe is a fuzz case that hit this.
+    """
+    gf = ThornDef("ARR", "DEADMANGLED", derivative_stencil_width=3)
+    u, v, w = [gf.decl(n, [], centering=Centering.VVV) for n in "uvw"]
+    p = gf.add_param("p", default=1.0, desc="p")
+    q0, q3, q4 = [gf.decl(n, [li], centering=Centering.VVV) for n in ("q0", "q3", "q4")]
+    a1, a2, a5 = [gf.decl(n, [], centering=Centering.VVV) for n in ("a1", "a2", "a5")]
+
+    def soft(i: int) -> bool | SoftSplitRetainmentStrategy:
+        return retain_all() if i == 5 else (retain_percentile(0.3) if i == 2 else False)
+
+    fun = gf.create_function("f", ScheduleBin.Evolve, auto_hard_split_predicate=lambda i: i == 9,
+                             auto_soft_split_predicate=soft)
+    duv = D(v, l1) * D(u, l0)
+    fun.add_eqn(q0[li], [pull_out(duv + u) + cos(u + v) * w + pull_out((u + w) ** 2 * v + v),
+                         D(u, l0) * w + exp(v * w / 3) ** 3,
+                         D(u, l0) * u + pull_out((u + w) ** 2 * v + v)])
+    fun.add_eqn(a1, pull_out(D(u, l0) + u))
+    fun.add_eqn(a2, sin(D(w, l0, l1)) * v ** 2 + (u + w) ** 2 * v)
+    fun.add_eqn(q3[li], [cos(u + v) + sin(D(w, l0, l1)) ** 3 + pull_out(duv + q0[l2]),
+                         duv * v ** 2 + sin(u) * cos(w) * a1 + p,
+                         D(u, l0)])
+    fun.add_eqn(q4[li], [exp(v * w / 3) * q3[l2],
+                         duv * w ** 3 + cos(u + v) + pull_out((u + w) ** 2 + q3[l1]),
+                         pull_out(duv * u ** 3 + v) + exp(v * w / 3) * v ** 3])
+    fun.add_eqn(a5, pull_out(exp(v * w / 3) * q4[l2] ** 3 + v) + pull_out(cos(u + v) * q3[l2] ** 3 + q3[l1]))
+    gf.bake(do_recycle_temporaries=False, do_cse=True, temporary_promotion_strategy=promote_none(),
+            soft_split_retainment_strategy=retain_none())
+
+    for el in fun.eqn_complex.eqn_lists:
+        reads = {sym for rhs in el.eqns.values() for sym in free_symbols(rhs)}
+        dead = [str(lhs) for lhs in el.eqns if "_ss" in str(lhs) and lhs not in reads]
+        assert dead == [], f"Unread mangled temporaries: {dead}"
+
+
 def test_merge_keeps_provenance() -> None:
     """A soft-split merge keeps the recipe positions, pre-population order, origins, and params of absorbed equations."""
     gf = ThornDef("ARR", "MERGEPROVENANCE")
@@ -698,6 +738,7 @@ if __name__ == "__main__":
         test_boundary_folding,
         test_leading_custom_annotation_kept,
         test_empty_soft_piece_dropped_before_manual_soft_split,
+        test_merge_drops_dead_mangled_temps,
         test_merge_keeps_provenance,
         test_early_cuts_see_new_order,
         test_soft_queried_only_if_hard_declines,

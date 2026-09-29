@@ -552,6 +552,26 @@ class EqnComplex:
                 recipient_el.params.update(eqn_list.params)
                 recipient_el.analytic_seed.update(eqn_list.analytic_seed)
 
+            # Drop mangled copies that nothing reads, along with the mangled copies only they read. This happens when a
+            # Local temporary that CSE placed in several lists is retained, so that its copy in a later list is skipped,
+            # while a temporary that copy read is forgotten there: the forgotten one is still recomputed under its
+            # mangled name, but its only reader is gone. Left in, it would become an output of the merged list.
+            read_count: dict[Symbol, int] = defaultdict(int)
+            for rhs in chain(recipient_el.eqns.values(), new_eqns.values()):
+                for sym in free_symbols(rhs):
+                    read_count[sym] += 1
+            dead = [lhs for lhs in new_eqns if lhs in inv_subst and read_count[lhs] == 0]
+            while len(dead) > 0:
+                mangled_sym = dead.pop()
+                for sym in free_symbols(new_eqns.pop(mangled_sym)):
+                    read_count[sym] -= 1
+                    if read_count[sym] == 0 and sym in new_eqns and sym in inv_subst:
+                        dead.append(sym)
+                original = inv_subst.pop(mangled_sym)
+                all_subst[original].discard(mangled_sym)
+                if len(all_subst[original]) == 0:
+                    del all_subst[original]
+
             # An absorbed equation keeps its recipe position (the recipe order is never rewritten), origin, and recorded
             # params. A mangled copy of a forgotten temporary is a new temporary: it takes a new recipe position and
             # inherits the origin of the temporary it copies.
