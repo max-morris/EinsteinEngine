@@ -69,6 +69,7 @@ from EinsteinEngine.frontend.definitions import (
     one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
+from EinsteinEngine.common.collect import collect_greedy
 from EinsteinEngine.common.sympywrap import cse, free_symbols
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
@@ -457,7 +458,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 symbols_to_isolate=grid_vars
             )
         elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
+            rhses = list(chain(*chain(*old_tf_rhses.values())))
+            # Greedy subset-factoring first (never worse).
+            substitutions_list, new_rhses = cse([collect_greedy(rhs, max_seconds=5.0) for rhs in rhses], optimizations="basic")
         else:
             raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
