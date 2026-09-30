@@ -600,8 +600,10 @@ inline void ee_ranges_merge_level(const int level) {{
     if (CCTK_MyProc(cctkGH) != 0)
         return;
     int ptype = 0;
-    const void *const pv = CCTK_ParameterGet("out_dir", "IO", &ptype);
-    const std::string out_dir = *static_cast<const char *const *>(pv);
+    // CCTK_ParameterGet takes the thorn name, not the implementation: "IO" is
+    // implemented by IOUtil. A null (IOUtil inactive) falls back to the cwd.
+    const void *const pv = CCTK_ParameterGet("out_dir", "IOUtil", &ptype);
+    const std::string out_dir = pv != nullptr ? std::string(*static_cast<const char *const *>(pv)) : std::string(".");
     const std::string dir = out_dir + "/ranges";
     CCTK_CreateDirectory(0755, out_dir.c_str());
     CCTK_CreateDirectory(0755, dir.c_str());
