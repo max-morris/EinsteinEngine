@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "profile": "nvidia-a100-80gb-pcie",
+  "description": "Device-kernel timings on an NVIDIA A100 80GB PCIe (nasrin0), remeasured 2026-10-01. Streamed math kernels repeat the functor 256 times per element and report ns per repetition, so the result is not HBM bandwidth. Memory kernels are one evaluation per interior point with threads stepped along x, which makes x/y/z neighbor loads equally coalesced. ALU/libm weights are measured. Stencil x/y/z are not given the 4000/10000 ghost-exchange guestimates: this launch cannot see that cost, and the measured spread is about 1%. Previously unweighted functions (tan/sinh/cosh/tanh/erf) carry measured weights. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
+  "architecture": {
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "cuda_arch": "sm_80",
+    "host": "nasrin0.rostam.cct.lsu.edu",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "os": "Linux 5.14.0-570.37.1.el9_6.x86_64",
+    "cores_visible": 128,
+    "memory_gb": 503,
+    "compiler": "nvcc 12.9.86, host g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-11)",
+    "cxxflags": "-O3 -DNDEBUG -std=c++17 --generate-code=arch=compute_80,code=[compute_80,sm_80] -Xcompiler=-Wall,-Wextra,-fno-math-errno",
+    "vreal": "double",
+    "date": "2026-10-01",
+    "benchmark_command": "./ee_microbench --json <file> (CUDA defaults: n_stream=134217728, 256 reps per streamed math op, repeats=15, memory grid 512^3)",
+    "reference_add_ns_per_elem": 0.000909
+  },
+  "weights": {
+    "atom": 100,
+    "symbol_grid": 1200,
+    "symbol_local": 100,
+    "pow_default": 2100,
+    "pow_integer_floor": 100,
+    "stencil_center": 1200,
+    "stencil_x": 1200,
+    "stencil_yz": 1200,
+    "transcendental": {
+      "sin": 500,
+      "cos": 500,
+      "exp": 400,
+      "log": 800,
+      "sqrt": 300,
+      "cbrt": 400,
+      "tan": 600,
+      "sinh": 300,
+      "cosh": 600,
+      "tanh": 400,
+      "erf": 1000
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 0.000909},
+    "arith": {
+      "sub_stream": 0.000909,
+      "mul_stream": 0.000921,
+      "div_stream": 0.002490,
+      "neg_stream": 0.000881,
+      "add_reg": 0.000207,
+      "mul_reg": 0.000207,
+      "div_reg": 0.002034
+    },
+    "pow": {
+      "pow2_stream": 0.000905,
+      "pown3_stream": 0.001019,
+      "pown4_stream": 0.001222,
+      "pown8_stream": 0.002050,
+      "pown16_stream": 0.003668,
+      "sqrt_stream": 0.002532,
+      "cbrt_stream": 0.003881,
+      "powvar_stream": 0.019525,
+      "pow2p5_stream": 0.019332
+    },
+    "transcendental": {
+      "sin_stream": 0.004681,
+      "cos_stream": 0.004935,
+      "tan_stream": 0.005551,
+      "sinh_stream": 0.002980,
+      "cosh_stream": 0.005354,
+      "tanh_stream": 0.003672,
+      "exp_stream": 0.004044,
+      "log_stream": 0.007562,
+      "erf_stream": 0.009450,
+      "sqrt_stream": 0.002602,
+      "cbrt_stream": 0.003922
+    },
+    "memory": {
+      "const_stream": 0.006230,
+      "center_stream": 0.010576,
+      "grid_add_stream": 0.010576,
+      "stencil_x_stream": 0.010576,
+      "stencil_y_stream": 0.010692,
+      "stencil_z_stream": 0.010707
+    },
+    "branch": {
+      "cmp_lt_stream": 0.000702,
+      "if_else_stream": 0.001148,
+      "if_else_branch_stream": 0.001148
+    },
+    "decisions": {
+      "pow_default": "measured 21.48x add (powvar_stream); stored 2100. pow(x, 2.5) is 21.27x.",
+      "pow_integer_floor": "set to 100. Device pown scales as N=2,3,4,8,16 -> 1.00x, 1.12x, 1.34x, 2.26x, 4.04x add, i.e. about log2(N). A floor of 200 would charge x**2 as two adds; the multiply measures as one.",
+      "transcendental": "measured per-function ratios against streamed add. sqrt 2.86x (pow sqrt 2.79x) -> 300; cbrt 4.31x (pow cbrt 4.27x) -> 400.",
+      "symbol_grid": "set to 1200: grid_add_stream is 11.63x a compute add. This is the device load, not a ghost exchange.",
+      "stencil": "set to 1200/1200/1200. center/x/y/z are 11.63x/11.63x/11.76x/11.78x add (spread about 1%). Threads run along x, so each neighbor load is coalesced; the 4000/10000 guestimates are not visible here.",
+      "div": "streaming div is 2.74x add. The register chain is 9.83x its own add chain (0.002034 ns vs 0.000207 ns). No separate div weight; x**-1 still goes through Pow."
+    }
+  }
+}
