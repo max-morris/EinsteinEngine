@@ -138,6 +138,10 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     is_stencil: dict[UFunc, bool]  # Obsolesce sometime?
 
+    # The cost model for this frontend's backend. A frontend whose backend emits some
+    # operations more cheaply than the generic model assumes overrides this.
+    complexity_visitor_type: type[SympyComplexityVisitor] = SympyComplexityVisitor
+
     div_makers: dict[str, DivMakerVisitor]
     apply_div: Applier
     unary_custom_stencils: dict[tuple[UFunc, Idx], Expr]
@@ -520,7 +524,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             for eqn_list in tf.eqn_complex.eqn_lists:
                 complexities.update(eqn_list.complexity)
 
-        complexity_visitor = SympyComplexityVisitor(
+        complexity_visitor = self.complexity_visitor_type(
             lambda s: s in grid_vars
         )
         for new_temp, new_rhs in substitutions.items():

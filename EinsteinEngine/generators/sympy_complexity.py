@@ -36,9 +36,6 @@ _TRANSCENDENTAL_FUNCTIONS = frozenset({
     sy.exp, sy.log, sy.erf,
 })
 
-# The exponents of sqrt(x) and cbrt(x), built once rather than on every power.
-_NAMED_ROOT_EXPONENTS = frozenset({sy.Rational(1, 2), sy.Rational(1, 3)})
-
 
 class IsGridVariableFn(Protocol):
     def __call__(self, symbol: sy.Symbol, /) -> bool: ...
@@ -53,6 +50,13 @@ def calculate_complexities(eqns: dict[sy.Symbol, sy.Expr], *, is_grid_variable: 
 
 
 class SympyComplexityVisitor:
+    """
+    The backend-independent cost model.
+
+    A backend whose output makes some operations cheaper than this model assumes
+    subclasses it and overrides the matching `_complexity_*` hook.
+    """
+
     is_grid_variable: IsGridVariableFn
 
     def __init__(self, is_grid_variable: IsGridVariableFn):
@@ -72,15 +76,12 @@ class SympyComplexityVisitor:
 
     @complexity.register
     def _(self, n: sy.Pow) -> int:
-        base, power = n.args
+        return self._complexity_pow(n)
 
-        # SymPy builds sqrt(x) and cbrt(x) as x**(1/2) and x**(1/3), and the CarpetX
-        # backend emits exactly those two powers as sqrt() and cbrt(). Charge them like
-        # the listed functions below: the surcharge plus the base, not the exponent.
-        if power in _NAMED_ROOT_EXPONENTS:
-            base_complexity: int = self.complexity(base)
-            return TRANSCENDENTAL_COST + base_complexity
-
+    def _complexity_pow(self, n: sy.Pow) -> int:
+        # Every non-integer power, sqrt and cbrt included, is charged as a general
+        # power: the surcharge plus the base and the exponent.
+        power = n.args[1]
         c: int = TRANSCENDENTAL_COST
         if power.is_Integer:
             c = max(2, int(log2(abs(power.evalf()))))
@@ -152,8 +153,8 @@ class SympyComplexityVisitor:
 
         # Compare the function class. `n in [sy.sin, ...]` compares the
         # applied call to those classes and never matches, so the
-        # surcharge was never applied. sqrt and cbrt are matched in the Pow
-        # handler, since SymPy never builds them as Function calls.
+        # surcharge was never applied. sqrt and cbrt never reach here, since
+        # SymPy builds them as powers.
         if n.func in _TRANSCENDENTAL_FUNCTIONS:
             return TRANSCENDENTAL_COST + args_complexity
         else:
