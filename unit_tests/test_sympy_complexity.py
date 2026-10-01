@@ -24,7 +24,8 @@ import unittest
 
 import sympy as sy
 
-from EinsteinEngine.common.sympywrap import cbrt, mk_symbol, sqrt
+from EinsteinEngine.common.sympywrap import atan, cbrt, cos, cosh, cot, coth, csc, csch, erf, exp, log, \
+    mk_symbol, sec, sech, sin, sinh, sqrt, tan, tanh
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 
 
@@ -33,17 +34,19 @@ def _visitor() -> SympyComplexityVisitor:
 
 
 class TestTranscendentalSurcharge(unittest.TestCase):
-    def test_listed_functions_cost_fifteen_plus_arguments(self) -> None:
+    def test_transcendental_functions_cost_fifteen_plus_arguments(self) -> None:
         v = _visitor()
         x = mk_symbol("x")
         # A local symbol costs 1. The surcharge is 15.
-        for fn in (sy.sin, sy.cos, sy.exp, sy.log):
+        for fn in (sin, cos, tan, cot, sec, csc, atan,
+                   sinh, cosh, tanh, coth, sech, csch,
+                   exp, log, erf):
             with self.subTest(fn=fn):
                 self.assertEqual(v.complexity(fn(x)), 16)
 
-    def test_unlisted_function_has_no_surcharge(self) -> None:
+    def test_other_function_has_no_surcharge(self) -> None:
         v = _visitor()
-        self.assertEqual(v.complexity(sy.tan(mk_symbol("x"))), 1)
+        self.assertEqual(v.complexity(sy.Abs(mk_symbol("x"))), 1)
 
     def test_sqrt_and_cbrt_cost_fifteen_plus_base(self) -> None:
         v = _visitor()

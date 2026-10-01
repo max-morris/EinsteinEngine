@@ -23,6 +23,16 @@ from multimethod import multimethod
 from sympy.core.function import UndefinedFunction
 
 
+# Every transcendental function sympywrap exports. They all carry the same surcharge, so
+# none of them ranks cheaper than another. sqrt and cbrt are not here; SymPy builds them
+# as powers.
+_TRANSCENDENTAL_FUNCTIONS = frozenset({
+    sy.sin, sy.cos, sy.tan, sy.cot, sy.sec, sy.csc, sy.atan,
+    sy.sinh, sy.cosh, sy.tanh, sy.coth, sy.sech, sy.csch,
+    sy.exp, sy.log, sy.erf,
+})
+
+
 class IsGridVariableFn(Protocol):
     def __call__(self, symbol: sy.Symbol, /) -> bool: ...
 
@@ -135,7 +145,7 @@ class SympyComplexityVisitor:
         # applied call to those classes and never matches, so the +15
         # surcharge was never applied. sqrt and cbrt are matched in the Pow
         # handler, since SymPy never builds them as Function calls.
-        if n.func in (sy.sin, sy.cos, sy.exp, sy.log):
+        if n.func in _TRANSCENDENTAL_FUNCTIONS:
             return 15 + args_complexity
         else:
             return args_complexity
