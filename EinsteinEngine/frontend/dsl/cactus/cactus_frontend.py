@@ -30,6 +30,7 @@ from EinsteinEngine.common.sympywrap import (
     free_symbols, mk_eq, mk_indexed_base, mk_symbol
 )
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_complexity import CppCarpetXComplexityVisitor
 from EinsteinEngine.emit.tree import Centering, Identifier
 from EinsteinEngine.frontend.dsl.use_indices import subst_tensor_xyz
 from EinsteinEngine.intermediate.temp_kind import TempKind
@@ -172,6 +173,9 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
     # These thorns do tensor expansion with the xyz rules as opposed to our preferred nrpy rules.
     # noinspection SpellCheckingInspection
     _xyz_subst_thorns: list[str] = ["ADMBaseX", "TmunuBaseX", "HydroBaseX"]
+
+    # CarpetX is the only backend that generates code from a ThornDef.
+    complexity_visitor_type = CppCarpetXComplexityVisitor
 
     # Hardcoding some known nonsensical mappings from other thorns.
     # noinspection SpellCheckingInspection

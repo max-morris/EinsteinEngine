@@ -79,7 +79,8 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         def set_eqn_annotation(loop_idx: int, key: Symbol, annotation: str) -> None:
             self.source_annotations.eqns[loop_idx][key] = annotation
 
-        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation)
+        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation,
+                                      complexity_visitor_type=frontend.complexity_visitor_type)
         self.been_baked = False
         self.been_late_baked = False
         self.intent_override = intent_override
