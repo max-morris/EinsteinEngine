@@ -36,6 +36,9 @@ _TRANSCENDENTAL_FUNCTIONS = frozenset({
     sy.exp, sy.log, sy.erf,
 })
 
+# The exponents of sqrt(x) and cbrt(x), built once rather than on every power.
+_NAMED_ROOT_EXPONENTS = frozenset({sy.Rational(1, 2), sy.Rational(1, 3)})
+
 
 class IsGridVariableFn(Protocol):
     def __call__(self, symbol: sy.Symbol, /) -> bool: ...
@@ -74,7 +77,7 @@ class SympyComplexityVisitor:
         # SymPy builds sqrt(x) and cbrt(x) as x**(1/2) and x**(1/3), and the CarpetX
         # backend emits exactly those two powers as sqrt() and cbrt(). Charge them like
         # the listed functions below: the surcharge plus the base, not the exponent.
-        if power in (sy.Rational(1, 2), sy.Rational(1, 3)):
+        if power in _NAMED_ROOT_EXPONENTS:
             base_complexity: int = self.complexity(base)
             return TRANSCENDENTAL_COST + base_complexity
 
