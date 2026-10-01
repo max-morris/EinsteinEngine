@@ -28,12 +28,15 @@ from typing import Any
 import sympy as sy
 
 from EinsteinEngine.common.sympywrap import atan, cbrt, cos, cosh, cot, coth, csc, csch, erf, exp, log, \
-    mk_symbol, sec, sech, sin, sinh, sqrt, tan, tanh
+    mk_symbol, sec, sech, sin, sinh, sqrt, sympify, tan, tanh
+from EinsteinEngine.emit.code.common.code_tree import SympyExpr
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_complexity import CppCarpetXComplexityVisitor
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_visitor import CppVisitor
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
+from EinsteinEngine.generators.cpp_carpetx_generator import CppCarpetXGenerator
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor, TRANSCENDENTAL_COST
 
 
@@ -83,6 +86,41 @@ class TestTranscendentalSurcharge(unittest.TestCase):
             for power in (sy.Rational(-1, 2), sy.Rational(3, 2), sy.Rational(2, 3)):
                 with self.subTest(visitor=type(v).__name__, power=power):
                     self.assertEqual(v.complexity(x ** power), TRANSCENDENTAL_COST + 2)
+
+    def test_float_exponent_keeps_the_general_cost(self) -> None:
+        x = mk_symbol("x")
+        # x**0.5 is emitted as pow(), not sqrt(), so it gets no discount. A Float costs 1.
+        for v in (_visitor(), _carpetx_visitor()):
+            with self.subTest(visitor=type(v).__name__):
+                self.assertEqual(v.complexity(x ** sympify(0.5)), TRANSCENDENTAL_COST + 2)
+
+    def test_carpetx_sqrt_and_cbrt_still_charge_a_grid_variable_base(self) -> None:
+        v = CppCarpetXComplexityVisitor(lambda _s: True)
+        u = mk_symbol("u")
+        # A grid variable costs 10.
+        for fn in (sqrt, cbrt):
+            with self.subTest(fn=fn):
+                self.assertEqual(v.complexity(fn(u)), TRANSCENDENTAL_COST + 10)
+
+
+class TestCarpetXDiscountMatchesEmittedCode(unittest.TestCase):
+    def test_only_powers_emitted_as_named_calls_are_discounted(self) -> None:
+        powers = (sy.Rational(1, 2), sy.Rational(1, 3), sy.Rational(-1, 2), sy.Rational(2, 3), sympify(0.5))
+        thorn = ThornDef("ARR", "TST")
+        u = thorn.decl("u", [])
+        fn = thorn.create_function("f", ScheduleBin.Analysis)
+        for i, power in enumerate(powers):
+            fn.add_eqn(thorn.decl(f"o{i}", []), u ** power)
+        thorn.bake()
+        emitter = CppVisitor(CppCarpetXGenerator(thorn))
+        cost_model = _carpetx_visitor()
+
+        u_sym = mk_symbol("u")
+        for power in powers:
+            with self.subTest(power=power):
+                emitted: str = emitter.visit(SympyExpr(u_sym ** power))
+                discounted = cost_model.complexity(u_sym ** power) == TRANSCENDENTAL_COST + 1
+                self.assertEqual(discounted, not emitted.startswith("pow("), emitted)
 
 
 class TestFrontendCostModel(unittest.TestCase):
