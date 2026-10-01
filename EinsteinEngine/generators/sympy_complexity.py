@@ -23,6 +23,10 @@ from multimethod import multimethod
 from sympy.core.function import UndefinedFunction
 
 
+# The surcharge for a call that is not a plain arithmetic operation: a transcendental
+# function, or a power that is emitted as pow().
+TRANSCENDENTAL_COST = 15
+
 # Every transcendental function sympywrap exports. They all carry the same surcharge, so
 # none of them ranks cheaper than another. sqrt and cbrt are not here; SymPy builds them
 # as powers.
@@ -71,12 +75,14 @@ class SympyComplexityVisitor:
         # backend emits exactly those two powers as sqrt() and cbrt(). Charge them like
         # the listed functions below: the surcharge plus the base, not the exponent.
         if power in (sy.Rational(1, 2), sy.Rational(1, 3)):
-            return int(15 + self.complexity(base))
+            base_complexity: int = self.complexity(base)
+            return TRANSCENDENTAL_COST + base_complexity
 
-        c: int = 15
+        c: int = TRANSCENDENTAL_COST
         if power.is_Integer:
             c = max(2, int(log2(abs(power.evalf()))))
-        return int(c + sum([self.complexity(arg) for arg in n.args]))
+        args_complexity: int = sum([self.complexity(arg) for arg in n.args])
+        return c + args_complexity
 
     @complexity.register
     def _(self, n: sy.Symbol) -> int:
@@ -142,10 +148,10 @@ class SympyComplexityVisitor:
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
 
         # Compare the function class. `n in [sy.sin, ...]` compares the
-        # applied call to those classes and never matches, so the +15
+        # applied call to those classes and never matches, so the
         # surcharge was never applied. sqrt and cbrt are matched in the Pow
         # handler, since SymPy never builds them as Function calls.
         if n.func in _TRANSCENDENTAL_FUNCTIONS:
-            return 15 + args_complexity
+            return TRANSCENDENTAL_COST + args_complexity
         else:
             return args_complexity
