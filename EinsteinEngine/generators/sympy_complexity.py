@@ -123,7 +123,10 @@ class SympyComplexityVisitor:
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
 
-        if n in [sy.sin, sy.cos, sy.exp, sy.log, sy.sqrt, sy.cbrt]:
+        # Compare the function class. `n in [sy.sin, ...]` compares the
+        # applied call to those classes and never matches, so the +15
+        # surcharge was never applied.
+        if n.func in (sy.sin, sy.cos, sy.exp, sy.log, sy.sqrt, sy.cbrt):
             return 15 + args_complexity
         else:
             return args_complexity
