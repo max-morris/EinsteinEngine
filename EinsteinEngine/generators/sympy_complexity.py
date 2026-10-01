@@ -55,8 +55,16 @@ class SympyComplexityVisitor:
 
     @complexity.register
     def _(self, n: sy.Pow) -> int:
+        base, power = n.args
+
+        # SymPy builds sqrt(x) and cbrt(x) as x**(1/2) and x**(1/3), and the CarpetX
+        # backend emits exactly those two powers as sqrt() and cbrt(). Charge them like
+        # the listed functions below: the surcharge plus the base, not the exponent.
+        if power in (sy.Rational(1, 2), sy.Rational(1, 3)):
+            return int(15 + self.complexity(base))
+
         c: int = 15
-        if (power := n.args[1]).is_Integer:
+        if power.is_Integer:
             c = max(2, int(log2(abs(power.evalf()))))
         return int(c + sum([self.complexity(arg) for arg in n.args]))
 
@@ -125,8 +133,9 @@ class SympyComplexityVisitor:
 
         # Compare the function class. `n in [sy.sin, ...]` compares the
         # applied call to those classes and never matches, so the +15
-        # surcharge was never applied.
-        if n.func in (sy.sin, sy.cos, sy.exp, sy.log, sy.sqrt, sy.cbrt):
+        # surcharge was never applied. sqrt and cbrt are matched in the Pow
+        # handler, since SymPy never builds them as Function calls.
+        if n.func in (sy.sin, sy.cos, sy.exp, sy.log):
             return 15 + args_complexity
         else:
             return args_complexity
