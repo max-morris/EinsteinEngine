@@ -185,8 +185,19 @@ class SympyComplexityVisitor:
     @complexity.register
     def _(self, n: sy.Pow) -> int:
         c: int = self.weights.pow_default
-        if (power := n.args[1]).is_Integer:
-            c = max(self.weights.pow_integer_floor, int(log2(abs(power.evalf()))))
+        power = n.args[1]
+        if power.is_Integer:
+            # log2(|p|) is in units of one atom. atom is 1 in the dataclass
+            # defaults and 100 in normalized JSON profiles.
+            magnitude = abs(int(power))
+            exponent_cost = 0 if magnitude <= 1 else round(self.weights.atom * log2(magnitude))
+            c = max(self.weights.pow_integer_floor, exponent_cost)
+        elif power == sy.Rational(1, 2):
+            # Emitter lowers a positive half to sqrt(), not pow().
+            c = self.weights.transcendental.get("sqrt", self.weights.transcendental_default)
+        elif power == sy.Rational(1, 3):
+            # Emitter lowers a positive third to cbrt(). Negative thirds stay pow().
+            c = self.weights.transcendental.get("cbrt", self.weights.transcendental_default)
         return int(c + sum([self.complexity(arg) for arg in n.args]))
 
     @complexity.register
@@ -251,10 +262,5 @@ class SympyComplexityVisitor:
             return self._complexity_undefined_fn(n)
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
-
-        # NOTE: this used to read `n in [sy.sin, ...]`, which compares an
-        # applied function against function classes and is always False, so
-        # the transcendental surcharge never applied. The lookup is by function
-        # name so the JSON values actually take effect.
         extra = self.weights.transcendental.get(type(n).__name__, self.weights.transcendental_default)
         return extra + args_complexity

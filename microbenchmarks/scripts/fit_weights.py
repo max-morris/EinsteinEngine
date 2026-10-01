@@ -5,16 +5,18 @@
 
 The additive model in EinsteinEngine/generators/sympy_complexity.py assigns
 each node an integer cost; Add/Mul sum their children. This script converts
-measured ns/element into suggested integers on the same scale, with Add == 1
-as the reference unit:
+measured ns/element into suggested integers. Add is the reference, and the
+smallest suggestion is 100 (profiles use that same scale; a stored 1 on the
+old scale is 100 here):
 
-    weight(op) = max(1, round(ns_op / ns_add))
+    weight(op) = 100 * max(1, round(ns_op / ns_add))
 
-It also reports ratios against the guestimate profile (integer powers vs
-max(2, log2(|p|)), stencil center/x/y/z vs 10/40/100, transcendentals vs a
-flat 15, grid Symbol vs local 1). Those lines are comparisons, not
-instructions to copy the guestimates onto a new machine. A device run whose
-x/y/z stencil timings are flat should not inherit 40/100.
+A ratio below half an add still clamps to 100, as the old formula clamped it
+to 1. It also reports ratios against the guestimate profile (integer powers
+vs max(200, round(100*log2(|p|))), stencil center/x/y/z vs 1000/4000/10000,
+transcendentals vs a flat 1500, grid Symbol vs local 100). Those lines are
+comparisons, not instructions to copy the guestimates onto a new machine. A
+device run whose x/y/z stencil timings are flat should not inherit 4000/10000.
 
 Usage:
     ./build/ee_microbench --json results.json > table.txt  # (JSON goes to stdout)
@@ -73,9 +75,9 @@ def main() -> None:
         v = need(ns, key)
         if not math.isfinite(v) or v < 0:
             raise SystemExit(f"FATAL: invalid timing for {key}: {v}")
-        return max(1, round(v / add))
+        return 100 * max(1, round(v / add))
 
-    print("# Suggested weights (reference: add_stream = 1.0)")
+    print("# Suggested weights (smallest positive weight is 100; add_stream rounds to 100)")
     print(f"# add_stream ns/elem = {add:.4f}\n")
     print("ADD_MUL = {")
     for key in ["add_stream", "sub_stream", "mul_stream", "div_stream", "neg_stream"]:
@@ -95,7 +97,7 @@ def main() -> None:
     ]:
         print(f"    {key!r}: {w(key)},  # {need(ns, key) / add:.2f}x add")
     print("}")
-    print("print('current guestimate: default 15, int-pow max(2, log2(|p|))')")
+    print("print('current guestimate: default 1500, int-pow max(200, round(100*log2(|p|)))')")
     print("\nTRANSCENDENTAL = {")
     for key in [
         "sin_stream",
@@ -110,7 +112,7 @@ def main() -> None:
     ]:
         print(f"    {key!r}: {w(key)},  # {need(ns, key) / add:.2f}x add")
     print("}")
-    print("print('current guestimate: sin/cos/exp/log/sqrt/cbrt = 15')")
+    print("print('current guestimate: sin/cos/exp/log/sqrt/cbrt = 1500')")
     print("\nMEMORY = {")
     for key in [
         "const_stream",
@@ -122,7 +124,7 @@ def main() -> None:
     ]:
         print(f"    {key!r}: {w(key)},  # {need(ns, key) / add:.2f}x add")
     print("}")
-    print("print('current guestimate: center=10, x=40, y/z=100, grid-symbol=10, local=1')")
+    print("print('current guestimate: center=1000, x=4000, y/z=10000, grid-symbol=1000, local=100')")
     print("\nBRANCH = {")
     for key in ["cmp_lt_stream", "if_else_stream", "if_else_branch_stream"]:
         print(f"    {key!r}: {w(key)},  # {need(ns, key) / add:.2f}x add")

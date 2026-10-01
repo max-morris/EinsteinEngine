@@ -5,8 +5,10 @@ This directory times the operations the CarpetX emitter generates
 `EinsteinEngine/generators/sympy_complexity.py`.
 
 The default profile, `guestimates.json`, is still the hand-written model:
-`Pow` 15, integer powers `max(2, log2|p|)`, grid `Symbol` 10 vs local 1,
-stencil center 10 / x 40 / y-z 100, and `sin/cos/exp/log/sqrt/cbrt` 15.
+`Pow` 1500, integer powers `max(200, round(100*log2|p|))`, grid `Symbol` 1000
+vs local 100, stencil center 1000 / x 4000 / y-z 10000, and
+`sin/cos/exp/log/sqrt/cbrt` 1500. Every profile scales its positive weights
+so the smallest is 100. `transcendental_default` stays 0.
 Measured profiles sit next to it. Nothing selects them unless
 `EE_COMPLEXITY_WEIGHTS` points at one.
 
@@ -82,17 +84,18 @@ the result. `--size` still overrides the stream length.
 
 Device memory launches step threads along x, so a center load and an x, y, or
 z neighbor load are each coalesced. That will not reproduce the host
-10/40/100 stencil spread, and it cannot see a ghost exchange.
+1000/4000/10000 stencil spread, and it cannot see a ghost exchange.
 
 Suggested weight, printed by `fit_weights.py`:
 
 ```text
-weight(op) = max(1, round(ns_op / ns_add))
+weight(op) = 100 * max(1, round(ns_op / ns_add))
 ```
 
-with `add_stream` as 1. Those integers are a draft. Record in the profile why
-any of them differs from the measurement, especially when the guestimate
-encodes a cost this loop cannot see.
+with `add_stream` rounding to 100. A ratio below half an add clamps to 100.
+Those integers are a draft. Record in the profile why any of them differs
+from the measurement, especially when the guestimate encodes a cost this
+loop cannot see.
 
 ## Profiles
 
@@ -107,10 +110,11 @@ including `measurements.decisions`.
 
 | Profile | What was measured |
 |---|---|
-| `guestimates.json` | Nothing. Hand-written default. |
-| `amd-ryzen-ai-9-hx-pro-370.json` | Host loops. ALU and libm weights are measured. Stencil weights stay 10/40/100 because a single-node loop cannot see a ghost exchange. |
-| `amd-epyc-7763.json` | Host loops on an AMD EPYC 7763 (`add_stream` 1.861 ns). Not A100 weights: that node has an A100, and this run did not use it. Stencil weights stay 10/40/100 for the same reason as the Ryzen profile. `pow_default` is 7. |
-| `nvidia-a100-80gb-pcie.json` | Device kernels on an NVIDIA A100 80GB PCIe, sm_80 (`add_stream` 0.000912 ns per repetition). `pow_default` is 21. `pow_integer_floor` is 1 because `x**2` measures as one add and `x**2,3,4,8,16` track `log2(N)`, not a flat floor of 2. `symbol_grid` and every stencil weight are 12: the coalesced launch is flat to within 2%, so 40/100 were not copied. |
+| `guestimates.json` | Nothing. Hand-written default. Smallest positive weight is 100. |
+| `amd-ryzen-ai-9-hx-pro-370.json` | Host loops. ALU and libm weights are measured. Stencil weights stay 1000/4000/10000 because a single-node loop cannot see a ghost exchange. |
+| `amd-epyc-7763.json` | Host loops on an AMD EPYC 7763 (`add_stream` 1.861 ns). Not A100 weights: that node has an A100, and this run did not use it. Stencil weights stay 1000/4000/10000 for the same reason as the Ryzen profile. `pow_default` is 700. |
+| `intel-xeon-gold-5118.json` | Host loops on rostam1, the login node (`add_stream` 2.1836 ns). No GPU on this machine. Stencil weights stay 1000/4000/10000. `pow_default` is 1100. `pow_integer_floor` stays 200: integer powers are at or below one add. |
+| `nvidia-a100-80gb-pcie.json` | Device kernels on an NVIDIA A100 80GB PCIe, sm_80 (`add_stream` 0.000909 ns per repetition). `pow_default` is 2100. `pow_integer_floor` is 100 because `x**2` measures as one add and `x**2,3,4,8,16` track `log2(N)`, not a flat floor of 200. `symbol_grid` and every stencil weight are 1200: the coalesced launch is flat to about 1%, so 4000/10000 were not copied. |
 
 Do not reuse a host profile on a GPU, or the A100 profile on an AMD GPU.
 An MI100 (`gfx908`) build runs; there is no full MI100 profile yet.

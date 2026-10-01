@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile": "amd-epyc-7763",
-  "description": "Calibrated from microbenchmarks on nasrin0 (AMD EPYC 7763, host CPU). ALU/libm weights (pow_default, transcendental) are measured. The job had an NVIDIA A100 80GB PCIe and the binary was configured with CUDA 12.9 (sm_80), but the benchmark sources are host loops and did not run on the device; these are not A100 device weights. Memory/stencil weights retain the guestimates: a single-node streaming loop cannot reproduce the distributed-memory ghost-exchange costs those weights encode; see measurements.decisions. Previously unweighted functions (tan/sinh/cosh/tanh/erf) now carry measured weights.",
+  "description": "Calibrated from microbenchmarks on nasrin0 (AMD EPYC 7763, host CPU). ALU/libm weights (pow_default, transcendental) are measured. The job had an NVIDIA A100 80GB PCIe and the binary was configured with CUDA 12.9 (sm_80), but the benchmark sources are host loops and did not run on the device; these are not A100 device weights. Memory/stencil weights retain the guestimates: a single-node streaming loop cannot reproduce the distributed-memory ghost-exchange costs those weights encode; see measurements.decisions. Previously unweighted functions (tan/sinh/cosh/tanh/erf) now carry measured weights. Positive weights are scaled so the smallest is 100; transcendental_default stays 0. Ratios in measurements are unchanged.",
   "architecture": {
     "cpu": "AMD EPYC 7763 64-Core Processor",
     "host": "nasrin0.rostam.cct.lsu.edu",
@@ -16,26 +16,26 @@
     "reference_add_ns_per_elem": 1.861
   },
   "weights": {
-    "atom": 1,
-    "symbol_grid": 10,
-    "symbol_local": 1,
-    "pow_default": 7,
-    "pow_integer_floor": 2,
-    "stencil_center": 10,
-    "stencil_x": 40,
-    "stencil_yz": 100,
+    "atom": 100,
+    "symbol_grid": 1000,
+    "symbol_local": 100,
+    "pow_default": 700,
+    "pow_integer_floor": 200,
+    "stencil_center": 1000,
+    "stencil_x": 4000,
+    "stencil_yz": 10000,
     "transcendental": {
-      "sin": 5,
-      "cos": 5,
-      "exp": 4,
-      "log": 4,
-      "sqrt": 1,
-      "cbrt": 10,
-      "tan": 5,
-      "sinh": 7,
-      "cosh": 6,
-      "tanh": 6,
-      "erf": 3
+      "sin": 500,
+      "cos": 500,
+      "exp": 400,
+      "log": 400,
+      "sqrt": 100,
+      "cbrt": 1000,
+      "tan": 500,
+      "sinh": 700,
+      "cosh": 600,
+      "tanh": 600,
+      "erf": 300
     },
     "transcendental_default": 0
   },
@@ -89,12 +89,12 @@
       "if_else_branch_stream": 0.5982
     },
     "decisions": {
-      "pow_default": "measured 7.43x add (powvar_stream); was 15.",
-      "pow_integer_floor": "retained 2: integer-power streaming runs are at or below 1x add (pow2 0.10x through pown16 0.67x) and cannot resolve ALU scaling; log2 formula kept.",
-      "transcendental": "measured per-function ratios. sqrt is 1.50x add on the transcendental probe (rounds to 1; pow sqrt_stream was 0.72x). cbrt is 9.72x on the transcendental probe (weight 10; pow cbrt_stream was 9.20x).",
-      "symbol_grid": "retained 10: measured grid load is 0.20x add single-node, but the weight guides global-vs-local promotion where distributed costs dominate.",
-      "stencil": "retained 10/40/100: measured center/x/y/z are 0.18x/0.18x/0.25x/0.22x add. The guestimates encode ghost-exchange costs this loop cannot reproduce.",
-      "div": "streaming div is 1.50x add; register-isolated div is 3.70x add. div reaches the model via Pow[x**-1] with floor 2; left as is."
+      "pow_default": "measured 7.43x add (powvar_stream); stored 700.",
+      "pow_integer_floor": "retained 200: integer-power streaming runs are at or below 1x add (pow2 0.10x through pown16 0.67x) and cannot resolve ALU scaling; log2 formula kept.",
+      "transcendental": "measured per-function ratios. sqrt is 1.50x add on the transcendental probe (stored 100; pow sqrt_stream was 0.72x). cbrt is 9.72x on the transcendental probe (stored 1000; pow cbrt_stream was 9.20x).",
+      "symbol_grid": "retained 1000: measured grid load is 0.20x add single-node, but the weight guides global-vs-local promotion where distributed costs dominate.",
+      "stencil": "retained 1000/4000/10000: measured center/x/y/z are 0.18x/0.18x/0.25x/0.22x add. The guestimates encode ghost-exchange costs this loop cannot reproduce.",
+      "div": "streaming div is 1.50x add; register-isolated div is 3.70x add. div reaches the model via Pow[x**-1] with floor 200; left as is."
     }
   }
 }

@@ -4,7 +4,7 @@
 """Regression test for scripts/fit_weights.py.
 
 Feeds synthetic ee_microbench JSON (no benchmark run needed) and checks the
-fitted weights follow round(ns_op / ns_add). Fatal on any mismatch.
+fitted weights follow 100 * max(1, round(ns_op / ns_add)). Fatal on any mismatch.
 Run: python3 scripts/test_fit_weights.py
 """
 
@@ -31,9 +31,15 @@ NAMES = [
 
 def main() -> int:
     script = Path(__file__).with_name("fit_weights.py")
-    # Synthetic timings: add=2.0ns, sin=16.0 (->8), erf=50.0 (->25), rest 2.0 (->1).
+    # Synthetic timings: add=2.0ns. sin=16 (->800), erf=50 (->2500),
+    # cbrt=24 (->1200), div=3.2 (1.6x -> 200, not round(160)), rest 2.0 (->100).
     timings = {n: 2.0 for n in NAMES}
-    timings.update({"sin_stream": 16.0, "erf_stream": 50.0, "cbrt_stream": 24.0})
+    timings.update({
+        "sin_stream": 16.0,
+        "erf_stream": 50.0,
+        "cbrt_stream": 24.0,
+        "div_stream": 3.2,
+    })
     payload = {
         "results": [
             {"group": "g", "name": n, "complexity_node": n, "ns_per_elem": v,
@@ -61,8 +67,10 @@ def main() -> int:
 
     failures = []
     for name, ns in timings.items():
-        if (got := weight(name)) != (want := max(1, round(ns / 2.0))):
+        if (got := weight(name)) != (want := 100 * max(1, round(ns / 2.0))):
             failures.append(f"{name}: got {got}, want {want}")
+    if weight("div_stream") != 200:
+        failures.append("1.6x add must be 200 (100*round), not round(100*ratio)")
     # Malformed input must fail loudly, never silently.
     bad = subprocess.run(
         [sys.executable, str(script), "/nonexistent.json"],

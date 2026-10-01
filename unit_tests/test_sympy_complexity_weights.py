@@ -41,41 +41,99 @@ def _visitor() -> SympyComplexityVisitor:
 class TestGuestimateProfile(unittest.TestCase):
     def test_transcendentals_take_effect(self) -> None:
         v = _visitor()
-        self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 16)
-        self.assertEqual(v.complexity(sy.exp(sy.Symbol("x"))), 16)
+        self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 1600)
+        self.assertEqual(v.complexity(sy.exp(sy.Symbol("x"))), 1600)
 
     def test_pow_formula(self) -> None:
         v = SympyComplexityVisitor(lambda s: False)
         x = sy.Symbol("x")
-        self.assertEqual(v.complexity(x**2), 4)  # max(2, 1) + 2 args
-        self.assertEqual(v.complexity(x**8), 5)  # max(2, 3) + 2 args
-        self.assertEqual(v.complexity(x ** sy.Symbol("y")), 17)  # 15 + 2 args
+        # Guestimate scale: floor 200, atom 100. x**8 uses round(100*log2(8)).
+        self.assertEqual(v.complexity(x**2), 400)  # max(200, 100) + 2 atoms
+        self.assertEqual(v.complexity(x**8), 500)  # max(200, 300) + 2 atoms
+        self.assertEqual(v.complexity(x ** sy.Symbol("y")), 1700)  # 1500 + 2 atoms
+
+    def test_integer_power_uses_atom_units(self) -> None:
+        weights = ComplexityWeights(
+            atom=100, symbol_local=100, pow_integer_floor=100, pow_default=2100
+        )
+        v = SympyComplexityVisitor(lambda s: False, weights=weights)
+        x = sy.Symbol("x")
+        self.assertEqual(v.complexity(x**2), 300)  # max(100, 100) + 2 atoms
+        self.assertEqual(v.complexity(x**8), 500)  # max(100, 300) + 2 atoms
 
     def test_symbols_and_stencil(self) -> None:
         v = _visitor()
-        self.assertEqual(v.complexity(sy.Symbol("g")), 10)
-        self.assertEqual(v.complexity(sy.Symbol("x")), 1)
+        self.assertEqual(v.complexity(sy.Symbol("g")), 1000)
+        self.assertEqual(v.complexity(sy.Symbol("x")), 100)
         stencil = sy.Function("stencil")
         g = sy.Symbol("g")
-        self.assertEqual(v.complexity(stencil(g, 0, 0, 0)), 10)
-        self.assertEqual(v.complexity(stencil(g, 1, 0, 0)), 40)
-        self.assertEqual(v.complexity(stencil(g, 0, 1, 0)), 100)
-        self.assertEqual(v.complexity(stencil(g, 0, 0, 2)), 100)
+        self.assertEqual(v.complexity(stencil(g, 0, 0, 0)), 1000)
+        self.assertEqual(v.complexity(stencil(g, 1, 0, 0)), 4000)
+        self.assertEqual(v.complexity(stencil(g, 0, 1, 0)), 10000)
+        self.assertEqual(v.complexity(stencil(g, 0, 0, 2)), 10000)
 
     def test_unweighted_function_passthrough(self) -> None:
         v = SympyComplexityVisitor(lambda s: False)
-        self.assertEqual(v.complexity(sy.tan(sy.Symbol("x"))), 1)
+        self.assertEqual(v.complexity(sy.tan(sy.Symbol("x"))), 100)
+
+    def test_half_and_third_powers_use_sqrt_cbrt_weights(self) -> None:
+        weights = ComplexityWeights(
+            pow_default=21,
+            transcendental={"sqrt": 3, "cbrt": 4},
+        )
+        v = SympyComplexityVisitor(lambda s: False, weights=weights)
+        x = sy.Symbol("x")
+        # Operation weight plus the base and the exponent.
+        self.assertEqual(v.complexity(sy.sqrt(x)), 5)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), 5)
+        self.assertEqual(v.complexity(sy.cbrt(x)), 6)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 3)), 6)
+        self.assertEqual(v.complexity(x ** sy.Rational(-1, 2)), 23)
+        self.assertEqual(v.complexity(x ** sy.Rational(-1, 3)), 23)
+
+    def test_a100_profile_applies_sqrt_and_cbrt(self) -> None:
+        weights = sc.load_weights(sc.WEIGHTS_DIR / "nvidia-a100-80gb-pcie.json")
+        v = SympyComplexityVisitor(lambda s: False, weights=weights)
+        x = sy.Symbol("x")
+        sqrt_w = weights.transcendental["sqrt"]
+        cbrt_w = weights.transcendental["cbrt"]
+        self.assertGreater(weights.pow_default, sqrt_w)
+        self.assertEqual(v.complexity(sy.sqrt(x)), sqrt_w + weights.symbol_local + weights.atom)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), sqrt_w + weights.symbol_local + weights.atom)
+        self.assertEqual(v.complexity(sy.cbrt(x)), cbrt_w + weights.symbol_local + weights.atom)
+        self.assertEqual(
+            v.complexity(x ** sy.Rational(-1, 3)),
+            weights.pow_default + weights.symbol_local + weights.atom,
+        )
+
+    def test_every_profile_smallest_positive_weight_is_100(self) -> None:
+        for path in sorted(sc.WEIGHTS_DIR.glob("*.json")):
+            with self.subTest(path.name):
+                doc = json.loads(path.read_text(encoding="utf-8"))
+                weights = doc["weights"]
+                positives: list[int] = []
+
+                def walk(node: object) -> None:
+                    if isinstance(node, dict):
+                        for value in node.values():
+                            walk(value)
+                    elif isinstance(node, int) and not isinstance(node, bool) and node > 0:
+                        positives.append(node)
+
+                walk(weights)
+                self.assertEqual(min(positives), 100)
+                self.assertEqual(weights["transcendental_default"], 0)
 
 
 class TestProfileLoading(unittest.TestCase):
     def test_machine_profile_loads_and_applies(self) -> None:
         path = sc.WEIGHTS_DIR / "amd-ryzen-ai-9-hx-pro-370.json"
         weights = sc.load_weights(path)
-        self.assertEqual(weights.pow_default, 8)
-        self.assertEqual(weights.transcendental["erf"], 23)
+        self.assertEqual(weights.pow_default, 800)
+        self.assertEqual(weights.transcendental["erf"], 2300)
         v = SympyComplexityVisitor(lambda s: False, weights=weights)
-        self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 8)
-        self.assertEqual(v.complexity(sy.erf(sy.Symbol("x"))), 24)
+        self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 800)
+        self.assertEqual(v.complexity(sy.erf(sy.Symbol("x"))), 2400)
 
     def test_available_profiles(self) -> None:
         self.assertIn("guestimates", sc.available_profiles())
@@ -133,7 +191,7 @@ class TestProfileLoading(unittest.TestCase):
             env=env,
             check=True,
         )
-        self.assertEqual(out.stdout.strip(), "8")
+        self.assertEqual(out.stdout.strip(), "800")
 
     def test_bad_env_override_is_fatal(self) -> None:
         env = dict(os.environ)
