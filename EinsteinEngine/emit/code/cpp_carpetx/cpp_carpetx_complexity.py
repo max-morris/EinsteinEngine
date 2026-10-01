@@ -17,10 +17,8 @@
 
 import sympy as sy
 
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_named_roots import named_root
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor, TRANSCENDENTAL_COST
-
-# The exponents of sqrt(x) and cbrt(x), built once rather than on every power.
-_NAMED_ROOT_EXPONENTS = frozenset({sy.Rational(1, 2), sy.Rational(1, 3)})
 
 
 class CppCarpetXComplexityVisitor(SympyComplexityVisitor):
@@ -28,13 +26,14 @@ class CppCarpetXComplexityVisitor(SympyComplexityVisitor):
     The cost model for code emitted by the CarpetX backend.
 
     SymPy builds sqrt(x) and cbrt(x) as x**(1/2) and x**(1/3), and this backend emits
-    exactly those two powers as sqrt() and cbrt() rather than pow(). Charge them like
-    the transcendental functions: the surcharge plus the base, not the exponent.
+    those powers, and any other in `named_root`, as a named call rather than pow().
+    Charge them like the transcendental functions: the surcharge plus the base, not the
+    exponent.
     """
 
     def _complexity_pow(self, n: sy.Pow) -> int:
         base, power = n.args
-        if power in _NAMED_ROOT_EXPONENTS:
+        if isinstance(power, sy.Rational) and named_root(power.p, power.q) is not None:
             base_complexity: int = self.complexity(base)
             return TRANSCENDENTAL_COST + base_complexity
         return super()._complexity_pow(n)
