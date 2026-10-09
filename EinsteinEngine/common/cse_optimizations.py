@@ -20,6 +20,7 @@ Factories for CSE optimizations (see `CseOptimization`): each returns one sympy 
 """
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import cast
 
 from sympy import Expr, factor_terms
@@ -28,7 +29,7 @@ from sympy.simplify.cse_opts import sub_post, sub_pre
 from EinsteinEngine.common.collect import DEFAULT_MAX_ITER, collect_greedy
 from EinsteinEngine.common.sympywrap import CseOptimization
 
-__all__ = ["cse_basic", "cse_collect_greedy"]
+__all__ = ["cse_basic", "cse_collect_greedy", "CsePreset"]
 
 
 def _basic_pre(expr: Expr) -> Expr:
@@ -66,3 +67,32 @@ def cse_collect_greedy(max_iter: int = DEFAULT_MAX_ITER) -> CseOptimization:
     and ``[cse_basic(), cse_collect_greedy()]`` after it.
     """
     return _CollectGreedy(max_iter), None
+
+
+class CsePreset(Enum):
+    """
+    Named lists of CSE optimizations, for the cse_optimizations bake option. Each member is a factory:
+    ``CsePreset.CollectBeforeBasic(max_iter=50)`` gives its list, in which ``max_iter`` is the budget of its
+    cse_collect_greedy (the presets without one ignore it). A tuner can pick a preset by an index into
+    ``list(CsePreset)``, whose order does not change.
+
+    - Off: no optimizations (the bake option's default).
+    - Basic: sympy's basic optimizations (`cse_basic`).
+    - CollectBefore: greedy subset-factoring of each expression before the CSE (`cse_collect_greedy`).
+    - CollectBeforeBasic: the factoring, then sympy's basic optimizations.
+    """
+    Off = "off"
+    Basic = "basic"
+    CollectBefore = "collect-before"
+    CollectBeforeBasic = "collect-before-basic"
+
+    def __call__(self, max_iter: int = DEFAULT_MAX_ITER) -> list[CseOptimization]:
+        match self:
+            case CsePreset.Off:
+                return []
+            case CsePreset.Basic:
+                return [cse_basic()]
+            case CsePreset.CollectBefore:
+                return [cse_collect_greedy(max_iter)]
+            case CsePreset.CollectBeforeBasic:
+                return [cse_collect_greedy(max_iter), cse_basic()]

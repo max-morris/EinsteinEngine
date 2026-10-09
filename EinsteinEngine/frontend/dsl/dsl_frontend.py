@@ -101,7 +101,8 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     do_cse: bool
     cse_optimization_level: CseOptimizationLevel
     # The CSE optimizations of the global CSE, in order (see CseOptimization), e.g.
-    # [cse_collect_greedy(max_iter=50), cse_basic()]. None by default.
+    # [cse_collect_greedy(max_iter=50), cse_basic()], or a preset such as CsePreset.CollectBeforeBasic(max_iter=50).
+    # None by default.
     cse_optimizations: Sequence[CseOptimization]
     temporary_promotion_strategy: TemporaryPromotionStrategy
 

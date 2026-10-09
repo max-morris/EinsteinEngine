@@ -28,7 +28,7 @@ from sympy import Expr, Rational, cse as sympy_cse
 
 from EinsteinEngine import *
 from EinsteinEngine.common.collect import op_count
-from EinsteinEngine.common.cse_optimizations import cse_basic, cse_collect_greedy
+from EinsteinEngine.common.cse_optimizations import CsePreset, cse_basic, cse_collect_greedy
 from EinsteinEngine.common.sympywrap import cse, mk_symbol, sqrt
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef, ThornFunction
 from EinsteinEngine.intermediate.eqn_ordering import prioritize_rare_symbols
@@ -140,6 +140,17 @@ def test_derivation_takes_the_option() -> None:
     assert calls[0] == one_bake, (calls[0], one_bake)
 
 
+def test_presets() -> None:
+    # The order is what a tuner indexes; appending is fine, reordering is not.
+    assert [p.name for p in CsePreset][:4] == ["Off", "Basic", "CollectBefore", "CollectBeforeBasic"]
+    assert CsePreset.Off() == []
+    assert CsePreset.Basic() == [cse_basic()]
+    assert CsePreset.CollectBefore() == [cse_collect_greedy()]
+    assert CsePreset.CollectBeforeBasic(max_iter=7) == [cse_collect_greedy(max_iter=7), cse_basic()]
+    assert eqns_of(bake_thorn(cse_optimizations=CsePreset.CollectBeforeBasic(max_iter=3))) == \
+        eqns_of(bake_thorn(cse_optimizations=[cse_collect_greedy(max_iter=3), cse_basic()]))
+
+
 if __name__ == "__main__":
     tests = [
         test_cse_basic_matches_sympy,
@@ -149,6 +160,7 @@ if __name__ == "__main__":
         test_collect_greedy_budget,
         test_both_cse_levels_take_the_option,
         test_derivation_takes_the_option,
+        test_presets,
     ]
     for test in tests:
         test()
