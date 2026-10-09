@@ -74,6 +74,20 @@ class TestGuestimateProfile(unittest.TestCase):
         self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 1600)
         self.assertEqual(v.complexity(sy.exp(sy.Symbol("x"))), 1600)
 
+    def test_transcendental_surcharge_changes_rank_versus_legacy_zero(self) -> None:
+        # The pre-branch predicate compared a call instance with the function
+        # classes and added 0. guestimates.json adds 1500. A full CarpetX Z4c
+        # regeneration was not run; this pins the cost delta that regeneration
+        # would see.
+        v = SympyComplexityVisitor(lambda s: False)
+        x = sy.Symbol("x")
+        adds = x + x + x + x + x + x
+        sine = sy.sin(x)
+        self.assertEqual(v.complexity(sine) - v.complexity(x), 1500)
+        self.assertLess(v.complexity(adds), v.complexity(sine))
+        legacy_sin = v.complexity(x)
+        self.assertLess(legacy_sin, v.complexity(adds))
+
     def test_pow_formula(self) -> None:
         v = SympyComplexityVisitor(lambda s: False)
         x = sy.Symbol("x")

@@ -283,5 +283,10 @@ class SympyComplexityVisitor:
             return self._complexity_undefined_fn(n)
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
+        # The weight key is the SymPy class name (sin, cos, exp, ...).
+        # Before this branch the lookup compared the call with the class
+        # objects (`n in [sy.sin, sy.cos, ...]`), which is always false, so
+        # the surcharge was 0. The profile weight changes promotion and
+        # ordering wherever one of these calls appears.
         extra = self.weights.transcendental.get(type(n).__name__, self.weights.transcendental_default)
         return extra + args_complexity
