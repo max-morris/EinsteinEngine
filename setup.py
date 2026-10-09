@@ -27,7 +27,7 @@ setup(
     author_email='mmorris@cct.lsu.edu',
     license='AGPL-3.0-or-later',
     packages=find_packages(include=['EinsteinEngine', 'EinsteinEngine.*']),
-    package_data={'EinsteinEngine': ['py.typed']},
+    package_data={'EinsteinEngine': ['py.typed', 'generators/complexity_weights/guestimates.json']},
     install_requires=[
         'mypy==2.3.0',
         'nrpy==2.0.18',

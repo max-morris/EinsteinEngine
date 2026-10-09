@@ -423,6 +423,10 @@ def promote_threshold(global_threshold: int, local_threshold: int = 0, tile_thre
 
     Thresholds must be ordered: local_threshold <= tile_threshold <= global_threshold
     (when tile_threshold is provided).
+
+    Complexity integers are about 100 times the pre-profile model (``atom`` is
+    100). A threshold written against the old scale keeps about 100 times fewer
+    temporaries. Percentile and rank strategies are unchanged by that scale.
     """
 
     return _ThresholdPromotionStrategy(global_threshold, local_threshold, tile_threshold)

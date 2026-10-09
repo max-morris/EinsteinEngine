@@ -41,3 +41,5 @@ jobs:
           python unit_tests/test_tuning_probe.py
           python unit_tests/test_rank_by_post_population.py
           python unit_tests/test_sympy_complexity.py
+          python unit_tests/test_sympy_complexity_weights.py
+          python microbenchmarks/scripts/test_fit_weights.py

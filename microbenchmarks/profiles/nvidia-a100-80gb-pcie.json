@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "profile": "nvidia-a100-80gb-pcie",
+  "description": "Device-kernel timings on an NVIDIA A100 80GB PCIe (nasrin0), recorded 2026-10-01. Those ratios are untrusted until the run is repeated with the identity_stream baseline: each device repetition also pays a perturbation FMA, a finiteness check, and the xor sink, and pown was a chain of N multiplies rather than Arith::pown. ALU and libm weights below are that previous fit, kept as recorded numbers. symbol_grid, pow_integer_floor, and the stencil weights are the shared policy (1000, 200, 1000/4000/10000). A single-node coalesced launch cannot see a ghost exchange, and dividing a one-evaluation memory kernel by a 256-repetition compute kernel is not a like-for-like ratio. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
+  "architecture": {
+    "gpu": "NVIDIA A100 80GB PCIe",
+    "cuda_arch": "sm_80",
+    "host": "nasrin0.rostam.cct.lsu.edu",
+    "cpu": "AMD EPYC 7763 64-Core Processor",
+    "os": "Linux 5.14.0-570.37.1.el9_6.x86_64",
+    "cores_visible": 128,
+    "memory_gb": 503,
+    "compiler": "nvcc 12.9.86, host g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-11)",
+    "cxxflags": "-O3 -DNDEBUG -std=c++17 --generate-code=arch=compute_80,code=[compute_80,sm_80] -Xcompiler=-Wall,-Wextra,-fno-math-errno",
+    "vreal": "double",
+    "date": "2026-10-01",
+    "benchmark_command": "./ee_microbench --json <file> (CUDA defaults: n_stream=134217728, 256 reps per streamed math op, repeats=15, memory grid 512^3)",
+    "reference_add_ns_per_elem": 0.000909
+  },
+  "weights": {
+    "atom": 100,
+    "symbol_grid": 1000,
+    "symbol_local": 100,
+    "pow_default": 2100,
+    "pow_integer_floor": 200,
+    "stencil_center": 1000,
+    "stencil_x": 4000,
+    "stencil_yz": 10000,
+    "transcendental": {
+      "sin": 500,
+      "cos": 500,
+      "exp": 400,
+      "log": 800,
+      "sqrt": 300,
+      "cbrt": 400,
+      "tan": 600,
+      "sinh": 300,
+      "cosh": 600,
+      "tanh": 400,
+      "erf": 1000
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 0.000909},
+    "arith": {
+      "sub_stream": 0.000909,
+      "mul_stream": 0.000921,
+      "div_stream": 0.002490,
+      "neg_stream": 0.000881,
+      "add_reg": 0.000207,
+      "mul_reg": 0.000207,
+      "div_reg": 0.002034
+    },
+    "pow": {
+      "pow2_stream": 0.000905,
+      "pown3_stream": 0.001019,
+      "pown4_stream": 0.001222,
+      "pown8_stream": 0.002050,
+      "pown16_stream": 0.003668,
+      "sqrt_stream": 0.002532,
+      "cbrt_stream": 0.003881,
+      "powvar_stream": 0.019525,
+      "pow2p5_stream": 0.019332
+    },
+    "transcendental": {
+      "sin_stream": 0.004681,
+      "cos_stream": 0.004935,
+      "tan_stream": 0.005551,
+      "sinh_stream": 0.002980,
+      "cosh_stream": 0.005354,
+      "tanh_stream": 0.003672,
+      "exp_stream": 0.004044,
+      "log_stream": 0.007562,
+      "erf_stream": 0.009450,
+      "sqrt_stream": 0.002602,
+      "cbrt_stream": 0.003922
+    },
+    "memory": {
+      "const_stream": 0.006230,
+      "center_stream": 0.010576,
+      "grid_add_stream": 0.010576,
+      "stencil_x_stream": 0.010576,
+      "stencil_y_stream": 0.010692,
+      "stencil_z_stream": 0.010707
+    },
+    "branch": {
+      "cmp_lt_stream": 0.000702,
+      "if_else_stream": 0.001148,
+      "if_else_branch_stream": 0.001148
+    },
+    "decisions": {
+      "pow_default": "UNTRUSTED until remeasured with identity_stream. The 2026-10-01 fit stored 2100 from powvar_stream at 21.48x add (pow(x, 2.5) was 21.27x). Harness overhead squeezes that ratio. The stored number is the old fit, not a new measurement.",
+      "pow_integer_floor": "policy 200 (2*atom), same as the host profiles. The previous value 100 was inferred from pown N=2,3,4,8,16 reading 1.00x, 1.12x, 1.34x, 2.26x, 4.04x add. pown<16> was 16 sequential multiplies and still read as 4.04x one multiply, which is the per-repetition harness, not Arith::pown.",
+      "transcendental": "UNTRUSTED until remeasured with identity_stream. The stored per-function values are the 2026-10-01 fit (sqrt 2.86x -> 300, cbrt 4.31x -> 400) and are not a new measurement.",
+      "symbol_grid": "policy 1000, same as the host profiles. grid_add_stream at 11.63x a compute add mixes one memory evaluation per point with a 256-repetition compute reference, so that ratio is not a weight.",
+      "stencil": "policy 1000/4000/10000. The coalesced launch measured center/x/y/z at 11.63x/11.63x/11.76x/11.78x add (about 1% spread). Those timings stay in this file and are not weights.",
+      "div": "No div slot in the cost model. The 2026-10-01 streaming div was 2.74x add and the register chain was 9.83x its own add chain (0.002034 ns vs 0.000207 ns). Untrusted for the same harness reason as the other device ratios."
+    }
+  }
+}

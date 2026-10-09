@@ -78,4 +78,7 @@ mypy
 echo "Checking recipes..."
 mypy recipes
 
+echo "Checking microbenchmarks/scripts/fit_weights.py..."
+mypy microbenchmarks/scripts/fit_weights.py
+
 echo "Type checks passed!"
