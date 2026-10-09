@@ -193,6 +193,7 @@ class EqnComplex:
     eqn_lists: list['EqnList']
     is_stencil: dict[UFunc, bool]
     intent_override: Optional[IntentOverride]
+    complexity_visitor_type: type[SympyComplexityVisitor]
     been_baked: bool
 
     _tile_temporaries: set[Symbol]
@@ -225,11 +226,14 @@ class EqnComplex:
                  is_stencil: Dict[UFunc, bool],
                  intent_override: Optional[IntentOverride] = None,
                  set_eqn_annotation: Optional[Callable[[int, Symbol, str], None]] = None,
-                 clear_eqn_annotations: Optional[Callable[[int], None]] = None) -> None:
+                 clear_eqn_annotations: Optional[Callable[[int], None]] = None,
+                 *,
+                 complexity_visitor_type: type[SympyComplexityVisitor] = SympyComplexityVisitor) -> None:
         self.is_stencil = is_stencil
         self.intent_override = intent_override
         self.set_eqn_annotation = set_eqn_annotation
         self.clear_eqn_annotations = clear_eqn_annotations
+        self.complexity_visitor_type = complexity_visitor_type
         self._next_recipe_position = 0
         self.origin_count = 0
         self._derived_state_computed = False
@@ -1528,17 +1532,17 @@ class EqnList:
 
     def _run_preliminary_complexity_analysis(self) -> None:
         grid_vars = self._grid_variables()
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in grid_vars)
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in grid_vars)
         for lhs, rhs in self.eqns.items():
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_main_complexity_analysis(self) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in self._grid_variables())
         for lhs, rhs in self.eqns.items():
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_complexity_analysis(self, *lhses: Symbol) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in self._grid_variables())
         for lhs in lhses:
             self.complexity[lhs] = complexity_visitor.complexity(self.eqns[lhs])
 

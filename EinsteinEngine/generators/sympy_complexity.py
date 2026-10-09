@@ -23,6 +23,20 @@ from multimethod import multimethod
 from sympy.core.function import UndefinedFunction
 
 
+# The surcharge for a call that is not a plain arithmetic operation: a transcendental
+# function, or a power that is emitted as pow().
+TRANSCENDENTAL_COST = 15
+
+# Every transcendental function sympywrap exports. They all carry the same surcharge, so
+# none of them ranks cheaper than another. sqrt and cbrt are not here; SymPy builds them
+# as powers.
+_TRANSCENDENTAL_FUNCTIONS = frozenset({
+    sy.sin, sy.cos, sy.tan, sy.cot, sy.sec, sy.csc, sy.atan,
+    sy.sinh, sy.cosh, sy.tanh, sy.coth, sy.sech, sy.csch,
+    sy.exp, sy.log, sy.erf,
+})
+
+
 class IsGridVariableFn(Protocol):
     def __call__(self, symbol: sy.Symbol, /) -> bool: ...
 
@@ -36,6 +50,13 @@ def calculate_complexities(eqns: dict[sy.Symbol, sy.Expr], *, is_grid_variable: 
 
 
 class SympyComplexityVisitor:
+    """
+    The backend-independent cost model.
+
+    A backend whose output makes some operations cheaper than this model assumes
+    subclasses it and overrides the matching `_complexity_*` hook.
+    """
+
     is_grid_variable: IsGridVariableFn
 
     def __init__(self, is_grid_variable: IsGridVariableFn):
@@ -55,10 +76,17 @@ class SympyComplexityVisitor:
 
     @complexity.register
     def _(self, n: sy.Pow) -> int:
-        c: int = 15
-        if (power := n.args[1]).is_Integer:
+        return self._complexity_pow(n)
+
+    def _complexity_pow(self, n: sy.Pow) -> int:
+        # Every non-integer power, sqrt and cbrt included, is charged as a general
+        # power: the surcharge plus the base and the exponent.
+        power = n.args[1]
+        c: int = TRANSCENDENTAL_COST
+        if power.is_Integer:
             c = max(2, int(log2(abs(power.evalf()))))
-        return int(c + sum([self.complexity(arg) for arg in n.args]))
+        args_complexity: int = sum([self.complexity(arg) for arg in n.args])
+        return c + args_complexity
 
     @complexity.register
     def _(self, n: sy.Symbol) -> int:
@@ -123,7 +151,11 @@ class SympyComplexityVisitor:
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
 
-        if n in [sy.sin, sy.cos, sy.exp, sy.log, sy.sqrt, sy.cbrt]:
-            return 15 + args_complexity
+        # Compare the function class. `n in [sy.sin, ...]` compares the
+        # applied call to those classes and never matches, so the
+        # surcharge was never applied. sqrt and cbrt never reach here, since
+        # SymPy builds them as powers.
+        if n.func in _TRANSCENDENTAL_FUNCTIONS:
+            return TRANSCENDENTAL_COST + args_complexity
         else:
             return args_complexity

@@ -114,7 +114,8 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             if loop_idx in self.source_annotations.eqns:
                 del self.source_annotations.eqns[loop_idx]
 
-        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation, clear_eqn_annotations)
+        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation, clear_eqn_annotations,
+                                      complexity_visitor_type=frontend.complexity_visitor_type)
         self.been_baked = False
         self.been_late_baked = False
         self.intent_override = intent_override
