@@ -68,19 +68,23 @@ def _shared_symbols(node: Add) -> List[Symbol]:
 def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
     """Replace Indexed/undefined-function atoms with plain Symbols and back.
 
-    Lets Horner-style moves work on tensor expressions; the mapping is
-    exact, so equality is preserved.
+    Lets Horner-style moves work on tensor expressions, and on grid
+    variables, which CSE wraps in an undefined function to isolate them
+    (see cse_isolate); collect() only factors out plain Symbols. The
+    mapping is exact, so equality is preserved.
+
+    The replacements are named in the sorted order of the atoms they
+    replace. A bare Dummy() is named by a global counter, which would make
+    the search depend on how many Dummies were made before it.
     """
     from sympy import Dummy, Indexed, Function
     from sympy.core.function import UndefinedFunction
-    reps: dict[Expr, Expr] = {}
-    for atom in expr.atoms(Indexed):
-        reps[atom] = Dummy()  # type: ignore[no-untyped-call]
-    for atom in list(expr.atoms(Function)):
-        if isinstance(atom.func, UndefinedFunction) and atom.args:
-            reps.setdefault(atom, Dummy())  # type: ignore[no-untyped-call]
-    if not reps:
+    atoms: set[Expr] = set(expr.atoms(Indexed))
+    atoms |= {atom for atom in expr.atoms(Function) if isinstance(atom.func, UndefinedFunction) and atom.args}
+    if not atoms:
         return expr, {}
+    reps: dict[Expr, Expr] = {atom: Dummy(f"collect_atom_{i:06d}")  # type: ignore[no-untyped-call]
+                              for i, atom in enumerate(sorted(atoms, key=default_sort_key))}
     relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
     return relocated, {v: k for k, v in reps.items()}
 
@@ -140,8 +144,9 @@ def collect_greedy(expr: Expr, cost: CostFn | None = None,
     """
     if cost is None:
         cost = op_count
-    current = expr
-    current_cost = cost(expr)
+    abstracted, restore = _abstract_atoms(expr)
+    current = abstracted
+    current_cost = cost(abstracted)
     for _ in range(max_iter):
         best, best_cost = current, current_cost
         for _, cand in collect_neighbors(current, max_subnodes=max_subnodes):
@@ -154,7 +159,12 @@ def collect_greedy(expr: Expr, cost: CostFn | None = None,
         if best_cost >= current_cost:
             break
         current, current_cost = best, best_cost
-    return current
+    if current is abstracted:
+        return expr
+    result: Expr = current.xreplace(restore)  # type: ignore[no-untyped-call]
+    # The search compared costs with each atom standing in as a Symbol. An atom can cost more than that as written (an
+    # undefined function call counts as an operation), so a move that repeats an atom could cost more once restored.
+    return result if cost(result) <= cost(expr) else expr
 
 
 if __name__ == "__main__":
