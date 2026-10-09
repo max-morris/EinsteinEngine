@@ -15,7 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Callable, cast, List
+from typing import Any, Callable, cast, List, Optional
 
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
@@ -29,6 +29,7 @@ from EinsteinEngine.frontend.dsl.dsl_frontend import mk_mk_subst
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
 from EinsteinEngine.frontend.dsl.use_indices import do_isub, to_num_tup, idx_to_int
 from EinsteinEngine.intermediate.eqnlist import EqnList
+from EinsteinEngine.intermediate.symbify import symbify
 
 
 class AddEqnManager:
@@ -44,6 +45,10 @@ class AddEqnManager:
         self._eqn_list_getter = eqn_list_getter
         self._is_baked = is_baked
         self._owner_name = owner_name
+        # The 0-based index of the author-level add_eqn call in progress, set by the owning function frontend. It is
+        # None when equations are added directly through `_base_add_eqn` (e.g., by synthetic functions), in which case
+        # they get no origin.
+        self.current_origin: Optional[int] = None
 
     @property
     def _eqn_list(self) -> EqnList:
@@ -58,11 +63,22 @@ class AddEqnManager:
         The base case of add_eqn. Assumes the LHS has already been flattened.
         """
 
+        # EqnList.add_eqn keys equations by the symbified LHS
+        lhs_key = cast(Symbol, symbify(lhs2))
+        if lhs_key in self._eqn_list.eqns:
+            raise DslException(
+                f"Equation for '{lhs2}' is already defined in this loop. A LHS may be assigned only once between"
+                f" split_loop()/soft_split() calls; note that auto split predicates are evaluated at bake time, not as"
+                f" equations are added, so they cannot separate two assignments to the same LHS."
+            )
+
         rhs2 = self.frontend._do_subs(self.frontend.einstein_notation.expand_contracted_indices(rhs2, self.frontend.symmetries))
+        params: list[Symbol] = list()
         for item in free_symbols(rhs2):
             if str(item) in self.frontend.params:
                 assert item.is_Symbol
                 self._eqn_list.add_param(item)
+                params.append(item)
         divs = self.frontend.apply_div
 
         rhs2_: Basic = do_isub(rhs2)
@@ -71,7 +87,7 @@ class AddEqnManager:
         assert isinstance(rhs2_, Expr)
         rhs2 = rhs2_
 
-        self._eqn_list.add_eqn(lhs2, rhs2)
+        self._eqn_list.add_eqn(lhs2, rhs2, origin=self.current_origin, recorded_params=frozenset(params))
         vprint(colored("Add eqn:", "green"), lhs2, colored("->", "cyan"), rhs2)
 
     @multimethod

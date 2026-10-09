@@ -19,7 +19,9 @@
 
 # Export dynamic derivative functions
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order, cartesian_product
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, cartesian_product, \
+    recipe_order, pre_population_order, add_eqn_key_order, add_eqn_order, rank_by_post_population
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
@@ -48,7 +50,7 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
-from EinsteinEngine.tuning.tuning import get_tuning_param
+from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
 from sympy.core.relational import Relational
 
@@ -76,7 +78,8 @@ __all__ = [
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold", "retain_all", "retain_none",
     "NewRadXBoundaryBatch", "TempKind",
-    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
+    "recipe_order", "pre_population_order", "add_eqn_key_order", "add_eqn_order", "rank_by_post_population", "SplitLocus",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
-    "get_tuning_param"]
+    "get_tuning_param", "get_optional_tuning_param"]
