@@ -23,8 +23,10 @@ Run as a plain script.
 import os
 import subprocess
 import sys
+import time
 
 from sympy import Dummy, Expr, Function, IndexedBase, cancel, expand
+from sympy.parsing.sympy_parser import parse_expr
 
 from EinsteinEngine.common.collect import collect_greedy, op_count
 from EinsteinEngine.common.sympywrap import mk_symbol
@@ -86,6 +88,27 @@ def test_iteration_budget() -> None:
     assert costs == sorted(costs, reverse=True), costs
 
 
+# A post-CSE expression from Z4c: a sum of degree 3 in 87 symbols. Factoring it took 866 s.
+MANY_SYMBOLS = (
+    "x196*(x829*x932 + x834*x931 - x836*x899 + x926*x927 + x928*x935 + x930*x936) + x210*(-x829*x924 + x8"
+    "30*x901 + x831*x923 + x917*x918 + x919*x920 + x921*x922) + x44*(-x829*x899 + x830*x932 + x831*x931 +"
+    " x925*x926 + x927*x928 + x929*x930) + x44*(x829*x901 + x834*x923 - x836*x924 + x918*x919 + x920*x933"
+    " + x922*x934) + x48*x943 + x48*(x840*x923 + x920*x934 + x922*x945 - x944 + x946) + x59*x949 + x59*(x"
+    "831*x932 + x840*x931 + x926*x929 + x928*x936 + x930*x950 - x951) + x677*x915 + x681*x916 + x689*x870"
+    " + x69*x953 + x725*x914 + x737*x847 + x766*x858 - x796*x879 - x802*x877 - x804*x875 + x860*x897 + x8"
+    "60*x906 - x860*x907 + x861*x895 + x861*x903 + x861*x905 + x863*x893 - x863*x899 + x863*x901 - x864*x"
+    "911 - x867*x910 - x870*x909 + x880*x881 + x882*x883 + x884*x885 + x886*x887 + x888*x889 + x890*x891"
+)
+
+
+def test_many_symbols_are_not_factored() -> None:
+    e = parse_expr(MANY_SYMBOLS)
+    start = time.monotonic()
+    out = collect_greedy(e)
+    assert time.monotonic() - start < 30, "factor was tried on an expression with many symbols"
+    assert_exact_and_never_worse(e, out)
+
+
 def test_large_input_terminates() -> None:
     # Large inputs skip the slow whole-expression moves (sympy's heuristic polynomial GCD); the cheap moves must still
     # terminate on this within the default budget.
@@ -125,6 +148,7 @@ if __name__ == "__main__":
         test_wrapped_grid_variables,
         test_iteration_budget,
         test_large_input_terminates,
+        test_many_symbols_are_not_factored,
         test_deterministic_across_hash_seeds,
     ]
     for test in tests:

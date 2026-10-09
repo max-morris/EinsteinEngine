@@ -44,10 +44,16 @@ __all__ = ["op_count", "collect_greedy", "collect_neighbors"]
 CostFn = Callable[[Expr], int]
 
 _MAX_SUBNODES = 40
-# Whole-expression factor/together invoke sympy's heuristic polynomial GCD,
-# which blows up on large inputs (observed hang). Gate them by size;
-# factor_terms/collect/expand stay always-on (cheap and local).
-_WHOLE_SLOW_MOVE_OP_LIMIT = 150
+# factor and together invoke sympy's multivariate polynomial factorization and GCD, whose cost grows steeply with the
+# number of variables: on Z4c, a 132-operation sum of degree 3 in 87 symbols took 866 s to factor. So they are tried
+# only on expressions that are small in both senses; factor_terms/collect/expand stay always-on (cheap and local).
+# On Z4c's CSE input, factoring larger expressions saved 7 of 26081 operations.
+_SLOW_MOVE_OP_LIMIT = 150
+_SLOW_MOVE_SYMBOL_LIMIT = 8
+
+
+def _allow_slow_moves(expr: Expr) -> bool:
+    return op_count(expr) <= _SLOW_MOVE_OP_LIMIT and len(expr.free_symbols) <= _SLOW_MOVE_SYMBOL_LIMIT
 
 
 def op_count(expr: Expr) -> int:
@@ -92,7 +98,7 @@ def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
 def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator[Tuple[str, Expr]]:
     """Yield (description, new_expr) single-move neighbors of expr."""
     seen = {expr}
-    allow_slow = op_count(expr) <= _WHOLE_SLOW_MOVE_OP_LIMIT
+    allow_slow = _allow_slow_moves(expr)
 
     def emit(desc: str, new: Expr) -> Iterator[Tuple[str, Expr]]:
         if new not in seen:
@@ -118,7 +124,7 @@ def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator
         if isinstance(node, Add):
             jobs = ([(f"collect({sym})", lambda sym=sym: collect(node, sym)) for sym in _shared_symbols(node)]  # type: ignore[no-untyped-call]
                     + [("factor_terms", lambda: factor_terms(node))])
-            if op_count(node) <= _WHOLE_SLOW_MOVE_OP_LIMIT:
+            if _allow_slow_moves(node):
                 jobs.append(("factor", lambda: factor(node)))  # type: ignore[no-untyped-call]
         elif isinstance(node, Pow) and isinstance(node.args[0], Add):
             jobs = [("expand-pow", lambda: expand(node))]  # type: ignore[no-untyped-call]
