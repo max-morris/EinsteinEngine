@@ -15,13 +15,17 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#  Tuner definition for the Z4c RHS splitting sweep, loaded by remote_tuner.py.
-#  remote_tuner executes this file and uses the Tuner returned by get_tuner().
-#  The number of split positions is found by probing the recipe at the early locus.
+from typing import Optional
 
-from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner
-from EinsteinEngine.tuning.tuning import Tuner
+# The fractional powers the CarpetX backend emits as a named call instead of pow(), keyed
+# by the exponent's numerator and denominator in lowest terms. The emitter and the CarpetX
+# cost model both read this table, so they cannot disagree about which powers are cheap.
+_NAMED_ROOTS: dict[tuple[float, float], str] = {
+    (1, 2): 'sqrt',
+    (1, 3): 'cbrt',
+}
 
 
-def get_tuner() -> Tuner:
-    return CombinatorialSplitTuner()
+def named_root(numerator: float, denominator: float) -> Optional[str]:
+    """The function CarpetX emits for x**(numerator/denominator), or None if it emits pow()."""
+    return _NAMED_ROOTS.get((numerator, denominator))

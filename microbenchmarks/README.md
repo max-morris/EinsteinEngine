@@ -14,6 +14,14 @@ live in `microbenchmarks/profiles/`. Nothing selects one unless
 `EE_COMPLEXITY_WEIGHTS` is a path to it. The profile is loaded on the first
 `get_weights()` call, not when `sympy_complexity` is imported.
 
+The generic cost model charges every non-integer power, `sqrt` and `cbrt`
+included, as `pow_default` plus both arguments. F90 emits those powers as
+`pow`. CarpetX emits `x**(1/2)` and `x**(1/3)` as `sqrt()` and `cbrt()`, and
+only `CppCarpetXComplexityVisitor` charges those as the function weight plus
+the base. A transcendental the profile does not list costs the same as `sin`.
+A profile that lists it, as the measured profiles do for `tan` and `erf`,
+uses the listed weight. `Abs` has no surcharge.
+
 Those weights are about 100 times the old integer model. `promote_threshold()`
 and `retain_threshold()` take absolute complexity counts, so a threshold
 written against the old scale keeps about 100 times fewer candidates.
@@ -21,9 +29,11 @@ Percentile and rank strategies do not use that absolute scale.
 
 `sin`, `cos`, `exp`, `log`, `sqrt`, and `cbrt` used to add 0: the old check
 compared a call with the function classes and was always false. The default
-profile now adds 1500. That changes promotion and ordering for expressions
-that contain those calls. A full CarpetX Z4c regeneration was not run for
-this change; the cost delta is pinned in
+profile now adds 1500, and the same 1500 applies to the other transcendentals
+`sympywrap` exports (`tan`, `cot`, `atan`, `erf`, and the rest) even though
+the file does not list them. That changes promotion and ordering for
+expressions that contain those calls. A full CarpetX Z4c regeneration was not
+run for this change; the cost delta is pinned in
 `unit_tests/test_sympy_complexity_weights.py`.
 
 ## Backends

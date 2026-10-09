@@ -27,6 +27,7 @@ from pathlib import Path
 
 import sympy as sy
 
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_complexity import CppCarpetXComplexityVisitor
 from EinsteinEngine.generators import sympy_complexity as sc
 from EinsteinEngine.generators.sympy_complexity import (
     ComplexityWeights,
@@ -71,8 +72,16 @@ PROFILES_DIR = Path(__file__).resolve().parents[1] / "microbenchmarks" / "profil
 class TestGuestimateProfile(unittest.TestCase):
     def test_transcendentals_take_effect(self) -> None:
         v = _visitor()
-        self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 1600)
-        self.assertEqual(v.complexity(sy.exp(sy.Symbol("x"))), 1600)
+        x = sy.Symbol("x")
+        self.assertEqual(v.complexity(sy.sin(x)), 1600)
+        self.assertEqual(v.complexity(sy.exp(x)), 1600)
+        # guestimates.json does not list tan, cot, or erf. They cost the same
+        # as sin, so they do not rank cheaper than sin.
+        self.assertNotIn("tan", sc.get_weights().transcendental)
+        self.assertNotIn("erf", sc.get_weights().transcendental)
+        self.assertEqual(v.complexity(sy.tan(x)), 1600)
+        self.assertEqual(v.complexity(sy.cot(x)), 1600)
+        self.assertEqual(v.complexity(sy.erf(x)), 1600)
 
     def test_transcendental_surcharge_changes_rank_versus_legacy_zero(self) -> None:
         # The pre-branch predicate compared a call instance with the function
@@ -123,9 +132,9 @@ class TestGuestimateProfile(unittest.TestCase):
 
     def test_unweighted_function_passthrough(self) -> None:
         v = SympyComplexityVisitor(lambda s: False)
-        self.assertEqual(v.complexity(sy.tan(sy.Symbol("x"))), 100)
+        self.assertEqual(v.complexity(sy.Abs(sy.Symbol("x"))), 100)
 
-    def test_half_and_third_powers_use_sqrt_cbrt_weights(self) -> None:
+    def test_generic_model_charges_half_and_third_as_powers(self) -> None:
         weights = _weights(
             atom=1,
             symbol_grid=10,
@@ -140,13 +149,21 @@ class TestGuestimateProfile(unittest.TestCase):
         )
         v = SympyComplexityVisitor(lambda s: False, weights=weights)
         x = sy.Symbol("x")
-        # Operation weight plus the base and the exponent.
-        self.assertEqual(v.complexity(sy.sqrt(x)), 5)
-        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), 5)
-        self.assertEqual(v.complexity(sy.cbrt(x)), 6)
-        self.assertEqual(v.complexity(x ** sy.Rational(1, 3)), 6)
+        # F90 emits these as pow(), so the exponent is charged: 21 + 1 + 1.
+        self.assertEqual(v.complexity(sy.sqrt(x)), 23)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), 23)
+        self.assertEqual(v.complexity(sy.cbrt(x)), 23)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 3)), 23)
         self.assertEqual(v.complexity(x ** sy.Rational(-1, 2)), 23)
         self.assertEqual(v.complexity(x ** sy.Rational(-1, 3)), 23)
+        carpetx = CppCarpetXComplexityVisitor(lambda s: False, weights=weights)
+        # CarpetX emits +1/2 and +1/3 as calls and does not charge the exponent.
+        self.assertEqual(carpetx.complexity(sy.sqrt(x)), 4)  # sqrt 3 + base
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(1, 2)), 4)
+        self.assertEqual(carpetx.complexity(sy.cbrt(x)), 5)  # cbrt 4 + base
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(1, 3)), 5)
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(-1, 2)), 23)
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(-1, 3)), 23)
 
     def test_a100_profile_applies_sqrt_and_cbrt(self) -> None:
         weights = sc.load_weights(PROFILES_DIR / "nvidia-a100-80gb-pcie.json")
@@ -161,13 +178,21 @@ class TestGuestimateProfile(unittest.TestCase):
             (1000, 4000, 10000),
         )
         self.assertGreater(weights.pow_default, sqrt_w)
-        self.assertEqual(v.complexity(sy.sqrt(x)), sqrt_w + weights.symbol_local + weights.atom)
-        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), sqrt_w + weights.symbol_local + weights.atom)
-        self.assertEqual(v.complexity(sy.cbrt(x)), cbrt_w + weights.symbol_local + weights.atom)
-        self.assertEqual(
-            v.complexity(x ** sy.Rational(-1, 3)),
-            weights.pow_default + weights.symbol_local + weights.atom,
-        )
+        general = weights.pow_default + weights.symbol_local + weights.atom
+        self.assertEqual(v.complexity(sy.sqrt(x)), general)
+        self.assertEqual(v.complexity(x ** sy.Rational(1, 2)), general)
+        self.assertEqual(v.complexity(sy.cbrt(x)), general)
+        self.assertEqual(v.complexity(x ** sy.Rational(-1, 3)), general)
+        carpetx = CppCarpetXComplexityVisitor(lambda s: False, weights=weights)
+        self.assertEqual(carpetx.complexity(sy.sqrt(x)), sqrt_w + weights.symbol_local)
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(1, 2)), sqrt_w + weights.symbol_local)
+        self.assertEqual(carpetx.complexity(sy.cbrt(x)), cbrt_w + weights.symbol_local)
+        self.assertEqual(carpetx.complexity(x ** sy.Rational(-1, 3)), general)
+        # tan is measured. cot is not, so cot copies sin and does not rank below it.
+        self.assertNotEqual(weights.transcendental["tan"], weights.transcendental["sin"])
+        self.assertEqual(v.complexity(sy.tan(x)), weights.transcendental["tan"] + weights.symbol_local)
+        self.assertNotIn("cot", weights.transcendental)
+        self.assertEqual(v.complexity(sy.cot(x)), weights.transcendental["sin"] + weights.symbol_local)
 
     def test_package_ships_only_the_default_profile(self) -> None:
         names = sorted(p.name for p in sc.WEIGHTS_DIR.glob("*.json"))
@@ -225,6 +250,8 @@ class TestProfileLoading(unittest.TestCase):
         v = SympyComplexityVisitor(lambda s: False, weights=weights)
         self.assertEqual(v.complexity(sy.sin(sy.Symbol("x"))), 800)
         self.assertEqual(v.complexity(sy.erf(sy.Symbol("x"))), 2400)
+        # tan is not in this profile, so it copies sin rather than staying free.
+        self.assertEqual(v.complexity(sy.tan(sy.Symbol("x"))), 800)
 
     def test_set_and_restore_weights(self) -> None:
         original = sc.get_weights()

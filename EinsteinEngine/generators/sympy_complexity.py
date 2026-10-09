@@ -39,6 +39,21 @@ complexity integers, so a threshold chosen on the old scale now keeps about
 100 times fewer candidates. Percentile and rank strategies do not use that
 absolute scale. Nothing in this repository calls the threshold strategies.
 
+This visitor is the backend-independent model. Every non-integer power,
+including ``sqrt`` and ``cbrt``, costs ``pow_default`` plus both arguments.
+``CppCarpetXComplexityVisitor`` overrides :meth:`_complexity_pow` because
+CarpetX emits ``x**(1/2)`` and ``x**(1/3)`` as ``sqrt`` and ``cbrt``: those
+cost the function's profile weight plus the base, and the exponent is not
+charged. Other backends emit them as ``pow`` and keep the general cost.
+
+A listed transcendental costs its profile weight plus its arguments. The
+functions ``sympywrap`` exports that a profile does not list (``tan``,
+``cot``, ``sec``, ``csc``, ``atan``, the hyperbolics, ``erf``, and the rest
+of that set) cost the same as ``sin``, so they do not rank cheaper than
+``sin``. A profile that lists the function uses that listed weight, which is
+how a measured profile can rank ``tan`` differently from ``sin``. Any other
+call, such as ``Abs``, has no surcharge.
+
 :func:`set_weights` replaces the process-wide profile. Callers that use it
 temporarily have to restore the previous value; a later ``get_weights`` will
 not reload the startup file while a profile is installed.
@@ -59,6 +74,19 @@ WEIGHTS_SCHEMA_VERSION = 1
 WEIGHTS_ENV_VAR = "EE_COMPLEXITY_WEIGHTS"
 WEIGHTS_DIR = Path(__file__).resolve().parent / "complexity_weights"
 DEFAULT_WEIGHTS_PATH = WEIGHTS_DIR / "guestimates.json"
+
+
+# Every transcendental function sympywrap exports. Compare ``n.func`` with this
+# set: ``n in [sy.sin, ...]`` compares the applied call to the classes and
+# never matches. sqrt and cbrt are not here; SymPy builds them as powers, and
+# only the CarpetX hook charges those exponents as calls. A name in this set
+# that the active profile omits costs the same as sin.
+_TRANSCENDENTAL_FUNCTIONS = frozenset({
+    sy.sin, sy.cos, sy.tan, sy.cot, sy.sec, sy.csc, sy.atan,
+    sy.sinh, sy.cosh, sy.tanh, sy.coth, sy.sech, sy.csch,
+    sy.exp, sy.log, sy.erf,
+})
+_TRANSCENDENTAL_NAMES = frozenset(fn.__name__ for fn in _TRANSCENDENTAL_FUNCTIONS) | {"sqrt", "cbrt"}
 
 
 class IsGridVariableFn(Protocol):
@@ -177,6 +205,13 @@ def calculate_complexities(eqns: dict[sy.Symbol, sy.Expr], *, is_grid_variable: 
 
 
 class SympyComplexityVisitor:
+    """
+    The backend-independent cost model.
+
+    A backend whose output makes some operations cheaper than this model assumes
+    subclasses it and overrides the matching `_complexity_*` hook.
+    """
+
     is_grid_variable: IsGridVariableFn
     weights: ComplexityWeights
 
@@ -196,9 +231,32 @@ class SympyComplexityVisitor:
     def _(self, n: sy.Mul) -> int:
         return sum([self.complexity(arg) for arg in n.args])
 
+    def _transcendental_surcharge(self, name: str) -> int:
+        """Profile weight for ``name``.
+
+        A listed name uses that weight. An unlisted name in
+        :data:`_TRANSCENDENTAL_NAMES` uses ``sin`` when the profile lists
+        ``sin``, so ``cot`` does not rank cheaper than ``sin`` on a profile
+        that never measured ``cot``. Anything else uses
+        ``transcendental_default`` (0 in every shipped profile).
+        """
+        listed = self.weights.transcendental.get(name)
+        if listed is not None:
+            return listed
+        if name in _TRANSCENDENTAL_NAMES:
+            sin_cost = self.weights.transcendental.get("sin")
+            if sin_cost is not None:
+                return sin_cost
+        return self.weights.transcendental_default
+
     @complexity.register
     def _(self, n: sy.Pow) -> int:
-        c: int = self.weights.pow_default
+        return self._complexity_pow(n)
+
+    def _complexity_pow(self, n: sy.Pow) -> int:
+        # Every non-integer power, sqrt and cbrt included, is a general power:
+        # pow_default plus the base and the exponent. CarpetX overrides this
+        # hook for the exponents it emits as sqrt() and cbrt().
         power = n.args[1]
         if power.is_Integer:
             # The pre-scale model was max(2, int(log2(|p|))). Scaling that by
@@ -212,14 +270,11 @@ class SympyComplexityVisitor:
                 exponent_cost = 0
             else:
                 exponent_cost = self.weights.atom * int(log2(magnitude))
-            c = max(self.weights.pow_integer_floor, exponent_cost)
-        elif power == sy.Rational(1, 2):
-            # Emitter lowers a positive half to sqrt(), not pow().
-            c = self.weights.transcendental.get("sqrt", self.weights.transcendental_default)
-        elif power == sy.Rational(1, 3):
-            # Emitter lowers a positive third to cbrt(). Negative thirds stay pow().
-            c = self.weights.transcendental.get("cbrt", self.weights.transcendental_default)
-        return int(c + sum([self.complexity(arg) for arg in n.args]))
+            operation_cost = max(self.weights.pow_integer_floor, exponent_cost)
+        else:
+            operation_cost = self.weights.pow_default
+        args_complexity: int = sum([self.complexity(arg) for arg in n.args])
+        return operation_cost + args_complexity
 
     @complexity.register
     def _(self, n: sy.Symbol) -> int:
@@ -283,10 +338,11 @@ class SympyComplexityVisitor:
             return self._complexity_undefined_fn(n)
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
-        # The weight key is the SymPy class name (sin, cos, exp, ...).
-        # Before this branch the lookup compared the call with the class
-        # objects (`n in [sy.sin, sy.cos, ...]`), which is always false, so
-        # the surcharge was 0. The profile weight changes promotion and
-        # ordering wherever one of these calls appears.
-        extra = self.weights.transcendental.get(type(n).__name__, self.weights.transcendental_default)
-        return extra + args_complexity
+        # Compare the function class. `n in [sy.sin, ...]` compares the
+        # applied call to those classes and never matches. sqrt and cbrt
+        # never reach here, since SymPy builds them as powers. The weight
+        # itself comes from the profile, keyed by the class name.
+        name = type(n).__name__
+        if n.func in _TRANSCENDENTAL_FUNCTIONS or name in self.weights.transcendental:
+            return self._transcendental_surcharge(name) + args_complexity
+        return args_complexity

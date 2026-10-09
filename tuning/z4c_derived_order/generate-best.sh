@@ -1,3 +1,5 @@
+#!/bin/bash
+
 #  Copyright (C) 2026 Max Morris and other Einstein Engine contributors.
 #
 #  This file is part of the Einstein Engine (EinsteinEngine).
@@ -15,13 +17,20 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#  Tuner definition for the Z4c RHS splitting sweep, loaded by remote_tuner.py.
-#  remote_tuner executes this file and uses the Tuner returned by get_tuner().
-#  The number of split positions is found by probing the recipe at the early locus.
+set -euo pipefail
 
-from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner
-from EinsteinEngine.tuning.tuning import Tuner
+# Generate the Z4c code for the best entry of the checkpoint, with the add_eqn groups in the derived order of tuner.py.
+# To reproduce the tuned build of the feature/eqn-order-instrumentation branch, convert that branch's
+# tuning/z4c_splitting_rostam/split_tuning_fixed_order.jsonl first:
+#     python scripts/shift_checkpoint_indices.py <that file> tuning/z4c_derived_order/split_tuning_checkpt.jsonl
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(dirname "$(dirname "${SCRIPT_DIR}")")"
 
-def get_tuner() -> Tuner:
-    return CombinatorialSplitTuner()
+cd "${SCRIPT_DIR}"
+
+PYTHONPATH="${REPO_ROOT}" python -m EinsteinEngine.tuning.generate_best \
+    "${REPO_ROOT}/recipes/Cottonmouth/Z4c.py" \
+    "${SCRIPT_DIR}/tuner.py" \
+    --checkpoint-file "${SCRIPT_DIR}/split_tuning_checkpt.jsonl" \
+    "$@"

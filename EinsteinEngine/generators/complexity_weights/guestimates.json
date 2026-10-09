@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile": "guestimates",
-  "description": "Original hand-picked weights. Default profile. Function names are keyed by the SymPy class (sin, cos, exp, log, ...). sqrt and cbrt apply only when a Pow exponent is exactly +1/2 or +1/3; every other non-integer power uses pow_default. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
+  "description": "Original hand-picked weights. Default profile. Function names are keyed by the SymPy class (sin, cos, exp, log, ...). The generic cost model charges every non-integer power, including +1/2 and +1/3, as pow_default. The CarpetX cost model charges those two exponents as sqrt and cbrt. A transcendental the profile omits costs the same as sin. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
   "architecture": null,
   "weights": {
     "atom": 100,

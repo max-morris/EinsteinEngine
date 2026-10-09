@@ -18,19 +18,23 @@
 import re
 import typing
 from collections import defaultdict
+from collections.abc import Mapping
 from enum import auto
 from itertools import chain
 from typing import Callable, Collection, Optional, cast, List, Unpack, Set, Union, Dict, Iterator, Iterable, Any, Sequence
 
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 from termcolor import colored
 from sympy import Symbol, Expr, Idx, Indexed, Basic, IndexedBase, Eq
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import (
-    free_symbols, mk_eq, mk_indexed_base, mk_symbol
+    free_symbols, mk_eq, mk_indexed_base, mk_symbol, mk_matrix
 )
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_complexity import CppCarpetXComplexityVisitor
 from EinsteinEngine.emit.tree import Centering, Identifier
+from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.dsl.use_indices import subst_tensor_xyz
 from EinsteinEngine.intermediate.temp_kind import TempKind
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
@@ -128,14 +132,16 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                 auto_split_locus: SplitLocus = SplitLocus.Early) -> None:
         self.thorn_def = thorn_def
         self.schedule_target = schedule_target
         self.schedule_before: Collection[str] = schedule_before or list()
         self.schedule_after: Collection[str] = schedule_after or list()
         super().__init__(name, thorn_def, intent_override, owner_name="ThornFunction",
                          auto_hard_split_predicate=auto_hard_split_predicate,
-                         auto_soft_split_predicate=auto_soft_split_predicate)
+                         auto_soft_split_predicate=auto_soft_split_predicate,
+                         auto_split_locus=auto_split_locus)
 
         if isinstance(schedule_target, ScheduleBlock) and schedule_target.group_or_function is GroupOrFunction.Function:
             raise DslException("Cannot schedule into this schedule block because it is not a schedule group.")
@@ -146,6 +152,28 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
         elif (sym_base := self.thorn_def.var2base.get(str(sym))) is not None:
             if (c := self.thorn_def.centering.get(sym_base)) is not None:
                 self.thorn_def.centering[str(mangled_sym)] = c
+
+    def infer_tile_temp_centerings(self) -> None:
+        """
+        Give a centering to each undeclared temporary that is written in one of this function's loops and read in
+        another, but has no centering yet (e.g., a pull-out temp that a cut turned into a tile temp). The centering
+        is inferred from the temporary's RHS, the same way _global_cse_pre_materialization does for CSE temps.
+        """
+        td = self.thorn_def
+        eqn_lists = self.eqn_complex.eqn_lists
+        all_eqns: dict[Symbol, Expr] = dict()
+        for eqn_list in eqn_lists:
+            all_eqns.update(eqn_list.eqns)
+
+        crossing: OrderedSet[Symbol] = OrderedSet()
+        for el_idx, eqn_list in enumerate(eqn_lists):
+            for rhs in eqn_list.eqns.values():
+                for sym in free_symbols(rhs):
+                    if (sym in all_eqns and sym not in eqn_list.eqns and td._known_centering(sym) is None
+                            and str(sym) not in td.declarations and str(sym) not in td.var2base):
+                        crossing.add(sym)
+
+        td._infer_temp_centerings(crossing, all_eqns)
 
     def show_tensor_types(self) -> None:
         keys: Set[str] = OrderedSet()
@@ -172,6 +200,9 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
     # These thorns do tensor expansion with the xyz rules as opposed to our preferred nrpy rules.
     # noinspection SpellCheckingInspection
     _xyz_subst_thorns: list[str] = ["ADMBaseX", "TmunuBaseX", "HydroBaseX"]
+
+    # CarpetX is the only backend that generates code from a ThornDef.
+    complexity_visitor_type = CppCarpetXComplexityVisitor
 
     # Hardcoding some known nonsensical mappings from other thorns.
     # noinspection SpellCheckingInspection
@@ -261,34 +292,42 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
             new_temp_dependencies: dict[Symbol, set[Symbol]],
             temp_kinds: dict[Symbol, TempKind]
     ) -> None:
-        checked_deps: set[Symbol] = set()
+        self._infer_temp_centerings(substitutions.keys(), substitutions)
 
-        def compute_centerings(temp: Symbol) -> None:
-            if temp in checked_deps:
-                return
+    def _known_centering(self, sym: Symbol) -> Optional[Centering]:
+        """The centering of `sym` (or of the group it belongs to), if it has been declared or inferred."""
+        return self.centering.get(self.var2base.get(str(sym)) or str(sym))
 
-            checked_deps.add(temp)
+    def _infer_temp_centerings(self, temps: Iterable[Symbol], rhs_of: Mapping[Symbol, Expr]) -> None:
+        """
+        Give each of `temps` the centering of the symbols its RHS in `rhs_of` reads, inferring those that are
+        themselves in `rhs_of` recursively first. A temp whose RHS reads nothing with a centering defaults to VVV, with
+        a warning; conflicting centerings raise.
+        """
+        visiting: set[Symbol] = set()
 
-            for td in new_temp_dependencies[temp]:
-                compute_centerings(td)
+        def infer(sym: Symbol) -> Optional[Centering]:
+            if (c := self._known_centering(sym)) is not None:
+                return c
+            if sym not in rhs_of or sym in visiting:
+                return None
 
-            centerings = {
-                c for c in {
-                    self.centering.get(self.var2base.get(str(sym)) or str(sym)) for sym in free_symbols(substitutions[temp])
-                } if c is not None
-            }
+            visiting.add(sym)
+            centerings = {c for c in (infer(dep) for dep in free_symbols(rhs_of[sym])) if c is not None}
+            visiting.remove(sym)
 
             if len(centerings) == 0:
-                wprint(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; none of its dependencies have centerings. Defaulting to VVV.")
+                wprint(f"Could not infer a centering for temp {sym} -> {rhs_of[sym]}; none of its dependencies have centerings. Defaulting to VVV.")
                 centerings = {Centering.VVV}
             elif len(centerings) > 1:
-                raise DslException(f"Could not infer a centering for temp {temp} -> {substitutions[temp]}; its dependencies have conflicting centerings {centerings}")
+                raise DslException(f"Could not infer a centering for temp {sym} -> {rhs_of[sym]}; its dependencies have conflicting centerings {centerings}")
 
-            assert len(centerings) == 1
-            self.centering[str(temp)] = centerings.pop()
+            [centering] = centerings
+            self.centering[str(sym)] = centering
+            return centering
 
-        for new_temp in substitutions.keys():
-            compute_centerings(new_temp)
+        for temp in temps:
+            infer(temp)
 
     def _global_cse_handle_global_temps(
             self,
@@ -404,10 +443,22 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                         schedule_after: Optional[Collection[str]] = None,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None) -> ThornFunction:
+                        auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                        auto_split_locus: SplitLocus = SplitLocus.Early) -> ThornFunction:
+        """
+        Creates a new thorn function.
+
+        :param auto_hard_split_predicate: Called with 0-based positions at `auto_split_locus`; True means "hard split
+                                          after the element at this position".
+        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declined; True or a retainment
+                                          strategy means "soft split after the element at this position".
+        :param auto_split_locus: The point in the bake at which the predicates are evaluated. At SplitLocus.Early (the
+                                 default), elements are author-level add_eqn calls.
+        """
         tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override,
                            auto_hard_split_predicate=auto_hard_split_predicate,
-                           auto_soft_split_predicate=auto_soft_split_predicate)
+                           auto_soft_split_predicate=auto_soft_split_predicate,
+                           auto_split_locus=auto_split_locus)
         self.functions[name] = tf
         return tf
 
@@ -482,6 +533,20 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
         # MyPy unfortunately does not let us express this in the type system.
         the_symbol = super().decl(basename, indices_tup, **cast(Any, kwargs))
         return the_symbol
+
+    def mk_kdelta(self) -> IndexedBase:
+        """
+        Declares (and returns) the canonical Kronecker delta tensor `kdelta`, a symmetric
+        rank-2 tensor equal to the identity matrix. Substitution rules are registered for both its
+        down-down (`kdelta[la, lb]`) and up-up (`kdelta[ua, ub]`) index forms.
+        """
+        kdelta_metric = mk_matrix([
+            [1 if i == j else 0 for j in range(self.dimensionality)]
+            for i in range(self.dimensionality)
+        ])
+        kdelta = self.decl("kdelta", [la, lb], symmetries=[(la, lb)], substitution_rule=kdelta_metric)
+        self.add_substitution_rule(kdelta[ua, ub], kdelta_metric)
+        return kdelta
 
     def _add_symbol(self, the_symbol: Symbol, centering: Optional[Centering]) -> None:
         basename = str(the_symbol)
