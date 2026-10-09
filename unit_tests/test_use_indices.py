@@ -23,6 +23,7 @@ from sympy import IndexedBase, Symbol, Basic, Expr
 from EinsteinEngine import *
 from EinsteinEngine.common.sympywrap import *
 from EinsteinEngine.frontend.definitions import *
+from EinsteinEngine.frontend.dsl import symmetries
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
 from EinsteinEngine.frontend.dsl.use_indices import IndexContractionVisitor, InvalidIndexError, IndexTracker
 from EinsteinEngine.frontend.dsl.finite_difference import DivMakerVisitor
@@ -48,6 +49,9 @@ if __name__ == "__main__":
     V = gf.decl("V", [la])
     A = gf.decl("A", [ub, la, lc])
     gf._add_sym(A[ua, lb, lc], lb, lc, 1)
+
+
+    kdelta = gf.mk_kdelta()
 
     ####
     fail_expr = mk_symbol("fail_expr")
@@ -125,6 +129,7 @@ if __name__ == "__main__":
 
     # Non-Symmetric
     Q = gf.decl("Q", [la, lb])
+    gf.add_substitution_rule(Q[ua,ub])
 
     n = 0
     for out in gf.expand_eqn(mk_eq(Q[la, lb], B[la, lb])):
@@ -140,6 +145,8 @@ if __name__ == "__main__":
     o0 = gf.decl("o0", [])
     o1 = gf.decl("o1", [la])
     o2 = gf.decl("o2", [la])
+    gf.add_substitution_rule(o2[ua])
+    gf.add_substitution_rule(o1[ub])
     gf.add_substitution_rule(k[la])
     foofunc = gf.create_function("foo", ScheduleBin.Analysis)
     #foofunc.add_eqn(a, sympify(get_dimension()))
@@ -150,18 +157,19 @@ if __name__ == "__main__":
     foofunc.add_eqn( k[la],  mdiv(a ** 5 * w, la))
 
     # Upwind/downwind derivateve based on ol[la].
-    osdiv = gf.mk_stencil("osdiv", la, (h_step( o1[la])*(stencil(la) -   stencil(0)) + \
-                                        h_step(-o1[la])*( stencil(0) - stencil(-la)))*DDI(la))
+    osdiv = gf.mk_stencil("osdiv", la, h_step( kdelta[la,lb]*o1[ub])*finite_difference_stencil(4,1,1,la) +
+                                       h_step(-kdelta[la,lb]*o1[ub])*finite_difference_stencil(4,1,-1,la))
 
     o0func = gf.create_function("set_o0", ScheduleBin.Analysis, schedule_before=["foo"])
-    o0func.add_eqn(o0, \
-            h_step(x-1)*(x-1) + h_step(1-x)*(x+1) + \
-            h_step(y-1)*(y-1) + h_step(1-y)*(y+1) + \
-            h_step(z-1)*(z-1) + h_step(1-z)*(z+1) \
+    o0func.add_eqn(o0,
+            h_step(x-1)*(x-1) + h_step(1-x)*(x+1) +
+            h_step(y-1)*(y-1) + h_step(1-y)*(y+1) +
+            h_step(z-1)*(z-1) + h_step(1-z)*(z+1)
     )
 
     # The result should be that o2[la] is 1 everywhere.
     foofunc.add_eqn(o2[la], osdiv(o0, la))
+    foofunc.add_eqn(o2[ua], o2[lb]*kdelta[ua,ub])
 
     def getsym(a: IndexedBase) -> Symbol:
         b = a.args[0]
@@ -290,5 +298,5 @@ if __name__ == "__main__":
     assert_eq(do_div(D(f(x), l0)), fp(x))
     assert_eq(do_div(D(f(x ** 2 + y), l0)), 2 * x * fp(x ** 2 + y))
     assert_eq(do_div(D(f(x ** 2 + y), l1)), fp(x ** 2 + y))
-    assert_eq(do_div(D(f(x ** 2 + y), l2)), 0)
+    assert_eq(do_div(D(f(x ** 2 + y), l2)), zero)
     assert_eq(do_div(D(f(x + f(x)), l0)), fp(x + f(x)) * (1 + fp(x)))

@@ -22,6 +22,7 @@ from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRad
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, cartesian_product, \
     recipe_order, pre_population_order, add_eqn_key_order, add_eqn_order, rank_by_post_population
 from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import *
@@ -51,55 +52,7 @@ from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
-from sympy import Idx
 from sympy.core.relational import Relational
-
-ui: Idx
-li: Idx
-uj: Idx
-lj: Idx
-uk: Idx
-lk: Idx
-ua: Idx
-la: Idx
-ub: Idx
-lb: Idx
-uc: Idx
-lc: Idx
-ud: Idx
-ld: Idx
-u0: Idx
-l0: Idx
-u1: Idx
-l1: Idx
-u2: Idx
-l2: Idx
-u3: Idx
-l3: Idx
-u4: Idx
-l4: Idx
-u5: Idx
-l5: Idx
-
-def _populate_index_globals() -> None:
-    global ui, li, uj, lj, uk, lk, ua, la, ub, lb, uc, lc, ud, ld
-    global u0, l0, u1, l1, u2, l2, u3, l3, u4, l4, u5, l5
-    ui, li = mk_idxes("ui li")
-    uj, lj = mk_idxes("uj lj")
-    uk, lk = mk_idxes("uk lk")
-    ua, la = mk_idxes("ua la")
-    ub, lb = mk_idxes("ub lb")
-    uc, lc = mk_idxes("uc lc")
-    ud, ld = mk_idxes("ud ld")
-    u0, l0 = mk_idxes("u0 l0")
-    u1, l1 = mk_idxes("u1 l1")
-    u2, l2 = mk_idxes("u2 l2")
-    u3, l3 = mk_idxes("u3 l3")
-    u4, l4 = mk_idxes("u4 l4")
-    u5, l5 = mk_idxes("u5 l5")
-
-
-_populate_index_globals()
 
 
 __all__ = [
@@ -128,5 +81,5 @@ __all__ = [
     "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
     "recipe_order", "pre_population_order", "add_eqn_key_order", "add_eqn_order", "rank_by_post_population", "SplitLocus",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
-    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "pull_out", "get_tuning_param",
-    "get_optional_tuning_param"]
+    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
+    "get_tuning_param", "get_optional_tuning_param"]

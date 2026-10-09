@@ -26,6 +26,7 @@ import sympy as sy
 from sympy import Symbol, Basic, Idx, Expr
 
 from EinsteinEngine.common.sympywrap import *
+from EinsteinEngine.frontend.dsl.indices import l0 as L0, u0 as U0, l1 as L1, u1 as U1, l2 as L2, u2 as U2
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.dsl.use_indices import idx_to_int
@@ -34,7 +35,6 @@ from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 DX, DY, DZ, DT = tuple(map(mk_symbol, ("DX", "DY", "DZ", "DT")))
 DXI, DYI, DZI = tuple(map(mk_symbol, ("DXI", "DYI", "DZI")))
-L0, U0, L1, U1, L2, U2 = cast(Tuple[Idx, Idx, Idx, Idx, Idx, Idx], mk_idxes('l0 u0 l1 u1 l2 u2'))
 
 
 def _mk_div(div_fun: UFunc, expr: Expr, *args: Idx) -> Expr:
