@@ -46,7 +46,7 @@ _WHOLE_SLOW_MOVE_OP_LIMIT = 150
 
 def op_count(expr: Expr) -> int:
     """Number of operations in expr (lower is simpler)."""
-    return int(count_ops(expr))
+    return int(count_ops(expr))  # type: ignore[no-untyped-call]
 
 
 def _shared_symbols(node: Add) -> List[Symbol]:
@@ -69,13 +69,13 @@ def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
     from sympy.core.function import UndefinedFunction
     reps: dict[Expr, Expr] = {}
     for atom in expr.atoms(Indexed):
-        reps[atom] = Dummy()
+        reps[atom] = Dummy()  # type: ignore[no-untyped-call]
     for atom in list(expr.atoms(Function)):
         if isinstance(atom.func, UndefinedFunction) and atom.args:
-            reps.setdefault(atom, Dummy())
+            reps.setdefault(atom, Dummy())  # type: ignore[no-untyped-call]
     if not reps:
         return expr, {}
-    relocated = expr.xreplace(reps)
+    relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
     return relocated, {v: k for k, v in reps.items()}
 
 
@@ -91,34 +91,34 @@ def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator
 
     whole: list[tuple[str, Callable[[], Expr]]] = [
         ("factor_terms", lambda: factor_terms(expr)),
-        ("expand", lambda: expand(expr)),
+        ("expand", lambda: expand(expr)),  # type: ignore[no-untyped-call]
     ]
     if allow_slow:
-        whole += [("factor", lambda: factor(expr)),
-                  ("together", lambda: together(expr))]
+        whole += [("factor", lambda: factor(expr)),  # type: ignore[no-untyped-call]
+                  ("together", lambda: together(expr))]  # type: ignore[no-untyped-call]
     for desc, thunk in whole:
         try:
             yield from emit(desc, thunk())
         except Exception:
             continue
     count = 0
-    for node in preorder_traversal(expr):
+    for node in preorder_traversal(expr):  # type: ignore[no-untyped-call]
         if count >= max_subnodes:
             break
         if isinstance(node, Add):
-            jobs = ([(f"collect({sym})", lambda sym=sym: collect(node, sym)) for sym in _shared_symbols(node)]
+            jobs = ([(f"collect({sym})", lambda sym=sym: collect(node, sym)) for sym in _shared_symbols(node)]  # type: ignore[no-untyped-call]
                     + [("factor_terms", lambda: factor_terms(node))])
             if op_count(node) <= _WHOLE_SLOW_MOVE_OP_LIMIT:
-                jobs.append(("factor", lambda: factor(node)))
+                jobs.append(("factor", lambda: factor(node)))  # type: ignore[no-untyped-call]
         elif isinstance(node, Pow) and isinstance(node.args[0], Add):
-            jobs = [("expand-pow", lambda: expand(node))]
+            jobs = [("expand-pow", lambda: expand(node))]  # type: ignore[no-untyped-call]
         elif isinstance(node, Mul):
             jobs = [("factor_terms", lambda: factor_terms(node))]
         else:
             continue
         for desc, thunk in jobs:
             try:
-                grown = expr.xreplace({node: thunk()})
+                grown = expr.xreplace({node: thunk()})  # type: ignore[no-untyped-call]
             except Exception:
                 continue
             yield from emit(f"{desc}@{type(node).__name__}", grown)
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     assert op_count(kernel) == 6
     improved = collect_greedy(kernel)
     assert op_count(improved) == 5, improved
-    assert cancel(improved - kernel) == 0
+    assert cancel(improved - kernel) == 0  # type: ignore[no-untyped-call]
 
     # Factored square, never-worse battery, termination.
     assert collect_greedy(x**2 + 2 * x + 1) == (x + 1) ** 2
@@ -181,7 +181,7 @@ if __name__ == "__main__":
                   x**4 + 4 * x**3 + 6 * x**2 + 4 * x + 1]:
         out = collect_greedy(probe)
         assert op_count(out) <= op_count(probe), probe
-        assert cancel(out - probe) == 0, probe
+        assert cancel(out - probe) == 0, probe  # type: ignore[no-untyped-call]
     assert collect_greedy(x + mk_symbol("y"), max_iter=100) == x + mk_symbol("y")
     assert collect_greedy(x**2 + 2 * x + 1, max_iter=0) == x**2 + 2 * x + 1
     # Time budget: zero budget returns the input untouched (never worse).
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     # Hang guard: large inputs skip slow whole-expression moves (sympy
     # heuristic GCD); cheap moves alone must still collapse this.
     import time as _time
-    big = expand((x + mk_symbol("y") + mk_symbol("z") + mk_symbol("w")) ** 6)
+    big = expand((x + mk_symbol("y") + mk_symbol("z") + mk_symbol("w")) ** 6)  # type: ignore[no-untyped-call]
     _t0 = _time.monotonic()
     _out = collect_greedy(big)
     assert _time.monotonic() - _t0 < 30.0, "slow-move gate failed"
