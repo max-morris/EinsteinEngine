@@ -24,12 +24,16 @@ best generated code locally (no remote build/run).
 
 The tuner file is the same one used with remote_tuner: it supplies the
 Experiment that maps the checkpoint's in_params to the recipe-facing
-out_params.
+out_params. For a tuner that probes the recipe, the recipe is probed, and
+the result must match the probe recorded next to the checkpoint
+(``<checkpoint>.probe.json``) if there is one. The best checkpoint entry is
+loaded, and checked against the recorded probe, before the (slow) probe runs.
 """
 
 import argparse
 import json
 import math
+import os
 import runpy
 import sys
 from typing import Any
@@ -94,9 +98,13 @@ def main() -> None:
     args = parser.parse_args()
 
     tuner_inst = load_tuner_from_file(args.tuner)
-    experiment = tuner_inst.get_experiment()
-
     best_target, best_params = load_best_params(args.checkpoint_file)
+    source = f"The best entry in {args.checkpoint_file}"
+    if tuner_inst.probe_targets() and os.path.exists(tuning.probe_sidecar_path(args.checkpoint_file)):
+        #  Fail fast, before probing, if the best entry does not fit the recorded probe.
+        tuning.build_experiment(tuner_inst, None, args.checkpoint_file).check_declared(best_params, source)
+    experiment = tuning.build_experiment(tuner_inst, args.recipe, args.checkpoint_file)
+    experiment.check_declared(best_params, source)
     _, recipe_facing_args = experiment.suggest_params(_FixedTrial(best_params))
 
     print(f"Best target {best_target} found in {args.checkpoint_file}.")

@@ -43,7 +43,7 @@ from optuna.samplers import TPESampler
 from optuna.study import MaxTrialsCallback
 from optuna.trial import TrialState
 
-from EinsteinEngine.tuning.experiment import CoordSpec, Experiment, InfeasibleParamError
+from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, InfeasibleParamError
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -62,6 +62,36 @@ def _distribution_of(spec: CoordSpec) -> optuna.distributions.BaseDistribution:
     if spec.kind is int:
         return optuna.distributions.IntDistribution(int(spec.lo), int(spec.hi))
     return optuna.distributions.FloatDistribution(float(spec.lo), float(spec.hi))
+
+
+def read_checkpoint(
+    experiment: Experiment, checkpoint_file: str
+) -> list[tuple[float, dict[str, Coord], dict[str, CoordSpec]]]:
+    """Read a JSON-lines checkpoint and replay each entry through ``experiment``.
+
+    Returns ``(target, coords, specs)`` per entry, with failed runs' targets
+    replaced by the finite failure value; a missing file has no entries.
+    Raises (see ``Experiment.check_declared``) if an entry does not fit the
+    experiment exactly, naming the file and line.
+    """
+    if not os.path.exists(checkpoint_file):
+        return []
+    entries: list[tuple[float, dict[str, Coord], dict[str, CoordSpec]]] = []
+    with open(checkpoint_file) as fh:
+        for line_number, line in enumerate(fh, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            entry: dict[str, Any] = json.loads(line)
+            experiment.check_declared(entry['params'], f'{checkpoint_file}:{line_number}')
+            raw_target: float = float(entry['target'])
+            target = raw_target if np.isfinite(raw_target) else _FAILED_VALUE
+            # Replay the stored raw coordinates through the experiment so
+            # dynamic domains recover their exact per-trial coordinate ranges
+            # (for plain Intervals a coordinate is just its value).
+            coords, specs = experiment.reconstruct_coords(entry['params'])
+            entries.append((target, dict(coords), dict(specs)))
+    return entries
 
 
 class CheckpointedOptimizer:
@@ -110,28 +140,15 @@ class CheckpointedOptimizer:
             return None
 
     def _load_checkpoint(self) -> int:
-        if not os.path.exists(self._checkpoint_file):
-            return 0
         count = 0
-        with open(self._checkpoint_file) as fh:
-            for line in fh:
-                line = line.strip()
-                if not line:
-                    continue
-                entry: dict[str, Any] = json.loads(line)
-                raw_target: float = float(entry['target'])
-                target = raw_target if np.isfinite(raw_target) else _FAILED_VALUE
-                # Replay the stored raw coordinates through the experiment so
-                # dynamic domains recover their exact per-trial coordinate ranges
-                # (for plain Intervals a coordinate is just its value).
-                coords, specs = self._experiment.reconstruct_coords(entry['params'])
-                trial = optuna.trial.create_trial(
-                    params=dict(coords),
-                    distributions={name: _distribution_of(spec) for name, spec in specs.items()},
-                    value=target,
-                )
-                self._study.add_trial(trial)
-                count += 1
+        for target, coords, specs in read_checkpoint(self._experiment, self._checkpoint_file):
+            trial = optuna.trial.create_trial(
+                params=coords,
+                distributions={name: _distribution_of(spec) for name, spec in specs.items()},
+                value=target,
+            )
+            self._study.add_trial(trial)
+            count += 1
         return count
 
     def _objective(self, trial: optuna.Trial) -> float:

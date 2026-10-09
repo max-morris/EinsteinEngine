@@ -16,7 +16,10 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import time
 from collections import defaultdict
+from collections.abc import Collection
+from contextlib import ExitStack
 from dataclasses import dataclass
 from itertools import chain
 from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack, Callable, Any, Generator, Never, \
@@ -49,6 +52,7 @@ from EinsteinEngine.frontend.dsl.use_indices import (
     subst_tensor,
 )
 from EinsteinEngine.frontend.dsl.symmetries import Sym
+from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import (
     D,
     div,
@@ -65,7 +69,7 @@ from EinsteinEngine.frontend.definitions import (
     DZI,
     noop,
     zero,
-    one,
+    one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.common.sympywrap import cse, free_symbols
@@ -77,9 +81,13 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import (
     OnePassTemporaryPromotionStrategy, TemporaryPromotionPredicate, TemporaryPromotionStrategy,
     TwoPassTemporaryPromotionStrategy, promote_all, promote_none
 )
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
+from EinsteinEngine.intermediate.eqn_grouping import rank_add_eqn_calls
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, RankByPostPopulation, add_eqn_order, \
+    maximize_symbol_reuse
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
-from EinsteinEngine.common.util import get_or_compute, pprint, verbose
+from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.tuning import probe
+from EinsteinEngine.common.util import get_or_compute, pprint, suppressed_output, verbose
 from EinsteinEngine.common.util import wprint
 
 
@@ -103,7 +111,13 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     do_madd: bool
     do_recycle_temporaries: bool
     splitmaxxing: bool
-    ordering_fn: EqnOrderingFn
+    ordering_fn: EqnOrderingFn  # The post-population ordering function (see DslFunctionFrontendBakeOptions)
+    # Orders each function's author-level add_eqn groups (the early locus). add_eqn_order refers to one function's
+    # add_eqn calls, so pass it per function through `functions`. rank_by_post_population(fn) may be passed bake-wide:
+    # it derives each function's own order (see _derive_early_orders).
+    early_ordering_fn: Optional[EqnOrderingFn]
+    # Orders each function's scalar equations before CSE (the pre-population locus); None uses ordering_fn.
+    pre_population_ordering_fn: Optional[EqnOrderingFn]
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
     # Overrides for function frontend default opts
@@ -133,6 +147,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     functions: dict[str, FunctionFrontendT]
     tile_temporaries: OrderedSet[Symbol]
     global_temporaries: OrderedSet[Symbol]
+
+    # Saved by global CSE for post-population splits: the kind of each CSE temporary (Inline temps are absent), and
+    #  the predicate the kinds were clamped by. Empty and None if CSE did not run.
+    cse_temp_kinds: dict[Symbol, TempKind]
+    cse_promotion_predicate: Optional[TemporaryPromotionPredicate]
 
     overwrite_symbols: dict[str, OverwriteSymbolRecord]
 
@@ -169,6 +188,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self.functions = dict()
         self.tile_temporaries = OrderedSet()
         self.global_temporaries = OrderedSet()
+        self.cse_temp_kinds = dict()
+        self.cse_promotion_predicate = None
 
         self.overwrite_symbols = dict()
 
@@ -323,6 +344,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     ) -> dict[str, DslFunctionFrontendBakeOptions]:
         my_tf_opts: dict[str, DslFunctionFrontendBakeOptions] = dict()
 
+        if unknown := sorted(opts.get("functions", dict()).keys() - self.functions.keys()):
+            raise DslException(f"The bake options name unknown functions {unknown}; the functions are {sorted(self.functions.keys())}.")
+
         for tf in self.functions.values():
             tf_opts = self._mk_default_function_bake_options()
             tf_opts.update(cast(DslFunctionFrontendBakeOptions, opts))
@@ -336,6 +360,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         my_opts = self._mk_default_bake_options()
         my_opts.update(opts)
         my_tf_opts = self._mk_function_bake_options(my_opts)
+        self._derive_early_orders(my_opts, my_tf_opts)
 
         for _, tf in sorted(self.functions.items(), key=lambda kv: kv[0]):
             assert tf.name in my_tf_opts, f"Function '{tf.name}' not found in my_tf_opts"
@@ -344,6 +369,13 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         if my_opts["do_cse"]:
             pprint("Performing CSE...")
             self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+
+        for tf in self.functions.values():
+            if tf.auto_split_locus is SplitLocus.PostPopulation:
+                # Like _do_global_cse, the frontend records every Tile-kind CSE temporary, including promoted ones.
+                self.tile_temporaries.update(tf._apply_post_population_splits(temp_kinds=self.cse_temp_kinds,
+                                                                              promotion_predicate=self.cse_promotion_predicate,
+                                                                              tile_temporaries=self.tile_temporaries))
 
         for tf in self.functions.values():
             if tf.needs_merge():
@@ -357,6 +389,117 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 if my_tf_opts[tf.name]["splitmaxxing"]:
                     tf._do_splitmaxxing()
                 tf._late_bake(**my_tf_opts[tf.name])
+
+        probe.bake_finished()
+
+    def _derive_early_orders(self,
+                             opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions],
+                             tf_opts: dict[str, DslFunctionFrontendBakeOptions]) -> None:
+        """
+        Resolve ``early_ordering_fn=rank_by_post_population(fn)``: derive each such function's add_eqn order from a
+        trial bake and replace the option, in `tf_opts` (the per-function bake options, rewritten in place), by
+        ``add_eqn_order(<the derived order>)``. Called by `bake` before any function is early-baked. It first rejects
+        rank_by_post_population as any function's pre_population_ordering_fn or ordering_fn (the check `_early_bake`
+        makes too), so that misuse fails before the trial; then it does nothing if no function uses
+        rank_by_post_population. See ``eqn_ordering.rank_by_post_population`` for the motivation, a worked example and
+        the cost.
+
+        The trial bake. One trial serves every function that uses rank_by_post_population (the ranked functions):
+        1. Every function of the frontend enters ``_trial_bake_state``: it gets an independent copy of its
+           EqnComplex, and loses its auto split predicates for the duration. The frontend's name counter and CSE
+           results are saved, and pprint and vprint are silenced
+           (warnings still appear).
+        2. The equations each add_eqn call of a ranked function produced are snapshotted (``eqn_origin`` before the
+           bake: the scalar components, not the pull-out temporaries created later, which inherit the origin, nor
+           CSE temporaries, which have none). This matches the offline derivation, which snapshotted the equation
+           list around each add_eqn call.
+        3. Every function is early-baked with its own bake options, as `bake` would do next, except that a ranked
+           function has no early and no pre-population ordering function and orders with ``fn`` (for the pre-CSE bake
+           and, since ``ordering_fn`` is sticky, the post-CSE rebake).
+        4. If the bake does CSE, global CSE runs over all functions (so that each ranked function gets the CSE
+           temporaries it gets in the real bake), with ``trial_targets``: the CSE hooks that declare global
+           temporaries, create synthetic functions and infer centerings are skipped, and only the ranked functions are
+           rebaked afterward.
+        5. Each ranked function's lists' orders are read, and everything is restored (also if the trial raised).
+        Then each ranked function's calls are ranked with ``eqn_grouping.rank_add_eqn_calls``, the order is printed in
+        one line and reported to the tuning probe (``probe.report_derived_order``), and the option is replaced.
+
+        Why the trial bakes every function, and how faithful it is to the offline derivation it replaces: see
+        ``eqn_ordering.rank_by_post_population`` ("Where this comes from, and fidelity").
+
+        Isolation. The real bake is identical to one with the explicit ``add_eqn_order``, temporary names included:
+        - the functions' EqnComplexes, annotations, flags and predicates are copies or restored (see
+          ``DslFunctionFrontend._trial_bake_state``), so eqn_origin, the sticky ordering_fn and the recipe and
+          pre-population orders of the real lists are untouched;
+        - ``_unique_name_counter`` is restored, so the real pull-out temporaries get the same names (CSE names its
+          temporaries afresh in every call, from x0);
+        - ``tile_temporaries``, ``global_temporaries``, ``cse_temp_kinds`` and ``cse_promotion_predicate`` are restored,
+          and so is ``functions`` (which the skipped hooks would have extended);
+        - the skipped hooks are what would have changed the frontend's declarations and centerings;
+        - no auto split predicate is called, so neither is ``probe.report_split_positions``, nor ``probe.bake_finished``
+          (which only `bake` calls);
+        - the class-level caches of the EqnComplex ``_calc_*`` methods are keyed by instance, and the trial copies are
+          never asked for derived state; the symbolic caches in eqn_ordering are pure;
+        - the automatic name counters of ExplicitSyncBatch and NewRadXBoundaryBatch only advance when the recipe
+          creates such batches, never in a bake.
+        """
+        # Misuse (rank_by_post_population as a later ordering function) would only raise in the real _early_bake;
+        #  fail before the trial.
+        for name, options in tf_opts.items():
+            self.functions[name]._check_rank_by_post_population(options, early_resolved=False)
+
+        ranked = {name: fn for name, options in tf_opts.items()
+                  if isinstance(fn := options.get("early_ordering_fn"), RankByPostPopulation)}
+        if len(ranked) == 0:
+            return
+
+        trial_opts: dict[str, DslFunctionFrontendBakeOptions] = dict()
+        for name, options in tf_opts.items():
+            trial_opts[name] = options.copy()
+            if name in ranked:
+                trial_opts[name]["early_ordering_fn"] = None
+                trial_opts[name]["pre_population_ordering_fn"] = None
+                trial_opts[name]["ordering_fn"] = ranked[name].ordering_fn
+
+        start = time.perf_counter()
+        origins: dict[str, list[dict[Symbol, int]]] = dict()
+        orders: dict[str, list[list[Symbol]]] = dict()
+        saved_counter = self._unique_name_counter
+        saved_cse = (self.tile_temporaries, self.global_temporaries, self.cse_temp_kinds, self.cse_promotion_predicate)
+        saved_functions = dict(self.functions)
+        with ExitStack() as stack:
+            stack.enter_context(suppressed_output())
+            for tf in saved_functions.values():
+                stack.enter_context(tf._trial_bake_state())
+            self.tile_temporaries = OrderedSet(self.tile_temporaries)
+            self.global_temporaries = OrderedSet(self.global_temporaries)
+            self.cse_temp_kinds = dict(self.cse_temp_kinds)
+            try:
+                for name in ranked:
+                    origins[name] = [dict(el.eqn_origin) for el in self.functions[name].eqn_complex.eqn_lists]
+
+                for _, tf in sorted(self.functions.items(), key=lambda kv: kv[0]):
+                    tf._early_bake(**trial_opts[tf.name])
+
+                if opts["do_cse"]:
+                    self._do_global_cse(opts["temporary_promotion_strategy"], opts["cse_optimization_level"],
+                                        trial_targets=ranked.keys())
+
+                for name in ranked:
+                    orders[name] = [list(el.order) for el in self.functions[name].eqn_complex.eqn_lists]
+            finally:
+                self._unique_name_counter = saved_counter
+                (self.tile_temporaries, self.global_temporaries, self.cse_temp_kinds,
+                 self.cse_promotion_predicate) = saved_cse
+                self.functions.clear()
+                self.functions.update(saved_functions)
+        elapsed = time.perf_counter() - start
+
+        for name, fn in ranked.items():
+            derived = rank_add_eqn_calls(origins[name], orders[name], self.functions[name].eqn_complex.origin_count)
+            pprint(f"{name}: {fn!r} derived the early order {derived} from a trial bake ({elapsed:.1f} s).")
+            probe.report_derived_order(name, derived)
+            tf_opts[name]["early_ordering_fn"] = add_eqn_order(derived)
 
     @staticmethod
     def _classify_temps(
@@ -432,8 +575,19 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _do_global_cse(
             self,
             promotion_strategy: TemporaryPromotionStrategy = promote_all(),
-            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal,
+            *,
+            trial_targets: Optional[Collection[str]] = None
     ) -> None:
+        """
+        Global CSE over the RHSes of every function, then a rebake of every list.
+
+        With `trial_targets` (the trial bake of rank_by_post_population, see `_derive_early_orders`), the hooks
+        `_global_cse_pre_materialization` and `_global_cse_handle_global_temps` are skipped (they infer centerings,
+        declare global temporaries and create their synthetic functions, none of which affects any list's
+        equations), and only the functions named in `trial_targets` are rebaked afterward. The CSE itself, the
+        classification of the temporaries and their materialization into the lists are unchanged.
+        """
         for tf in self.functions.values():
             if tf.been_late_baked:
                 raise DslException(f"Cannot do_global_cse on function {tf.name} because it has already undergone late baking.")
@@ -562,11 +716,13 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 substitutions_order
             )
 
-        self._global_cse_pre_materialization(substitutions=substitutions, new_temp_dependencies=new_temp_dependencies,
-                                             temp_kinds=temp_kinds)
+        if trial_targets is None:
+            self._global_cse_pre_materialization(substitutions=substitutions, new_temp_dependencies=new_temp_dependencies,
+                                                 temp_kinds=temp_kinds)
 
-        for new_temp in substitutions.keys():
-            vprint(colored("Temporary:", "cyan"), new_temp, colored(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+        if trial_targets is None:
+            for new_temp in substitutions.keys():
+                vprint(colored("Temporary:", "cyan"), new_temp, colored(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
 
         inline_temps: list[tuple[Symbol, Expr]] = list()
         for new_temp, new_rhs in sorted(substitutions.items(),
@@ -628,21 +784,27 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     for eqn_list in [tf.eqn_complex.eqn_lists[el_idx] for el_idx in els_reading]:
                         eqn_list.synthetic_symbols.add(new_temp)
 
-        self._global_cse_handle_global_temps(
-            substitutions=substitutions,
-            temp_kinds=temp_kinds,
-            tfs_active_reads=tfs_active_reads,
-            new_temp_dependencies=new_temp_dependencies
-        )
+        if trial_targets is None:
+            self._global_cse_handle_global_temps(
+                substitutions=substitutions,
+                temp_kinds=temp_kinds,
+                tfs_active_reads=tfs_active_reads,
+                new_temp_dependencies=new_temp_dependencies
+            )
+
+        self.cse_temp_kinds = {t: k for t, k in temp_kinds.items() if t in substitutions}
+        self.cse_promotion_predicate = promotion_predicate
 
         for tf in self.functions.values():
+            if trial_targets is not None and tf.name not in trial_targets:
+                continue
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
                 pprint(f"Rebaking {tf.name} loop {idx} after CSE...")
 
                 # If the tf needs a merge, set force_fast because another (slow) rebake will succeed CSE.
                 eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
 
-                if verbose():
+                if verbose() and trial_targets is None:
                     eqn_list.dump()
 
     def overwrite(self, sym: IndexedBase) -> IndexedBase:
@@ -965,11 +1127,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
         @mk_sten.register
         def _mk_sten(idx_map: dict[Idx, Idx], expr_: Indexed) -> Expr:
-            indexes: list[Idx] = list()
+            indices: list[Idx] = list()
             for a in expr_.args[1:]:
-                assert isinstance(a, Idx)
-                indexes.append(idx_map.get(a, a))
-            result: Expr = mk_indexed(expr_.base, *indexes)
+                assert isinstance(a, Idx), f"a={a}"
+                indices.append(idx_map.get(a, a))
+            result: Expr = mk_indexed(expr_.base, *indices)
             return result
 
         @mk_sten.register

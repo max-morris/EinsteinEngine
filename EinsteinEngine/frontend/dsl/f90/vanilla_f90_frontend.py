@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Type, Never, Optional, Any, cast, Sequence, Callable
 
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 
 from EinsteinEngine.emit.code.common.code_tree import IntLiteralExpr, FloatLiteralExpr
 from multimethod import multimethod
@@ -67,14 +68,16 @@ class VanillaF90Function(DslFunctionFrontend["VanillaF90Module"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                 auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> None:
+                 auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
+                 auto_split_locus: SplitLocus = SplitLocus.Early) -> None:
         super().__init__(
             name,
             frontend,
             intent_override,
             owner_name="VanillaF90Function",
             auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate
+            auto_soft_split_predicate=auto_soft_split_predicate,
+            auto_split_locus=auto_split_locus
         )
 
 class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Function]):
@@ -101,13 +104,25 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
                         *,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None) -> VanillaF90Function:
+                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
+                        auto_split_locus: SplitLocus = SplitLocus.Early) -> VanillaF90Function:
+        """
+        Creates a new function.
+
+        :param auto_hard_split_predicate: Called with 0-based positions at `auto_split_locus`; True means "hard split
+                                          after the element at this position".
+        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declined; True or a retainment
+                                          strategy means "soft split after the element at this position".
+        :param auto_split_locus: The point in the bake at which the predicates are evaluated. At SplitLocus.Early (the
+                                 default), elements are author-level add_eqn calls.
+        """
         tf = VanillaF90Function(
             name,
             self,
             intent_override,
             auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate
+            auto_soft_split_predicate=auto_soft_split_predicate,
+            auto_split_locus=auto_split_locus
         )
         self.functions[name] = tf
         return tf

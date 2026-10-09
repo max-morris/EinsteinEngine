@@ -36,6 +36,7 @@ import numpy as np
 
 from EinsteinEngine.tuning.experiment import Experiment
 from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
+from EinsteinEngine.tuning.tuning import build_experiment, probe_sidecar_path
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -137,11 +138,11 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     ax_top.legend()
     ax_top.grid(True, alpha=0.3)
 
-    # Colour probes by iteration so scatter plots show exploration order.
+    # Color probes by iteration so scatter plots show exploration order.
     cmap = cm.viridis
-    colours = cmap(np.linspace(0, 1, len(records)))
-    ok_colours   = [c for c, ok in zip(colours, ok_mask) if ok]
-    fail_colours = [c for c, ok in zip(colours, ok_mask) if not ok]
+    colors = cmap(np.linspace(0, 1, len(records)))
+    ok_colors   = [c for c, ok in zip(colors, ok_mask) if ok]
+    fail_colors = [c for c, ok in zip(colors, ok_mask) if not ok]
 
     # --- Per-parameter scatter: param value vs target ---
     param_axes: list[matplotlib.axes.Axes] = []
@@ -153,9 +154,9 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         active = _active_mask(name)
         ok_x      = [v for v, ok, a in zip(params[name], ok_mask, active) if ok and a and v is not None]
         ok_tgts   = [t for t, ok, a in zip(targets,       ok_mask, active) if ok and a]
-        ok_cols   = [c for c, ok, a in zip(colours,       ok_mask, active) if ok and a]
+        ok_cols   = [c for c, ok, a in zip(colors,       ok_mask, active) if ok and a]
         fail_x    = [v for v, ok, a in zip(params[name], ok_mask, active) if not ok and a and v is not None]
-        fail_cols = [c for c, ok, a in zip(colours,       ok_mask, active) if not ok and a]
+        fail_cols = [c for c, ok, a in zip(colors,       ok_mask, active) if not ok and a]
 
         if ok_x:
             ax.scatter(ok_x, ok_tgts, c=ok_cols, s=40, alpha=0.8, zorder=3)
@@ -169,7 +170,7 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
         ax.grid(True, alpha=0.3)
         param_axes.append(ax)
 
-    # Shared colourbar showing iteration order.
+    # Shared colorbar showing iteration order.
     sm = cm.ScalarMappable(cmap=cmap, norm=matplotlib.colors.Normalize(vmin=1, vmax=len(records)))
     sm.set_array([])
     fig.colorbar(sm, ax=param_axes, label="Iteration", shrink=0.6)
@@ -190,6 +191,10 @@ def main() -> None:
                         help="Path to the Tuner file (same one used with remote_tuner/generate_best). "
                              "When given, reparameterized params (e.g. Union domains) are plotted as their "
                              "actual values instead of the raw search coordinates stored in the checkpoint.")
+    parser.add_argument("--recipe", type=str, default=None,
+                        help="Path to the recipe, used with --tuner when the tuner probes the recipe. It is probed, "
+                             "and must match the <checkpoint>.probe.json next to the checkpoint if there is one. "
+                             "Without it, that file is used; without either, raw coordinates are plotted.")
     args = parser.parse_args()
 
     records = load_jsonl(args.checkpoint)
@@ -198,8 +203,14 @@ def main() -> None:
         return
 
     if args.tuner is not None:
-        experiment = load_tuner_from_file(args.tuner).get_experiment()
-        records = map_coords_to_values(records, experiment)
+        tuner = load_tuner_from_file(args.tuner)
+        sidecar = probe_sidecar_path(str(args.checkpoint))
+        if tuner.probe_targets() and args.recipe is None and not Path(sidecar).exists():
+            warnings.warn(f"The tuner probes the recipe, but there is no probe file {sidecar} and no --recipe to "
+                          f"probe; plotting raw coordinates.")
+        else:
+            experiment = build_experiment(tuner, args.recipe, str(args.checkpoint))
+            records = map_coords_to_values(records, experiment)
 
     plot(records, title=args.checkpoint.name, out=args.out)
 
