@@ -63,7 +63,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
 
         # Greedy subset-factoring first (never worse): exposes sharing that
         # syntactic CSE cannot see (e.g. a common factor in 2 of 3 terms).
-        exprs_sub = [collect_greedy(e, max_seconds=5.0) for e in exprs_sub]
+        exprs_sub = [collect_greedy(e) for e in exprs_sub]
 
         new_syms, new_exprs = cse(exprs_sub, optimizations=[cse_basic()])
 
@@ -73,7 +73,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
 
         return new_syms, new_exprs
     else:
-        return cse([collect_greedy(e, max_seconds=5.0) for e in exprs], optimizations=[cse_basic()])
+        return cse([collect_greedy(e) for e in exprs], optimizations=[cse_basic()])
 
 def require[T](expr: Optional[T], msg: Callable[[], str] = lambda: "Expression is required.") -> T:
     if expr is None:

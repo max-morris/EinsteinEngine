@@ -286,8 +286,7 @@ class EqnComplex:
         new_rhses: list[Expr]
         # Greedy subset-factoring first (never worse): exposes sharing that
         # syntactic CSE cannot see (e.g. a common factor in 2 of 3 terms).
-        # Time-boxed: bake processes hundreds of RHS.
-        old_rhses = [collect_greedy(rhs, max_seconds=5.0) for rhs in old_rhses]
+        old_rhses = [collect_greedy(rhs) for rhs in old_rhses]
         substitutions_list, new_rhses = cse(old_rhses, optimizations=[cse_basic()])
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}

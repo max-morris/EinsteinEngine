@@ -26,11 +26,17 @@ Only exact rewrites are used, so the result is mathematically equal to
 the input by construction. Moves that raise on a given input are not
 valid candidates and are skipped; the search itself never fails and
 never returns a worse form than its input.
+
+The search is deterministic: it is bounded by iteration counts rather
+than by time, and candidates are generated in an order that does not
+depend on hashing, so the same input gives the same output on every
+machine and in every process.
 """
 
 from typing import Callable, Iterator, List, Tuple
 
 from sympy import Add, Expr, Mul, Pow, Symbol, cancel, collect, count_ops, expand, factor, factor_terms, together
+from sympy.core.sorting import default_sort_key
 from sympy.core.traversal import preorder_traversal
 
 __all__ = ["op_count", "collect_greedy", "collect_neighbors"]
@@ -50,13 +56,13 @@ def op_count(expr: Expr) -> int:
 
 
 def _shared_symbols(node: Add) -> List[Symbol]:
-    """Symbols occurring in two or more terms of an Add node."""
+    """Symbols occurring in two or more terms of an Add node, in sorted order."""
     counts: dict[Symbol, int] = {}
     for term in node.args:
         for sym in term.free_symbols:
             if isinstance(sym, Symbol):
                 counts[sym] = counts.get(sym, 0) + 1
-    return [sym for sym, count in counts.items() if count >= 2]
+    return sorted((sym for sym, count in counts.items() if count >= 2), key=default_sort_key)
 
 
 def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
@@ -81,12 +87,12 @@ def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
 
 def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator[Tuple[str, Expr]]:
     """Yield (description, new_expr) single-move neighbors of expr."""
-    seen = {hash(expr)}
+    seen = {expr}
     allow_slow = op_count(expr) <= _WHOLE_SLOW_MOVE_OP_LIMIT
 
     def emit(desc: str, new: Expr) -> Iterator[Tuple[str, Expr]]:
-        if hash(new) not in seen:
-            seen.add(hash(new))
+        if new not in seen:
+            seen.add(new)
             yield desc, new
 
     whole: list[tuple[str, Callable[[], Expr]]] = [
@@ -126,22 +132,17 @@ def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator
 
 
 def collect_greedy(expr: Expr, cost: CostFn | None = None,
-                   max_iter: int = 25, max_subnodes: int = _MAX_SUBNODES,
-                   max_seconds: float | None = None) -> Expr:
+                   max_iter: int = 25, max_subnodes: int = _MAX_SUBNODES) -> Expr:
     """Steepest descent to a local cost minimum. Never worse than input.
 
-    max_seconds bounds the search (checked per iteration); on expiry the
-    current best — never worse than the input — is returned.
+    At most max_iter improving moves are made. On reaching the budget the
+    current best (never worse than the input) is returned.
     """
-    import time as _time
     if cost is None:
         cost = op_count
     current = expr
     current_cost = cost(expr)
-    deadline = None if max_seconds is None else _time.monotonic() + max_seconds
     for _ in range(max_iter):
-        if deadline is not None and _time.monotonic() >= deadline:
-            break
         best, best_cost = current, current_cost
         for _, cand in collect_neighbors(current, max_subnodes=max_subnodes):
             try:
@@ -184,8 +185,6 @@ if __name__ == "__main__":
         assert cancel(out - probe) == 0, probe  # type: ignore[no-untyped-call]
     assert collect_greedy(x + mk_symbol("y"), max_iter=100) == x + mk_symbol("y")
     assert collect_greedy(x**2 + 2 * x + 1, max_iter=0) == x**2 + 2 * x + 1
-    # Time budget: zero budget returns the input untouched (never worse).
-    assert collect_greedy(x**2 + 2 * x + 1, max_seconds=0.0) == x**2 + 2 * x + 1
     # Hang guard: large inputs skip slow whole-expression moves (sympy
     # heuristic GCD); cheap moves alone must still collapse this.
     import time as _time

@@ -507,7 +507,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         elif optimization_level is CseOptimizationLevel.Fast:
             rhses = list(chain(*chain(*old_tf_rhses.values())))
             # Greedy subset-factoring first (never worse).
-            substitutions_list, new_rhses = cse([collect_greedy(rhs, max_seconds=5.0) for rhs in rhses], optimizations=[cse_basic()])
+            substitutions_list, new_rhses = cse([collect_greedy(rhs) for rhs in rhses], optimizations=[cse_basic()])
         else:
             raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
