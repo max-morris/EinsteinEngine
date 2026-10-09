@@ -15,24 +15,38 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Cost model for SymPy expressions, with weights loaded from JSON at startup.
+"""Cost model for SymPy expressions. Weights come from JSON.
 
-The active weight profile is selected once at import time:
-  * ``EE_COMPLEXITY_WEIGHTS`` env var set -> that JSON file is loaded
-    (a missing/unreadable file is a fatal error, never a silent fallback);
+The active profile is loaded on the first call to :func:`get_weights`, not at
+import, so a bad ``EE_COMPLEXITY_WEIGHTS`` does not break importing this
+module:
+
+  * ``EE_COMPLEXITY_WEIGHTS`` set to a path -> that JSON file is loaded
+    (a missing or unreadable file is a fatal error, never a silent fallback);
   * otherwise the bundled ``guestimates.json`` profile is used.
 
-Call :func:`set_weights` (or point the env var at another file and reimport)
-to switch profiles. Measured profiles live next to ``guestimates.json``;
-``microbenchmarks/README.md`` says which runs produced them.
-``microbenchmarks/scripts/fit_weights.py`` only suggests integers from a
-results file — it does not write a profile. :func:`available_profiles`
-lists the JSON profiles shipped with the package.
+That file is the only profile shipped inside the package. Measured profiles
+live in ``microbenchmarks/profiles/`` and are selected by passing their path.
+``microbenchmarks/README.md`` records which run produced each file.
+
+:class:`ComplexityWeights` has no numeric defaults. The JSON profile is the
+source of truth; the old dataclass defaults (``atom=1``, empty transcendentals)
+did not match the profile that actually runs.
+
+Weights are about 100 times the pre-profile integer model (``atom`` was 1 and
+is 100). :func:`promote_threshold` and :func:`retain_threshold` take absolute
+complexity integers, so a threshold chosen on the old scale now keeps about
+100 times fewer candidates. Percentile and rank strategies do not use that
+absolute scale. Nothing in this repository calls the threshold strategies.
+
+:func:`set_weights` replaces the process-wide profile. Callers that use it
+temporarily have to restore the previous value; a later ``get_weights`` will
+not reload the startup file while a profile is installed.
 """
 
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from math import log2
 from pathlib import Path
 from typing import Any, cast, Protocol, Union
@@ -53,18 +67,21 @@ class IsGridVariableFn(Protocol):
 
 @dataclass(frozen=True)
 class ComplexityWeights:
-    """Integer cost-model weights; ``Add``/``Mul`` sum their children."""
+    """Integer cost-model weights; ``Add``/``Mul`` sum their children.
 
-    atom: int = 1
-    symbol_grid: int = 10
-    symbol_local: int = 1
-    pow_default: int = 15
-    pow_integer_floor: int = 2
-    stencil_center: int = 10
-    stencil_x: int = 40
-    stencil_yz: int = 100
-    transcendental: dict[str, int] = field(default_factory=dict)
-    transcendental_default: int = 0
+    Every field is required. Shipped numbers live in ``guestimates.json``.
+    """
+
+    atom: int
+    symbol_grid: int
+    symbol_local: int
+    pow_default: int
+    pow_integer_floor: int
+    stencil_center: int
+    stencil_x: int
+    stencil_yz: int
+    transcendental: dict[str, int]
+    transcendental_default: int
 
 
 def _require_int(data: dict[str, Any], key: str) -> int:
@@ -123,14 +140,7 @@ def load_weights(path: Union[str, Path]) -> ComplexityWeights:
     )
 
 
-def available_profiles() -> list[str]:
-    """Names (stems) of the JSON profiles shipped with the package."""
-    if not WEIGHTS_DIR.is_dir():
-        raise FileNotFoundError(f"Weight directory '{WEIGHTS_DIR}' does not exist.")
-    return sorted(p.stem for p in WEIGHTS_DIR.glob("*.json"))
-
-
-_ACTIVE_WEIGHTS: ComplexityWeights
+_ACTIVE_WEIGHTS: ComplexityWeights | None = None
 
 
 def _load_startup_weights() -> ComplexityWeights:
@@ -141,17 +151,21 @@ def _load_startup_weights() -> ComplexityWeights:
 
 
 def get_weights() -> ComplexityWeights:
-    """The currently active weight profile."""
+    """The currently active weight profile, loaded on first use."""
+    global _ACTIVE_WEIGHTS
+    if _ACTIVE_WEIGHTS is None:
+        _ACTIVE_WEIGHTS = _load_startup_weights()
     return _ACTIVE_WEIGHTS
 
 
 def set_weights(weights: ComplexityWeights) -> None:
-    """Switch the active weight profile at runtime."""
+    """Replace the process-wide weight profile.
+
+    This does not reload ``EE_COMPLEXITY_WEIGHTS``. Restore the previous
+    profile when the replacement was only meant for the current call.
+    """
     global _ACTIVE_WEIGHTS
     _ACTIVE_WEIGHTS = weights
-
-
-_ACTIVE_WEIGHTS = _load_startup_weights()
 
 
 def calculate_complexity(expr: sy.Basic, *, is_grid_variable: IsGridVariableFn) -> int:
@@ -187,10 +201,17 @@ class SympyComplexityVisitor:
         c: int = self.weights.pow_default
         power = n.args[1]
         if power.is_Integer:
-            # log2(|p|) is in units of one atom. atom is 1 in the dataclass
-            # defaults and 100 in normalized JSON profiles.
+            # The pre-scale model was max(2, int(log2(|p|))). Scaling that by
+            # atom (100 in every shipped profile) is
+            # max(pow_integer_floor, atom * int(log2(|p|))), with the floor
+            # equal to 2*atom. Truncating, rather than rounding atom*log2,
+            # keeps x**5 at 200 and x**6 at 200 on that scale. |p| <= 1 uses
+            # the floor (the old cost was 2, which scales to 200).
             magnitude = abs(int(power))
-            exponent_cost = 0 if magnitude <= 1 else round(self.weights.atom * log2(magnitude))
+            if magnitude <= 1:
+                exponent_cost = 0
+            else:
+                exponent_cost = self.weights.atom * int(log2(magnitude))
             c = max(self.weights.pow_integer_floor, exponent_cost)
         elif power == sy.Rational(1, 2):
             # Emitter lowers a positive half to sqrt(), not pow().

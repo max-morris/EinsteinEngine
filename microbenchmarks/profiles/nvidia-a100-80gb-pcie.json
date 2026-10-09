@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "profile": "nvidia-a100-80gb-pcie",
-  "description": "Device-kernel timings on an NVIDIA A100 80GB PCIe (nasrin0), remeasured 2026-10-01. Streamed math kernels repeat the functor 256 times per element and report ns per repetition, so the result is not HBM bandwidth. Memory kernels are one evaluation per interior point with threads stepped along x, which makes x/y/z neighbor loads equally coalesced. ALU/libm weights are measured. Stencil x/y/z are not given the 4000/10000 ghost-exchange guestimates: this launch cannot see that cost, and the measured spread is about 1%. Previously unweighted functions (tan/sinh/cosh/tanh/erf) carry measured weights. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
+  "description": "Device-kernel timings on an NVIDIA A100 80GB PCIe (nasrin0), recorded 2026-10-01. Those ratios are untrusted until the run is repeated with the identity_stream baseline: each device repetition also pays a perturbation FMA, a finiteness check, and the xor sink, and pown was a chain of N multiplies rather than Arith::pown. ALU and libm weights below are that previous fit, kept as recorded numbers. symbol_grid, pow_integer_floor, and the stencil weights are the shared policy (1000, 200, 1000/4000/10000). A single-node coalesced launch cannot see a ghost exchange, and dividing a one-evaluation memory kernel by a 256-repetition compute kernel is not a like-for-like ratio. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
   "architecture": {
     "gpu": "NVIDIA A100 80GB PCIe",
     "cuda_arch": "sm_80",
@@ -19,13 +19,13 @@
   },
   "weights": {
     "atom": 100,
-    "symbol_grid": 1200,
+    "symbol_grid": 1000,
     "symbol_local": 100,
     "pow_default": 2100,
-    "pow_integer_floor": 100,
-    "stencil_center": 1200,
-    "stencil_x": 1200,
-    "stencil_yz": 1200,
+    "pow_integer_floor": 200,
+    "stencil_center": 1000,
+    "stencil_x": 4000,
+    "stencil_yz": 10000,
     "transcendental": {
       "sin": 500,
       "cos": 500,
@@ -91,12 +91,12 @@
       "if_else_branch_stream": 0.001148
     },
     "decisions": {
-      "pow_default": "measured 21.48x add (powvar_stream); stored 2100. pow(x, 2.5) is 21.27x.",
-      "pow_integer_floor": "set to 100. Device pown scales as N=2,3,4,8,16 -> 1.00x, 1.12x, 1.34x, 2.26x, 4.04x add, i.e. about log2(N). A floor of 200 would charge x**2 as two adds; the multiply measures as one.",
-      "transcendental": "measured per-function ratios against streamed add. sqrt 2.86x (pow sqrt 2.79x) -> 300; cbrt 4.31x (pow cbrt 4.27x) -> 400.",
-      "symbol_grid": "set to 1200: grid_add_stream is 11.63x a compute add. This is the device load, not a ghost exchange.",
-      "stencil": "set to 1200/1200/1200. center/x/y/z are 11.63x/11.63x/11.76x/11.78x add (spread about 1%). Threads run along x, so each neighbor load is coalesced; the 4000/10000 guestimates are not visible here.",
-      "div": "streaming div is 2.74x add. The register chain is 9.83x its own add chain (0.002034 ns vs 0.000207 ns). No separate div weight; x**-1 still goes through Pow."
+      "pow_default": "UNTRUSTED until remeasured with identity_stream. The 2026-10-01 fit stored 2100 from powvar_stream at 21.48x add (pow(x, 2.5) was 21.27x). Harness overhead squeezes that ratio. The stored number is the old fit, not a new measurement.",
+      "pow_integer_floor": "policy 200 (2*atom), same as the host profiles. The previous value 100 was inferred from pown N=2,3,4,8,16 reading 1.00x, 1.12x, 1.34x, 2.26x, 4.04x add. pown<16> was 16 sequential multiplies and still read as 4.04x one multiply, which is the per-repetition harness, not Arith::pown.",
+      "transcendental": "UNTRUSTED until remeasured with identity_stream. The stored per-function values are the 2026-10-01 fit (sqrt 2.86x -> 300, cbrt 4.31x -> 400) and are not a new measurement.",
+      "symbol_grid": "policy 1000, same as the host profiles. grid_add_stream at 11.63x a compute add mixes one memory evaluation per point with a 256-repetition compute reference, so that ratio is not a weight.",
+      "stencil": "policy 1000/4000/10000. The coalesced launch measured center/x/y/z at 11.63x/11.63x/11.76x/11.78x add (about 1% spread). Those timings stay in this file and are not weights.",
+      "div": "No div slot in the cost model. The 2026-10-01 streaming div was 2.74x add and the register chain was 9.83x its own add chain (0.002034 ns vs 0.000207 ns). Untrusted for the same harness reason as the other device ratios."
     }
   }
 }
