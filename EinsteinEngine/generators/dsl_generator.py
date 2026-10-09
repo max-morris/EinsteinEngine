@@ -19,7 +19,7 @@ from abc import ABC
 from typing import Any
 
 from EinsteinEngine.common.util import wprint
-from EinsteinEngine.intermediate.eqnlist import stencil
+from EinsteinEngine.intermediate.loop_region import NON_GRID_VARIABLE_NAMES, infer_loop_region
 
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
@@ -30,7 +30,7 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 
 
 class DslGenerator[F: DslFrontend[Any, Any, Any]](Generator[F], ABC):
-    vars_to_ignore: set[str] = {'t', 'x', 'y', 'z', 'DXI', 'DYI', 'DZI', 'DX', 'DY', 'DZ', 'DT'}
+    vars_to_ignore: set[str] = set(NON_GRID_VARIABLE_NAMES)
 
     def __init__(self, frontend: F):
         super().__init__(frontend)
@@ -42,65 +42,27 @@ class DslGenerator[F: DslFrontend[Any, Any, Any]](Generator[F], ABC):
 
         """
         Figure out what kind of loop we need (all, int, bnd) based on the write region of the loop's outputs, or, failing that, the inputs.
-        All of this loop's outputs need to have the same write region.
+        All of this loop's outputs need to have the same write region. See `infer_loop_region`.
         """
 
         eqn_list = frontend.eqn_complex.eqn_lists[loop_idx]
-        write_decls = eqn_list.write_decls
-        read_decls = eqn_list.read_decls
+        inferred = infer_loop_region(eqn_list, lambda sym: str(sym).replace("'", "") in var_names)
 
-        writes = {
-            var: spec
-            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in write_decls.items())
-            if var in var_names
-        }
-
-        reads = {
-            var: spec
-            for var, spec in ((str(var).replace("'", ""), spec) for var, spec in read_decls.items())
-            if var in var_names
-        }
-
-        if len(writes) == 0 and len(reads) == 0:
-            return IntentRegion.Everywhere  # No inputs and outputs; assume analytical
-
-        if len(writes) == 0:
-            input_regions = set(reads.values())
-
-            if None in input_regions or len(input_regions) == 0:
-                raise GeneratorException(f"In {frontend.name}@{loop_idx}: All input vars must have a read region. There are no output vars.")
-
-            for rhs in eqn_list.eqns.values():
-                for sten in rhs.find(stencil):  # type: ignore[no-untyped-call]
-                    if sten.args[1] != 0 or sten.args[2] != 0 or sten.args[3] != 0:
-                        return IntentRegion.Interior
-
-            if len(input_regions) > 1:
-                if len(input_regions) == 2 and IntentRegion.Everywhere in input_regions and IntentRegion.Interior in input_regions:
-                    wprint(f"In {frontend.name}@{loop_idx}:"
-                           f" While trying to infer the loop region, we found that there were no output vars,"
-                           f" and we found the input vars to have a mix of Interior and Everywhere read regions."
-                           f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
-                           f" finite difference, so we will infer Interior as the loop region.")
-                    return IntentRegion.Interior
-
+        if inferred.region is None:
+            if inferred.writes_grid_vars:
                 raise GeneratorException(
-                    f"In {frontend.name}@{loop_idx}: Input vars have mixed read regions: {list(write_decls.items())}\nSince there are no output vars, the loop region cannot be inferred."
-                )
-
-            [input_region] = input_regions
-            return input_region
-        else:
-            output_regions = set(writes.values())
-
-            if None in output_regions or len(output_regions) == 0:
-                raise GeneratorException(f"In {frontend.name}@{loop_idx}: All output vars for must have a write region.")
-
-            if len(output_regions) > 1:
-                raise GeneratorException(
-                    f"In {frontend.name}@{loop_idx}: Output vars have mixed write regions: {list(write_decls.items())}\n\n"
+                    f"In {frontend.name}@{loop_idx}: Output vars have mixed write regions: {list(eqn_list.write_decls.items())}\n\n"
                     f"Hint: You can normalize the write regions to Interior by supplying intent_override=IntentOverride.WriteInterior to create_function()."
                 )
+            raise GeneratorException(
+                f"In {frontend.name}@{loop_idx}: Input vars have mixed read regions: {list(eqn_list.read_decls.items())}\nSince there are no output vars, the loop region cannot be inferred."
+            )
 
-            [output_region] = output_regions
-            return output_region
+        if inferred.from_mixed_reads:
+            wprint(f"In {frontend.name}@{loop_idx}:"
+                   f" While trying to infer the loop region, we found that there were no output vars,"
+                   f" and we found the input vars to have a mix of Interior and Everywhere read regions."
+                   f" It looks like you are trying to write to a tile temp based on a stencil function, e.g.,"
+                   f" finite difference, so we will infer Interior as the loop region.")
+
+        return inferred.region

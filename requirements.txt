@@ -3,7 +3,11 @@ nrpy==2.0.18
 sympy==1.14.0
 multimethod==2.0.2
 numpy==2.5.1
+scipy==1.18.0
 pdoc==14.6.0
 sortedcontainers==2.4.0
 sortedcontainers-stubs==2.4.3
-bayesian-optimization==3.2.1
+optuna==4.9.0
+bayesian-optimization==3.3.0
+termcolor==3.3.0
+matplotlib==3.11.0
