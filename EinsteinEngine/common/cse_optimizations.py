@@ -19,14 +19,16 @@
 Factories for CSE optimizations (see `CseOptimization`): each returns one sympy (preprocessor, postprocessor) pair.
 """
 
+from dataclasses import dataclass
 from typing import cast
 
 from sympy import Expr, factor_terms
 from sympy.simplify.cse_opts import sub_post, sub_pre
 
+from EinsteinEngine.common.collect import DEFAULT_MAX_ITER, collect_greedy
 from EinsteinEngine.common.sympywrap import CseOptimization
 
-__all__ = ["cse_basic"]
+__all__ = ["cse_basic", "cse_collect_greedy"]
 
 
 def _basic_pre(expr: Expr) -> Expr:
@@ -44,3 +46,23 @@ def cse_basic() -> CseOptimization:
     This is exactly what ``sympy.cse(..., optimizations="basic")`` does with its two pairs.
     """
     return _basic_pre, _basic_post
+
+
+@dataclass(frozen=True)
+class _CollectGreedy:
+    max_iter: int
+
+    def __call__(self, expr: Expr) -> Expr:
+        return collect_greedy(expr, max_iter=self.max_iter)
+
+
+def cse_collect_greedy(max_iter: int = DEFAULT_MAX_ITER) -> CseOptimization:
+    """
+    Greedy subset-factoring of each expression before the CSE (see `collect_greedy`), which exposes sharing that
+    syntactic CSE cannot see, e.g. a common factor in two of three terms. Each expression gets at most ``max_iter``
+    improving moves.
+
+    Preprocessors run in list order, so ``[cse_collect_greedy(), cse_basic()]`` factors before cse_basic()'s rewriting,
+    and ``[cse_basic(), cse_collect_greedy()]`` after it.
+    """
+    return _CollectGreedy(max_iter), None

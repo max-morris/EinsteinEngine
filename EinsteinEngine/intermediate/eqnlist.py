@@ -37,8 +37,6 @@ from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse, EqnO
     respects_dependency_order, fixed_order
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
-from EinsteinEngine.common.collect import collect_greedy
-from EinsteinEngine.common.cse_optimizations import cse_basic
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.common.stencil_idx import StencilIdxWithName, StencilIdx
 from EinsteinEngine.intermediate.symbify import symbify
@@ -270,7 +268,7 @@ class EqnComplex:
         for eqn_list in self.eqn_lists:
             eqn_list.madd()
 
-    def do_cse(self) -> None:
+    def do_cse(self, optimizations: Sequence[CseOptimization] = ()) -> None:
         old_shape: list[int] = list()
         old_lhses: list[Symbol] = list()
         old_rhses: list[Expr] = list()
@@ -284,10 +282,7 @@ class EqnComplex:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        # Greedy subset-factoring first (never worse): exposes sharing that
-        # syntactic CSE cannot see (e.g. a common factor in 2 of 3 terms).
-        old_rhses = [collect_greedy(rhs) for rhs in old_rhses]
-        substitutions_list, new_rhses = cse(old_rhses, optimizations=[cse_basic()])
+        substitutions_list, new_rhses = cse(old_rhses, optimizations=optimizations)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}

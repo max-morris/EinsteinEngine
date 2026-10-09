@@ -39,11 +39,13 @@ from sympy import Add, Expr, Mul, Pow, Symbol, cancel, collect, count_ops, expan
 from sympy.core.sorting import default_sort_key
 from sympy.core.traversal import preorder_traversal
 
-__all__ = ["op_count", "collect_greedy", "collect_neighbors"]
+__all__ = ["op_count", "collect_greedy", "collect_neighbors", "DEFAULT_MAX_ITER"]
 
 CostFn = Callable[[Expr], int]
 
 _MAX_SUBNODES = 40
+# The default iteration budget of collect_greedy.
+DEFAULT_MAX_ITER = 25
 # factor and together invoke sympy's multivariate polynomial factorization and GCD, whose cost grows steeply with the
 # number of variables: on Z4c, a 132-operation sum of degree 3 in 87 symbols took 866 s to factor. So they are tried
 # only on expressions that are small in both senses; factor_terms/collect/expand stay always-on (cheap and local).
@@ -142,7 +144,7 @@ def collect_neighbors(expr: Expr, max_subnodes: int = _MAX_SUBNODES) -> Iterator
 
 
 def collect_greedy(expr: Expr, cost: CostFn | None = None,
-                   max_iter: int = 25, max_subnodes: int = _MAX_SUBNODES) -> Expr:
+                   max_iter: int = DEFAULT_MAX_ITER, max_subnodes: int = _MAX_SUBNODES) -> Expr:
     """Steepest descent to a local cost minimum. Never worse than input.
 
     At most max_iter improving moves are made. On reaching the budget the

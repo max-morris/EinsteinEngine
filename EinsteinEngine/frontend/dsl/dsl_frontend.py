@@ -69,9 +69,7 @@ from EinsteinEngine.frontend.definitions import (
     one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
-from EinsteinEngine.common.collect import collect_greedy
-from EinsteinEngine.common.cse_optimizations import cse_basic
-from EinsteinEngine.common.sympywrap import cse, free_symbols
+from EinsteinEngine.common.sympywrap import cse, CseOptimization, free_symbols
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
@@ -102,6 +100,9 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     # Frontend opts
     do_cse: bool
     cse_optimization_level: CseOptimizationLevel
+    # The CSE optimizations of the global CSE, in order (see CseOptimization), e.g.
+    # [cse_collect_greedy(max_iter=50), cse_basic()]. None by default.
+    cse_optimizations: Sequence[CseOptimization]
     temporary_promotion_strategy: TemporaryPromotionStrategy
 
     # Function frontend default opts
@@ -321,6 +322,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions] = {
             "do_cse": True,
             "cse_optimization_level": CseOptimizationLevel.Optimal,
+            "cse_optimizations": [],
             "temporary_promotion_strategy": promote_none(),
             "ordering_fn": maximize_symbol_reuse,
             "functions": dict(),
@@ -363,7 +365,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
         if my_opts["do_cse"]:
             pprint("Performing CSE...")
-            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"],
+                                optimizations=my_opts["cse_optimizations"])
         else:
             # The post-CSE rebake is what orders a list with ordering_fn after a pre_population_ordering_fn; without
             #  CSE, rebake here instead.
@@ -469,7 +472,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _do_global_cse(
             self,
             promotion_strategy: TemporaryPromotionStrategy = promote_all(),
-            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal,
+            *,
+            optimizations: Sequence[CseOptimization] = ()
     ) -> None:
         for tf in self.functions.values():
             if tf.been_late_baked:
@@ -502,12 +507,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         if optimization_level is CseOptimizationLevel.Optimal:
             substitutions_list, new_rhses = cse_isolate(
                 list(chain(*chain(*old_tf_rhses.values()))),
-                symbols_to_isolate=grid_vars
+                symbols_to_isolate=grid_vars,
+                optimizations=optimizations
             )
         elif optimization_level is CseOptimizationLevel.Fast:
-            rhses = list(chain(*chain(*old_tf_rhses.values())))
-            # Greedy subset-factoring first (never worse).
-            substitutions_list, new_rhses = cse([collect_greedy(rhs) for rhs in rhses], optimizations=[cse_basic()])
+            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))), optimizations=optimizations)
         else:
             raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
 
