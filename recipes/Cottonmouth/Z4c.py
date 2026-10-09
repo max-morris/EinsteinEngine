@@ -1273,7 +1273,7 @@ cottonmouth_Z4c.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=False,
-    cse_optimization_level=CseOptimizationLevel.Optimal,
+    cse_isolate_grid_variables=True,
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=ordering_fn,
     # The tuners' ordering knobs refer to the z4c_rhs add_eqn calls, so they apply to z4c_rhs only.

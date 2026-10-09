@@ -22,6 +22,7 @@ Run as a plain script.
 
 import os
 import tempfile
+import warnings
 from typing import Any
 
 from sympy import Expr, Rational, cse as sympy_cse
@@ -31,6 +32,7 @@ from EinsteinEngine.common.collect import op_count
 from EinsteinEngine.common.cse_optimizations import CsePreset, cse_basic, cse_collect_greedy
 from EinsteinEngine.common.sympywrap import cse, mk_symbol, sqrt
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef, ThornFunction
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.intermediate.eqn_ordering import prioritize_rare_symbols
 from EinsteinEngine.tuning.probe import derive_add_eqn_order
 
@@ -96,11 +98,29 @@ def test_collect_greedy_budget() -> None:
         eqns_of(bake_thorn(cse_optimizations=[cse_collect_greedy(max_iter=25)]))
 
 
-def test_both_cse_levels_take_the_option() -> None:
-    for level in (CseOptimizationLevel.Optimal, CseOptimizationLevel.Fast):
-        plain = total_ops(bake_thorn(cse_optimization_level=level))
-        collected = total_ops(bake_thorn(cse_optimization_level=level, cse_optimizations=[cse_collect_greedy()]))
-        assert collected < plain, (level, collected, plain)
+def test_both_cse_paths_take_the_option() -> None:
+    for isolate in (True, False):
+        plain = total_ops(bake_thorn(cse_isolate_grid_variables=isolate))
+        collected = total_ops(bake_thorn(cse_isolate_grid_variables=isolate, cse_optimizations=[cse_collect_greedy()]))
+        assert collected < plain, (isolate, collected, plain)
+
+
+def test_deprecated_cse_optimization_level() -> None:
+    for level, isolate in ((CseOptimizationLevel.Optimal, True), (CseOptimizationLevel.Fast, False)):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            old = eqns_of(bake_thorn(cse_optimization_level=level))
+        assert any(issubclass(w.category, DeprecationWarning) and "cse_isolate_grid_variables" in str(w.message)
+                   for w in caught), caught
+        assert old == eqns_of(bake_thorn(cse_isolate_grid_variables=isolate))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        try:
+            bake_thorn(cse_optimization_level=CseOptimizationLevel.Fast, cse_isolate_grid_variables=True)
+        except DslException as e:
+            assert "contradicts" in str(e), e
+        else:
+            raise AssertionError("a contradictory cse_optimization_level was accepted")
 
 
 DERIVE_RECIPE = """\
@@ -158,7 +178,8 @@ if __name__ == "__main__":
         test_basic_optimizations,
         test_collect_greedy_reduces_operations,
         test_collect_greedy_budget,
-        test_both_cse_levels_take_the_option,
+        test_both_cse_paths_take_the_option,
+        test_deprecated_cse_optimization_level,
         test_derivation_takes_the_option,
         test_presets,
     ]
