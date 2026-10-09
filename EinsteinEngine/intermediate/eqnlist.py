@@ -38,6 +38,7 @@ from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse, EqnO
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.collect import collect_greedy
+from EinsteinEngine.common.cse_optimizations import cse_basic
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.common.stencil_idx import StencilIdxWithName, StencilIdx
 from EinsteinEngine.intermediate.symbify import symbify
@@ -287,7 +288,7 @@ class EqnComplex:
         # syntactic CSE cannot see (e.g. a common factor in 2 of 3 terms).
         # Time-boxed: bake processes hundreds of RHS.
         old_rhses = [collect_greedy(rhs, max_seconds=5.0) for rhs in old_rhses]
-        substitutions_list, new_rhses = cse(old_rhses, optimizations="basic")
+        substitutions_list, new_rhses = cse(old_rhses, optimizations=[cse_basic()])
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}

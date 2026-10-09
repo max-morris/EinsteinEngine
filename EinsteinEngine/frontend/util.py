@@ -23,6 +23,7 @@ from sympy import Function, Symbol, Expr
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import stencil
 from EinsteinEngine.common.collect import collect_greedy
+from EinsteinEngine.common.cse_optimizations import cse_basic
 from EinsteinEngine.common.sympywrap import cse_return, cse
 
 
@@ -64,7 +65,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
         # syntactic CSE cannot see (e.g. a common factor in 2 of 3 terms).
         exprs_sub = [collect_greedy(e, max_seconds=5.0) for e in exprs_sub]
 
-        new_syms, new_exprs = cse(exprs_sub, optimizations="basic")
+        new_syms, new_exprs = cse(exprs_sub, optimizations=[cse_basic()])
 
         # Restore original symbols
         new_syms = [(lhs, rhs.xreplace(inv_iso_map)) for lhs, rhs in new_syms]  # type: ignore[no-untyped-call]
@@ -72,7 +73,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
 
         return new_syms, new_exprs
     else:
-        return cse([collect_greedy(e, max_seconds=5.0) for e in exprs], optimizations="basic")
+        return cse([collect_greedy(e, max_seconds=5.0) for e in exprs], optimizations=[cse_basic()])
 
 def require[T](expr: Optional[T], msg: Callable[[], str] = lambda: "Expression is required.") -> T:
     if expr is None:
