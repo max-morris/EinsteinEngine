@@ -108,9 +108,13 @@ inline BenchConfig default_config() {
   BenchConfig c;
 #if defined(EE_HAVE_CUDA) || defined(EE_HAVE_HIP)
   // 2^27 elements keeps a GPU kernel in the millisecond range so launch
-  // overhead is not the measurement. Host builds keep the member default.
+  // overhead is not the measurement. Host builds keep the member default
+  // stream length and take more repeats: a 15-sample minimum of the host
+  // add loop moves around by a large fraction of the result.
   c.n_stream = std::size_t{1} << 27;
   c.warmup = 3;
+#else
+  c.repeats = 30;
 #endif
   return c;
 }
@@ -195,25 +199,25 @@ inline BenchResult summarize(std::string group, std::string node, std::string na
   r.ns_per_elem = mn / static_cast<double>(n_elem);
   r.ns_median = med / static_cast<double>(n_elem);
   r.ops_per_elem = ops_per_elem;
-  r.gops = (static_cast<double>(n_elem) * ops_per_elem) / mn * 1e9 / 1e9;
   // mn is total ns for n_elem*ops; GOPS = n*ops / seconds / 1e9
   r.gops = (static_cast<double>(n_elem) * ops_per_elem) / (mn / 1e9) / 1e9;
   r.checksum = checksum;
   return r;
 }
 
-inline void print_json(const std::vector<BenchResult> &rs) {
-  std::printf("{\"results\":[\n");
+inline void print_json(const std::vector<BenchResult> &rs, std::FILE *f = stdout) {
+  std::fprintf(f, "{\"results\":[\n");
   for (std::size_t i = 0; i < rs.size(); ++i) {
     const auto &r = rs[i];
-    std::printf("  {\"group\":\"%s\",\"name\":\"%s\",\"complexity_node\":\"%s\","
-                "\"ns_per_elem\":%.6f,\"ns_median\":%.6f,\"gops\":%.6f,"
-                "\"ops_per_elem\":%d,\"checksum\":%.6g}%s\n",
-                r.group.c_str(), r.name.c_str(), r.complexity_node.c_str(), r.ns_per_elem,
-                r.ns_median, r.gops, r.ops_per_elem, r.checksum,
-                i + 1 < rs.size() ? "," : "");
+    std::fprintf(f,
+                 "  {\"group\":\"%s\",\"name\":\"%s\",\"complexity_node\":\"%s\","
+                 "\"ns_per_elem\":%.6f,\"ns_median\":%.6f,\"gops\":%.6f,"
+                 "\"ops_per_elem\":%d,\"checksum\":%.6g}%s\n",
+                 r.group.c_str(), r.name.c_str(), r.complexity_node.c_str(), r.ns_per_elem,
+                 r.ns_median, r.gops, r.ops_per_elem, r.checksum,
+                 i + 1 < rs.size() ? "," : "");
   }
-  std::printf("]}\n");
+  std::fprintf(f, "]}\n");
 }
 
 inline void print_table(const std::vector<BenchResult> &rs, std::FILE *f = stdout) {

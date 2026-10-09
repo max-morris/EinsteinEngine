@@ -8,9 +8,10 @@
 //  * x**(1/3)    -> cbrt(x)
 //  * otherwise   -> pow(vreal(x), y), incl. non-integer constant exponents.
 //
-// Guestimate under test (sympy_complexity.py): default c=15, integer
-// c=max(2, log2(|p|)). We measure N in {2,3,4,8,16} plus generic pow with a
-// variable exponent, pow(x, 2.5), sqrt, cbrt.
+// Guestimate under test (sympy_complexity.py): default pow weight, integer
+// powers max(floor, atom * int(log2(|p|))). N in {2,3,4,8,16,-1,-2} uses
+// Arith::pown (repeated squaring; negative n is a reciprocal). Also generic
+// pow with a variable exponent, pow(x, 2.5), sqrt, cbrt.
 //
 // CUDA/ROCm build: same expressions, launched from ee_device.hpp. pow/sqrt/cbrt
 // exist in the device libm.
@@ -72,15 +73,7 @@ struct Pow2Op {
 };
 template <int N>
 struct PownOp {
-  EE_HD_INLINE vreal operator()(vreal x, vreal) const {
-    vreal r = static_cast<vreal>(1);
-#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
-#pragma unroll
-#endif
-    for (int i = 0; i < N; ++i)
-      r *= x;
-    return r;
-  }
+  EE_HD_INLINE vreal operator()(vreal x, vreal) const { return ee_kernels::ee_pown(x, N); }
 };
 struct SqrtOp {
   EE_HD_INLINE vreal operator()(vreal a, vreal) const { return ee_kernels::ee_sqrt(a); }
@@ -108,6 +101,8 @@ std::vector<BenchResult> bench_pow(const BenchConfig &cfg) {
   out.push_back(run_stream("pown4_stream", "Pow[x**4]", cfg, PownOp<4>{}));
   out.push_back(run_stream("pown8_stream", "Pow[x**8]", cfg, PownOp<8>{}));
   out.push_back(run_stream("pown16_stream", "Pow[x**16]", cfg, PownOp<16>{}));
+  out.push_back(run_stream("pown_neg1_stream", "Pow[x**-1]", cfg, PownOp<-1>{}));
+  out.push_back(run_stream("pown_neg2_stream", "Pow[x**-2]", cfg, PownOp<-2>{}));
   out.push_back(run_stream("sqrt_stream", "Pow[sqrt]", cfg, SqrtOp{}));
   out.push_back(run_stream("cbrt_stream", "Pow[cbrt]", cfg, CbrtOp{}));
   out.push_back(run_stream("powvar_stream", "Pow[generic]", cfg, PowVarOp{}));
@@ -123,6 +118,10 @@ std::vector<BenchResult> bench_pow(const BenchConfig &cfg) {
                            [](vreal a, vreal) { return ee_pown(a, 8); }));
   out.push_back(run_stream("pown16_stream", "Pow[x**16]", cfg,
                            [](vreal a, vreal) { return ee_pown(a, 16); }));
+  out.push_back(run_stream("pown_neg1_stream", "Pow[x**-1]", cfg,
+                           [](vreal a, vreal) { return ee_pown(a, -1); }));
+  out.push_back(run_stream("pown_neg2_stream", "Pow[x**-2]", cfg,
+                           [](vreal a, vreal) { return ee_pown(a, -2); }));
   out.push_back(run_stream("sqrt_stream", "Pow[sqrt]", cfg,
                            [](vreal a, vreal) { return ee_sqrt(a); }));
   out.push_back(run_stream("cbrt_stream", "Pow[cbrt]", cfg,

@@ -14,11 +14,15 @@
 //  * z-neighbor:  c = g[c] + g[c+nx*ny] (one plane stride away)
 //  * local:       register accumulator, no loads (reference for Symbol local=1)
 //  * constant:    c = 1.0 + a[i]*0 (baseline Atom=1)
-// The x/y/z cost ratios are the data behind the 10/40/100 stencil guestimates.
+// This group is informational. fit_weights.py does not turn these timings
+// into stencil or grid-symbol weights. A single-node loop keeps neighbor
+// points in cache and cannot see the ghost exchange those weights encode.
+// The shipped policy stays center 1000 / x 4000 / y-z 10000.
 //
 // CUDA/ROCm build: one thread per interior point (ee_device::time_grid).
 // Consecutive threads step in x, so each of center/x/y/z is a coalesced load.
-// That is a different cost from the CPU walk; re-measure per device.
+// That is a different cost from the CPU walk, and dividing that one-evaluation
+// load by a 256-repetition arithmetic kernel is not a like-for-like ratio.
 
 #include <cstddef>
 #include <vector>

@@ -54,12 +54,29 @@ EE_HD_INLINE vreal ee_neg(vreal a) { return -a; }
 // Emitted as pow2(x) for x**2.
 EE_HD_INLINE vreal ee_pow2(vreal x) { return x * x; }
 
-// Emitted as pown<vreal>(x, N) for integer exponents.
-EE_HD_INLINE vreal ee_pown(vreal x, int n) {
+// Emitted as pown<vreal>(x, N). Same repeated-squaring loop as Arith::pown
+// (Arith/src/defs.hxx): x**16 is a handful of squarings, not 16 multiplies.
+// A negative exponent is 1/pown(x, -n), including the -1 and -2 that show up
+// in BSSN and Z4c. INT_MIN cannot be negated; the unsigned magnitude avoids
+// that overflow.
+EE_HD_INLINE vreal ee_pown_unsigned(vreal x, unsigned n) {
   vreal r = static_cast<vreal>(1);
-  for (int i = 0; i < n; ++i)
-    r *= x;
+  vreal y = x;
+  while (n) {
+    if (n & 1u)
+      r *= y;
+    y *= y;
+    n >>= 1u;
+  }
   return r;
+}
+
+EE_HD_INLINE vreal ee_pown(vreal x, int n) {
+  if (n < 0) {
+    const unsigned mag = static_cast<unsigned>(-(n + 1)) + 1u;
+    return static_cast<vreal>(1) / ee_pown_unsigned(x, mag);
+  }
+  return ee_pown_unsigned(x, static_cast<unsigned>(n));
 }
 
 EE_HD_INLINE vreal ee_sqrt(vreal x) { return std::sqrt(x); }

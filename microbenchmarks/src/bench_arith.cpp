@@ -60,6 +60,8 @@ BenchResult run_stream(const char *name, const char *node, const BenchConfig &cf
 }
 
 // Chained accumulation; REPEAT>1 amplifies ALU cost so loop overhead is negligible.
+// x is reset at every repeat. A carried multiply by 1.000002 overflows after
+// about 20 full passes, and a carried divide drifts into the subnormals.
 template <typename Op>
 BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, Op op,
                     int ops_per_elem = 1) {
@@ -69,9 +71,11 @@ BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, 
 #else
   constexpr int REPEAT = 16;
   std::size_t iters = cfg.quick ? (1u << 20) : (1u << 24);
-  vreal x = static_cast<vreal>(1.000001);
+  const vreal x0 = static_cast<vreal>(1.000001);
   const vreal k = static_cast<vreal>(1.000002);
+  vreal x = x0;
   for (std::size_t w = 0; w < 2; ++w) {
+    x = x0;
     for (std::size_t i = 0; i < iters / 32; ++i)
       for (int j = 0; j < 32; ++j)
         x = op(x, k);
@@ -79,6 +83,7 @@ BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, 
   std::vector<double> runs;
   ee_bench::Timer t;
   for (int r = 0; r < cfg.repeats; ++r) {
+    x = x0;
     t.start();
     for (std::size_t i = 0; i < iters / REPEAT; ++i) {
       for (int j = 0; j < REPEAT; ++j)
@@ -90,18 +95,14 @@ BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, 
   double sum = static_cast<double>(x);
   ee_escape(&sum);
   // Each inner step is one measured op; total elements = iters.
-  std::vector<double> scaled;
-  for (double v : runs)
-    scaled.push_back(v);
-  BenchResult r =
-      ee_bench::summarize("arith", node, name, scaled, iters, ops_per_elem, sum);
-  return r;
+  BenchResult result =
+      ee_bench::summarize("arith", node, name, runs, iters, ops_per_elem, sum);
+  return result;
 #endif
 }
 
 } // namespace
 
-#if defined(EE_DEVICE_BUILD)
 namespace {
 struct AddOp {
   EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal b) const {
@@ -128,13 +129,19 @@ struct NegOp {
     return ee_kernels::ee_neg(a);
   }
 };
+// Device streamed kernels call op(base + k*eps, other) and then pay a
+// finiteness check and an xor sink. This functor returns that perturbed input
+// so the same harness can time the overhead alone.
+struct IdentityOp {
+  EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal) const { return a; }
+};
 } // namespace
-#endif
 
 std::vector<ee_bench::BenchResult> bench_arith(const ee_bench::BenchConfig &cfg) {
-  using namespace ee_kernels;
   std::vector<BenchResult> out;
 #if defined(EE_DEVICE_BUILD)
+  out.push_back(run_stream("identity_stream", "identity", cfg, IdentityOp{}));
+#endif
   out.push_back(run_stream("add_stream", "Add", cfg, AddOp{}));
   out.push_back(run_stream("sub_stream", "Add", cfg, SubOp{}));
   out.push_back(run_stream("mul_stream", "Mul", cfg, MulOp{}));
@@ -143,16 +150,5 @@ std::vector<ee_bench::BenchResult> bench_arith(const ee_bench::BenchConfig &cfg)
   out.push_back(run_reg("add_reg", "Add", cfg, AddOp{}));
   out.push_back(run_reg("mul_reg", "Mul", cfg, MulOp{}));
   out.push_back(run_reg("div_reg", "Mul[div]", cfg, DivOp{}));
-#else
-  out.push_back(run_stream("add_stream", "Add", cfg, ee_add));
-  out.push_back(run_stream("sub_stream", "Add", cfg, ee_sub));
-  out.push_back(run_stream("mul_stream", "Mul", cfg, ee_mul));
-  out.push_back(run_stream("div_stream", "Mul[div]", cfg, ee_div));
-  out.push_back(run_stream(
-      "neg_stream", "Mul[neg]", cfg, [](vreal a, vreal) { return ee_neg(a); }));
-  out.push_back(run_reg("add_reg", "Add", cfg, ee_add));
-  out.push_back(run_reg("mul_reg", "Mul", cfg, ee_mul));
-  out.push_back(run_reg("div_reg", "Mul[div]", cfg, ee_div));
-#endif
   return out;
 }

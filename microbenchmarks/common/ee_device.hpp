@@ -280,6 +280,10 @@ __global__ void binary_kernel(const ee_bench::vreal *__restrict__ a,
   const ee_bench::vreal base = a[i];
   const ee_bench::vreal other = b[i];
   constexpr ee_bench::vreal eps = static_cast<ee_bench::vreal>(1.0e-8);
+  // Each repetition also pays this FMA, the finiteness check inside
+  // repeat_sink, and the xor into the sink. identity_stream uses the same
+  // path with a functor that returns its first argument. fit_weights.py
+  // reports that timing and subtracts it, flooring the difference at 0.
   c[i] = repeat_sink<ee_bench::vreal>(reps, [&](int k) {
     return op(base + static_cast<ee_bench::vreal>(k) * eps, other);
   });

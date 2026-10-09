@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Max Morris and other Einstein Engine contributors.
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Measures the transcendental calls weighted 15 in sympy_complexity.py:
+// Measures the transcendental calls named in the active weight profile:
 // sin, cos, exp, log, sqrt, cbrt — plus the sibling calls the emitter may
 // produce (tan, sinh, cosh, tanh, erf) so future weight splits have data.
 //
@@ -62,7 +62,6 @@ BenchResult run_stream(const char *name, const char *node, const BenchConfig &cf
 
 } // namespace
 
-#if defined(EE_DEVICE_BUILD)
 namespace {
 struct SinOp {
   EE_HD_INLINE vreal operator()(vreal a) const { return ee_kernels::ee_sin(a); }
@@ -98,12 +97,9 @@ struct CbrtOp {
   EE_HD_INLINE vreal operator()(vreal a) const { return ee_kernels::ee_cbrt(a); }
 };
 } // namespace
-#endif
 
 std::vector<BenchResult> bench_transcendental(const BenchConfig &cfg) {
-  using namespace ee_kernels;
   std::vector<BenchResult> out;
-#if defined(EE_DEVICE_BUILD)
   out.push_back(run_stream("sin_stream", "sin", cfg, SinOp{}, true));
   out.push_back(run_stream("cos_stream", "cos", cfg, CosOp{}, true));
   out.push_back(run_stream("tan_stream", "tan", cfg, TanOp{}, true));
@@ -115,18 +111,5 @@ std::vector<BenchResult> bench_transcendental(const BenchConfig &cfg) {
   out.push_back(run_stream("erf_stream", "erf", cfg, ErfOp{}, true));
   out.push_back(run_stream("sqrt_stream", "sqrt", cfg, SqrtOp{}, false));
   out.push_back(run_stream("cbrt_stream", "cbrt", cfg, CbrtOp{}, false));
-#else
-  out.push_back(run_stream("sin_stream", "sin", cfg, ee_sin, true));
-  out.push_back(run_stream("cos_stream", "cos", cfg, ee_cos, true));
-  out.push_back(run_stream("tan_stream", "tan", cfg, ee_tan, true));
-  out.push_back(run_stream("sinh_stream", "sinh", cfg, ee_sinh, true));
-  out.push_back(run_stream("cosh_stream", "cosh", cfg, ee_cosh, true));
-  out.push_back(run_stream("tanh_stream", "tanh", cfg, ee_tanh, true));
-  out.push_back(run_stream("exp_stream", "exp", cfg, ee_exp, false));
-  out.push_back(run_stream("log_stream", "log", cfg, ee_log, false));
-  out.push_back(run_stream("erf_stream", "erf", cfg, ee_erf, true));
-  out.push_back(run_stream("sqrt_stream", "sqrt", cfg, ee_sqrt, false));
-  out.push_back(run_stream("cbrt_stream", "cbrt", cfg, ee_cbrt, false));
-#endif
   return out;
 }
