@@ -57,16 +57,24 @@ class _CollectGreedy:
         return collect_greedy(expr, max_iter=self.max_iter)
 
 
-def cse_collect_greedy(max_iter: int = DEFAULT_MAX_ITER) -> CseOptimization:
+def cse_collect_greedy(max_iter: int = DEFAULT_MAX_ITER, after_cse: bool = False) -> CseOptimization:
     """
-    Greedy subset-factoring of each expression before the CSE (see `collect_greedy`), which exposes sharing that
-    syntactic CSE cannot see, e.g. a common factor in two of three terms. Each expression gets at most ``max_iter``
-    improving moves.
+    Greedy subset-factoring (see `collect_greedy`), with at most ``max_iter`` improving moves per expression.
 
-    Preprocessors run in list order, so ``[cse_collect_greedy(), cse_basic()]`` factors before cse_basic()'s rewriting,
-    and ``[cse_basic(), cse_collect_greedy()]`` after it.
+    By default it factors each expression before the CSE, which exposes sharing that syntactic CSE cannot see, e.g. a
+    common factor in two of three terms. Each expression only gets cheaper, but a factored form can break up a
+    subexpression that another expression shared, so the CSE as a whole can get worse.
+
+    With ``after_cse``, it factors each replacement and reduced expression after the CSE instead. Every shared
+    subexpression is a temporary by then, so factoring one expression cannot break any sharing, but it cannot expose
+    any either.
+
+    Preprocessors run in list order, so ``[cse_collect_greedy(), cse_basic()]`` factors before cse_basic()'s rewriting.
+    Postprocessors run in reverse list order, so ``[cse_collect_greedy(after_cse=True), cse_basic()]`` factors after
+    cse_basic() has restored the subtractions.
     """
-    return _CollectGreedy(max_iter), None
+    collect = _CollectGreedy(max_iter)
+    return (None, collect) if after_cse else (collect, None)
 
 
 class CsePreset(Enum):
@@ -80,11 +88,15 @@ class CsePreset(Enum):
     - Basic: sympy's basic optimizations (`cse_basic`).
     - CollectBefore: greedy subset-factoring of each expression before the CSE (`cse_collect_greedy`).
     - CollectBeforeBasic: the factoring, then sympy's basic optimizations.
+    - CollectAfter: greedy subset-factoring of each expression after the CSE (`cse_collect_greedy` with ``after_cse``).
+    - BasicCollectAfter: sympy's basic optimizations, then the factoring after the CSE.
     """
     Off = "off"
     Basic = "basic"
     CollectBefore = "collect-before"
     CollectBeforeBasic = "collect-before-basic"
+    CollectAfter = "collect-after"
+    BasicCollectAfter = "basic-collect-after"
 
     def __call__(self, max_iter: int = DEFAULT_MAX_ITER) -> list[CseOptimization]:
         match self:
@@ -96,3 +108,8 @@ class CsePreset(Enum):
                 return [cse_collect_greedy(max_iter)]
             case CsePreset.CollectBeforeBasic:
                 return [cse_collect_greedy(max_iter), cse_basic()]
+            case CsePreset.CollectAfter:
+                return [cse_collect_greedy(max_iter, after_cse=True)]
+            case CsePreset.BasicCollectAfter:
+                # Listed first, so that its postprocessor runs last, on the restored subtractions.
+                return [cse_collect_greedy(max_iter, after_cse=True), cse_basic()]

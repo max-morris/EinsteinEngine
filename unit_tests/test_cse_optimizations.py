@@ -160,9 +160,28 @@ def test_derivation_takes_the_option() -> None:
     assert calls[0] == one_bake, (calls[0], one_bake)
 
 
+def test_collect_after_cse() -> None:
+    exprs = [x * a + x * b + c * (a - b), mk_symbol("y") * a + mk_symbol("y") * b + (a - b) ** 2]
+    plain_subs, plain_exprs = cse(exprs)
+    subs, reduced = cse(exprs, [cse_collect_greedy(after_cse=True)])
+    # Collecting after the CSE leaves the sharing it found alone...
+    assert [lhs for lhs, _ in subs] == [lhs for lhs, _ in plain_subs]
+    # ...and only makes each expression cheaper, so the whole is never worse than plain CSE.
+    ops = sum(op_count(e) for e in reduced) + sum(op_count(rhs) for _, rhs in subs)
+    plain_ops = sum(op_count(e) for e in plain_exprs) + sum(op_count(rhs) for _, rhs in plain_subs)
+    assert ops < plain_ops, (ops, plain_ops)
+    # Collecting before the CSE can expose sharing that collecting after cannot: here a + b.
+    before_subs, _ = cse(exprs, [cse_collect_greedy()])
+    assert a + b in [rhs for _, rhs in before_subs], before_subs
+    assert total_ops(bake_thorn(cse_optimizations=[cse_collect_greedy(after_cse=True)])) < total_ops(bake_thorn())
+
+
 def test_presets() -> None:
     # The order is what a tuner indexes; appending is fine, reordering is not.
-    assert [p.name for p in CsePreset][:4] == ["Off", "Basic", "CollectBefore", "CollectBeforeBasic"]
+    assert [p.name for p in CsePreset] == ["Off", "Basic", "CollectBefore", "CollectBeforeBasic", "CollectAfter",
+                                           "BasicCollectAfter"]
+    assert CsePreset.CollectAfter(max_iter=7) == [cse_collect_greedy(max_iter=7, after_cse=True)]
+    assert CsePreset.BasicCollectAfter(max_iter=7) == [cse_collect_greedy(max_iter=7, after_cse=True), cse_basic()]
     assert CsePreset.Off() == []
     assert CsePreset.Basic() == [cse_basic()]
     assert CsePreset.CollectBefore() == [cse_collect_greedy()]
@@ -181,6 +200,7 @@ if __name__ == "__main__":
         test_both_cse_paths_take_the_option,
         test_deprecated_cse_optimization_level,
         test_derivation_takes_the_option,
+        test_collect_after_cse,
         test_presets,
     ]
     for test in tests:
