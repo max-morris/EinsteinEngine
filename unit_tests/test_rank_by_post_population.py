@@ -179,7 +179,9 @@ def test_whole_thorn(tmp: str) -> None:
         f2 = gf.create_function("f2", ScheduleBin.Evolve)
         f2.add_eqn(d, sin(src) * cos(src2) * exp(src) + exp(src2) * cos(src) + pull_out(src2 * src2))
         f2.add_eqn(e, d * sin(src) * cos(src) + cos(src2) * cos(src))
-        gf.bake(do_cse=True, temporary_promotion_strategy=promote_all(),
+        # No CSE optimizations: the assertions below depend on the derived order differing from the recipe
+        #  order, which it does for this thorn's plain CSE.
+        gf.bake(do_cse=True, temporary_promotion_strategy=promote_all(), cse_optimizations=[],
                 functions={"f1": {"early_ordering_fn": get_optional_tuning_param("early_ordering_fn", None),
                                   "ordering_fn": get_optional_tuning_param("ordering_fn", maximize_symbol_reuse)}})
         """)

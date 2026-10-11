@@ -34,7 +34,7 @@ from EinsteinEngine.frontend.dsl.use_indices import D, div, idx_to_int, IndexedS
     noop, stencil, DD, DDI
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.common.sympywrap import CseOptimization
-from EinsteinEngine.common.cse_optimizations import cse_basic, cse_collect_greedy, CsePreset
+from EinsteinEngine.common.cse_optimizations import cse_basic, cse_collect_greedy, CsePreset, default_cse_optimizations
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn, IntentRegion
 from EinsteinEngine.emit.tree import Identifier, String, Centering
 from EinsteinEngine.common.sympywrap import Applier, sqrt, cbrt, log, exp, Pow, PowType, UFunc, diff, \
@@ -85,4 +85,4 @@ __all__ = [
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
     "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
     "get_tuning_param", "get_optional_tuning_param", "CseOptimization", "cse_basic", "cse_collect_greedy",
-    "CsePreset"]
+    "CsePreset", "default_cse_optimizations"]

@@ -29,7 +29,7 @@ from sympy import Expr, Rational, cse as sympy_cse
 
 from EinsteinEngine import *
 from EinsteinEngine.common.collect import op_count
-from EinsteinEngine.common.cse_optimizations import CsePreset, cse_basic, cse_collect_greedy
+from EinsteinEngine.common.cse_optimizations import CsePreset, cse_basic, cse_collect_greedy, default_cse_optimizations
 from EinsteinEngine.common.sympywrap import cse, mk_symbol, sqrt
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef, ThornFunction
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
@@ -74,8 +74,10 @@ def total_ops(fun: ThornFunction) -> int:
     return sum(op_count(rhs) for el in fun.eqn_complex.eqn_lists for rhs in el.eqns.values())
 
 
-def test_default_is_no_optimizations() -> None:
-    assert eqns_of(bake_thorn()) == eqns_of(bake_thorn(cse_optimizations=[]))
+def test_default_is_basic_collect_after() -> None:
+    assert default_cse_optimizations() == CsePreset.BasicCollectAfter()
+    assert eqns_of(bake_thorn()) == eqns_of(bake_thorn(cse_optimizations=CsePreset.BasicCollectAfter()))
+    assert eqns_of(bake_thorn()) != eqns_of(bake_thorn(cse_optimizations=[]))
 
 
 def test_basic_optimizations() -> None:
@@ -84,13 +86,13 @@ def test_basic_optimizations() -> None:
 
 
 def test_collect_greedy_reduces_operations() -> None:
-    plain = total_ops(bake_thorn())
+    plain = total_ops(bake_thorn(cse_optimizations=[]))
     collected = total_ops(bake_thorn(cse_optimizations=[cse_collect_greedy()]))
     assert collected < plain, (collected, plain)
 
 
 def test_collect_greedy_budget() -> None:
-    plain = eqns_of(bake_thorn())
+    plain = eqns_of(bake_thorn(cse_optimizations=[]))
     # A zero budget makes no moves.
     assert eqns_of(bake_thorn(cse_optimizations=[cse_collect_greedy(max_iter=0)])) == plain
     assert eqns_of(bake_thorn(cse_optimizations=[cse_collect_greedy(max_iter=1)])) != plain
@@ -100,7 +102,7 @@ def test_collect_greedy_budget() -> None:
 
 def test_both_cse_paths_take_the_option() -> None:
     for isolate in (True, False):
-        plain = total_ops(bake_thorn(cse_isolate_grid_variables=isolate))
+        plain = total_ops(bake_thorn(cse_isolate_grid_variables=isolate, cse_optimizations=[]))
         collected = total_ops(bake_thorn(cse_isolate_grid_variables=isolate, cse_optimizations=[cse_collect_greedy()]))
         assert collected < plain, (isolate, collected, plain)
 
@@ -173,7 +175,8 @@ def test_collect_after_cse() -> None:
     # Collecting before the CSE can expose sharing that collecting after cannot: here a + b.
     before_subs, _ = cse(exprs, [cse_collect_greedy()])
     assert a + b in [rhs for _, rhs in before_subs], before_subs
-    assert total_ops(bake_thorn(cse_optimizations=[cse_collect_greedy(after_cse=True)])) < total_ops(bake_thorn())
+    assert total_ops(bake_thorn(cse_optimizations=[cse_collect_greedy(after_cse=True)])) < \
+        total_ops(bake_thorn(cse_optimizations=[]))
 
 
 def test_presets() -> None:
@@ -193,7 +196,7 @@ def test_presets() -> None:
 if __name__ == "__main__":
     tests = [
         test_cse_basic_matches_sympy,
-        test_default_is_no_optimizations,
+        test_default_is_basic_collect_after,
         test_basic_optimizations,
         test_collect_greedy_reduces_operations,
         test_collect_greedy_budget,

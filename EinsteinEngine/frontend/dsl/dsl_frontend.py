@@ -71,6 +71,7 @@ from EinsteinEngine.frontend.definitions import (
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
 from EinsteinEngine.common.sympywrap import cse, CseOptimization, free_symbols
+from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
@@ -107,7 +108,7 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     cse_optimization_level: CseOptimizationLevel
     # The CSE optimizations of the global CSE, in order (see CseOptimization), e.g.
     # [cse_collect_greedy(max_iter=50), cse_basic()], or a preset such as CsePreset.CollectBeforeBasic(max_iter=50).
-    # None by default.
+    # default_cse_optimizations() (CsePreset.BasicCollectAfter) by default; [] for none.
     cse_optimizations: Sequence[CseOptimization]
     temporary_promotion_strategy: TemporaryPromotionStrategy
 
@@ -328,7 +329,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions] = {
             "do_cse": True,
             "cse_isolate_grid_variables": True,
-            "cse_optimizations": [],
+            "cse_optimizations": default_cse_optimizations(),
             "temporary_promotion_strategy": promote_none(),
             "ordering_fn": maximize_symbol_reuse,
             "functions": dict(),

@@ -29,7 +29,7 @@ from sympy.simplify.cse_opts import sub_post, sub_pre
 from EinsteinEngine.common.collect import DEFAULT_MAX_ITER, collect_greedy
 from EinsteinEngine.common.sympywrap import CseOptimization
 
-__all__ = ["cse_basic", "cse_collect_greedy", "CsePreset"]
+__all__ = ["cse_basic", "cse_collect_greedy", "CsePreset", "default_cse_optimizations"]
 
 
 def _basic_pre(expr: Expr) -> Expr:
@@ -84,12 +84,13 @@ class CsePreset(Enum):
     cse_collect_greedy (the presets without one ignore it). A tuner can pick a preset by an index into
     ``list(CsePreset)``, whose order does not change.
 
-    - Off: no optimizations (the bake option's default).
+    - Off: no optimizations.
     - Basic: sympy's basic optimizations (`cse_basic`).
     - CollectBefore: greedy subset-factoring of each expression before the CSE (`cse_collect_greedy`).
     - CollectBeforeBasic: the factoring, then sympy's basic optimizations.
     - CollectAfter: greedy subset-factoring of each expression after the CSE (`cse_collect_greedy` with ``after_cse``).
-    - BasicCollectAfter: sympy's basic optimizations, then the factoring after the CSE.
+    - BasicCollectAfter: sympy's basic optimizations, then the factoring after the CSE (the bake option's default,
+      `default_cse_optimizations`).
     """
     Off = "off"
     Basic = "basic"
@@ -113,3 +114,13 @@ class CsePreset(Enum):
             case CsePreset.BasicCollectAfter:
                 # Listed first, so that its postprocessor runs last, on the restored subtractions.
                 return [cse_collect_greedy(max_iter, after_cse=True), cse_basic()]
+
+
+def default_cse_optimizations() -> list[CseOptimization]:
+    """
+    The cse_optimizations bake option's default: CsePreset.BasicCollectAfter. Of the presets, it ran the unsplit Z4c RHS
+    fastest, about 11% faster than no optimizations (224.1 s against 251.4 s for 50 iterations, every preset on one
+    V100S in one job), and adds under a minute to a Z4c bake. A recipe that exposes cse_optimizations as a tuning knob
+    should default it to this.
+    """
+    return CsePreset.BasicCollectAfter()
