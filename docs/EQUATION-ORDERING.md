@@ -16,9 +16,9 @@ In short:
 - Positions are **0-based**: position `i` means "split after element `i`".
 - Every function keeps **two orders**: the recipe order, which is never rewritten, and the pre-population order, which
   the first two ordering functions rewrite. `insertion_order` is gone; use `pre_population_order` instead.
-- The early order can be given explicitly (`add_eqn_order([...])`) or derived by the engine from a trial bake
-  (`rank_by_post_population(fn)`, section 7), which ranks the `add_eqn` calls by where `fn` puts their equations after
-  CSE.
+- The early order can be given explicitly (`add_eqn_order([...])`) or, by a tuner, derived once from a run of the
+  recipe (`rank_by_post_population(fn)`, section 7), which ranks the `add_eqn` calls by where `fn` puts their equations
+  after CSE.
 
 How to run a tuning search is covered in [TUNING-QUICKSTART.md](TUNING-QUICKSTART.md). This document only covers the
 parts of tuning that depend on ordering and loci (section 6).
@@ -97,8 +97,6 @@ predicates are called at bake time, and there are three ordering functions.
    v
  DslFrontend.bake(**options)
    |
-   |  0. (only with rank_by_post_population) trial bake, section 7
-   |
    |  for each function (_early_bake):
    |  +-------------------------------------------------------------------------------+
    |  | 1. early_ordering_fn, if set: order each list's add_eqn groups                |
@@ -155,8 +153,7 @@ Things to know about them:
 - **Bayesian optimization never runs before CSE.** An ordering function whose name (or whose `functools.partial`'s
   function's name) contains `bayesian` is replaced by `prioritize_rare_symbols` for any bake before CSE and for any
   "fast" rebake. This applies to `early_ordering_fn` and `pre_population_ordering_fn` too, so passing
-  `bayesian_optimization` there is the same as passing `prioritize_rare_symbols`. (`rank_by_post_population` refuses a
-  Bayesian function outright; see section 7.)
+  `bayesian_optimization` there is the same as passing `prioritize_rare_symbols`.
 - **The early ordering function is not used as an order directly.** It ranks groups (section 3). The other two are
   used as orders.
 
@@ -164,7 +161,7 @@ Things to know about them:
 
 The options go to `bake()`, either for every function or per function through `functions={name: {...}}`, which
 overrides the bake-wide values for that function. `add_eqn_order([...])` refers to one function's `add_eqn` calls, so
-pass it per function. (`rank_by_post_population(fn)` can be passed bake-wide: it derives each function's own order.)
+pass it per function.
 Z4c does this for its RHS function (`recipes/Cottonmouth/Z4c.py`):
 
 ```python
@@ -328,8 +325,8 @@ Two helpers make early ordering functions from `add_eqn` call indices (both expo
 
 Their `repr` shows the order (`add_eqn_order([8, 1, 0, ...])`), which the tuners record (section 6).
 
-A third option, `rank_by_post_population(fn)`, derives the order from a trial bake instead of taking it from you.
-Section 7 explains it.
+A tuner can also take `rank_by_post_population(fn)`, which derives the order from a run of the recipe instead of taking
+it from you. Section 7 explains it.
 
 ```python
 gf = ThornDef("DOCS", "ORDERRANGE")
@@ -352,9 +349,8 @@ add_eqn_order: call index 2 is out of range; the function has 2 add_eqn calls (v
 add_eqn_order: the call indices [1] are listed more than once.
 ```
 
-Steve's derived Z4c order (1-based `9, 2, 1, 3, 4, 6, 11, 8, 5, 10, 13, 7, 12` on feature/eqn-order-instrumentation)
-is `add_eqn_order([8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11])` here. `rank_by_post_population(prioritize_rare_symbols)`
-derives the same order (section 7).
+For Z4c, `rank_by_post_population(prioritize_rare_symbols)` derives `add_eqn_order([8, 1, 0, 2, 3, 5, 10, 7, 4, 9,
+12, 6, 11])` (section 7).
 
 ### Worked example: reordering with dependency repair
 
@@ -1100,7 +1096,7 @@ description (a *fingerprint*) of the locus and ordering functions the tuner prov
 `generate_best`, probes again and refuses to continue if the count or a description changed, because the checkpoint's
 coordinates only mean something for the positions they were recorded against. What the fingerprint can and cannot
 see is described in TUNING-QUICKSTART.md, "The probe file". With `rank_by_post_population`, the sidecar also records
-the order the engine derived, and a changed derived order is refused too (section 7).
+the order it was resolved to, which is then reused rather than derived again (section 7).
 
 ### Old checkpoints
 
@@ -1126,341 +1122,84 @@ new.jsonl: {"target": -5.0, "params": {"split_0": 2, "split_1": 0, "split_2": 1,
 
 ## 7. Deriving an early order automatically: `rank_by_post_population`
 
-`add_eqn_order([...])` needs you to know a good order of the `add_eqn` calls. `rank_by_post_population(fn)` has the
-engine work one out: it orders the calls by where `fn` places their equations **after CSE**. On Z4c,
-`rank_by_post_population(prioritize_rare_symbols)` derives exactly the order Steve derived offline and hardcoded,
-`[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, and the tuned build generated with it is byte-identical to his.
-
-```python
-gf.bake(..., functions={"my_rhs": {"early_ordering_fn": rank_by_post_population(prioritize_rare_symbols)}})
-```
-
-### The chicken-and-egg problem
-
-The order worth imitating is the post-CSE order that a good ordering function gives. That is the order that
-matters for register pressure, and it exists only once CSE has added its temporaries and rewritten the right-hand
-sides in terms of them. But the early locus runs **first**, before pull-out, before the pre-CSE bake, and before CSE:
-
-```
-   early locus ---> pull-out ---> pre-CSE bake ---> global CSE ---> post-CSE order
-       ^                                                                  |
-       |                                                                  |
-       +------- the ranking the early locus needs is computed here -------+
-```
-
-The post-CSE order depends on CSE, CSE depends on the order before it, and that order is what the early locus is
-about to decide. So the engine bakes twice: first a **trial bake** that it throws away, just to learn the post-CSE
-order, then the real bake with an early order derived from it.
-
-### The pipeline with a trial bake
-
-```
- DslFrontend.bake(**options)
-   |
-   |  _derive_early_orders: only if some function has early_ordering_fn=rank_by_post_population(fn)
-   |  +---------------------------------------------------------------------------------+
-   |  | 1. TRIAL BAKE, on throwaway copies of EVERY function of the thorn               |
-   |  |    a. snapshot, for each ranked function, which equations each add_eqn call     |
-   |  |       produced (eqn_origin before the bake)                                     |
-   |  |    b. early-bake every function with its real bake options, except that         |
-   |  |         - a ranked function has early_ordering_fn=None,                         |
-   |  |           pre_population_ordering_fn=None and ordering_fn=fn                    |
-   |  |         - no function has auto split predicates (manual splits are kept)        |
-   |  |    c. global CSE over all functions (if do_cse); rebake the ranked functions    |
-   |  |       after CSE                                                                 |
-   |  |    d. read each ranked list's order  ==> the post-CSE positions                 |
-   |  |    e. restore everything (also if the trial raised)                             |
-   |  | 2. RANK: in each list, order the add_eqn calls by the median post-CSE position  |
-   |  |    of their own equations  ==> the derived order, e.g. [8, 1, 0, 2, ...]        |
-   |  |    (printed in one line, and reported to the tuning probe)                      |
-   |  | 3. replace the option: early_ordering_fn := add_eqn_order(<derived order>)      |
-   |  +---------------------------------------------------------------------------------+
-   |
-   |  REAL BAKE: the pipeline of section 1, exactly as with that explicit add_eqn_order:
-   |    step 1 (early locus): order_groups ranks the groups by it, repairs dependencies,
-   |    merges cycles into super-groups, and the early auto splits run; then pull-out,
-   |    the pre-CSE bake, CSE, the other loci, merges, ...
-   v
- generator
-```
-
-### Step 1: the trial bake
-
-The trial bakes **the whole thorn**, every function, up to and including global CSE, not just the function being
-ranked. That is because CSE is global: it finds common subexpressions across all functions, so what a function's
-post-CSE list looks like depends on the other functions. Baking Z4c's `z4c_rhs` alone gives 759 equations after CSE
-instead of 1068, and ranks the calls as `[1, 8, 2, 0, 3, 5, 10, 4, 7, 9, 11, 12, 6]`, which is not Steve's order.
-Baking the whole thorn gives his order.
-
-What the trial does and does not do:
-
-- **Each ranked function** is baked as a plain `ordering_fn=fn` bake: no early ordering function, no pre-population
-  ordering function, and `fn` orders both the pre-CSE bake and the post-CSE rebake.
-- **Every other function** is baked with its own bake options, as the real bake will bake it. (Steve's offline script
-  forced `prioritize_rare_symbols` on every function instead. On Z4c, the trial's `z4c_rhs` list has 1068 equations
-  after CSE, the offline script's 1061; the derived order is the same.)
-- **No auto splits.** No function has its auto split predicates during the trial, so the trial is unsplit (manual
-  `split_loop()` / `soft_split()` calls still apply).
-- **The CSE side effects are skipped.** The trial does not declare global temporaries, create their synthetic
-  functions, or infer centerings, and it rebakes only the ranked functions after CSE. None of that can change a ranked
-  function's post-CSE order.
-- **The positions** are each list's order right after the post-CSE rebake: before post-population cuts (there are
-  none in the trial), soft split merges, splitmaxxing and temporary recycling. For an unsplit function without those,
-  that is its final order.
-
-### Step 2: the ranking
-
-For each list of a ranked function, the engine takes the positions of the equations **each `add_eqn` call itself
-produced**, in that list's post-CSE order, and ranks the calls by the median of those positions:
-
-- **Only the call's own equations count**: its scalar components, snapshotted before the trial bake. The pull-out
-  temporaries made from them later do not count (even though they inherit the call's origin), and neither do CSE
-  temporaries (which have none). They still take up positions in the order; they are just not averaged in. This is
-  what Steve's offline script did, and it matters in the pull-out example below.
-- **Ties go to the lower call index.**
-- **A call none of whose equations is in the order** goes last in its list, in call-index order. A call that
-  produced no equation at all is sorted in with those of the last list, as in Steve's script, which gave all of them
-  the median `inf`. The result is always a permutation of `0..(number of add_eqn calls - 1)`.
-- **Lists are ranked separately** and concatenated. Only the order of the calls within a list matters, since the
-  early locus never moves anything across a manual split.
-
-### Step 3: the real bake
-
-The option is replaced by `add_eqn_order(<derived order>)`, and from there **nothing differs from passing that list
-yourself**. In particular, the derived order is a *ranking*, not necessarily the final group order: the early locus
-still repairs dependencies (a group never comes before a group it reads, and groups in a dependency cycle merge into a
-super-group, section 3). The real bake uses the function's real `ordering_fn`, not the `fn` the trial ranked with, for
-everything after the early locus.
-
-### Worked example: the trial, the ranking and the real bake
-
-Three calls, baked without CSE (so "post-CSE" is just the baked order), ranked by `lexicographical_order`. You can
-reproduce the trial by hand: it is a plain bake with `ordering_fn=lexicographical_order`.
-
-```python
-def build(name, **bake_opts):
-    gf = ThornDef("DOCS", name)
-    v = gf.decl("v", [li])
-    u, a, src = gf.decl("u", []), gf.decl("a", []), gf.decl("src", [])
-    fun = gf.create_function("fn", ScheduleBin.Evolve)
-    fun.add_eqn(u, src)                              # call 0
-    fun.add_eqn(v[li], [src * 2, src * 3, src * 4])  # call 1
-    fun.add_eqn(a, u + 1)                            # call 2
-    gf.bake(do_cse=False, **bake_opts)
-    return fun
-
-
-print("the trial, reproduced by hand:")
-show(build("RANKBYHAND", ordering_fn=lexicographical_order))
-print("rank_by_post_population(lexicographical_order):")
-show(build("RANKED", ordering_fn=pre_population_order,
-           early_ordering_fn=rank_by_post_population(lexicographical_order)))
-print("add_eqn_order([0, 2, 1]):")
-show(build("EXPLICIT", ordering_fn=pre_population_order, early_ordering_fn=add_eqn_order([0, 2, 1])))
-```
-
-```text
-the trial, reproduced by hand:
-  loop 0: ['u', 'a', 'vD0', 'vD1', 'vD2']
-rank_by_post_population(lexicographical_order):
-fn: rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.lexicographical_order) derived the early order [0, 2, 1] from a trial bake (0.0 s).
-  loop 0: ['u', 'a', 'vD0', 'vD1', 'vD2']
-add_eqn_order([0, 2, 1]):
-  loop 0: ['u', 'a', 'vD0', 'vD1', 'vD2']
-```
-
-In the trial order `u, a, vD0, vD1, vD2`, call 0 (`u`) is at position 0, call 2 (`a`) at position 1, and call 1 (`vD0`,
-`vD1`, `vD2`) at positions 2, 3 and 4, median 3. So the derived order is `[0, 2, 1]`, and the real bake is exactly
-the explicit `add_eqn_order([0, 2, 1])` bake. (The real bake orders with `pre_population_order` here, so its final
-order shows the group order.)
-
-### Worked example: the ranking is not the final order
-
-`a` reads `wD0`. In the lexicographic trial `a` lands right after `wD0`, at position 1, while the median of `w` is
-position 2, so `a`'s call ranks first. The real bake still cannot put `a` before the group it reads:
-
-```python
-gf = ThornDef("DOCS", "RANKREPAIR")
-w = gf.decl("w", [li])
-a, src = gf.decl("a", []), gf.decl("src", [])
-fun = gf.create_function("fn", ScheduleBin.Evolve)
-fun.add_eqn(w[li], [src, src * 2, src * 3])  # call 0
-fun.add_eqn(a, w[l0] * 2)                    # call 1
-gf.bake(do_cse=False, ordering_fn=pre_population_order,
-        early_ordering_fn=rank_by_post_population(lexicographical_order))
-show(fun)
-```
-
-```text
-fn: rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.lexicographical_order) derived the early order [1, 0] from a trial bake (0.0 s).
-  loop 0: ['wD0', 'wD1', 'wD2', 'a']
-```
-
-### Worked example: pull-out temporaries do not count
-
-The trial order is `pull_out_0, qa, qb, qc` (lexicographic; `qc` reads `pull_out_0` anyway). Counting only the
-equation each call produced, the medians are 3 (call 0, `qc`), 2 (call 1, `qb`) and 1 (call 2, `qa`), so the order is
-`[2, 1, 0]`. If the pull-out temporary counted for call 0, its median would be 1.5 and the order `[2, 0, 1]`:
-
-```python
-gf = ThornDef("DOCS", "PULLOUTCOUNT")
-qa, qb, qc, src = gf.decl("qa", []), gf.decl("qb", []), gf.decl("qc", []), gf.decl("src", [])
-fun = gf.create_function("fn", ScheduleBin.Evolve)
-fun.add_eqn(qc, pull_out(src * src) * 2)  # call 0
-fun.add_eqn(qb, src + 1)                  # call 1
-fun.add_eqn(qa, src * 3)                  # call 2
-gf.bake(do_cse=False, ordering_fn=pre_population_order,
-        early_ordering_fn=rank_by_post_population(lexicographical_order))
-show(fun)
-```
-
-```text
-fn: rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.lexicographical_order) derived the early order [2, 1, 0] from a trial bake (0.0 s).
-  loop 0: ['qa', 'qb', 'pull_out_0', 'qc']
-```
-
-### Isolation: the trial leaves no trace
-
-The real bake is identical to a bake with the explicit `add_eqn_order`, **temporary names included**:
-
-- The trial works on copies of the functions' equation lists, annotations and flags, so the real lists (their
-  origins, orders and sticky ordering functions) are untouched.
-- The thorn's automatic name counter is restored, so the real pull-out temporaries get the same names. (CSE names its
-  temporaries from `x0` afresh in every CSE call.)
-- The CSE results (tile and global temporaries, temporary kinds, the promotion predicate) and the function table are
-  restored, and the skipped CSE hooks are the ones that would have changed declarations and centerings.
-- **No auto split predicate is called during the trial**, so a `Recorder` or a tuner's predicate sees exactly the
-  positions of the real bake, and the probe gets no split-position report from the trial.
-- Everything is restored even if the trial raises; the error then propagates.
-- The trial's progress messages (and its verbose output, with `EINSTEINENGINE_VERBOSE`) are silenced. It prints one
-  line per ranked function (the "derived the early order" line above). Warnings are not silenced, so a warning the
-  trial triggers would appear twice; none does on Z4c.
-- **Your callables run twice per bake.** The ordering functions and the temporary promotion strategy you pass run in
-  the trial and again in the real bake. This matters only for callables with side effects (e.g. one that counts its
-  calls).
-- **One trial per bake serves every function that uses `rank_by_post_population`.** You can pass it bake-wide
-  (`bake(early_ordering_fn=rank_by_post_population(fn))`): unlike `add_eqn_order`, which names one function's calls,
-  it derives each function's own order.
-
-### Restrictions
-
-- **`fn` must be deterministic.** Bayesian optimization (a function or partial whose name contains `bayesian`) is
-  refused: its result changes from run to run, which would break the tuner's check that the order is unchanged, and it
-  would run on the whole post-CSE list in an extra bake. `rank_by_post_population` cannot be nested either.
-- **It is only valid as `early_ordering_fn`.** It has the signature of an ordering function so that it type-checks
-  there (bake options, tuner out-params), but it cannot order anything itself: calling it, passing it as `ordering_fn`
-  or `pre_population_ordering_fn`, or passing it to `_early_bake` directly raises a `DslException`.
-- Its `repr` names the rule and the function, e.g.
-  `rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)`.
-
-```python
-for bad in (lambda: rank_by_post_population(bayesian_optimization),
-            lambda: rank_by_post_population(rank_by_post_population(prioritize_rare_symbols))):
-    try:
-        bad()
-    except Exception as e:
-        print(e)
-```
-
-```text
-rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.bayesian_optimization): Bayesian optimization cannot rank the add_eqn calls. It is nondeterministic, so the derived order (which tuners record and compare) would change from run to run, and it would run on the whole post-CSE list in an extra bake. Rank with a deterministic function (e.g. prioritize_rare_symbols) instead.
-rank_by_post_population cannot be nested: the trial bake needs a plain ordering function.
-```
-
-### Cost
-
-The trial is about one extra bake of the thorn up to CSE, and it is paid **on every bake**: every generation of the
-recipe, every tuning trial, the probe at the start of a tuning run, and `generate_best` (which probes and then
-generates, so it pays twice). On Z4c the trial takes about 16 to 18 s. One unsplit Z4c generation took about 62 s with
-the explicit order and 79 s with the derived rule, about 28% more (indicative timings on a shared machine). There is no
-cache across runs, because the order depends on the recipe. If you want the speed, derive the order once, then pin it
-with `add_eqn_order([...])`.
-
-### Tuning: the derived order in the probe and the sidecar
-
-With `early_ordering_fn=rank_by_post_population(fn)` in a split tuner, the probe records which order was derived,
-because the tuner's positions only mean something in that order: a split coordinate means "cut after the i-th group
-*in this order*". The fingerprint of the tuner's `early_ordering_fn` names only the rule, and the order the rule
-yields depends on the recipe (its equations, its other functions, its bake options), so the order is recorded
-separately:
-
-```json
-{
-  "counts": {"auto_hard_split_predicate": 13},
-  "probe_params": {"auto_split_locus": "SplitLocus.Early",
-                   "early_ordering_fn": "rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)"},
-  "derived_orders": {"z4c_rhs": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]}
-}
-```
-
-`probe_recipe` returns it as `derived_orders`. Here it is for the demo recipe of section 6, whose calls form a chain,
-so any ordering function ranks them `[0, 1, 2]` (dependency repair keeps a chain in order):
-
-```python
-from EinsteinEngine.tuning.probe import probe_recipe
-
-probe = probe_recipe("probe_recipe_demo.py", ["auto_hard_split_predicate"],
-                     {"auto_split_locus": SplitLocus.Early,
-                      "early_ordering_fn": rank_by_post_population(prioritize_rare_symbols)})
-print(dict(probe), dict(probe.derived_orders))
-```
-
-```text
-f: rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols) derived the early order [0, 1, 2] from a trial bake (0.0 s).
-{'auto_hard_split_predicate': 3} {'f': (0, 1, 2)}
-```
-
-The mismatch rule is the same as for the counts: when the recipe changes so that the derived order changes, resuming a
-checkpoint that already has entries (or running `generate_best` on it) is refused, with a message naming the old and
-new order. An empty checkpoint just gets a new sidecar.
-
-**Switching a checkpoint between the explicit list and the derived rule is refused**, even when the order is the same,
-because the two fingerprints differ. Here is what the refusal lists, for a checkpoint recorded with the explicit list
-and resumed with the derived rule:
-
-```python
-from EinsteinEngine.tuning.probe import ProbeResult
-from EinsteinEngine.tuning.tuning import ProbeRecord
-
-recorded = ProbeRecord(ProbeResult({"auto_hard_split_predicate": 13}),
-                       {"early_ordering_fn": "add_eqn_order([8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11])"})
-current = ProbeRecord(ProbeResult({"auto_hard_split_predicate": 13}),
-                      {"early_ordering_fn": "rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)"},
-                      {"z4c_rhs": (8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11)})
-for difference in recorded.differences(current):
-    print(difference)
-```
-
-```text
-the probe param 'early_ordering_fn' was 'add_eqn_order([8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11])' and is now 'rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)'
-the add_eqn order rank_by_post_population derived for function 'z4c_rhs' was absent and is now [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]
-```
-
-To switch, start a new checkpoint file (or delete the sidecar and lose the check).
-
-### Z4c
-
-`tuning/z4c_derived_order/tuner.py` now uses the rule:
+`add_eqn_order([...])` needs you to know a good order of the `add_eqn` calls. A tuner can instead take
+`early_ordering_fn=rank_by_post_population(fn)` (from `EinsteinEngine.tuning.probe`), which orders the calls by where
+`fn` places their equations **after CSE**. On Z4c, `rank_by_post_population(prioritize_rare_symbols)` derives
+`[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`.
 
 ```python
 def get_tuner() -> Tuner:
     return CombinatorialSplitTuner(early_ordering_fn=rank_by_post_population(prioritize_rare_symbols))
 ```
 
-- For today's recipe it derives `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, the order Steve derived offline. The
-  engine prints `z4c_rhs: rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)
-  derived the early order [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11] from a trial bake (16.2 s).`
-- With Steve's converted checkpoint, `generate_best` through the derived rule produces code byte-identical to his
-  tuned build, and so does the explicit list. That build ran in 4.933 s versus 5.332 s for the recipe order at 128³
-  on his runs.
-- `get_explicit_order_tuner()` in the same file pins the order with `add_eqn_order(Z4C_STEVE_ORDER)`: no trial bake,
-  but it does not follow changes to the recipe, and its sidecar does not match the rule's (see above).
+### Why it needs a separate run
 
-Which one to use: the rule follows the recipe (if you change `z4c_rhs` or the rest of the thorn, the order is derived
-again, and a checkpoint recorded under the old order is refused rather than misread). The explicit list is about 17 s
-faster per generation and never changes on its own.
+The order worth imitating is the post-CSE order that a good ordering function gives. It exists only once CSE has added
+its temporaries and rewritten the right-hand sides in terms of them, but the early locus runs **first**:
 
----
+```
+   early locus ---> pull-out ---> pre-CSE bake ---> global CSE ---> post-CSE order
+       ^                                                                  |
+       +------- the ranking the early locus needs is computed here -------+
+```
+
+So the order is derived from a separate run of the recipe, and the trials then use it as an ordinary
+`add_eqn_order`.
+
+### How it is resolved
+
+`tuning.build_experiment` resolves it once per checkpoint:
+
+1. If the checkpoint's probe file already records an order for it (with the same description), that order is used.
+2. Otherwise `probe.derive_add_eqn_order` runs the recipe once, with `fn` as the `ordering_fn` out-param, no
+   `early_ordering_fn`, and no auto split predicates. The engine calls the probe at the start of the bake
+   (`probe.bake_started`, which snapshots each call's equations before pull-out temporaries inherit their origin) and
+   after global CSE (`probe.cse_finished`, which reads the post-CSE order of the function baked with `fn`). The whole
+   thorn is baked, because global CSE works across functions.
+3. `eqn_grouping.rank_add_eqn_calls` ranks the calls of each list by the median post-CSE position of the equations
+   each call produced (not its pull-out temporaries, nor CSE temporaries). Ties go to the lower call index, and a
+   call none of whose equations survive goes last.
+4. The order is printed and recorded in the probe file as `"derived_orders": {"early_ordering_fn": [...]}`. The probe,
+   every trial, a resumed search, `generate_best` and `plot_tuning` use `add_eqn_order(<that order>)`.
+
+The recipe must read `early_ordering_fn` and `ordering_fn` with `get_optional_tuning_param` and pass both to the same
+function, and exactly one function may be baked with `fn`. An order derived once is never derived again for that
+checkpoint, so a later change to the engine (a new cost model, say) or to the recipe cannot silently change what the
+checkpoint's split coordinates mean. To derive it again, start a new checkpoint file.
+
+### Worked example
+
+```python
+# derive_demo.py
+from EinsteinEngine import *
+from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
+from EinsteinEngine.tuning.tuning import get_optional_tuning_param
+
+gf = ThornDef("DOCS", "RANKED")
+v = gf.decl("v", [li])
+u, a, src = gf.decl("u", []), gf.decl("a", []), gf.decl("src", [])
+fun = gf.create_function("fn", ScheduleBin.Evolve)
+fun.add_eqn(u, src)                              # call 0
+fun.add_eqn(v[li], [src * 2, src * 3, src * 4])  # call 1
+fun.add_eqn(a, u + 1)                            # call 2
+gf.bake(do_cse=False,
+        ordering_fn=get_optional_tuning_param("ordering_fn", pre_population_order),
+        early_ordering_fn=get_optional_tuning_param("early_ordering_fn", None))
+```
+
+```python
+from EinsteinEngine.tuning.probe import derive_add_eqn_order
+print(derive_add_eqn_order("derive_demo.py", lexicographical_order))
+```
+
+```text
+('fn', (0, 2, 1))
+```
+
+Baked without CSE, "post-CSE" is just the baked order, `u, a, vD0, vD1, vD2` (lexicographic, with `u` moved in front
+of `a`, which reads it). Call 0 (`u`) is at position 0, call 2 (`a`) at position 1, and call 1 at positions 2, 3 and 4,
+median 3. So the order is `[0, 2, 1]`. As with any `add_eqn_order`, the early locus still repairs dependencies: a call
+that ranks before a group it reads is moved after it.
 
 ## 8. Known limitations and pre-existing issues
 
@@ -1484,9 +1223,8 @@ These predate the split loci, or are deliberate; none of them is caused by the l
 - **Bayesian `ordering_fn` at the post-population locus.** If a function has (manual) soft splits, its post-CSE
   rebake is a "fast" one (a merge follows), so a Bayesian `ordering_fn` is replaced by `prioritize_rare_symbols` there.
   The post-population positions are then in that order. (The `SplitLocus` docstring says so too.)
-- **`rank_by_post_population` costs a trial bake on every run** (about 17 s for Z4c, section 7), and ranks by the
-  order right after the post-CSE rebake, i.e. before soft split merges, splitmaxxing and temporary recycling. Warnings
-  raised during the trial are not silenced, so they would be printed twice.
+- **`rank_by_post_population` ranks by the order right after the post-CSE rebake**, i.e. before soft split merges,
+  splitmaxxing and temporary recycling (section 7).
 - **Memory across tuning trials.** Class-level caches keep references to every baked function, so memory grows over
   many in-process trials.
 - **Whether post-population cuts pay off is untested.** Steve's experiments found that cutting a globally sorted list
@@ -1535,9 +1273,8 @@ One of:
 - It uses 1-based keys (`split_1..N`). Convert it with `scripts/shift_checkpoint_indices.py` (section 6).
 - It has more positions than the recipe now has. Add `--n-positions N`.
 - It predates the soft retain percentile params. Such a checkpoint cannot be converted.
-- The probe file next to it no longer matches: the number of positions changed, the tuner's locus or ordering
-  functions changed, or the order `rank_by_post_population` derived changed (because the recipe changed). The message
-  lists each difference. Start a new checkpoint, or restore the recipe and tuner.
+- The probe file next to it no longer matches: the number of positions changed, or the tuner's locus or ordering
+  functions changed. The message lists each difference. Start a new checkpoint, or restore the recipe and tuner.
 - It was recorded with `add_eqn_order([...])` and you now use `rank_by_post_population(...)`, or the other way
   around. The fingerprints differ even when the order is the same (section 7), so start a new checkpoint.
 
@@ -1559,10 +1296,10 @@ Three ways, from cheapest to most automatic:
 - **Keep the recipe order** (no `early_ordering_fn`). This is the historical behavior.
 - **Give it explicitly** with `add_eqn_order([...])`, e.g. an order you derived once. No extra cost per bake, but it
   does not follow changes to the recipe, and its indices must be kept in sync with the `add_eqn` calls by hand.
-- **Derive it** with `rank_by_post_population(prioritize_rare_symbols)` (section 7). It ranks the calls by where a
-  good ordering function puts their equations after CSE, which is how Steve found the Z4c order that gave the
-  speedup. It costs a trial bake on every run (about 17 s for Z4c). A cheap middle ground is to run it once, copy the
-  order it prints ("... derived the early order [...]"), and pin that with `add_eqn_order`.
+- **Derive it** in a tuner with `rank_by_post_population(prioritize_rare_symbols)` (section 7). It ranks the calls by
+  where a good ordering function puts their equations after CSE, which is how the Z4c order that gave the speedup was
+  found. It costs one extra run of the recipe per new checkpoint, and the order is recorded in the probe file (copy it
+  into an `add_eqn_order` to use it in the recipe itself).
 
 A plain ordering function as `early_ordering_fn` (e.g. `prioritize_rare_symbols` itself) ranks the groups by where it
 puts their equations *before* CSE, which is a different order: on Z4c it gives `[8, 7, 1, 2, 0, 9, 12, 3, 4, 5, 10, 6,
@@ -1592,9 +1329,7 @@ longer emits an empty loop, and the cut guards refuse some splits (section 5, "T
 | **Pre-population order** | Starts as the recipe order; rewritten by `early_ordering_fn` and `pre_population_ordering_fn`. Replaces the old insertion order. |
 | **Baked order** | `EqnList.order`: the order a bake computed with the list's ordering function and dependency repair. The code is generated in this order. |
 | **Dependency repair** | Moving an equation (or group) after everything it reads, whatever order the ordering function asked for. |
-| **Trial bake** | The throwaway bake of the whole thorn (through global CSE, without auto splits) that `rank_by_post_population` runs before the real bake to learn the post-CSE order. |
-| **Ranked function** | A function whose `early_ordering_fn` is `rank_by_post_population(fn)`. The trial bake orders it with `fn`; one trial serves every ranked function of a thorn. |
-| **Derived order** | The 0-based `add_eqn` order that `rank_by_post_population` computes from the trial bake: the calls ranked by the median post-CSE position of their own equations. The real bake uses it as `add_eqn_order(<derived order>)`. |
+| **Derived order** | The 0-based `add_eqn` order that `rank_by_post_population` is resolved to, from one run of the recipe: the calls ranked by the median post-CSE position of their own equations. It is recorded in the probe file, and the trials use it as `add_eqn_order(<derived order>)`. |
 | **Population** | Global CSE populating the equation lists with temporaries. (Not the paper's "populating the abstract program".) |
 | **Locus** (`SplitLocus`) | The point in the bake where a function's auto split predicates are evaluated: `Early`, `PrePopulation` or `PostPopulation`. |
 | **Element** | What the positions at a locus separate: groups or super-groups (Early), or scalar equations (the other two). |
@@ -1626,12 +1361,11 @@ longer emits an empty loop, and the cut guards refuse some splits (section 5, "T
 |---|---|
 | `EinsteinEngine/intermediate/split_locus.py` | `SplitLocus`. |
 | `EinsteinEngine/intermediate/eqn_grouping.py` | Groups, median ranking, super-groups, dependency repair, the reader-before-overwriter edge, `cut_hazards` / `CutHazard` (the cut guards), `rank_add_eqn_calls`. |
-| `EinsteinEngine/intermediate/eqn_ordering.py` | `recipe_order`, `pre_population_order`, `add_eqn_order`, `add_eqn_key_order`, `rank_by_post_population` (its docstring has the full design), `pre_cse_stand_in`. |
+| `EinsteinEngine/intermediate/eqn_ordering.py` | `recipe_order`, `pre_population_order`, `add_eqn_order`, `add_eqn_key_order`, `pre_cse_stand_in`. |
 | `EinsteinEngine/intermediate/eqnlist.py` | The two orders, `eqn_origin`, `EqnComplex.refine`, `rebake_refined` and the validation, `merge_soft_splits`. |
 | `EinsteinEngine/intermediate/post_population_split.py` | Closure assignment for post-population cuts. |
 | `EinsteinEngine/intermediate/loop_region.py` | Loop region inference used by the validation. |
 | `EinsteinEngine/frontend/dsl/dsl_function_frontend.py` | `_early_bake` (early and pre-population loci), predicate queries (`_query_auto_splits`), the cut guards (`_cut_hazards`), post-population cuts. |
 | `EinsteinEngine/frontend/dsl/dsl_frontend.py` | `bake()` (the pipeline), the bake options, the post-population hook. |
-| `EinsteinEngine/frontend/dsl/dsl_frontend.py`, `_derive_early_orders` | The trial bake of `rank_by_post_population`. `eqn_grouping.rank_add_eqn_calls` ranks the calls. |
-| `EinsteinEngine/tuning/probe.py`, `tuning.py`, `tune_splitting.py` | Probing, the sidecar (including derived orders), the split tuners. |
+| `EinsteinEngine/tuning/probe.py`, `tuning.py`, `tune_splitting.py` | Probing, `rank_by_post_population` and `derive_add_eqn_order`, the sidecar (including derived orders), the split tuners. |
 | `unit_tests/test_split_loci.py`, `unit_tests/test_post_population_split.py`, `unit_tests/test_rank_by_post_population.py` | Small, readable examples of every rule above. |

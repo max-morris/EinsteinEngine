@@ -28,8 +28,9 @@ from typing import Any
 from EinsteinEngine.common.util import pprint
 from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer, read_checkpoint
 from EinsteinEngine.tuning.experiment import Experiment
-from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, active_params, describe_param, note_read, \
-    probe_recipe
+from EinsteinEngine.intermediate.eqn_ordering import add_eqn_order
+from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, RankByPostPopulation, active_params, \
+    derive_add_eqn_order, describe_param, note_read, probe_recipe
 from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_run
 
 _tuning_params: dict[str, Any] | None = None
@@ -104,12 +105,9 @@ class ProbeRecord:
     - ``counts``: the number of split positions of each probed predicate (``"counts"`` in the file).
     - ``probe_params``: a description (``probe.describe_param``) of each of the tuner's ``probe_params()``, i.e. the
       locus and the ordering functions (``"probe_params"``).
-    - ``derived_orders``: for each function whose early ordering function is ``rank_by_post_population(fn)``, the
-      0-based add_eqn order the engine derived for it from its trial bake while probing (``"derived_orders"``, written
-      only when there is one). The description of ``rank_by_post_population(fn)`` in ``probe_params`` names only the
-      rule; the order it yields also depends on the recipe (its equations, the other functions, the bake options), so
-      it is recorded separately. A split coordinate means "cut after the i-th group in this order", so the same
-      coordinates under a different order are different cuts.
+    - ``derived_orders``: for each probe param that is ``rank_by_post_population(fn)``, the 0-based add_eqn order
+      it was resolved to (``"derived_orders"``, written only when there is one). The trials use that order, and a
+      split coordinate means "cut after the i-th group in this order", so the order is recorded once and reused.
     """
     counts: ProbeResult
     probe_params: Mapping[str, str]
@@ -132,7 +130,7 @@ class ProbeRecord:
         if not isinstance(derived, dict) or not all(
                 isinstance(order, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in order)
                 for order in derived.values()):
-            raise ValueError(f'Expected "derived_orders" to map function names to lists of add_eqn indices, got '
+            raise ValueError(f'Expected "derived_orders" to map probe params to lists of add_eqn indices, got '
                              f'{derived!r}')
         return ProbeRecord(ProbeResult.from_counts(obj.get('counts')), dict(obj['probe_params']),
                            {name: tuple(order) for name, order in derived.items()})
@@ -144,7 +142,7 @@ class ProbeRecord:
         derived_now = {name: list(order) for name, order in current.derived_orders.items()}
         for kind, was, now in (('the number of split positions for', self.counts, current.counts),
                                ('the probe param', self.probe_params, current.probe_params),
-                               ('the add_eqn order rank_by_post_population derived for function',
+                               ('the add_eqn order derived for',
                                 derived_was, derived_now)):
             for name in sorted(set(was) | set(now)):
                 if was.get(name) != now.get(name):
@@ -170,8 +168,11 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
 
     A checkpoint's coordinates are only meaningful against the probe they were recorded with, so the probe is recorded
     in a sidecar next to the checkpoint (see ``probe_sidecar_path`` and ``ProbeRecord``), together with a description
-    of the tuner's ``probe_params()`` (the locus and ordering functions) and any add_eqn order the engine derived with
-    ``rank_by_post_population`` while probing.
+    of the tuner's ``probe_params()`` (the locus and ordering functions).
+
+    A probe param that is ``rank_by_post_population(fn)`` is resolved to ``add_eqn_order(<order>)``, both for the probe
+    and for the Experiment's out-param. The order is derived from the recipe (``probe.derive_add_eqn_order``) only
+    when the sidecar does not already record one for that param and description; otherwise the recorded order is used.
 
     - With ``recipe``, the recipe is always probed. Without it, the sidecar's counts and derived orders are used (so
       it must exist).
@@ -183,8 +184,12 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
       but only after checking that every checkpoint entry loads against the new Experiment.
     """
     targets = list(tuner.probe_targets())
-    if not targets:
+    params = tuner.probe_params()
+    ranked = {name: value for name, value in params.items() if isinstance(value, RankByPostPopulation)}
+    if not targets and not ranked:
         return tuner.get_probed_experiment(EMPTY_PROBE)
+    if bad := sorted(set(ranked) - {'early_ordering_fn'}):
+        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn, not {bad}.")
 
     sidecar = probe_sidecar_path(checkpoint_file)
     recorded: ProbeRecord | None = None
@@ -196,26 +201,41 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
                 raise RuntimeError(f"The probe file {sidecar} (next to checkpoint {checkpoint_file}) is not valid: "
                                    f"{e}") from e
 
-    params = tuner.probe_params()
+    descriptions = {name: describe_param(value) for name, value in sorted(params.items())}
+    derived_orders: Mapping[str, tuple[int, ...]]
     if recipe is not None:
-        pprint(f"Probing {recipe} for {targets}...")
-        counts = probe_recipe(recipe, targets, params)
-        derived_orders = counts.derived_orders
-        pprint(f"Probe result: {dict(counts)}" +
-               (f", derived add_eqn orders {({name: list(order) for name, order in derived_orders.items()})}"
-                if derived_orders else ""))
+        orders: dict[str, tuple[int, ...]] = dict()
+        for name, rule in ranked.items():
+            if recorded is not None and name in recorded.derived_orders and \
+                    recorded.probe_params.get(name) == descriptions[name]:
+                orders[name] = recorded.derived_orders[name]
+                pprint(f"Using the add_eqn order {list(orders[name])} recorded in {sidecar} for {rule!r}.")
+            else:
+                pprint(f"Deriving the add_eqn order for {rule!r} from {recipe}...")
+                others = {k: v for k, v in params.items() if k not in ranked}
+                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others)
+                pprint(f"{function_name}: {rule!r} derived the add_eqn order {list(orders[name])}.")
+        derived_orders = orders
+        resolved = {**params, **{name: add_eqn_order(order) for name, order in derived_orders.items()}}
+        if targets:
+            pprint(f"Probing {recipe} for {targets}...")
+            counts = probe_recipe(recipe, targets, resolved)
+            pprint(f"Probe result: {dict(counts)}")
+        else:
+            counts = EMPTY_PROBE
     elif recorded is not None:
         counts = recorded.counts
         derived_orders = recorded.derived_orders
         if set(counts) != set(targets):
             raise RuntimeError(
                 f"The probe file {sidecar} records {sorted(counts)}, but the tuner probes {sorted(targets)}.")
+        if missing := sorted(set(ranked) - set(derived_orders)):
+            raise RuntimeError(f"The probe file {sidecar} records no derived add_eqn order for {missing}.")
     else:
         raise RuntimeError(
-            f"The tuner probes the recipe for {targets}, but there is no probe file {sidecar} and no recipe was "
-            f"given to probe.")
-    current = ProbeRecord(counts, {name: describe_param(value) for name, value in sorted(params.items())},
-                          dict(derived_orders))
+            f"The tuner probes the recipe for {targets or sorted(ranked)}, but there is no probe file {sidecar} and "
+            f"no recipe was given to probe.")
+    current = ProbeRecord(counts, descriptions, dict(derived_orders))
 
     if recorded is not None and (changes := recorded.differences(current)):
         message = (f"The probe recorded for checkpoint {checkpoint_file} (in {sidecar}) does not match the recipe and "
@@ -231,6 +251,8 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             f"{type(tuner).__name__} probes or provides {undeclared} while probing (probe_targets / probe_params), but "
             f"its Experiment has no out-param of that name, so the trials would not provide what the probe counted "
             f"with. Add an out-param for each (a probe_params value with a mapping that returns it unchanged).")
+    for name in ranked:
+        experiment.add_out_param(name, lambda _params, fn=add_eqn_order(derived_orders[name]): fn)
     if record_probe and recorded != current:
         read_checkpoint(experiment, checkpoint_file)  # raises if the checkpoint does not fit the experiment
         with open(sidecar, 'w') as fh:

@@ -23,11 +23,9 @@ each probed out-param. When a function evaluates its auto split predicates at it
 ``report_split_positions`` with the predicate object and the number of positions; the probe maps the object back to
 its out-param name. At the end of every ``DslFrontend.bake`` the engine calls ``bake_finished``.
 
-A function whose early ordering function is ``rank_by_post_population(fn)`` gets its add_eqn order from a trial bake at
-the start of the bake, and the engine reports that order with ``report_derived_order``. The probe records it, in
-``ProbeResult.derived_orders``, because a checkpoint's split coordinates mean different cuts under a different group
-order: ``build_experiment`` stores the derived orders in the checkpoint's probe file and flags a changed one like a
-changed count. (The count itself does not depend on the order at the early locus; the meaning of each position does.)
+``derive_add_eqn_order`` runs the recipe the same way to resolve a tuner's ``rank_by_post_population(fn)``: the
+function baked with ``fn`` has its add_eqn calls ranked by where ``fn`` puts their equations after CSE. The engine calls
+``bake_started`` and ``cse_finished`` so that the probe can snapshot the calls' equations and read the post-CSE order.
 
 Limitations:
 
@@ -43,15 +41,21 @@ This module is imported by the engine, so it must stay lightweight: no optuna, a
 ``EinsteinEngine.tuning.tuning`` at module import time.
 """
 
+import functools
 import runpy
 import sys
-from collections.abc import Collection, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping
 from dataclasses import dataclass, field
-from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from sympy import Symbol
 
 # Re-exported: describe_param lives in common so that the intermediate layer can use it without importing tuning.
 from EinsteinEngine.common.describe_param import describe_param as describe_param
+
+if TYPE_CHECKING:
+    from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
+    from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn
 
 
 class _ProbeComplete(BaseException):
@@ -83,8 +87,11 @@ class _ProbeState:
     reports: dict[str, dict[str, set[int]]] = field(default_factory=dict)
     # The names the recipe asked for (through get_tuning_param / get_optional_tuning_param)
     read: set[str] = field(default_factory=set)
-    # function name -> the distinct add_eqn orders rank_by_post_population derived for it
-    derived_orders: dict[str, set[tuple[int, ...]]] = field(default_factory=dict)
+    # While deriving: the ordering function the ranked function is baked with, each function's add_eqn origins at the
+    # start of the bake, and the derived add_eqn order of each function baked with ranking_fn.
+    ranking_fn: Any = None
+    origins: dict[str, list[dict[Symbol, int]]] = field(default_factory=dict)
+    derived: dict[str, tuple[int, ...]] = field(default_factory=dict)
 
     def name_of(self, predicate: object) -> str | None:
         for name, placeholder in self.placeholders.items():
@@ -92,8 +99,8 @@ class _ProbeState:
                 return name
         return None
 
-    def all_reported(self) -> bool:
-        return all(name in self.reports for name in self.placeholders)
+    def done(self) -> bool:
+        return all(name in self.reports for name in self.placeholders) and (self.ranking_fn is None or bool(self.derived))
 
 
 _state: _ProbeState | None = None
@@ -127,45 +134,44 @@ def report_split_positions(predicate: object, function_name: str, count: int) ->
     _state.reports.setdefault(name, {}).setdefault(function_name, set()).add(count)
 
 
-def report_derived_order(function_name: str, order: Sequence[int]) -> None:
-    """Engine hook: ``rank_by_post_population`` derived the 0-based add_eqn order ``order`` for ``function_name``.
-
-    Called by ``DslFrontend._derive_early_orders`` after the trial bake, before the real bake of the function (and so
-    before any of its split positions are reported). No-op unless probing; while probing, the order is recorded in the
-    probe result's ``derived_orders``.
-    """
-    if _state is None:
+def bake_started(frontend: 'DslFrontend[Any, Any, Any]') -> None:
+    """Engine hook, called at the start of ``DslFrontend.bake``. While deriving, snapshots each function's add_eqn
+    origins, before pull-out temporaries inherit them."""
+    if _state is None or _state.ranking_fn is None:
         return
-    _state.derived_orders.setdefault(function_name, set()).add(tuple(order))
+    _state.origins = {name: [dict(el.eqn_origin) for el in tf.eqn_complex.eqn_lists]
+                      for name, tf in frontend.functions.items()}
+
+
+def cse_finished(frontend: 'DslFrontend[Any, Any, Any]') -> None:
+    """Engine hook, called by ``DslFrontend.bake`` after global CSE (or where it would run). While deriving, ranks the
+    add_eqn calls of each function baked with the ranking ordering function by their post-CSE positions."""
+    if _state is None or _state.ranking_fn is None:
+        return
+    from EinsteinEngine.intermediate.eqn_grouping import rank_add_eqn_calls
+    for name, tf in frontend.functions.items():
+        eqn_lists = tf.eqn_complex.eqn_lists
+        if name in _state.origins and any(el.ordering_fn is _state.ranking_fn for el in eqn_lists):
+            orders = [list(el.order) for el in eqn_lists]
+            _state.derived[name] = tuple(rank_add_eqn_calls(_state.origins[name], orders, tf.eqn_complex.origin_count))
 
 
 def bake_finished() -> None:
     """Engine hook, called at the very end of ``DslFrontend.bake``.
 
-    No-op unless probing. Once every placeholder predicate has been reported, stops the recipe, so that it does not
-    go on to emit code. Until then it does nothing, and the recipe continues (see the module docstring).
+    No-op unless probing. Once every placeholder predicate has been reported (and, while deriving, an order derived),
+    stops the recipe, so that it does not go on to emit code. Until then it does nothing, and the recipe continues
+    (see the module docstring).
     """
-    if _state is not None and _state.all_reported():
+    if _state is not None and _state.done():
         raise _ProbeComplete()
 
 
 class ProbeResult(Mapping[str, int]):
-    """An immutable mapping from probed out-param name to the number of split positions at its locus.
+    """An immutable mapping from probed out-param name to the number of split positions at its locus."""
 
-    ``derived_orders`` maps the name of each function whose early order ``rank_by_post_population`` derived during the
-    probe to that 0-based add_eqn order (see ``report_derived_order``); it is empty otherwise. It is not part of the
-    mapping, so equality with a plain dict compares the counts only.
-    """
-
-    def __init__(self, counts: Mapping[str, int] | None = None,
-                 derived_orders: Mapping[str, Sequence[int]] | None = None) -> None:
+    def __init__(self, counts: Mapping[str, int] | None = None) -> None:
         self._counts: dict[str, int] = dict(sorted((counts or {}).items()))
-        self._derived_orders: dict[str, tuple[int, ...]] = {
-            name: tuple(order) for name, order in sorted((derived_orders or {}).items())}
-
-    @property
-    def derived_orders(self) -> Mapping[str, tuple[int, ...]]:
-        return MappingProxyType(self._derived_orders)
 
     def __getitem__(self, name: str) -> int:
         return self._counts[name]
@@ -177,8 +183,6 @@ class ProbeResult(Mapping[str, int]):
         return len(self._counts)
 
     def __repr__(self) -> str:
-        if self._derived_orders:
-            return f'ProbeResult({self._counts!r}, derived_orders={self._derived_orders!r})'
         return f'ProbeResult({self._counts!r})'
 
     @staticmethod
@@ -203,20 +207,12 @@ def probe_recipe(recipe_path: str, predicate_names: Collection[str],
     params that change the count (e.g. ``auto_split_locus`` or an ordering function); every other
     ``get_tuning_param`` call returns the recipe's default. The recipe runs as ``remote_feedback`` runs it (as
     ``__main__``, with ``sys.argv`` reset), and is stopped at the end of the first bake after which every placeholder
-    has been reported (see the module docstring for what it may do before then). Afterward, ``sys.argv`` and the
-    automatic name counters of ``ExplicitSyncBatch`` and ``NewRadXBoundaryBatch`` are restored, and the symbolic
-    caches are cleared.
-
-    The result also records the add_eqn order that ``rank_by_post_population`` derived for each function that uses it
-    (``ProbeResult.derived_orders``; see ``report_derived_order``).
+    has been reported (see the module docstring for what it may do before then).
 
     Raises RuntimeError if the recipe fails, never reads one of the provided names (an ordering function or locus it
-    ignores would make the count wrong), never evaluates a placeholder, evaluates one placeholder with different
-    counts in different functions, or derives different orders for one function name (e.g. in two thorns).
+    ignores would make the count wrong), never evaluates a placeholder, or evaluates one placeholder with different
+    counts in different functions.
     """
-    global _state
-    if _state is not None:
-        raise RuntimeError('probe_recipe cannot be nested.')
     names = list(dict.fromkeys(predicate_names))
     if not names:
         return EMPTY_PROBE
@@ -226,40 +222,9 @@ def probe_recipe(recipe_path: str, predicate_names: Collection[str],
 
     placeholders = {name: _PlaceholderPredicate(name) for name in names}
     state = _ProbeState(recipe_path, placeholders, {**extra, **placeholders})
-    # Imported here: these import the engine, which imports this module. The recipe advances their automatic name
-    # counters, which are restored so that the probe does not change the names a later run in this process generates.
-    from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-    from EinsteinEngine.tuning.clear_caches import clear_caches
-    saved_counters = ExplicitSyncBatch._name_counter, NewRadXBoundaryBatch._name_counter
-    saved_argv = sys.argv
-    _state = state
-    try:
-        sys.argv = [recipe_path]
-        try:
-            runpy.run_path(recipe_path, run_name='__main__')
-        except _ProbeComplete:
-            pass
-        except Exception as e:
-            raise RuntimeError(f'Recipe {recipe_path} failed while being probed for {names}.') from e
-    finally:
-        _state = None
-        sys.argv = saved_argv
-        ExplicitSyncBatch._name_counter, NewRadXBoundaryBatch._name_counter = saved_counters
-        clear_caches()
+    _run(state, f'while being probed for {names}')
+    _check_read(state)
 
-    return _validate(state)
-
-
-def _validate(state: _ProbeState) -> ProbeResult:
-    if unread := [name for name in state.params if name not in state.read]:
-        raise RuntimeError(
-            f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} while being probed. The tuner '
-            f'provides them because they are the probed split predicates or change the number of split positions '
-            f'(the locus and the ordering functions), so the probe would count the wrong positions. Read each one '
-            f'with get_optional_tuning_param(name, default) (or get_tuning_param) and pass it to create_function or '
-            f'bake; see docs/TUNING-QUICKSTART.md, section 1. Only reads made before the probe stopped the recipe '
-            f'(at the end of the first bake after which every probed predicate was evaluated) are seen, so a name '
-            f'read only later (e.g. for a second thorn) counts as never read.')
     counts: dict[str, int] = {}
     for name in state.placeholders:
         by_function = state.reports.get(name)
@@ -276,12 +241,90 @@ def _validate(state: _ProbeState) -> ProbeResult:
                 f'The predicate for out-param {name!r} was evaluated with different numbers of split positions: '
                 f'{detail}. Give each function its own out-param.')
         counts[name] = distinct.pop()
-    derived_orders: dict[str, tuple[int, ...]] = {}
-    for function_name, orders in state.derived_orders.items():
-        if len(orders) != 1:
-            raise RuntimeError(
-                f'rank_by_post_population derived different add_eqn orders for functions named {function_name!r} '
-                f'while probing: {" and ".join(str(list(order)) for order in sorted(orders))}. Give the functions '
-                f'distinct names.')
-        derived_orders[function_name] = next(iter(orders))
-    return ProbeResult(counts, derived_orders)
+    return ProbeResult(counts)
+
+
+class RankByPostPopulation:
+    """A tuner's early ordering function that is derived from the recipe; see `rank_by_post_population`."""
+
+    def __init__(self, ordering_fn: 'EqnOrderingFn') -> None:
+        self.ordering_fn = ordering_fn
+
+    def __repr__(self) -> str:
+        return f'rank_by_post_population({describe_param(self.ordering_fn)})'
+
+
+def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulation:
+    """
+    For a tuner's ``early_ordering_fn``: order the add_eqn calls of the tuned function by where `ordering_fn` puts
+    their equations after CSE.
+
+    ``tuning.build_experiment`` resolves it once per checkpoint with ``derive_add_eqn_order`` and records the order in
+    the checkpoint's probe file. The probe and every trial then use ``add_eqn_order(<that order>)``, and so does
+    ``generate_best``, which reads the recorded order instead of deriving it again.
+    """
+    return RankByPostPopulation(ordering_fn)
+
+
+def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
+                         extra_params: Mapping[str, Any] | None = None) -> tuple[str, tuple[int, ...]]:
+    """Run ``recipe_path`` without auto splits, with `ordering_fn` as the ``ordering_fn`` out-param and no early (or,
+    if ``extra_params`` provides one, pre-population) ordering function, and rank the add_eqn calls of the function
+    baked with it by the median post-CSE position of the equations each call produced
+    (``eqn_grouping.rank_add_eqn_calls``).
+
+    ``extra_params`` supplies other fixed recipe-facing params, as for ``probe_recipe``. Returns the function's name
+    and its 0-based add_eqn order. Raises RuntimeError if the recipe fails, never reads one of the provided names, or
+    does not bake exactly one function with `ordering_fn`.
+    """
+    # A distinct object, so the hooks can tell the ranked function by its ordering function; pre_cse_stand_in and
+    # respects_dependency_order look through the partial, so it bakes exactly as ordering_fn would.
+    ranking_fn = functools.partial(ordering_fn)
+    params = {**(extra_params or {}), 'early_ordering_fn': None, 'ordering_fn': ranking_fn}
+    if 'pre_population_ordering_fn' in params:
+        params['pre_population_ordering_fn'] = None
+    state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn)
+    _run(state, 'while deriving an add_eqn order')
+    _check_read(state)
+    if len(state.derived) != 1:
+        raise RuntimeError(f'Recipe {recipe_path} must bake exactly one function with the ordering_fn out-param to '
+                           f'derive its add_eqn order, but baked {sorted(state.derived) or "none"}.')
+    return next(iter(state.derived.items()))
+
+
+def _run(state: _ProbeState, doing: str) -> None:
+    global _state
+    if _state is not None:
+        raise RuntimeError('probe_recipe cannot be nested.')
+    # Imported here: these import the engine, which imports this module. The recipe advances their automatic name
+    # counters, which are restored so that the probe does not change the names a later run in this process generates.
+    from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
+    from EinsteinEngine.tuning.clear_caches import clear_caches
+    saved_counters = ExplicitSyncBatch._name_counter, NewRadXBoundaryBatch._name_counter
+    saved_argv = sys.argv
+    _state = state
+    try:
+        sys.argv = [state.recipe_path]
+        try:
+            runpy.run_path(state.recipe_path, run_name='__main__')
+        except _ProbeComplete:
+            pass
+        except Exception as e:
+            raise RuntimeError(f'Recipe {state.recipe_path} failed {doing}.') from e
+    finally:
+        _state = None
+        sys.argv = saved_argv
+        ExplicitSyncBatch._name_counter, NewRadXBoundaryBatch._name_counter = saved_counters
+        clear_caches()
+
+
+def _check_read(state: _ProbeState) -> None:
+    if unread := [name for name in state.params if name not in state.read]:
+        raise RuntimeError(
+            f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} while being probed. The tuner '
+            f'provides them because they are the probed split predicates or change the number of split positions '
+            f'(the locus and the ordering functions), so the probe would count the wrong positions. Read each one '
+            f'with get_optional_tuning_param(name, default) (or get_tuning_param) and pass it to create_function or '
+            f'bake; see docs/TUNING-QUICKSTART.md, section 1. Only reads made before the probe stopped the recipe '
+            f'(at the end of the first bake after which every probed predicate was evaluated) are seen, so a name '
+            f'read only later (e.g. for a second thorn) counts as never read.')

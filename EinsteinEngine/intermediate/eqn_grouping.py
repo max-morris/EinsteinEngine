@@ -95,7 +95,7 @@ def median_rank_key(positions: Collection[int], tiebreak: int) -> tuple[float, i
     """
     The sort key of a group whose members sit at `positions` in some order: their median position, then `tiebreak`
     (lower first). A group with no positions (e.g., whose equations were all optimized away) ranks after every other.
-    Used both to rank groups at the early locus (`order_groups`) and to derive an early order from a trial bake
+    Used both to rank groups at the early locus (`order_groups`) and to derive an early order from a post-CSE order
     (`rank_add_eqn_calls`), so that the two agree on medians and ties.
     """
     return (float(median(positions)) if len(positions) > 0 else float('inf')), tiebreak
@@ -106,12 +106,12 @@ def rank_add_eqn_calls(origins_by_list: Sequence[Mapping[Symbol, int]],
                        origin_count: int) -> list[int]:
     """
     Rank a function's add_eqn calls by the median position of their equations; this is the ranking step of
-    ``rank_by_post_population`` (see there and ``DslFrontend._derive_early_orders``).
+    ``rank_by_post_population`` (see ``EinsteinEngine.tuning.probe``).
 
     - origins_by_list[i]: for list i, the equations each add_eqn call produced, mapped to the call's 0-based index.
-      The trial bake snapshots this before the bake, so that pull-out temporaries (which inherit the origin of the
-      equation they were pulled out of) and CSE temporaries (which have none) do not count.
-    - orders[i]: list i's order after the trial's post-CSE rebake. An equation missing from it does not count.
+      This is snapshotted before the bake, so that pull-out temporaries (which inherit the origin of the equation they
+      were pulled out of) and CSE temporaries (which have none) do not count.
+    - orders[i]: list i's order after the post-CSE rebake. An equation missing from it does not count.
     - origin_count: the function's number of add_eqn calls.
 
     Within each list, the calls are sorted by `median_rank_key` of their equations' positions, ties going to the lower

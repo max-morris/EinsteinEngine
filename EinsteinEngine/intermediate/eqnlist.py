@@ -15,7 +15,6 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import copy
 import typing
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass, replace
@@ -61,23 +60,6 @@ from EinsteinEngine.intermediate.eqn_grouping import overwrite_version
 # DZ = mk_symbol("DZ")
 #
 # stencil = mk_function("stencil")
-
-def _copy_containers[T](value: T) -> T:
-    """
-    A copy of `value` if it is a dict, set or list (keeping its type, e.g. OrderedDict or OrderedSet), copied
-    recursively through dict values: the containers a dict holds as values are copied the same way, while a list or
-    set is copied shallowly (its elements are shared). Any other value, e.g. a sympy expression or a function, is
-    shared. Used by the trial copies (see `EqnComplex.trial_copy`), whose state is containers of immutable values.
-    """
-    if isinstance(value, dict):
-        copied = copy.copy(value)
-        for key, item in value.items():
-            copied[key] = _copy_containers(item)
-        return cast(T, copied)
-    if isinstance(value, (set, list)):
-        return cast(T, copy.copy(value))
-    return value
-
 
 class _MergeSoftSplitsResult(NamedTuple):
     subst: dict[Symbol, set[Symbol]]
@@ -281,28 +263,6 @@ class EqnComplex:
 
     def get_active_eqn_list(self) -> 'EqnList':
         return self.eqn_lists[-1]
-
-    def trial_copy(self) -> 'EqnComplex':
-        """
-        An independent copy of this unbaked complex, for the trial bake of ``rank_by_post_population`` (see
-        ``DslFrontend._derive_early_orders``): baking the copy changes nothing in this complex. Every attribute is
-        copied, containers recursively through dict values (see `_copy_containers`), except that the copy gets its own
-        copies of the EqnLists (whose ``parent`` is the copy, and whose annotation callbacks are bound to the copy's
-        list indices), and shares ``is_stencil`` (the frontend's) and the annotation callbacks (the owning function's,
-        which write into whatever ``source_annotations`` the function holds when they are called).
-
-        Copying attribute by attribute, rather than listing the attributes to copy, means an attribute added later is
-        copied too. The complex must be unbaked, with no derived state and no pending refinement, so its state is
-        just containers of symbols, expressions and ints.
-        """
-        if self.been_baked or self._derived_state_computed or self._refinement is not None:
-            raise IntermediateException("Only an unbaked EqnComplex can be copied for a trial bake.")
-        clone = copy.copy(self)
-        for name, value in vars(self).items():
-            if name not in ('eqn_lists', 'is_stencil'):
-                setattr(clone, name, _copy_containers(value))
-        clone.eqn_lists = [eqn_list._trial_copy(clone, el_idx) for el_idx, eqn_list in enumerate(self.eqn_lists)]
-        return clone
 
     def _grid_variables(self) -> set[Symbol]:
         gv: set[Symbol] = set()
@@ -1265,19 +1225,6 @@ class EqnList:
 
         for lhs, rhs in modify_eqns.items():
             self.eqns[lhs] = rhs
-
-    def _trial_copy(self, parent: EqnComplex, el_idx: int) -> 'EqnList':
-        """A copy of this unbaked list, list `el_idx` of `parent` (a trial copy of this list's parent); see
-        `EqnComplex.trial_copy`."""
-        if self.been_baked:
-            raise IntermediateException("Only an unbaked EqnList can be copied for a trial bake.")
-        clone = copy.copy(self)
-        for name, value in vars(self).items():
-            if name not in ('parent', 'is_stencil'):
-                setattr(clone, name, _copy_containers(value))
-        clone.parent = parent
-        parent._bind_annotation_callbacks(clone, el_idx)
-        return clone
 
     def _populate_from_piece(self, source: 'EqnList', lhses: Sequence[Symbol], analytic_seed: set[Symbol]) -> None:
         """Fill this fresh EqnList with the equations `lhses` of `source`. See `EqnComplex.refine`."""

@@ -35,13 +35,14 @@ from typing import Any, Callable
 
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
 from EinsteinEngine.intermediate.eqn_ordering import add_eqn_key_order, add_eqn_order, maximize_symbol_reuse, \
-    prioritize_rare_symbols, rank_by_post_population
+    prioritize_rare_symbols
 from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.tuning import probe, tuning
 from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
 from EinsteinEngine.tuning.experiment import Experiment, MissingParamError, UndeclaredParamError
 from EinsteinEngine.tuning.generate_best import _FixedTrial
-from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, describe_param, probe_recipe
+from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, describe_param, derive_add_eqn_order, probe_recipe, \
+    rank_by_post_population
 from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner, CutPositionSplitTuner
 from EinsteinEngine.tuning.tuning import ProbeRecord, Tuner, build_experiment, get_optional_tuning_param, \
     get_tuning_param, probe_sidecar_path
@@ -230,19 +231,17 @@ def test_probe_result() -> None:
     assert json.loads(record.to_json()) == {'counts': {'a': 1, 'b': 2}, 'probe_params': {LOCUS: 'SplitLocus.Early'}}
     expect_error(ValueError, lambda: ProbeRecord.from_json('{"counts": {"a": 1}}'), 'probe_params')
 
-    #  Derived orders: kept apart from the counts (a ProbeResult still equals a dict of its counts), written to the
-    #  sidecar only when there are any, and validated on reading.
-    derived = ProbeResult({'a': 1}, {'rhs': [2, 0, 1]})
-    assert derived == {'a': 1} and dict(derived.derived_orders) == {'rhs': (2, 0, 1)}
-    assert repr(derived) == "ProbeResult({'a': 1}, derived_orders={'rhs': (2, 0, 1)})"
-    assert dict(p.derived_orders) == {} and repr(p) == "ProbeResult({'a': 1, 'b': 2})"
-    record = ProbeRecord(derived, {}, dict(derived.derived_orders))
-    assert json.loads(record.to_json()) == {'counts': {'a': 1}, 'probe_params': {}, 'derived_orders': {'rhs': [2, 0, 1]}}
+    assert repr(p) == "ProbeResult({'a': 1, 'b': 2})"
+
+    #  Derived orders: written to the sidecar only when there are any, and validated on reading.
+    record = ProbeRecord(ProbeResult({'a': 1}), {}, {'early_ordering_fn': (2, 0, 1)})
+    assert json.loads(record.to_json()) == {'counts': {'a': 1}, 'probe_params': {},
+                                            'derived_orders': {'early_ordering_fn': [2, 0, 1]}}
     assert ProbeRecord.from_json(record.to_json()) == record
     expect_error(ValueError, lambda: ProbeRecord.from_json(
-        '{"counts": {}, "probe_params": {}, "derived_orders": {"rhs": [0, "1"]}}'), 'derived_orders')
-    assert record.differences(ProbeRecord(derived, {}, {'rhs': (0, 1, 2)})) == [
-        "the add_eqn order rank_by_post_population derived for function 'rhs' was [2, 0, 1] and is now [0, 1, 2]"]
+        '{"counts": {}, "probe_params": {}, "derived_orders": {"early_ordering_fn": [0, "1"]}}'), 'derived_orders')
+    assert record.differences(ProbeRecord(ProbeResult({'a': 1}), {}, {'early_ordering_fn': (0, 1, 2)})) == [
+        "the add_eqn order derived for 'early_ordering_fn' was [2, 0, 1] and is now [0, 1, 2]"]
 
 
 def _module_level_key(i: int) -> float:
@@ -488,78 +487,66 @@ class LocusTuner(Tuner):
 
 
 def test_derived_order_sidecar(r: Recipes) -> None:
-    """The order rank_by_post_population derives is recorded in the sidecar, and a changed one is a mismatch."""
-    order_file = r.path('order.txt')
-    path = r.write('derived', f"""\
-        from EinsteinEngine.tuning.probe import report_derived_order
-        get_tuning_param('{LOCUS}', None)
-        get_tuning_param('early_ordering_fn', None)
-        report_derived_order('rhs', [int(i) for i in open({order_file!r}).read().split()])
-        report_split_positions(get_tuning_param('{HARD}', None), 'rhs', 3)
-        bake_finished()
-        """)
-
-    def set_order(*order: int) -> None:
-        with open(order_file, 'w') as fh:
-            fh.write(' '.join(map(str, order)))
-
+    """rank_by_post_population is derived once, recorded in the sidecar, and reused: by the trials (through the
+    Experiment's out-param), and by later builds of the same checkpoint, which do not derive it again."""
+    path = write_real_recipe(r, 'derived_sidecar')
     checkpoint = r.path('derived.jsonl')
     sidecar = probe_sidecar_path(checkpoint)
     tuner = CombinatorialSplitTuner(early_ordering_fn=rank_by_post_population(prioritize_rare_symbols))
+    _, derived = derive_add_eqn_order(path, prioritize_rare_symbols, {LOCUS: SplitLocus.Early})
+    assert sorted(derived) == [0, 1, 2, 3]
+    assert_idle()
 
     def recorded() -> dict[str, Any]:
         with open(sidecar) as fh:
             loaded: dict[str, Any] = json.load(fh)
             return loaded
 
-    set_order(1, 0, 2)
-    result = probe_recipe(path, [HARD], tuner.probe_params())
-    assert result == {HARD: 3} and dict(result.derived_orders) == {'rhs': (1, 0, 2)}
-    assert_idle()
+    def trial_early_ordering_fn(e: Experiment) -> str:
+        return repr(realize(e, {f'split_{i}': 0 for i in range(4)})['early_ordering_fn'])
 
-    build_experiment(tuner, path, checkpoint, record_probe=True)
+    e = build_experiment(tuner, path, checkpoint, record_probe=True)
+    assert trial_early_ordering_fn(e) == f'add_eqn_order({list(derived)})'
     assert recorded() == {
-        'counts': {HARD: 3},
+        'counts': {HARD: 4},
         'probe_params': {LOCUS: 'SplitLocus.Early',
                          'early_ordering_fn': 'rank_by_post_population('
                                               'EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)'},
-        'derived_orders': {'rhs': [1, 0, 2]}}
+        'derived_orders': {'early_ordering_fn': list(derived)}}
 
-    #  While the checkpoint is empty, a changed order is only a note, and record_probe replaces the sidecar.
-    set_order(0, 1, 2)
-    build_experiment(tuner, path, checkpoint, record_probe=True)
-    assert recorded()['derived_orders'] == {'rhs': [0, 1, 2]}
-
-    #  Once the checkpoint has entries, it is an error (the same coordinates would mean different cuts), with or
-    #  without record_probe; without a recipe, the sidecar's order is used, so there is nothing to compare.
-    write_jsonl(checkpoint, [{'target': -1.0, 'params': {'split_0': 0, 'split_1': 2, 'split_2': 0}}])
-    set_order(1, 0, 2)
-    for record_probe in (True, False):
-        expect_error(RuntimeError, lambda: build_experiment(tuner, path, checkpoint, record_probe=record_probe),
-                     'does not match', "the add_eqn order rank_by_post_population derived for function 'rhs' was "
-                     "[0, 1, 2] and is now [1, 0, 2]", 'misinterpreted')
-    assert recorded()['derived_orders'] == {'rhs': [0, 1, 2]}
-    assert len(build_experiment(tuner, None, checkpoint).in_params) == 6
-    set_order(0, 1, 2)
-    build_experiment(tuner, path, checkpoint)
-
-    #  A sidecar written before derived orders were recorded does not match a probe that derives one.
-    old_format = {'counts': {HARD: 3}, 'probe_params': recorded()['probe_params']}
+    #  A recorded order is reused, not derived again, with or without the recipe.
+    frozen = [3, 2, 1, 0]
+    edited = {**recorded(), 'derived_orders': {'early_ordering_fn': frozen}}
     with open(sidecar, 'w') as fh:
-        json.dump(old_format, fh)
-    expect_error(RuntimeError, lambda: build_experiment(tuner, path, checkpoint),
-                 "the add_eqn order rank_by_post_population derived for function 'rhs' was absent and is now [0, 1, 2]")
+        json.dump(edited, fh)
+    def derive_again(*_args: Any) -> None:
+        raise AssertionError('derived again')
 
-    #  One function name that derives two different orders (e.g. in two thorns) cannot be recorded.
-    conflicting = r.write('derived_conflict', f"""\
-        from EinsteinEngine.tuning.probe import report_derived_order
-        report_derived_order('rhs', [0, 1])
-        report_derived_order('rhs', [1, 0])
-        report_split_positions(get_tuning_param('{HARD}', None), 'rhs', 2)
-        bake_finished()
-        """)
-    expect_error(RuntimeError, lambda: probe_recipe(conflicting, [HARD]), 'different add_eqn orders', "'rhs'",
-                 '[0, 1] and [1, 0]')
+    saved = getattr(tuning, 'derive_add_eqn_order')
+    setattr(tuning, 'derive_add_eqn_order', derive_again)
+    try:
+        for recipe in (path, None):
+            assert trial_early_ordering_fn(build_experiment(tuner, recipe, checkpoint)) == f'add_eqn_order({frozen})'
+    finally:
+        setattr(tuning, 'derive_add_eqn_order', saved)
+
+    #  A different rule describes differently: while the checkpoint is empty it is derived anew and recorded; once the
+    #  checkpoint has entries, it is an error.
+    other = CombinatorialSplitTuner(early_ordering_fn=rank_by_post_population(maximize_symbol_reuse))
+    build_experiment(other, path, checkpoint, record_probe=True)
+    assert recorded()['probe_params']['early_ordering_fn'].endswith('maximize_symbol_reuse)')
+    write_jsonl(checkpoint, [{'target': -1.0, 'params': {'split_0': 0, 'split_1': 2, 'split_2': 0, 'split_3': 0}}])
+    expect_error(RuntimeError, lambda: build_experiment(tuner, path, checkpoint), 'does not match', 'misinterpreted')
+
+    #  Without a recipe, the sidecar must record the order.
+    edited = {'counts': {HARD: 4}, 'probe_params': recorded()['probe_params']}
+    with open(sidecar, 'w') as fh:
+        json.dump(edited, fh)
+    expect_error(RuntimeError, lambda: build_experiment(other, None, checkpoint), 'records no derived add_eqn order')
+
+    #  rank_by_post_population only resolves an early ordering function.
+    bad = CombinatorialSplitTuner(ordering_fn=rank_by_post_population(prioritize_rare_symbols))  # type: ignore[arg-type]
+    expect_error(RuntimeError, lambda: build_experiment(bad, path, r.path('bad.jsonl')), 'only be the early_ordering_fn')
     assert_idle()
 
 
@@ -793,6 +780,7 @@ fn.add_eqn(v[li], [a * sin(src), a * cos(src), sin(src) * cos(src)])
 fn.add_eqn(b, v[l0] + v[l1] * sin(src))
 fn.add_eqn(c, b + v[l2] * sin(src) * cos(src))
 gf.bake(do_cse=True, temporary_promotion_strategy=promote_all(),
+        ordering_fn=get_optional_tuning_param('ordering_fn', maximize_symbol_reuse),
         early_ordering_fn=get_optional_tuning_param('early_ordering_fn', None))
 open({marker!r}, 'w').close()  # not reached while probing: the probe stops the recipe at the end of bake
 """
@@ -847,29 +835,6 @@ def test_real_recipe_loci(r: Recipes) -> None:
     assert counts[SplitLocus.PostPopulation] > 7, counts
 
 
-def test_real_recipe_derived_order(r: Recipes) -> None:
-    """Probing a real recipe whose early order is derived by rank_by_post_population records the derived order (the
-    one a normal run derives), and the trial bake does not disturb the counts."""
-    name = 'real_derived'
-    path = write_real_recipe(r, name)
-    tuner = CombinatorialSplitTuner(early_ordering_fn=rank_by_post_population(prioritize_rare_symbols))
-    result = probe_recipe(path, [HARD, SOFT], tuner.probe_params())
-    assert_idle()
-    assert result == {HARD: 4, SOFT: 4}, result
-    assert set(result.derived_orders) == {'probe_fn'} and sorted(result.derived_orders['probe_fn']) == [0, 1, 2, 3]
-
-    #  A normal run derives the same order (outside a probe the hook is a no-op, so record it by wrapping it).
-    reported: list[tuple[str, list[int]]] = []
-    saved = probe.report_derived_order
-    probe.report_derived_order = lambda function_name, order: reported.append((function_name, list(order)))
-    try:
-        calls = queried_positions(path, tuner.probe_params())
-    finally:
-        probe.report_derived_order = saved
-    assert calls == [0, 1, 2, 3], calls
-    assert reported == [('probe_fn', list(result.derived_orders['probe_fn']))], reported
-
-
 def test_real_recipe_must_read_locus(r: Recipes) -> None:
     #  A recipe that ignores auto_split_locus would be probed (and tuned) at the wrong locus.
     path = write_real_recipe(r, 'real_no_locus', locus_kwarg='')
@@ -902,7 +867,6 @@ if __name__ == "__main__":
             test_strict_checkpoint(recipes)
             test_shift_script(recipes)
             test_real_recipe_loci(recipes)
-            test_real_recipe_derived_order(recipes)
             test_real_recipe_must_read_locus(recipes)
         finally:
             os.chdir(cwd)

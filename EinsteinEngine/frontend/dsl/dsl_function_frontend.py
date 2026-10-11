@@ -18,8 +18,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, OrderedDict
-from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack, Callable, Collection, Sequence
 
 import EinsteinEngine.common.util as util
@@ -30,8 +29,7 @@ from EinsteinEngine.common.sympywrap import free_symbols
 from EinsteinEngine.common.util import OrderedSet, pprint, wprint
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.intermediate.eqn_grouping import CutHazard, author_groups, cut_hazards, order_groups
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, RankByPostPopulation, maximize_symbol_reuse, \
-    pre_cse_stand_in
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, EqnListPiece, SplitBoundary
 from EinsteinEngine.intermediate.post_population_split import assign_pieces, local_cse_temps
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
@@ -57,8 +55,7 @@ class DslFunctionFrontendBakeOptions(TypedDict, total=False):
     # so there the post-population locus cuts the stand-in's order.
     ordering_fn: EqnOrderingFn
     # Orders the author-level add_eqn groups of each list at the start of the bake (the early locus); None keeps the
-    # recipe order. rank_by_post_population(fn) derives an add_eqn order from a trial bake; DslFrontend.bake resolves
-    # it before calling _early_bake (see DslFrontend._derive_early_orders).
+    # recipe order.
     early_ordering_fn: Optional[EqnOrderingFn]
     # Orders the scalar equations for the pre-CSE bake (the pre-population locus), and the resulting order becomes the
     # pre-population order; None uses ordering_fn for the pre-CSE bake and leaves the pre-population order alone.
@@ -508,57 +505,6 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             "soft_split_retainment_strategy": retain_none(),
         }
 
-    @contextmanager
-    def _trial_bake_state(self) -> Iterator[None]:
-        """
-        Within this block, the function can be baked (``_early_bake``, global CSE) as a trial, without leaving a trace;
-        used by ``DslFrontend._derive_early_orders`` for ``rank_by_post_population``. On entry, the function's
-        EqnComplex is replaced by an independent copy (``EqnComplex.trial_copy``), its annotations by copies, its
-        baked flags are cleared, and its auto split predicates are removed, so that the trial neither splits nor
-        calls a predicate or the probe. On exit, even if the trial raised, all of that is restored.
-
-        The copy's annotation callbacks are the function's own; they write into ``self.source_annotations``, which
-        during the block is the copy, so the trial's annotations are discarded too. The function must not have been
-        baked yet.
-        """
-        if self.been_baked or self.been_late_baked:
-            raise DslException(f"Cannot run a trial bake of {self.name}, which has already been baked.")
-        saved = (self.eqn_complex, self.source_annotations, self._loop_annotations, self._refined_eqn_annotations,
-                 self._auto_hard_split_predicate, self._auto_soft_split_predicate)
-
-        trial_annotations = SourceAnnotations()
-        trial_annotations.loops.update(self.source_annotations.loops)
-        for loop_idx, annotations in self.source_annotations.eqns.items():
-            trial_annotations.eqns[loop_idx].update(annotations)
-
-        self.eqn_complex = self.eqn_complex.trial_copy()
-        self.source_annotations = trial_annotations
-        self._loop_annotations = list(self._loop_annotations)
-        self._refined_eqn_annotations = dict()
-        self._auto_hard_split_predicate = self._auto_soft_split_predicate = None
-        try:
-            yield
-        finally:
-            (self.eqn_complex, self.source_annotations, self._loop_annotations, self._refined_eqn_annotations,
-             self._auto_hard_split_predicate, self._auto_soft_split_predicate) = saved
-            self.been_baked = self.been_late_baked = False
-
-    def _check_rank_by_post_population(self, options: DslFunctionFrontendBakeOptions, *, early_resolved: bool) -> None:
-        """
-        Raise a DslException if `options` misuse rank_by_post_population, which is valid only as the early_ordering_fn
-        of a frontend's bake(): as pre_population_ordering_fn or ordering_fn, or, if `early_resolved` (in
-        `_early_bake`, after bake() should have resolved it), as early_ordering_fn. ``DslFrontend._derive_early_orders``
-        also runs it (without `early_resolved`), so that misuse fails before the trial bake.
-        """
-        for option in ("early_ordering_fn", "pre_population_ordering_fn", "ordering_fn"):
-            if option == "early_ordering_fn" and not early_resolved:
-                continue
-            if isinstance(value := options.get(option), RankByPostPopulation):
-                where = ("must be resolved by the frontend's bake(), which derives the order from a trial bake of the "
-                         "whole thorn; it cannot be passed to _early_bake directly"
-                         if option == "early_ordering_fn" else "can only be the early_ordering_fn")
-                raise DslException(f"{self.name}: {option}={value!r} {where}.")
-
     def _early_bake(self, **kwargs: Unpack[DslFunctionFrontendBakeOptions]) -> None:
         if self.been_baked:
             raise DslException("_early_bake should not be called more than once")
@@ -566,10 +512,6 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         options = self._mk_default_dsl_function_frontend_bake_options()
         options.update(kwargs)
-
-        # DslFrontend.bake replaces an early rank_by_post_population by the add_eqn_order it derives; anywhere else, it
-        #  is a mistake.
-        self._check_rank_by_post_population(options, early_resolved=True)
 
         ordering_fn = options["ordering_fn"]
         early_ordering_fn = options["early_ordering_fn"]

@@ -269,18 +269,18 @@ order.
 With two params per position, `CombinatorialSplitTuner` is only practical at the `Early` locus; use
 `CutPositionSplitTuner` at the others.
 
-The `Early` order can also be derived by the engine:
-`early_ordering_fn=rank_by_post_population(prioritize_rare_symbols)` ranks the
-`add_eqn` calls by the median position of their equations in the post-CSE
-order that `prioritize_rare_symbols` gives them. Since that order only exists
-after CSE, the engine finds it with a trial bake of the whole thorn (unsplit)
-at the start of every bake, which costs about one extra bake up to CSE
-(about 17 s for Z4c) on every run, and then bakes with
-`add_eqn_order(<the derived order>)`. The derived order is printed, and
-recorded in the probe file (below). See
-[EQUATION-ORDERING.md](EQUATION-ORDERING.md), section 7, for a walkthrough
-with worked examples, and `rank_by_post_population` in
-`EinsteinEngine/intermediate/eqn_ordering.py` for the details.
+The `Early` order can also be derived from the recipe:
+`early_ordering_fn=rank_by_post_population(prioritize_rare_symbols)` (from
+`EinsteinEngine.tuning.probe`) ranks the `add_eqn` calls by the median position
+of their equations in the post-CSE order that `prioritize_rare_symbols` gives
+them. When the checkpoint has no recorded order, `build_experiment` runs the
+recipe once, unsplit, with `prioritize_rare_symbols` as the `ordering_fn`
+out-param, and ranks the calls of the function baked with it. The order is
+printed and recorded in the probe file (below), and the probe, every trial and
+`generate_best` use `add_eqn_order(<that order>)`. The recipe must read
+`early_ordering_fn` and `ordering_fn` with `get_optional_tuning_param` and pass
+them to the same function. See [EQUATION-ORDERING.md](EQUATION-ORDERING.md),
+section 7.
 
 ### Probing
 
@@ -331,20 +331,21 @@ because the checkpoint's coordinates only mean something against it:
   "counts": {"auto_hard_split_predicate": 13},
   "probe_params": {"auto_split_locus": "SplitLocus.Early",
                    "early_ordering_fn": "rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)"},
-  "derived_orders": {"z4c_rhs": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]}
+  "derived_orders": {"early_ordering_fn": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]}
 }
 ```
 
 - `counts`: the number of positions `N` of each probed predicate.
 - `probe_params`: a description of each `probe_params()` value (below).
-- `derived_orders` (only present when some function uses
-  `rank_by_post_population`): for each such function, the 0-based `add_eqn`
-  order the engine derived while probing. The description in `probe_params`
-  names only the rule, but the order it yields depends on the recipe (its
-  equations, its other functions, its bake options), and a split coordinate
-  means "cut after the i-th group in this order", so the order is recorded
-  too. With `early_ordering_fn=add_eqn_order([...])` the order is part of the
-  description instead, and there is no `derived_orders`.
+- `derived_orders` (only present when a probe param is
+  `rank_by_post_population(...)`): the 0-based `add_eqn` order it was resolved
+  to. A split coordinate means "cut after the i-th group in this order", so the
+  order is derived once, when the probe file is first written, and reused from
+  then on: resuming, `generate_best` and `plot_tuning` read it instead of
+  deriving it again, so a later change to the engine or the recipe cannot
+  silently change the order under the checkpoint. To derive it again, start a
+  new checkpoint file. With `early_ordering_fn=add_eqn_order([...])` the order
+  is part of the description instead, and there is no `derived_orders`.
 
 `probe_params` describes each `probe_params()` value in a form that is stable
 across runs (see `probe.describe_param`): an enum by name; a function by its
@@ -366,10 +367,9 @@ see everything:
   unnoticed. A bound method is described by its function,
   plus its instance only if the instance's class defines `__repr__`; any other
   object by its repr.
-- Only the tuner's `probe_params()` are recorded (and the orders derived by
+- Only the tuner's `probe_params()` are recorded (and the orders derived for
   `rank_by_post_population`). A change on the recipe side (e.g. its default
-  ordering function) is detected only if it changes the number of positions or
-  a derived order.
+  ordering function) is detected only if it changes the number of positions.
 - The descriptions of `rank_by_post_population(prioritize_rare_symbols)` and
   of the `add_eqn_order([...])` it derives differ, so switching a tuner between
   the two is a mismatch even when the order is the same.
@@ -377,8 +377,8 @@ see everything:
 How the probe file is used:
 
 - `remote_tuner` probes the recipe every time it starts. If the probe file
-  exists and does not match (different counts, different probe param
-  descriptions, or a different derived order), it refuses to resume and says
+  exists and does not match (different counts or different probe param
+  descriptions), it refuses to resume and says
   what changed, since the stored coordinates would be misinterpreted: start a
   new checkpoint file, or restore the recipe and tuner. A mismatch is not an
   error while the checkpoint has no entries.
@@ -454,11 +454,7 @@ searched when `allow_unused_cuts`; 1: soft; 2: hard) and
 - `tuning/z4c_derived_order/`: the same, with the `add_eqn` groups in the
   order `rank_by_post_population(prioritize_rare_symbols)` derives (for today's
   recipe `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, 0-based `add_eqn` call
-  indices). Its `get_explicit_order_tuner()` pins that order with
-  `add_eqn_order(Z4C_STEVE_ORDER)` instead, which skips the trial bake but does
-  not follow changes to the recipe. With the shifted checkpoint of the
-  feature/eqn-order-instrumentation branch, both generate that branch's tuned
-  code byte for byte.
+  indices).
 
 Each has a `tuner.py` and `run-tuning.sh` / `generate-best.sh` wrappers.
 
