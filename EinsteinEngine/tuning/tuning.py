@@ -26,12 +26,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from EinsteinEngine.common.util import pprint
-from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer, read_checkpoint
 from EinsteinEngine.tuning.experiment import Experiment
 from EinsteinEngine.intermediate.eqn_ordering import add_eqn_order
 from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, RankByPostPopulation, active_params, \
     derive_add_eqn_order, describe_param, note_read, probe_recipe
-from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, do_remote_run
+from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, TrialFailed, do_remote_run
 
 _tuning_params: dict[str, Any] | None = None
 
@@ -254,6 +253,7 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     for name in ranked:
         experiment.add_out_param(name, lambda _params, fn=add_eqn_order(derived_orders[name]): fn)
     if record_probe and recorded != current:
+        from EinsteinEngine.tuning.checkpointed_optimizer import read_checkpoint  # see do_tuning
         read_checkpoint(experiment, checkpoint_file)  # raises if the checkpoint does not fit the experiment
         with open(sidecar, 'w') as fh:
             fh.write(current.to_json())
@@ -261,6 +261,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
 
 
 def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:
+    # Imported here: recipes import this module (for get_tuning_param) through `import EinsteinEngine`, which should not
+    # load optuna.
+    from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
     optimizer = CheckpointedOptimizer(
         f=functools.partial(do_tuning_run, args=args),
         experiment=build_experiment(tuner, args.recipe, checkpoint_file, record_probe=True),
@@ -281,7 +284,7 @@ def do_tuning_run(args: RemoteFeedbackArgs, **recipe_facing_args: dict[str, Any]
     _tuning_params = recipe_facing_args
     try:
         timing_value = do_remote_run(args, {})
-    except RuntimeError as e:
+    except TrialFailed as e:
         traceback.print_exception(e)
         # Probably created a bad split (empty loop, loop with no outputs) so discard this result
         return -float('inf')

@@ -28,6 +28,15 @@ from EinsteinEngine.tuning.clear_caches import clear_caches
 from EinsteinEngine.common.util import pprint
 
 
+class TrialFailed(RuntimeError):
+    """The trial's configuration failed: the recipe raised, or the remote build, run or timing failed. Other errors
+    (rsync, ssh connections, Slurm polling) are not the configuration's fault and propagate as plain RuntimeErrors."""
+
+
+# ssh exits with 255 when the connection itself fails, whatever the remote command did.
+_SSH_CONNECTION_FAILED = 255
+
+
 class RemoteFeedbackArgs(Protocol):
     recipe: str
     local_path: str
@@ -65,14 +74,17 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
             invocation = ["bash", "-c", cmd]
         else:
             invocation = ["ssh", args.remote_host, cmd]
-        return subprocess.run(invocation, capture_output=True, text=True)
+        result = subprocess.run(invocation, capture_output=True, text=True)
+        if not is_local and result.returncode == _SSH_CONNECTION_FAILED:
+            raise RuntimeError(f"ssh to {args.remote_host} failed:\n{result.stderr}")
+        return result
 
     sys.argv = [args.recipe]
     try:
         runpy.run_path(args.recipe, run_name="__main__", init_globals=globals_to_inject)
     except Exception as e:
         traceback.print_exception(e)
-        raise RuntimeError(f"Error when executing recipe")
+        raise TrialFailed("Error when executing recipe") from e
 
     clear_caches()
 
@@ -106,7 +118,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     build_and_submit_output = f"{build_and_submit_result.stdout}\n{build_and_submit_result.stderr}"
 
     if build_and_submit_result.returncode != 0:
-        raise RuntimeError(
+        raise TrialFailed(
             "Remote build/submit failed:\n"
             f"{build_and_submit_output}"
         )
@@ -144,7 +156,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     )
     timing_output = f"{timing_result.stdout}\n{timing_result.stderr}"
     if timing_result.returncode != 0:
-        raise RuntimeError(f"Remote timing run failed:\n{timing_output}")
+        raise TrialFailed(f"Remote timing run failed:\n{timing_output}")
 
     # The timing command is expected to print a single number (the value to
     # optimize for). Any parsing of a particular report format lives in the
@@ -152,7 +164,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     try:
         timing_value = float(timing_result.stdout.strip())
     except ValueError:
-        raise RuntimeError(
+        raise TrialFailed(
             f"Expected a single number from '{args.remote_timing_command}', "
             f"but could not parse one.\nOutput:\n{timing_output}"
         )

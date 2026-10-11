@@ -39,5 +39,6 @@ jobs:
           python unit_tests/test_split_loci.py
           python unit_tests/test_post_population_split.py
           python unit_tests/test_tuning_probe.py
+          python unit_tests/test_tuning_domains.py
           python unit_tests/test_rank_by_post_population.py
           python unit_tests/test_sympy_complexity.py

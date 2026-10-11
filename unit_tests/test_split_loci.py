@@ -448,6 +448,20 @@ def test_pre_population_ordering() -> None:
     assert el.ordering_fn is recipe_order
 
 
+def test_pre_population_ordering_without_cse() -> None:
+    """Without CSE, the list still ends in ordering_fn's order after a pre_population_ordering_fn, as it does with CSE
+    (where the post-CSE rebake applies it)."""
+    gf = ThornDef("ARR", "PREPOPNOCSE")
+    b, a, c, src = gf.decl("b", []), gf.decl("a", []), gf.decl("c", []), gf.decl("src", [])
+    fun = gf.create_function("fn", ScheduleBin.Evolve)
+    fun.add_eqn(c, src * 3)
+    fun.add_eqn(b, src * 2)
+    fun.add_eqn(a, src)
+    gf.bake(do_cse=False, pre_population_ordering_fn=lexicographical_order, ordering_fn=recipe_order)
+    assert lists_of(fun) == [["c", "b", "a"]], lists_of(fun)
+    assert keys(fun.eqn_complex.eqn_lists[0].eqn_pre_population_order) == ["a", "b", "c"]
+
+
 def test_pre_population_cuts() -> None:
     def build(name: str, hard: Optional[Callable[[int], bool]], bake: bool = False) -> tuple[ThornDef, ThornFunction]:
         gf = ThornDef("ARR", name)
@@ -743,6 +757,7 @@ if __name__ == "__main__":
         test_early_cuts_see_new_order,
         test_soft_queried_only_if_hard_declines,
         test_pre_population_ordering,
+        test_pre_population_ordering_without_cse,
         test_pre_population_cuts,
         test_params_repartitioning,
         test_validation_errors,

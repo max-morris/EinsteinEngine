@@ -34,6 +34,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
 
+from EinsteinEngine.tuning.checkpointed_optimizer import is_failed
 from EinsteinEngine.tuning.experiment import Experiment
 from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
 from EinsteinEngine.tuning.tuning import build_experiment, probe_sidecar_path
@@ -69,9 +70,6 @@ def map_coords_to_values(records: list[dict[str, Any]], experiment: Experiment) 
     return mapped
 
 
-_FAILED_VALUE: float = -1e9
-
-
 def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     param_names: list[str] = sorted({k for r in records for k in r["params"]})
     n_params = len(param_names)
@@ -79,7 +77,7 @@ def plot(records: list[dict[str, Any]], title: str, out: Path | None) -> None:
     targets = [r["target"] for r in records]
 
     # Separate successful and failed runs.
-    ok_mask = [t != _FAILED_VALUE for t in targets]
+    ok_mask = [not is_failed(t) for t in targets]
     ok_steps    = [s for s, ok in zip(steps, ok_mask) if ok]
     ok_targets  = [t for t, ok in zip(targets, ok_mask) if ok]
     fail_steps  = [s for s, ok in zip(steps, ok_mask) if not ok]

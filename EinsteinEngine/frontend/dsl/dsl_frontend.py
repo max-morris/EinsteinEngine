@@ -363,6 +363,13 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         if my_opts["do_cse"]:
             pprint("Performing CSE...")
             self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+        else:
+            # The post-CSE rebake is what orders a list with ordering_fn after a pre_population_ordering_fn; without
+            #  CSE, rebake here instead.
+            for tf in self.functions.values():
+                if my_tf_opts[tf.name]["pre_population_ordering_fn"] is not None:
+                    for eqn_list in tf.eqn_complex.eqn_lists:
+                        eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
         probe.cse_finished(self)
 
         for tf in self.functions.values():

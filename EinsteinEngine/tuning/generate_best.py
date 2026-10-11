@@ -39,6 +39,7 @@ import sys
 from typing import Any
 
 from EinsteinEngine.tuning import tuning
+from EinsteinEngine.tuning.checkpointed_optimizer import is_failed
 from EinsteinEngine.tuning.experiment import ParamType
 from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
 
@@ -64,9 +65,9 @@ class _FixedTrial:
 def load_best_params(checkpoint_file: str) -> tuple[float, dict[str, Any]]:
     """Return the (target, in_params) of the max-target entry in a checkpoint.
 
-    Non-finite targets (failed runs) are skipped. The checkpoint format is the
-    JSON-lines format written by CheckpointedOptimizer: one
-    ``{"target": float, "params": {...}}`` object per line.
+    Failed runs are skipped (see ``checkpointed_optimizer.is_failed``). The
+    checkpoint format is the JSON-lines format written by CheckpointedOptimizer:
+    one ``{"target": float, "params": {...}}`` object per line.
     """
     best_target = -math.inf
     best_params: dict[str, Any] | None = None
@@ -77,14 +78,14 @@ def load_best_params(checkpoint_file: str) -> tuple[float, dict[str, Any]]:
                 continue
             entry: dict[str, Any] = json.loads(line)
             target = float(entry['target'])
-            if not math.isfinite(target):
+            if is_failed(target):
                 continue
             if target > best_target:
                 best_target = target
                 best_params = entry['params']
 
     if best_params is None:
-        raise RuntimeError(f"No finite target found in checkpoint file {checkpoint_file}.")
+        raise RuntimeError(f"No successful run found in checkpoint file {checkpoint_file}.")
     return best_target, best_params
 
 
