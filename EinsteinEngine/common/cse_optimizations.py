@@ -115,6 +115,11 @@ class CsePreset(Enum):
                 # Listed first, so that its postprocessor runs last, on the restored subtractions.
                 return [cse_collect_greedy(max_iter, after_cse=True), cse_basic()]
 
+    @property
+    def collects(self) -> bool:
+        """Whether the preset runs cse_collect_greedy, i.e. whether its ``max_iter`` matters."""
+        return any(isinstance(step, _CollectGreedy) for pair in self() for step in pair)
+
 
 def default_cse_optimizations() -> list[CseOptimization]:
     """

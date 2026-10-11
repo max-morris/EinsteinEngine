@@ -483,7 +483,37 @@ file that exists, and warns if it found no split keys to shift.
 
 ---
 
-## 6. Advanced domains
+## 6. The CSE optimization tuner
+
+`EinsteinEngine.tuning.tune_cse.CseOptimizationTuner` searches the
+`cse_optimizations` bake option: which `CsePreset`, and, for the presets that
+run `cse_collect_greedy` (`CsePreset.collects`), which budget (`max_iter`).
+
+```python
+from EinsteinEngine.tuning.tune_cse import CseOptimizationTuner
+from EinsteinEngine.tuning.tuning import Tuner
+
+
+def get_tuner() -> Tuner:
+    return CseOptimizationTuner()  # every preset; budgets 5, 10, 25, 50, 100
+```
+
+Its params are `cse_preset`, an index into `presets` (by default
+`list(CsePreset)`, whose order does not change), and `cse_collect_max_iter`,
+one of `budgets`. A checkpoint records the index, so resume it with the same
+`presets`. The recipe reads the one out-param it provides as optional, and
+passes it to the bake:
+
+```python
+mod.bake(cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()))
+```
+
+Every other knob keeps its default, so the recipe must read those as optional
+too; split predicates read that way never split.
+
+---
+
+## 7. Advanced domains
 
 The `(lo, hi)` tuple is shorthand for `Interval(lo, hi)`. When a plain interval
 isn't the right search space, `add_in_param` also accepts a `Domain` object or a
