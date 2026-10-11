@@ -45,6 +45,7 @@ import functools
 import runpy
 import sys
 from collections.abc import Collection, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -132,6 +133,29 @@ def report_split_positions(predicate: object, function_name: str, count: int) ->
     if name is None:
         return
     _state.reports.setdefault(name, {}).setdefault(function_name, set()).add(count)
+
+
+# While collect_refused_cuts() is active, the auto splits the engine refused, one entry per function and bake.
+_refused_cuts: list[str] | None = None
+
+
+@contextmanager
+def collect_refused_cuts() -> Iterator[list[str]]:
+    """Within this block, collect the auto splits the engine refuses (see ``report_refused_cuts``)."""
+    global _refused_cuts
+    saved = _refused_cuts
+    refused: list[str] = list()
+    _refused_cuts = refused
+    try:
+        yield refused
+    finally:
+        _refused_cuts = saved
+
+
+def report_refused_cuts(function_name: str, positions: Collection[int], locus: str) -> None:
+    """Engine hook: ``function_name`` ignored the auto splits requested at ``positions`` of its locus."""
+    if _refused_cuts is not None:
+        _refused_cuts.append(f'{function_name}: positions {sorted(positions)} of the {locus} locus')
 
 
 def bake_started(frontend: 'DslFrontend[Any, Any, Any]') -> None:

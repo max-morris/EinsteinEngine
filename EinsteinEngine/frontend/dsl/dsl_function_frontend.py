@@ -310,6 +310,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 why.append(f"put reads of {', '.join(backward)} before their writes")
             wprint(f"{self.name}: ignoring the auto splits at positions {ignored} of the {self.auto_split_locus.name} "
                    f"locus, which would {' and '.join(why)}.")
+            probe.report_refused_cuts(self.name, ignored, self.auto_split_locus.name)
         return cuts_by_list
 
     @staticmethod

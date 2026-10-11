@@ -39,6 +39,7 @@ from EinsteinEngine.intermediate.eqn_ordering import pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnListPiece, SplitBoundary
 from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.tuning import probe
 
 x = mk_symbol("x")
 
@@ -634,7 +635,9 @@ def test_early_backward_reads() -> None:
         return fun, out.getvalue()
 
     hard = Recorder(lambda i: True)
-    fun, out = build("EARLYBACKHARD", auto_hard_split_predicate=hard)
+    with probe.collect_refused_cuts() as refused:
+        fun, out = build("EARLYBACKHARD", auto_hard_split_predicate=hard)
+    assert refused == ["fn: positions [0, 2] of the Early locus"], refused  # a tuning trial fails on these
     assert hard.calls == [0, 1, 2, 3], hard.calls
     # Positions 0 and 2 are refused, 1 is cut, and the cut at 3, after the last call, leaves an empty piece.
     assert lists_of(fun) == [["b", "a"], ["vD0", "a2", "vD1", "vD2"]], lists_of(fun)
