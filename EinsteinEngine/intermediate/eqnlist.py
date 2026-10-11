@@ -742,7 +742,7 @@ class EqnComplex:
 
         return new_tile_temporaries
 
-    def rebake_refined(self, *, force_fast: bool = False) -> None:
+    def rebake_refined(self) -> None:
         """
         Bake every EqnList produced by the most recent `refine` with an order-preserving ordering function over its
         piece order in place of its own `ordering_fn` (order_builder still repairs dependencies). Afterward, validate
@@ -755,7 +755,7 @@ class EqnComplex:
         try:
             for el_idx, (eqn_list, refined) in enumerate(zip(self.eqn_lists, self._refinement)):
                 pprint(f"Rebaking loop {el_idx} after refinement...")
-                eqn_list.bake(force_rebake=True, force_fast=force_fast, ordering_fn_override=fixed_order(refined.piece_order))
+                eqn_list.bake(force_rebake=True, ordering_fn_override=fixed_order(refined.piece_order))
 
             self._validate_refinement()
         finally:

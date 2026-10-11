@@ -221,10 +221,10 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         self.source_annotations.eqns.clear()
         self.infer_tile_temp_centerings()
 
-    def _rebake_refined(self, *, force_fast: bool = False) -> None:
+    def _rebake_refined(self) -> None:
         """Rebake the lists produced by the last `_refine` (see `EqnComplex.rebake_refined`), restoring the per-equation
         annotations the equations had before they were cut."""
-        self.eqn_complex.rebake_refined(force_fast=force_fast)
+        self.eqn_complex.rebake_refined()
         for loop_idx, annotations in self._refined_eqn_annotations.items():
             for lhs, annotation in annotations.items():
                 self.source_annotations.eqns[loop_idx][lhs] = annotation
@@ -436,7 +436,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         # refine() keeps the complex's existing tile temps and adds the promoted ones to it.
         self._refine([assignment.pieces for assignment in assignments], tile_kind_temps=promoted)
-        self._rebake_refined(force_fast=self.needs_merge())
+        self._rebake_refined()
         return promoted
 
     def _do_splitmaxxing(self) -> None:

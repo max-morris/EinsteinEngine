@@ -18,9 +18,7 @@
 import argparse
 import functools
 import sys
-import typing
 from pathlib import Path
-from typing import Callable
 
 from sympy import Rational
 
