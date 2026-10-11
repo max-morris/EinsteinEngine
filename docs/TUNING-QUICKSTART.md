@@ -38,14 +38,15 @@ raises (this catches typos). A knob that a tuner may leave out is read with
 the tuner does not provide it.
 
 ```python
-from EinsteinEngine import SplitLocus, get_optional_tuning_param, get_tuning_param, maximize_symbol_reuse
+from EinsteinEngine import SplitLocus, get_optional_tuning_param, maximize_symbol_reuse
 
 fun = mod.create_function(
     "my_rhs",
     rhs_group,
-    # These come from the tuner during a search; None (the default) otherwise.
-    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
-    auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    # These come from a split tuner during a search; None (the default, which never splits) otherwise. They are
+    # optional, so that a tuner that does not split can leave them out.
+    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate', None),
+    auto_soft_split_predicate=get_optional_tuning_param('auto_soft_split_predicate', None),
     # Where in the bake the predicates are evaluated (see section 5).
     auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
 )
