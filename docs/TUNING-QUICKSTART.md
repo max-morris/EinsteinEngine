@@ -185,6 +185,19 @@ ssh connection failures, no Slurm job id in the output, a failed `squeue`)
 stop the tuning run instead; the checkpoint keeps the completed trials, so
 rerun to resume.
 
+### Timing on a GPU
+
+Time each trial on a warm GPU. A GPU that starts a run idle runs it faster
+than one that has been busy for a while: on Deep Bayou's V100S GPUs, a cold
+start ran the Z4c RHS about 13% faster, more than most of the differences a
+search is looking for. A trial that happens to start on an idle GPU then looks
+better than its configuration is. So have the job that `--remote-command`
+submits run the executable once untimed, for a few iterations, before the
+timed run, and have `--remote-timing-command` read only the timed run. (This
+is unrelated to `--warmup-iterations`, which counts the tuner's exploratory
+trials.) The same holds when comparing finished builds: run them back to back
+in one job on one GPU, alternating their order, rather than as separate jobs.
+
 ### Iterations and the budget
 
 `--warmup-iterations` are random-ish exploration; `--iterations` are the guided
