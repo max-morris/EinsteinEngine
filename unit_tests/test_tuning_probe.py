@@ -576,7 +576,7 @@ def test_derived_order_sidecar(r: Recipes) -> None:
     expect_error(RuntimeError, lambda: build_experiment(other, None, checkpoint), 'records no derived add_eqn order')
 
     #  rank_by_post_population only resolves an early ordering function.
-    bad = CombinatorialSplitTuner(ordering_fn=rank_by_post_population(prioritize_rare_symbols))  # type: ignore[arg-type]
+    bad = CombinatorialSplitTuner(ordering_fn=rank_by_post_population(prioritize_rare_symbols))
     expect_error(RuntimeError, lambda: build_experiment(bad, path, r.path('bad.jsonl')), 'only be the early_ordering_fn')
     assert_idle()
 
