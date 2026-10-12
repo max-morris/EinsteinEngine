@@ -170,7 +170,7 @@ def test_whole_thorn(tmp: str) -> None:
         a, b, c, d, e, src, src2 = (gf.decl(n, []) for n in ("a", "b", "c", "d", "e", "src", "src2"))
         p = gf.add_param("p", 1.0, "a param")
         f1 = gf.create_function("f1", ScheduleBin.Evolve,
-                                auto_hard_split_predicate=get_optional_tuning_param("hard", lambda i: i == 1))
+                                auto_hard_split_predicate=get_optional_tuning_param("hard", lambda i: i == 0))
         f1.add_eqn(a, sin(src) * cos(src) + pull_out(src * src))
         f1.add_eqn(v[li], [sin(src2) * p, cos(src2) * cos(src), sin(src) * cos(src2) * exp(src)])
         f1.soft_split()
@@ -183,9 +183,10 @@ def test_whole_thorn(tmp: str) -> None:
                 functions={"f1": {"early_ordering_fn": get_optional_tuning_param("early_ordering_fn", None),
                                   "ordering_fn": get_optional_tuning_param("ordering_fn", maximize_symbol_reuse)}})
         """)
-    assert derive_add_eqn_order(path, prioritize_rare_symbols, {"hard": None}) == ("f1", (0, 1, 3, 2))
+    # The recipe's own hard split predicate is not evaluated while deriving.
+    assert derive_add_eqn_order(path, prioritize_rare_symbols) == ("f1", (0, 1, 3, 2))
     f1 = run_recipe(path, {"early_ordering_fn": add_eqn_order([0, 1, 3, 2])})["f1"]
-    assert pre_population_origins(f1) == [[0, 1], [3, 2]], pre_population_origins(f1)
+    assert pre_population_origins(f1) == [[0], [1, 3, 2]], pre_population_origins(f1)  # the soft split merges
 
 
 def test_derivation_errors(tmp: str) -> None:
