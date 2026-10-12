@@ -106,9 +106,9 @@ class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBa
     do_madd: bool
     do_recycle_temporaries: bool
     splitmaxxing: bool
-    ordering_fn: EqnOrderingFn  # The post-population ordering function (see DslFunctionFrontendBakeOptions)
-    # Orders each function's author-level add_eqn groups (the early locus). add_eqn_order refers to one function's
-    # add_eqn calls, so pass it per function through `functions`.
+    ordering_fn: EqnOrderingFn  # The post-population ordering function
+    # Orders each function's add_eqn groups (the early locus). add_eqn_order is per function, so pass it through
+    # `functions`.
     early_ordering_fn: Optional[EqnOrderingFn]
     # Orders each function's scalar equations before CSE (the pre-population locus); None uses ordering_fn.
     pre_population_ordering_fn: Optional[EqnOrderingFn]
@@ -151,8 +151,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     is_stencil: dict[UFunc, bool]  # Obsolesce sometime?
 
-    # The cost model for this frontend's backend. A frontend whose backend emits some
-    # operations more cheaply than the generic model assumes overrides this.
+    # Overridden by frontends whose backend emits some operations more cheaply than the generic cost model assumes.
     complexity_visitor_type: type[SympyComplexityVisitor] = SympyComplexityVisitor
 
     div_makers: dict[str, DivMakerVisitor]

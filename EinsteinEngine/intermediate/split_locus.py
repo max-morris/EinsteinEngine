@@ -20,23 +20,15 @@ from enum import Enum
 
 class SplitLocus(Enum):
     """
-    The point in the bake at which a function's auto split predicates are evaluated.
+    The point in the bake at which a function's auto split predicates are evaluated. Position i (0-based) means "split
+    after the i-th element" of the order at that point. Population is global CSE adding its temporaries to the lists.
 
-    Each locus has a matching ordering function, and the predicates are called with 0-based positions
-    in the order that exists at that point; position ``i`` means "split after the i-th element".
-    "Population" means global CSE populating the equation lists with temporaries (not the paper's populating of the
-    abstract program).
-
-    Early:          Elements are author-level ``add_eqn`` calls (all components of a tensor equation stay together),
-                    ordered by the ``early_ordering_fn`` bake option, or in pre-population order (which is still the
-                    recipe order) when it is None. This is the historical behavior.
-    PrePopulation:  Elements are scalar equations before CSE temporaries are populated, in the order of the pre-CSE
-                    bake: by the ``pre_population_ordering_fn`` bake option, or by ``ordering_fn`` when it is None.
-    PostPopulation: Elements are scalar equations after global CSE, in the order of the post-CSE rebake, which uses the
-                    ``ordering_fn`` bake option. The exception is a function with (manual) soft splits: its post-CSE
-                    rebake is a fast one, since merge_soft_splits rebakes afterward, so a Bayesian ``ordering_fn`` is
-                    replaced there by its stand-in, prioritize_rare_symbols (see eqn_ordering.pre_cse_stand_in), and
-                    the positions follow the stand-in's order. (Without CSE, the elements are the pre-CSE baked order.)
+    Early:          Elements are add_eqn calls, ordered by `early_ordering_fn`, else in pre-population order.
+    PrePopulation:  Elements are scalar equations in the pre-CSE baked order (by `pre_population_ordering_fn`, else
+                    by `ordering_fn`).
+    PostPopulation: Elements are scalar equations in the post-CSE baked order (by `ordering_fn`, or without CSE, the
+                    pre-CSE one). With manual soft splits that rebake is a fast one, so a Bayesian `ordering_fn` is
+                    replaced by its `pre_cse_stand_in`.
     """
     Early = 0
     PrePopulation = 1

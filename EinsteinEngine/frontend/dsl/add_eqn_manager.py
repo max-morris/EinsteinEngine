@@ -45,9 +45,8 @@ class AddEqnManager:
         self._eqn_list_getter = eqn_list_getter
         self._is_baked = is_baked
         self._owner_name = owner_name
-        # The 0-based index of the author-level add_eqn call in progress, set by the owning function frontend. It is
-        # None when equations are added directly through `_base_add_eqn` (e.g., by synthetic functions), in which case
-        # they get no origin.
+        # The 0-based index of the author-level add_eqn call in progress; None when equations are added directly
+        # through `_base_add_eqn`, which gives them no origin.
         self.current_origin: Optional[int] = None
 
     @property
@@ -67,9 +66,8 @@ class AddEqnManager:
         lhs_key = cast(Symbol, symbify(lhs2))
         if lhs_key in self._eqn_list.eqns:
             raise DslException(
-                f"Equation for '{lhs2}' is already defined in this loop. A LHS may be assigned only once between"
-                f" split_loop()/soft_split() calls; note that auto split predicates are evaluated at bake time, not as"
-                f" equations are added, so they cannot separate two assignments to the same LHS."
+                f"Equation for '{lhs2}' is already defined in this loop. Assign a LHS only once between"
+                f" split_loop()/soft_split() calls; auto splits happen at bake time and cannot separate them."
             )
 
         rhs2 = self.frontend._do_subs(self.frontend.einstein_notation.expand_contracted_indices(rhs2, self.frontend.symmetries))

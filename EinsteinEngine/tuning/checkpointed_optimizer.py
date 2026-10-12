@@ -15,17 +15,10 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Checkpointing Bayesian optimization backed by Optuna + TPESampler.
+"""Checkpointing optimization backed by Optuna's TPESampler.
 
-Provides CheckpointedBayesianOptimization, a drop-in replacement for the
-previous bayes_opt-based version.  The checkpoint file format (JSON-lines)
-is preserved, so existing checkpoint files and plot_tuning.py are unaffected.
-
-Optuna's TPESampler is used instead of a GP, which makes it robust to:
-  - Non-smooth / discontinuous objective landscapes
-  - Integer / combinatorial parameter spaces (e.g. BitTwiddleTuner)
-  - Noisy objective values
-  - scipy.optimize.NonlinearConstraint (converted to Optuna constraints)
+The checkpoint is a JSON-lines file with one {"target": float, "params": {...}} object per trial. TPE copes with
+non-smooth objectives, integer and combinatorial parameters, and noisy timings.
 """
 
 import json
@@ -193,11 +186,10 @@ class CheckpointedOptimizer:
             total_iterations=total_iterations,
         )
 
-        # Append to JSONL checkpoint (same format as before).
-        rendered_in_args = {k: v for k, v in in_args.items()}
+        # Append to the JSONL checkpoint.
         entry: dict[str, Any] = {
             'target': value,
-            'params': rendered_in_args,
+            'params': in_args,
         }
         with open(self._checkpoint_file, 'a') as fh:
             fh.write(json.dumps(entry) + '\n')
@@ -207,7 +199,7 @@ class CheckpointedOptimizer:
                 best = self._study.best_value
             except ValueError:
                 best = float('nan')
-            print(f'  trial {trial.number:4d} | value: {value:+.6f} | best: {best:+.6f} | {rendered_in_args}')
+            print(f'  trial {trial.number:4d} | value: {value:+.6f} | best: {best:+.6f} | {in_args}')
 
         return value
 

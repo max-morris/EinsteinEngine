@@ -24,10 +24,9 @@ best generated code locally (no remote build/run).
 
 The tuner file is the same one used with remote_tuner: it supplies the
 Experiment that maps the checkpoint's in_params to the recipe-facing
-out_params. For a tuner that probes the recipe, the recipe is probed, and
-the result must match the probe recorded next to the checkpoint
-(``<checkpoint>.probe.json``) if there is one. The best checkpoint entry is
-loaded, and checked against the recorded probe, before the (slow) probe runs.
+out_params. For a tuner that probes the recipe, the probe must match the one
+recorded next to the checkpoint, if any; the best entry is checked against
+the recorded probe before the (slow) probe runs.
 """
 
 import argparse
@@ -65,9 +64,9 @@ class _FixedTrial:
 def load_best_params(checkpoint_file: str) -> tuple[float, dict[str, Any]]:
     """Return the (target, in_params) of the max-target entry in a checkpoint.
 
-    Failed runs are skipped (see ``checkpointed_optimizer.is_failed``). The
-    checkpoint format is the JSON-lines format written by CheckpointedOptimizer:
-    one ``{"target": float, "params": {...}}`` object per line.
+    Failed runs are skipped. The checkpoint format is the JSON-lines format
+    written by CheckpointedOptimizer: one ``{"target": float, "params": {...}}``
+    object per line.
     """
     best_target = -math.inf
     best_params: dict[str, Any] | None = None

@@ -169,7 +169,7 @@ def test_probe_errors(r: Recipes) -> None:
         bake_finished()
         """)
     expect_error(RuntimeError, lambda: probe_recipe(never_read, [HARD]), 'never read', HARD,
-                 'read only later (e.g. for a second thorn) counts as never read')
+                 'before the probe stopped it')
     ignores_locus = r.write('ignores_locus', f"""\
         report_split_positions(get_tuning_param('{HARD}', None), 'rhs', 3)
         bake_finished()
@@ -576,7 +576,7 @@ def test_derived_order_sidecar(r: Recipes) -> None:
     expect_error(RuntimeError, lambda: build_experiment(other, None, checkpoint), 'records no derived add_eqn order')
 
     #  rank_by_post_population only resolves an early ordering function.
-    bad = CombinatorialSplitTuner(ordering_fn=rank_by_post_population(prioritize_rare_symbols))  # type: ignore[arg-type]
+    bad = CombinatorialSplitTuner(ordering_fn=rank_by_post_population(prioritize_rare_symbols))
     expect_error(RuntimeError, lambda: build_experiment(bad, path, r.path('bad.jsonl')), 'only be the early_ordering_fn')
     assert_idle()
 

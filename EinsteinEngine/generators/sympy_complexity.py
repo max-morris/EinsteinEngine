@@ -151,10 +151,7 @@ class SympyComplexityVisitor:
 
         args_complexity: int = sum([self.complexity(arg) for arg in n.args])
 
-        # Compare the function class. `n in [sy.sin, ...]` compares the
-        # applied call to those classes and never matches, so the
-        # surcharge was never applied. sqrt and cbrt never reach here, since
-        # SymPy builds them as powers.
+        # Compare the function class, not the applied call. sqrt and cbrt never reach here: SymPy builds them as powers.
         if n.func in _TRANSCENDENTAL_FUNCTIONS:
             return TRANSCENDENTAL_COST + args_complexity
         else:

@@ -107,14 +107,12 @@ class VanillaF90Module(DslFrontend[VanillaF90Param[Any], Never, VanillaF90Functi
                         auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
                         auto_split_locus: SplitLocus = SplitLocus.Early) -> VanillaF90Function:
         """
-        Creates a new function.
-
         :param auto_hard_split_predicate: Called with 0-based positions at `auto_split_locus`; True means "hard split
-                                          after the element at this position".
-        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declined; True or a retainment
-                                          strategy means "soft split after the element at this position".
-        :param auto_split_locus: The point in the bake at which the predicates are evaluated. At SplitLocus.Early (the
-                                 default), elements are author-level add_eqn calls.
+                                          after this position".
+        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declines; True or a retainment
+                                          strategy means "soft split after this position".
+        :param auto_split_locus: When in the bake the predicates are evaluated. At SplitLocus.Early (the default),
+                                 positions are add_eqn calls.
         """
         tf = VanillaF90Function(
             name,

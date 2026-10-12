@@ -16,8 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #  Tuner definition for the Z4c RHS splitting sweep, loaded by remote_tuner.py.
-#  The add_eqn calls of z4c_rhs are put in the order prioritize_rare_symbols gives their equations after CSE. That order
-#  is derived once, when the checkpoint is created, and recorded in its probe file; every trial reuses it.
+#  The add_eqn calls of z4c_rhs are ordered by where prioritize_rare_symbols puts their equations after CSE.
 
 from EinsteinEngine.intermediate.eqn_ordering import prioritize_rare_symbols
 from EinsteinEngine.tuning.probe import rank_by_post_population

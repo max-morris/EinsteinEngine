@@ -156,9 +156,15 @@ The cleanest way to keep this reproducible is to copy `run-tuning.sh` from
 `tuning/z4c_splitting_qbd/` and edit the paths; `"$@"` at the end lets you pass extra
 flags through (e.g. `./run-tuning.sh --iterations 50`).
 
+`--local-path`, `--remote-host`, `--remote-path` and `--remote-cactus-path` are
+required.
+
 What each trial does, in order (see `remote_feedback.py:do_remote_run`):
 
-1. Regenerate the recipe with the trial's parameters into `--local-path`.
+1. Regenerate the recipe with the trial's parameters into `--local-path`. If the
+   engine refused any auto split the trial asked for (a cut guard; see
+   [EQUATION-ORDERING.md](EQUATION-ORDERING.md), section 5), the trial fails
+   here, before anything is synced or built.
 2. `rsync --delete` `--local-path` → `--remote-path`.
 3. Run `--remote-command` under `--remote-cactus-path`; parse the Slurm job id
    from a line matching `Submit finished, job id is <N>`.
@@ -169,8 +175,14 @@ What each trial does, in order (see `remote_feedback.py:do_remote_run`):
    alone. The sample `timings.sh` extracts the RHS solve time.
 6. Record `{"target": -timing_value, "params": {...}}` to the checkpoint.
 
-A trial that throws (e.g. the recipe produced a degenerate split) is scored
-`-inf` and discarded, so the search simply avoids that region.
+A trial fails when its configuration does: the recipe raises (e.g. a split
+fails validation), the engine refuses a requested cut, or the remote build,
+run or timing fails. A failed trial is recorded in the checkpoint with a
+sentinel target (`-1e9`), counts toward the budget, is never picked as the
+best, and steers the search away from that region. Other errors (rsync errors,
+ssh connection failures, no Slurm job id in the output, a failed `squeue`)
+stop the tuning run instead; the checkpoint keeps the completed trials, so
+rerun to resume.
 
 ### Iterations and the budget
 
@@ -244,16 +256,13 @@ plus whichever of `early_ordering_fn`, `pre_population_ordering_fn` and
 
 ### Loci
 
-(For the full explanation, with worked examples, see
-[EQUATION-ORDERING.md](EQUATION-ORDERING.md).)
-
 The **split locus** says at which point of the bake a function evaluates its
 predicates, and so what a position means. Positions are **0-based**: the
 predicates are called with `0..N-1`, positions run across the function's loops,
-and position `i` means "split after element `i`". A **cut** is a hard or soft
-split at one position. The hard predicate is asked first; the soft one only when
-hard returns False. Manual `split_loop()` / `soft_split()` calls still apply, and
-no locus reorders equations across them.
+and position `i` means "split after element `i`". Manual `split_loop()` /
+`soft_split()` calls still apply, and no locus reorders equations across them.
+[EQUATION-ORDERING.md](EQUATION-ORDERING.md) has the details and worked
+examples.
 
 | `SplitLocus`     | Elements                                                               | Order of the elements                                                                                   | Z4c N |
 |------------------|------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|-------|
@@ -261,10 +270,8 @@ no locus reorders equations across them.
 | `PrePopulation`  | scalar equations and pull-out temporaries, before CSE temporaries exist | the pre-CSE bake order: `pre_population_ordering_fn`, or `ordering_fn` when that is None               | 64    |
 | `PostPopulation` | scalar equations and temporaries after global CSE                       | `ordering_fn` (the post-CSE order)                                                                      | 1061  |
 
-In a function with manual soft splits, the post-CSE rebake is a fast one (the
-soft split merge rebakes afterward), so a Bayesian `ordering_fn` is replaced by
-`prioritize_rare_symbols` there, and the `PostPopulation` positions follow that
-order.
+With manual soft splits, a Bayesian `ordering_fn` is replaced by `prioritize_rare_symbols` at the post-CSE rebake,
+so the `PostPopulation` positions follow that order.
 
 With two params per position, `CombinatorialSplitTuner` is only practical at the `Early` locus; use
 `CutPositionSplitTuner` at the others.
@@ -273,14 +280,11 @@ The `Early` order can also be derived from the recipe:
 `early_ordering_fn=rank_by_post_population(prioritize_rare_symbols)` (from
 `EinsteinEngine.tuning.probe`) ranks the `add_eqn` calls by the median position
 of their equations in the post-CSE order that `prioritize_rare_symbols` gives
-them. When the checkpoint has no recorded order, `build_experiment` runs the
-recipe once, unsplit, with `prioritize_rare_symbols` as the `ordering_fn`
-out-param, and ranks the calls of the function baked with it. The order is
-printed and recorded in the probe file (below), and the probe, every trial and
-`generate_best` use `add_eqn_order(<that order>)`. The recipe must read
-`early_ordering_fn` and `ordering_fn` with `get_optional_tuning_param` and pass
-them to the same function. See [EQUATION-ORDERING.md](EQUATION-ORDERING.md),
-section 7.
+them. The order is derived once per checkpoint, recorded in the probe file
+(below), and used as `add_eqn_order(<that order>)` by the probe, every trial and
+`generate_best`. The recipe must read `early_ordering_fn` and `ordering_fn` with
+`get_optional_tuning_param` and pass them to the same function. See
+[EQUATION-ORDERING.md](EQUATION-ORDERING.md), section 7.
 
 ### Probing
 
@@ -339,13 +343,12 @@ because the checkpoint's coordinates only mean something against it:
 - `probe_params`: a description of each `probe_params()` value (below).
 - `derived_orders` (only present when a probe param is
   `rank_by_post_population(...)`): the 0-based `add_eqn` order it was resolved
-  to. A split coordinate means "cut after the i-th group in this order", so the
-  order is derived once, when the probe file is first written, and reused from
-  then on: resuming, `generate_best` and `plot_tuning` read it instead of
-  deriving it again, so a later change to the engine or the recipe cannot
-  silently change the order under the checkpoint. To derive it again, start a
-  new checkpoint file. With `early_ordering_fn=add_eqn_order([...])` the order
-  is part of the description instead, and there is no `derived_orders`.
+  to. It is derived once, when the probe file is first written, and reused by
+  resuming, `generate_best` and `plot_tuning`, so a later change to the engine
+  or the recipe cannot silently change the order under the checkpoint. To
+  derive it again, start a new checkpoint file. With
+  `early_ordering_fn=add_eqn_order([...])` the order is part of the description
+  instead.
 
 `probe_params` describes each `probe_params()` value in a form that is stable
 across runs (see `probe.describe_param`): an enum by name; a function by its
@@ -452,23 +455,18 @@ searched when `allow_unused_cuts`; 1: soft; 2: hard) and
 - `tuning/z4c_splitting_qbd/`: `CombinatorialSplitTuner()` at the early locus
   in recipe order.
 - `tuning/z4c_derived_order/`: the same, with the `add_eqn` groups in the
-  order `rank_by_post_population(prioritize_rare_symbols)` derives (for today's
-  recipe `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, 0-based `add_eqn` call
-  indices).
+  order `rank_by_post_population(prioritize_rare_symbols)` derives (for Z4c,
+  `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, 0-based `add_eqn` call indices).
 
 Each has a `tuner.py` and `run-tuning.sh` / `generate-best.sh` wrappers.
 
 ### Old checkpoints
 
-A split checkpoint recorded before this change is refused, for one or both of
-two reasons, and the error names the undeclared params:
-
-- Split params used to be 1-based (`split_1..N`), so `split_N` is undeclared.
-- It may have more positions than the recipe has now. The old Z4c tuner declared
-  15 positions, but the Z4c RHS has 13 `add_eqn` calls; the positions after the
-  last call were never queried, so they can be dropped.
-
-Convert it once, into a new file:
+A split checkpoint with 1-based split params (`split_1..N`), or with more
+positions than the recipe has (e.g. 15 positions for the 13 `add_eqn` calls of
+the Z4c RHS), is refused, and the error names the undeclared params. Positions
+after the last call were never queried, so they can be dropped. Convert such a
+checkpoint once, into a new file:
 
 ```bash
 python scripts/shift_checkpoint_indices.py old_checkpt.jsonl new_checkpt.jsonl
@@ -477,7 +475,8 @@ python scripts/shift_checkpoint_indices.py old_checkpt.jsonl new_checkpt.jsonl -
 
 Only `split_<int>` and `soft_retain_percentile_<int>` keys are shifted; other
 keys are copied unchanged. `--n-positions N` drops the (shifted) split keys with
-an index of `N` or more, and reports how many of the dropped keys were splits.
+an index of `N` or more, and reports how many of the dropped keys were actual
+splits (a nonzero `split_<int>`).
 The script refuses an already 0-based file, and an output file or output probe
 file that exists, and warns if it found no split keys to shift.
 
@@ -596,10 +595,10 @@ the far side of a `Union` gap).
 |----------------------------|--------------------------------|-----------------------------------------------------|
 | `recipe` (positional)      | —                              | Path to the EinsteinEngine recipe.                      |
 | `tuner` (positional)       | —                              | Path to the tuner `.py`.                            |
-| `--local-path`             | —                              | Local dir the recipe generates into.               |
-| `--remote-host`            | —                              | SSH host, or `localhost` to run locally.            |
-| `--remote-path`            | —                              | Destination dir for the generated code.            |
-| `--remote-cactus-path`     | —                              | Cactus install dir the commands run under.         |
+| `--local-path`             | required                       | Local dir the recipe generates into.               |
+| `--remote-host`            | required                       | SSH host, or `localhost` to run locally.            |
+| `--remote-path`            | required                       | Destination dir for the generated code.            |
+| `--remote-cactus-path`     | required                       | Cactus install dir the commands run under.         |
 | `--remote-command`         | `./build.sh && ./run-all.sh`   | Build + submit; must print the Slurm job id.        |
 | `--remote-timing-command`  | `./timings.sh`                 | Prints a single number to optimize for.             |
 | `--checkpoint-file`        | `split_tuning_checkpt.jsonl`   | Trial log; resumed automatically. A probing tuner also writes `<file>.probe.json`. |

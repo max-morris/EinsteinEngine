@@ -35,11 +35,9 @@ from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs, TrialFaile
 _tuning_params: dict[str, Any] | None = None
 
 def get_tuning_param[T](param_name: str, default: T) -> T:
-    """The value of a tuner out-param, or ``default`` when not tuning.
-
-    While tuning, a name the tuner does not provide is an error (it usually means a typo, or a tuner out-param that
-    returned None for this trial); use ``get_optional_tuning_param`` for knobs a tuner may leave out. While probing
-    (see ``probe.probe_recipe``), names the probe does not provide return ``default``.
+    """
+    The value of a tuner out-param, or `default` when not tuning. While tuning, a missing name is an error (a typo, or
+    an out-param that returned None for this trial); use `get_optional_tuning_param` for knobs a tuner may leave out.
     """
     if (params := active_params()) is not None:
         note_read(param_name)
@@ -51,7 +49,7 @@ def get_tuning_param[T](param_name: str, default: T) -> T:
     return typing.cast(T, _tuning_params[param_name])
 
 def get_optional_tuning_param[T](param_name: str, default: T) -> T:
-    """Like ``get_tuning_param``, but returns ``default`` whenever the tuner does not provide ``param_name``."""
+    """Like `get_tuning_param`, but returns `default` whenever the tuner does not provide `param_name`."""
     if (params := active_params()) is not None:
         note_read(param_name)
     else:
@@ -60,34 +58,24 @@ def get_optional_tuning_param[T](param_name: str, default: T) -> T:
 
 class Tuner(ABC):
     def probe_targets(self) -> Collection[str]:
-        """Out-param names of split predicates whose number of positions the Experiment depends on.
-
-        When non-empty, ``build_experiment`` probes the recipe for them and passes the counts to
-        ``get_probed_experiment``.
-        """
+        """Out-param names of split predicates whose number of positions the Experiment depends on."""
         return ()
 
     def probe_params(self) -> dict[str, Any]:
-        """Fixed recipe-facing out-params that change the probed counts (e.g. the split locus), provided while probing.
-
-        They are also recorded, by description, in the probe file next to the checkpoint (see ``build_experiment``).
-        Each of these names, and each of ``probe_targets()``, must also be an out-param of the Experiment (with the
-        same fixed value, for these), so that the trials see what the probe counted; ``build_experiment`` checks the
-        names.
+        """
+        Fixed recipe-facing out-params that change the probed counts (e.g. the split locus), provided while probing.
+        Each of these and of `probe_targets()` must also be an out-param of the Experiment, with the same fixed value,
+        so that the trials see what the probe counted.
         """
         return {}
 
     @abstractmethod
     def get_experiment(self) -> Experiment:
-        """Build the Experiment."""
         ...
 
     def get_probed_experiment(self, probe: ProbeResult) -> Experiment:
-        """Build the Experiment, given the counts for ``probe_targets()`` (empty when there are none).
-
-        This is what ``build_experiment`` calls. The default ignores the probe and calls ``get_experiment()``; a tuner
-        whose search space depends on the probe overrides it.
-        """
+        """Build the Experiment, given the counts for `probe_targets()`; override it if the search space depends on
+        them."""
         return self.get_experiment()
 
 
@@ -98,15 +86,10 @@ def probe_sidecar_path(checkpoint_file: str) -> str:
 
 @dataclass(frozen=True)
 class ProbeRecord:
-    """The contents of a probe sidecar (``<checkpoint>.probe.json``): what a checkpoint's coordinates were recorded
-    against.
-
-    - ``counts``: the number of split positions of each probed predicate (``"counts"`` in the file).
-    - ``probe_params``: a description (``probe.describe_param``) of each of the tuner's ``probe_params()``, i.e. the
-      locus and the ordering functions (``"probe_params"``).
-    - ``derived_orders``: for each probe param that is ``rank_by_post_population(fn)``, the 0-based add_eqn order
-      it was resolved to (``"derived_orders"``, written only when there is one). The trials use that order, and a
-      split coordinate means "cut after the i-th group in this order", so the order is recorded once and reused.
+    """
+    The contents of a probe sidecar: what a checkpoint's coordinates were recorded against. `probe_params` describes
+    each of the tuner's `probe_params()`; `derived_orders` records the add_eqn order each `rank_by_post_population(fn)`
+    param was resolved to, since a split coordinate means "cut after the i-th group in this order".
     """
     counts: ProbeResult
     probe_params: Mapping[str, str]
@@ -135,7 +118,7 @@ class ProbeRecord:
                            {name: tuple(order) for name, order in derived.items()})
 
     def differences(self, current: 'ProbeRecord') -> list[str]:
-        """How ``current`` differs from this (recorded) record, one phrase per difference."""
+        """How `current` differs from this (recorded) record, one phrase per difference."""
         changes: list[str] = []
         derived_was = {name: list(order) for name, order in self.derived_orders.items()}
         derived_now = {name: list(order) for name, order in current.derived_orders.items()}
@@ -163,24 +146,16 @@ def _count_checkpoint_entries(checkpoint_file: str) -> int:
 
 def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
                      record_probe: bool = False) -> Experiment:
-    """Build ``tuner``'s Experiment, probing ``recipe`` if the tuner has probe targets.
+    """
+    Build `tuner`'s Experiment, probing `recipe` if the tuner has probe targets. A checkpoint's coordinates are only
+    meaningful against the probe they were recorded with, so the probe is recorded in a sidecar next to the checkpoint.
+    A `rank_by_post_population(fn)` probe param is resolved to `add_eqn_order(<order>)`, derived from the recipe unless
+    the sidecar records one for that param.
 
-    A checkpoint's coordinates are only meaningful against the probe they were recorded with, so the probe is recorded
-    in a sidecar next to the checkpoint (see ``probe_sidecar_path`` and ``ProbeRecord``), together with a description
-    of the tuner's ``probe_params()`` (the locus and ordering functions).
-
-    A probe param that is ``rank_by_post_population(fn)`` is resolved to ``add_eqn_order(<order>)``, both for the probe
-    and for the Experiment's out-param. The order is derived from the recipe (``probe.derive_add_eqn_order``) only
-    when the sidecar does not already record one for that param and description; otherwise the recorded order is used.
-
-    - With ``recipe``, the recipe is always probed. Without it, the sidecar's counts and derived orders are used (so
-      it must exist).
-    - Every probe target and ``probe_params()`` name must be an out-param of the Experiment.
-    - If a sidecar exists and does not match (different counts, probe params that describe differently, see
-      ``probe.describe_param`` for what a description covers, or a different derived order), this raises, naming
-      what changed, unless the checkpoint has no entries yet.
-    - ``record_probe=True`` (remote_tuner) writes the sidecar when it is missing or (for an empty checkpoint) stale,
-      but only after checking that every checkpoint entry loads against the new Experiment.
+    - Without `recipe`, the sidecar's counts and derived orders are used, so it must exist.
+    - If the sidecar does not match, this raises unless the checkpoint has no entries yet.
+    - `record_probe=True` writes the sidecar when it is missing or stale, after checking that every checkpoint entry
+      loads against the new Experiment.
     """
     targets = list(tuner.probe_targets())
     params = tuner.probe_params()
@@ -247,9 +222,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     experiment = tuner.get_probed_experiment(counts)
     if undeclared := [name for name in [*targets, *params] if name not in experiment.out_params]:
         raise RuntimeError(
-            f"{type(tuner).__name__} probes or provides {undeclared} while probing (probe_targets / probe_params), but "
-            f"its Experiment has no out-param of that name, so the trials would not provide what the probe counted "
-            f"with. Add an out-param for each (a probe_params value with a mapping that returns it unchanged).")
+            f"{type(tuner).__name__} probes or provides {undeclared} while probing, but its Experiment has no "
+            f"out-param of that name. Add an out-param for each (a probe_params value with a mapping that returns it "
+            f"unchanged).")
     for name in ranked:
         experiment.add_out_param(name, lambda _params, fn=add_eqn_order(derived_orders[name]): fn)
     if record_probe and recorded != current:
