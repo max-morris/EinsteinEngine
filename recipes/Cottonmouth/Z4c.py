@@ -834,11 +834,18 @@ sync_z4c_pt2 = ExplicitSyncBatch(
 # Z4 Evolution equations
 ###
 
+# Default splits of the z4c_rhs add_eqn calls: split after call i. The best of a split search in recipe order;
+# a tuner replaces both predicates.
+Z4C_RHS_HARD_SPLITS = {0, 8}
+Z4C_RHS_SOFT_SPLITS = {1: 0.013, 2: 0.007, 3: 0.912, 4: 0.964, 5: 0.977, 6: 0.975, 7: 0.021, 10: 0.007}  # call index: retained percentile
+
 fun_z4c_rhs = cottonmouth_Z4c.create_function(
     "z4c_rhs",
     rhs_group,
-    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
-    auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', lambda i: i in Z4C_RHS_HARD_SPLITS),
+    auto_soft_split_predicate=get_tuning_param(
+        'auto_soft_split_predicate',
+        lambda i: retain_percentile(Z4C_RHS_SOFT_SPLITS[i]) if i in Z4C_RHS_SOFT_SPLITS else False),
     auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
     intent_override=IntentOverride.WriteInterior
 )
@@ -852,8 +859,6 @@ fun_z4c_rhs.add_eqn(
     - Rational(3, 4) * (1 / (chi**2)) *
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
-
-#fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
@@ -869,8 +874,6 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-#fun_z4c_rhs.split_loop()
-
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
     Rt_tmp[li, lj]
@@ -883,8 +886,6 @@ fun_z4c_rhs.add_eqn(
     R[li, lj],
     Rchi[li, lj] + Rt[li, lj]
 )
-
-#fun_z4c_rhs.soft_split()
 
 # Eq. (6) of [1]
 fun_z4c_rhs.add_eqn(
@@ -942,8 +943,6 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-#fun_z4c_rhs.split_loop()
-
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
     evo_Gammat_rhs[ui],
@@ -976,8 +975,6 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[uk] * D(gt[li, lj], lk)
 )
-
-#fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     At_rhs[li, lj],
