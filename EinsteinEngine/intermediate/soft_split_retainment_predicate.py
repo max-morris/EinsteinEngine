@@ -111,6 +111,10 @@ def retain_threshold(threshold: int) -> SoftSplitRetainmentStrategy:
     Retain symbols whose complexity is at or above a fixed threshold.
 
     - threshold: minimum complexity required for retainment.
+
+    Complexity integers are about 100 times the pre-profile model (``atom`` is
+    100). A threshold written against the old scale retains about 100 times
+    fewer symbols. Percentile and rank strategies are unchanged by that scale.
     """
 
     def strategy(complexity: dict[Symbol, int]) -> SoftSplitRetainmentPredicate:

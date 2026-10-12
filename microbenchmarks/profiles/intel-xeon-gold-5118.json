@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "profile": "intel-xeon-gold-5118",
+  "description": "Host-loop timings on rostam1 (Intel Xeon Gold 5118), the login node of this cluster. This machine has no GPU; these are not device weights. ALU/libm weights are measured. Memory/stencil weights retain the guestimates: a single-node loop cannot see a ghost exchange, and the measured x/y/z spread is about 14%, not 4x/10x. The benchmark is single-threaded and ran on a shared login node whose shell was affinitized to one of 24 CPUs; repeat medians stayed within about 1% of the minimum. Positive weights are scaled so the smallest is 100; transcendental_default stays 0.",
+  "architecture": {
+    "cpu": "Intel(R) Xeon(R) Gold 5118 CPU @ 2.30GHz",
+    "host": "rostam1.rostam.cct.lsu.edu",
+    "os": "Linux 5.14.0-611.13.1.el9_7.x86_64",
+    "cores_visible": 24,
+    "memory_gb": 92,
+    "compiler": "g++ (GCC) 11.5.0 20240719 (Red Hat 11.5.0-11)",
+    "cxxflags": "-O3 -DNDEBUG -std=gnu++17 -O3 -Wall -Wextra -fno-math-errno",
+    "vreal": "double",
+    "date": "2026-10-01",
+    "benchmark_command": "./ee_microbench --json <file> (full defaults: n_stream=1048576, repeats=15, grid 128^3)",
+    "reference_add_ns_per_elem": 2.1836
+  },
+  "weights": {
+    "atom": 100,
+    "symbol_grid": 1000,
+    "symbol_local": 100,
+    "pow_default": 1100,
+    "pow_integer_floor": 200,
+    "stencil_center": 1000,
+    "stencil_x": 4000,
+    "stencil_yz": 10000,
+    "transcendental": {
+      "sin": 500,
+      "cos": 500,
+      "exp": 500,
+      "log": 600,
+      "sqrt": 200,
+      "cbrt": 1300,
+      "tan": 600,
+      "sinh": 1000,
+      "cosh": 800,
+      "tanh": 1000,
+      "erf": 500
+    },
+    "transcendental_default": 0
+  },
+  "measurements": {
+    "unit": "ns_per_elem_min_over_repeats",
+    "reference": {"add_stream": 2.1836},
+    "arith": {
+      "sub_stream": 3.3797,
+      "mul_stream": 2.1646,
+      "div_stream": 2.1846,
+      "neg_stream": 0.8397,
+      "add_reg": 3.3547,
+      "mul_reg": 3.3539,
+      "div_reg": 7.0811
+    },
+    "pow": {
+      "pow2_stream": 0.8331,
+      "pown3_stream": 0.8276,
+      "pown4_stream": 0.8301,
+      "pown8_stream": 0.9332,
+      "pown16_stream": 2.0256,
+      "sqrt_stream": 1.1603,
+      "cbrt_stream": 27.3551,
+      "powvar_stream": 22.9499,
+      "pow2p5_stream": 22.8382
+    },
+    "transcendental": {
+      "sin_stream": 11.7817,
+      "cos_stream": 11.4799,
+      "tan_stream": 13.9458,
+      "sinh_stream": 22.7930,
+      "cosh_stream": 18.5479,
+      "tanh_stream": 22.4434,
+      "exp_stream": 10.0206,
+      "log_stream": 12.6635,
+      "erf_stream": 11.0322,
+      "sqrt_stream": 5.2263,
+      "cbrt_stream": 28.7849
+    },
+    "memory": {
+      "const_stream": 0.6046,
+      "center_stream": 1.2048,
+      "grid_add_stream": 1.2804,
+      "stencil_x_stream": 1.2610,
+      "stencil_y_stream": 1.4316,
+      "stencil_z_stream": 1.3052
+    },
+    "branch": {
+      "cmp_lt_stream": 0.9174,
+      "if_else_stream": 3.4221,
+      "if_else_branch_stream": 3.2640
+    },
+    "decisions": {
+      "pow_default": "measured 10.51x add (powvar_stream); stored 1100. pow(x, 2.5) is 10.46x.",
+      "pow_integer_floor": "retained 200: integer-power streaming runs are at or below 1x add (pow2 0.38x through pown16 0.93x) and cannot resolve ALU scaling; log2 formula kept.",
+      "transcendental": "measured per-function ratios. sqrt is 2.39x add on the transcendental probe (stored 200; pow sqrt_stream was 0.53x). cbrt is 13.18x on the transcendental probe (stored 1300; pow cbrt_stream was 12.53x).",
+      "symbol_grid": "retained 1000: measured grid load is 0.59x add single-node, but the weight guides global-vs-local promotion where distributed costs dominate.",
+      "stencil": "retained 1000/4000/10000: measured center/x/y/z are 0.55x/0.58x/0.66x/0.60x add. The y direction is slower, but not by the guestimate 4x/10x, and this loop cannot see a ghost exchange.",
+      "div": "streaming div is 1.00x add; register-isolated div is 3.24x add. div reaches the model via Pow[x**-1] with floor 200; left as is."
+    }
+  }
+}
