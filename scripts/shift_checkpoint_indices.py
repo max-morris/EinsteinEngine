@@ -88,8 +88,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.n_positions is not None and args.n_positions < 0:
         parser.error("--n-positions must be non-negative.")
-    #  The name of the probe file is EinsteinEngine.tuning.tuning.probe_sidecar_path(output); that module is not
-    #  imported, because it imports optuna.
+    #  The name of the probe file is EinsteinEngine.tuning.tuning.probe_sidecar_path(output), spelled out so that the
+    #  script runs without the package on the path.
     for path in (args.output, f'{args.output}.probe.json'):
         if os.path.exists(path):
             parser.error(f"{path} already exists.")

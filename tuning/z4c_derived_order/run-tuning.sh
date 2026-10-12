@@ -37,6 +37,6 @@ PYTHONPATH="${REPO_ROOT}" python -m EinsteinEngine.tuning.remote_tuner \
     --remote-path /home/mmorris/project/Cottonmouth/ \
     --remote-cactus-path /home/mmorris/project/Cactus/ \
     --remote-command './build.sh && ./run-all.sh' \
-    --remote-timing-command ./timings-new.sh \
+    --remote-timing-command ./timings.sh \
     --checkpoint-file "${SCRIPT_DIR}/split_tuning_checkpt.jsonl" \
     "$@"

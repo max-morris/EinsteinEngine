@@ -562,7 +562,7 @@ An empty piece computes nothing, so it is dropped, and its boundary is folded in
 - A custom loop annotation from a manual split survives.
 
 So **a split after the last position does nothing**. Before the split loci existed, a hard split there emitted an
-empty loop (an empty kernel launch), and Steve's recipe-order control checkpoint has one. An empty list that manual
+empty loop (an empty kernel launch). An empty list that manual
 splits left behind (e.g. `split_loop()` before the first `add_eqn`) is dropped only when some auto split fires in that
 function; otherwise it stays, as it always has.
 
@@ -1227,8 +1227,8 @@ These predate the split loci, or are deliberate; none of them is caused by the l
   splitmaxxing and temporary recycling (section 7).
 - **Memory across tuning trials.** Class-level caches keep references to every baked function, so memory grows over
   many in-process trials.
-- **Whether post-population cuts pay off is untested.** Steve's experiments found that cutting a globally sorted list
-  was harmful, and post-population cutting is the most complex code path. The early locus is the one with a measured
+- **Whether post-population cuts pay off is untested.** An earlier experiment that cut a globally sorted post-CSE
+  list found the cuts harmful, and post-population cutting is the most complex code path. The early locus is the one with a measured
   speedup.
 
 ---

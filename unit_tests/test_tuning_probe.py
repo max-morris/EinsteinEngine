@@ -40,7 +40,9 @@ from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.tuning import probe, tuning
 from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
 from EinsteinEngine.tuning.experiment import Experiment, MissingParamError, UndeclaredParamError
-from EinsteinEngine.tuning.generate_best import _FixedTrial
+from EinsteinEngine.tuning.checkpointed_optimizer import FAILED_VALUE
+from EinsteinEngine.tuning.generate_best import _FixedTrial, load_best_params
+from EinsteinEngine.tuning.remote_feedback import TrialFailed
 from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, describe_param, derive_add_eqn_order, probe_recipe, \
     rank_by_post_population
 from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner, CutPositionSplitTuner
@@ -349,6 +351,35 @@ def test_tuning_params() -> None:
         expect_error(RuntimeError, lambda: get_tuning_param('y', 3), 'y')
     finally:
         tuning._tuning_params = None
+
+
+def test_trial_failures() -> None:
+    """A trial whose configuration fails is scored as failed; any other error (rsync, ssh, Slurm) stops the tuning."""
+    def remote_run(error: Exception) -> Callable[..., float]:
+        def run(*_args: Any) -> float:
+            raise error
+        return run
+
+    saved = getattr(tuning, 'do_remote_run')
+    try:
+        setattr(tuning, 'do_remote_run', remote_run(TrialFailed('bad split')))
+        assert tuning.do_tuning_run(None, x=1) == -float('inf')  # type: ignore[arg-type]
+        setattr(tuning, 'do_remote_run', remote_run(RuntimeError('rsync failed')))
+        expect_error(RuntimeError, lambda: tuning.do_tuning_run(None, x=1), 'rsync failed')  # type: ignore[arg-type]
+    finally:
+        setattr(tuning, 'do_remote_run', saved)
+    assert_idle()
+
+
+def test_load_best_params(r: Recipes) -> None:
+    """Failed runs are skipped, whether recorded as the sentinel or as a non-finite target."""
+    path = r.path('best.jsonl')
+    write_jsonl(path, [{'target': -5.0, 'params': {'a': 0}}, {'target': FAILED_VALUE, 'params': {'a': 1}},
+                       {'target': -4.0, 'params': {'a': 2}}])
+    assert load_best_params(path) == (-4.0, {'a': 2})
+    with open(path, 'w') as fh:
+        fh.write(json.dumps({'target': FAILED_VALUE, 'params': {'a': 1}}) + '\n' + '{"target": -Infinity, "params": {}}\n')
+    expect_error(RuntimeError, lambda: load_best_params(path), 'No successful run')
 
 
 def test_tuner_api() -> None:
@@ -857,6 +888,8 @@ if __name__ == "__main__":
             test_describe_param()
             test_describe_param_hash_seed(recipes)
             test_tuning_params()
+            test_trial_failures()
+            test_load_best_params(recipes)
             test_tuner_api()
             test_sidecar(recipes)
             test_derived_order_sidecar(recipes)

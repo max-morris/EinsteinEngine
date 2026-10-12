@@ -47,9 +47,14 @@ from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, Infea
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
-# Sentinel returned to the optimizer for runs that fail outright (-inf).
+# Sentinel returned to the optimizer for runs that fail outright (-inf), and written to the checkpoint for them.
 # Large-but-finite so TPE still learns these are bad regions.
-_FAILED_VALUE: float = -1e9
+FAILED_VALUE: float = -1e9
+
+
+def is_failed(target: float) -> bool:
+    """Whether a checkpoint target records a failed run (the sentinel, or a non-finite value from older checkpoints)."""
+    return not np.isfinite(target) or target == FAILED_VALUE
 
 # Infeasible (pruned) trials don't consume the iteration budget, so cap total
 # attempts at this multiple of the budget in case a constraint rejects nearly
@@ -85,7 +90,7 @@ def read_checkpoint(
             entry: dict[str, Any] = json.loads(line)
             experiment.check_declared(entry['params'], f'{checkpoint_file}:{line_number}')
             raw_target: float = float(entry['target'])
-            target = raw_target if np.isfinite(raw_target) else _FAILED_VALUE
+            target = raw_target if np.isfinite(raw_target) else FAILED_VALUE
             # Replay the stored raw coordinates through the experiment so
             # dynamic domains recover their exact per-trial coordinate ranges
             # (for plain Intervals a coordinate is just its value).
@@ -170,9 +175,9 @@ class CheckpointedOptimizer:
         run_start = time.perf_counter()
         result = self._f(**out_args)
         elapsed = time.perf_counter() - run_start
-        value = float(result) if np.isfinite(result) else _FAILED_VALUE
+        value = float(result) if np.isfinite(result) else FAILED_VALUE
 
-        is_new_best = value != _FAILED_VALUE and (prev_best is None or value > prev_best)
+        is_new_best = value != FAILED_VALUE and (prev_best is None or value > prev_best)
         best_value = value if is_new_best else prev_best
 
         # Total completed iterations including checkpointed/resumed trials, plus
@@ -237,7 +242,7 @@ class CheckpointedOptimizer:
 
         # v >= 2: report on every run.
         lines: list[str] = []
-        if value == _FAILED_VALUE:
+        if value == FAILED_VALUE:
             lines.append('Run finished but produced no valid time (discarded).')
         else:
             lines.append(f'Run finished: {abs(value)} seconds.')
