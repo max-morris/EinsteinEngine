@@ -15,14 +15,10 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Tuners that search a recipe's auto split predicates.
-
-Both tuners drive the ``auto_hard_split_predicate`` and ``auto_soft_split_predicate`` out-params, and also provide
-``auto_split_locus`` and whichever of ``early_ordering_fn``, ``pre_population_ordering_fn`` and ``ordering_fn`` were
-given. The recipe must read those through ``get_optional_tuning_param`` and pass them to ``create_function`` / the
-bake options; probing checks that it reads every one. Positions are 0-based: position ``i`` means "split after element
-``i`` at the locus", and a cut is a hard or soft split at one position. The number of positions is found by probing
-the recipe (see ``EinsteinEngine.tuning.probe``), with the same locus and ordering functions that the trials use.
+"""
+Tuners that search a recipe's auto split predicates. Besides the predicates, they provide `auto_split_locus` and the
+ordering functions they were given, which the recipe must read through `get_optional_tuning_param`. Position i means
+"split after element i at the locus"; the number of positions is found by probing the recipe.
 """
 
 import os
@@ -66,10 +62,7 @@ class _SplitTuner(Tuner):
         return (PROBED_PREDICATE,)
 
     def probe_params(self) -> dict[str, Any]:
-        """The out-params that are the same in every trial: the locus and the ordering functions that were given.
-
-        They change the number of positions, so the recipe is probed with them too.
-        """
+        """The locus and the ordering functions that were given, which change the number of positions."""
         params: dict[str, Any] = {'auto_split_locus': self.locus}
         for name, fn in (('early_ordering_fn', self.early_ordering_fn),
                          ('pre_population_ordering_fn', self.pre_population_ordering_fn),
@@ -80,8 +73,8 @@ class _SplitTuner(Tuner):
 
     def get_experiment(self) -> Experiment:
         raise RuntimeError(f"{type(self).__name__} probes the recipe for its number of split positions. Build its "
-                           f"experiment with tuning.build_experiment (as remote_tuner, generate_best and plot_tuning "
-                           f"do), or call get_probed_experiment with a probe result.")
+                           f"experiment with tuning.build_experiment, or call get_probed_experiment with a probe "
+                           f"result.")
 
     def get_probed_experiment(self, probe: ProbeResult) -> Experiment:
         if PROBED_PREDICATE not in probe:
@@ -91,7 +84,7 @@ class _SplitTuner(Tuner):
 
     @abstractmethod
     def _build(self, n_positions: int) -> Experiment:
-        """The Experiment for ``n_positions`` split positions at the locus."""
+        """The Experiment for `n_positions` split positions at the locus."""
         ...
 
     def _add_out_params(self, e: Experiment, hard: Callable[[dict[str, Any]], HardSplitPredicate],
@@ -103,14 +96,11 @@ class _SplitTuner(Tuner):
 
 
 class CombinatorialSplitTuner(_SplitTuner):
-    """Search every position independently: no split, soft split (with a retainment percentile), or hard split.
-
-    Params: ``split_i`` in {0: none, 1: soft, 2: hard} and ``soft_retain_percentile_i`` (only when ``split_i`` is
-    1), for ``i`` in ``0..N-1``. ``N`` is ``n_vars`` if given, otherwise the probed number of positions. The
-    predicates never split at ``i >= N``.
-
-    With two params per position this is only practical at the early locus (about a dozen positions for Z4c); use
-    CutPositionSplitTuner at the other loci. A warning is printed above MAX_COMBINATORIAL_POSITIONS positions.
+    """
+    Search every position independently: no split, soft split (with a retainment percentile), or hard split.
+    Params: `split_i` in {0: none, 1: soft, 2: hard} and `soft_retain_percentile_i` (only when `split_i` is 1), for i
+    below `n_vars` if given, otherwise the probed number of positions. With two params per position, this is only
+    practical at the early locus; use CutPositionSplitTuner elsewhere.
     """
 
     def __init__(self, n_vars: int | None = None, *, locus: SplitLocus = SplitLocus.Early,
@@ -133,8 +123,7 @@ class CombinatorialSplitTuner(_SplitTuner):
     def _build(self, n_positions: int) -> Experiment:
         if n_positions > MAX_COMBINATORIAL_POSITIONS:
             warnings.warn(f"CombinatorialSplitTuner has {n_positions} positions at the {self.locus.name} locus, "
-                          f"which is too many to search one by one (it declares two params per position). Use "
-                          f"CutPositionSplitTuner, whose number of params does not grow with the number of positions.",
+                          f"too many to search with two params each. Use CutPositionSplitTuner instead.",
                           skip_file_prefixes=(_TUNING_DIR,))
         e = Experiment()
 
@@ -158,17 +147,11 @@ class CombinatorialSplitTuner(_SplitTuner):
 
 
 class CutPositionSplitTuner(_SplitTuner):
-    """Search the positions of ``n_cuts`` cuts, and the kind of each, among the probed positions.
-
-    A cut is a hard or soft split at one position. Params, for ``j`` in ``0..n_cuts-1``:
-
-    - ``cut_position_j``: strictly increasing positions in ``[0, N-1]`` (see ``Experiment.add_distinct_sorted``).
-    - ``cut_kind_j`` in {0: unused, 1: soft, 2: hard}; 0 is only searched when ``allow_unused_cuts`` is True, which
-      lets the search use fewer than ``n_cuts`` cuts.
-    - ``cut_retain_percentile_j``: the soft split retainment percentile, only when ``cut_kind_j`` is 1.
-
-    Unlike CombinatorialSplitTuner, the number of params does not grow with the number of positions, so this suits
-    the pre-population and post-population loci.
+    """
+    Search the positions of `n_cuts` cuts, and the kind of each, among the probed positions. Params, for j below
+    `n_cuts`: `cut_position_j` (strictly increasing), `cut_kind_j` in {0: unused, 1: soft, 2: hard}, where 0 is only
+    searched with `allow_unused_cuts`, and `cut_retain_percentile_j` (only when `cut_kind_j` is 1). The number of
+    params does not grow with the number of positions, so this suits the later loci.
     """
 
     def __init__(self, n_cuts: int, *, locus: SplitLocus,

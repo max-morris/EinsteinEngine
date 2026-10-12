@@ -330,8 +330,6 @@ def lexicographical_order(eqns: dict[Symbol, Expr], _eqn_list: EqnList) -> Itera
     yield from sorted(eqns.keys(), key=str)
 
 def _order_by_keys(order: dict[Symbol, int], eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool, what: str) -> Iterator[Symbol]:
-    """The equations in the key order of `order`, optionally without the list's synthetic symbols."""
-
     assert (keyset := set(eqns.keys())).intersection(order.keys()) == keyset, f"EqnList {what} order dict is missing keys"
 
     for lhs in order.keys():
@@ -341,11 +339,9 @@ def _order_by_keys(order: dict[Symbol, int], eqns: dict[Symbol, Expr], eqn_list:
 
 def recipe_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
     """
-    Orders equations based on their recipe order, i.e., the order in which they were added to the function.
-    Temporaries (pull-out, CSE, etc.) come after the recipe equations, in the order they were created.
-    The recipe order is never rewritten; see `pre_population_order` for the order the ordering loci act on.
-
-    If `exclude_synthetic_symbols` is true, synthetic symbols are not yielded; dependency repair places them.
+    Orders equations based on their recipe order, i.e., the order in which they were added to the function, followed
+    by temporaries in the order they were created. The recipe order is never rewritten.
+    If `exclude_synthetic_symbols` is true, synthetic symbols are left for dependency repair to place.
     """
 
     yield from _order_by_keys(eqn_list.eqn_recipe_order, eqns, eqn_list, exclude_synthetic_symbols, "recipe")
@@ -353,20 +349,16 @@ def recipe_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_
 
 def pre_population_order(eqns: dict[Symbol, Expr], eqn_list: EqnList, exclude_synthetic_symbols: bool = False) -> Iterator[Symbol]:
     """
-    Orders equations based on their pre-population order. This starts equal to the recipe order and is rewritten by
-    the ``early_ordering_fn`` and ``pre_population_ordering_fn`` bake options; without them, it is the recipe order.
-    Temporaries come after, in the order they were created, and equations a soft-split merge moves into a list are
-    appended in the pre-population order of the list they come from.
-
-    If `exclude_synthetic_symbols` is true, synthetic symbols are not yielded; dependency repair places them.
+    Orders equations based on their pre-population order: the recipe order as rewritten by the `early_ordering_fn` and
+    `pre_population_ordering_fn` bake options. Temporaries and equations merged in by merge_soft_splits are appended.
+    If `exclude_synthetic_symbols` is true, synthetic symbols are left for dependency repair to place.
     """
 
     yield from _order_by_keys(eqn_list.eqn_pre_population_order, eqns, eqn_list, exclude_synthetic_symbols, "pre-population")
 
 
 class _AddEqnKeyOrder:
-    """The ordering function returned by `add_eqn_key_order`. Its repr names the key, so it is informative and stable
-    across runs (tuners record it to detect a changed configuration)."""
+    """Its repr names the key, so it is stable across runs; tuners record it to detect a changed configuration."""
 
     def __init__(self, key: Callable[[int], float]) -> None:
         self.key = key
@@ -386,8 +378,6 @@ class _AddEqnKeyOrder:
 
 
 class _AddEqnOrder(_AddEqnKeyOrder):
-    """The ordering function returned by `add_eqn_order`; its repr is ``add_eqn_order([...])``."""
-
     def __init__(self, order: Sequence[int]) -> None:
         self.order = tuple(order)
         for idx in self.order:
@@ -410,12 +400,9 @@ class _AddEqnOrder(_AddEqnKeyOrder):
 
 def add_eqn_key_order(key: Callable[[int], float]) -> EqnOrderingFn:
     """
-    Orders equations by `key` applied to the 0-based index of the add_eqn call that created them (their origin);
-    ties go to recipe order. Equations without an origin (e.g., CSE temps) follow, in pre-population order;
-    dependency repair pulls them earlier as needed.
-
-    Used as the ``early_ordering_fn``, this orders the author-level add_eqn calls themselves.
-    The result's repr is ``add_eqn_key_order(<key>)``, naming a function key by its qualified name.
+    Orders equations by `key` applied to the 0-based index of the add_eqn call that created them; ties go to recipe
+    order. Equations without an origin (e.g., CSE temps) follow in pre-population order, for dependency repair to
+    pull earlier as needed.
     """
 
     return _AddEqnKeyOrder(key)
@@ -423,12 +410,9 @@ def add_eqn_key_order(key: Callable[[int], float]) -> EqnOrderingFn:
 
 def add_eqn_order(order: Sequence[int]) -> EqnOrderingFn:
     """
-    Orders equations by an explicit order of add_eqn calls, given as 0-based call indices: the equations of call
-    ``order[0]`` come first, then those of ``order[1]``, and so on. Calls not listed keep their recipe order after the
-    listed ones. Equations without an origin follow, as in `add_eqn_key_order`.
-
-    The indices refer to one function's add_eqn calls, so pass this per function (``functions={name: {...}}``) when a
-    thorn has several functions. The result's repr is ``add_eqn_order([...])``.
+    Orders equations by an explicit order of 0-based add_eqn call indices; calls not listed follow in recipe order,
+    and equations without an origin follow as in `add_eqn_key_order`. The indices refer to one function's calls, so
+    pass this per function when a thorn has several.
     """
 
     return _AddEqnOrder(order)
@@ -436,9 +420,8 @@ def add_eqn_order(order: Sequence[int]) -> EqnOrderingFn:
 
 def fixed_order(order: Sequence[Symbol]) -> EqnOrderingFn:
     """
-    Yields the equations in exactly the given order (equations not listed follow in dict order). It is not marked as
-    respecting dependency order, so order_builder still repairs dependencies. Used to rebake refined EqnLists so that
-    the order a cut was made in is the order the pieces keep.
+    Yields the equations in the given order, then those not listed. It is not marked as respecting dependency order,
+    so order_builder still repairs dependencies.
     """
 
     fixed = tuple(order)
@@ -635,9 +618,8 @@ def respects_dependency_order(fn: Any) -> bool:
 
 def pre_cse_stand_in(fn: EqnOrderingFn) -> EqnOrderingFn:
     """
-    The ordering function to run in place of `fn` before CSE. Bayesian optimization (a function, or a partial of one,
-    whose name contains 'bayesian') is too expensive to run on the equations before CSE, whose order CSE rewrites
-    anyway, so it is replaced by prioritize_rare_symbols; any other function is returned unchanged.
+    The ordering function to run in place of `fn` before CSE. Bayesian optimization (by name, possibly in a partial)
+    is too expensive to run on an order CSE rewrites anyway, so it is replaced by prioritize_rare_symbols.
     """
     for candidate in (fn, getattr(fn, 'func', None)):
         if 'bayesian' in getattr(candidate, '__name__', ''):

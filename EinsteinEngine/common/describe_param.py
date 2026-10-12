@@ -15,8 +15,6 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""A description of a recipe-facing param value that is stable across runs, used by the tuning probe and by reprs."""
-
 import functools
 import re
 from enum import Enum
@@ -30,23 +28,13 @@ _MAX_DESCRIBE_DEPTH = 8
 
 
 def describe_param(value: object) -> str:
-    """A description of a recipe-facing param value that is stable across runs (and hash seeds).
+    """
+    A description of a recipe-facing param value that is stable across runs (and hash seeds). Builtin containers are
+    described element by element, sets and dicts sorted; functions and classes by qualified name; wrappers as what they
+    wrap; anything else by its repr without memory addresses.
 
-    - Enums by class and member name; classes by qualified name.
-    - Lists, tuples, dicts, sets and frozensets (exactly those types) element by element, with set elements and dict
-      entries sorted by their descriptions.
-    - ``functools.partial`` objects by their function, arguments and keywords (sorted).
-    - Functions by their qualified name. Lambdas and nested functions (``<lambda>`` or ``<locals>`` in the qualified
-      name) also by their defaults and the contents of their closure, if any, so that ``cartesian_product(a, b)`` and
-      ``cartesian_product(b, a)`` differ. A function's code and the globals it reads are not described: two lambdas
-      in one scope with the same defaults and closure describe the same way.
-    - Wrappers with ``__wrapped__`` (e.g. ``functools.cache``) as what they wrap.
-    - Bound methods by their function, and by their instance if its class defines ``__repr__``.
-    - Anything else by its repr, with memory addresses removed. An object with the default repr is thus described by
-      its class alone. Ordering functions made by ``add_eqn_order`` / ``add_eqn_key_order`` have a repr that lists
-      their order or key.
-
-    Recursion stops at a depth of ``_MAX_DESCRIBE_DEPTH`` (``...``) and at cycles (``<cycle>``).
+    Lambdas and nested functions are also described by their defaults and closure, so `cartesian_product(a, b)` and
+    `cartesian_product(b, a)` differ, but not by their code or the globals they read.
     """
     return _describe(value, 0, frozenset())
 
@@ -87,11 +75,9 @@ def _describe(value: object, depth: int, enclosing: frozenset[int]) -> str:
     if isinstance(value, (FunctionType, BuiltinFunctionType)):
         module = getattr(value, '__module__', None)
         name = value.__qualname__ if module is None else f'{module}.{value.__qualname__}'
-        # A function defined at module or class level is identified by its qualified name. A lambda or a nested
-        # function is not, so it is also described by what it captured.
         if not isinstance(value, FunctionType) or '<' not in value.__qualname__:
             return name
-        details = []
+        details: list[str] = list()
         if value.__defaults__:
             details.append(f'defaults={inner(value.__defaults__)}')
         if value.__kwdefaults__:
@@ -99,7 +85,7 @@ def _describe(value: object, depth: int, enclosing: frozenset[int]) -> str:
         if value.__closure__:
             details.append(f'closure={inner(tuple(map(_cell_contents, value.__closure__)))}')
         return f'{name}[{", ".join(details)}]' if details else name
-    if (wrapped := getattr(value, '__dict__', {}).get('__wrapped__')) is not None:
+    if (wrapped := getattr(value, '__dict__', dict()).get('__wrapped__')) is not None:
         return inner(wrapped)
     return _ADDRESS_RE.sub('', repr(value))
 

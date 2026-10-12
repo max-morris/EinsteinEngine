@@ -31,8 +31,7 @@ from EinsteinEngine.common.util import pprint
 
 class TrialFailed(RuntimeError):
     """The trial's configuration failed: the recipe raised or refused a requested cut, or the remote build, run or
-    timing failed. Other errors (rsync, ssh connections, Slurm polling) are not the configuration's fault and
-    propagate as plain RuntimeErrors."""
+    timing failed. Infrastructure errors (rsync, ssh, Slurm polling) propagate as plain RuntimeErrors."""
 
 
 # ssh exits with 255 when the connection itself fails, whatever the remote command did.
@@ -89,8 +88,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
             traceback.print_exception(e)
             raise TrialFailed("Error when executing recipe") from e
 
-    # The code generated without those cuts is not the configuration the optimizer chose, so it must not be scored as
-    # that configuration.
+    # Code generated without those cuts is not the configuration the optimizer chose, so it must not be scored.
     if refused_cuts:
         raise TrialFailed(f"The engine refused cuts this trial asked for: {'; '.join(refused_cuts)}.")
 

@@ -37,7 +37,6 @@ from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.intermediate.eqn_grouping import CutHazard, cut_hazards
 from EinsteinEngine.intermediate.eqn_ordering import pre_cse_stand_in
 from EinsteinEngine.intermediate.eqnlist import EqnListPiece, SplitBoundary
-from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.tuning import probe
 
@@ -593,10 +592,10 @@ def test_overwrite_validation() -> None:
     # The refinement is consumed even when validation fails, so a second rebake fails loudly.
     try:
         fun.eqn_complex.rebake_refined()
-    except IntermediateException as e:
+    except AssertionError as e:
         assert "without a preceding refine" in str(e), str(e)
     else:
-        raise AssertionError("Expected an IntermediateException for a second rebake_refined()")
+        raise AssertionError("Expected an AssertionError for a second rebake_refined()")
 
 
 def test_cut_hazards() -> None:

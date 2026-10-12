@@ -15,30 +15,14 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""Probe a recipe for the number of auto split positions its functions expose.
+"""
+Probe a recipe for the number of auto split positions its functions expose, by running it with a placeholder
+predicate that never splits in place of each probed out-param. The recipe is stopped at the end of the first bake
+after which every placeholder has been reported, but anything it does before then (e.g. generating another thorn)
+still happens; if a placeholder is never reported, the recipe runs to completion and the probe fails.
 
-A tuner that searches split points needs to know how many positions there are before it can declare its search
-space. ``probe_recipe`` finds out by running the recipe with a placeholder predicate (which never splits) in place of
-each probed out-param. When a function evaluates its auto split predicates at its locus, the engine calls
-``report_split_positions`` with the predicate object and the number of positions; the probe maps the object back to
-its out-param name. At the end of every ``DslFrontend.bake`` the engine calls ``bake_finished``.
-
-``derive_add_eqn_order`` runs the recipe the same way to resolve a tuner's ``rank_by_post_population(fn)``: the
-function baked with ``fn`` has its add_eqn calls ranked by where ``fn`` puts their equations after CSE. The engine calls
-``bake_started`` and ``cse_finished`` so that the probe can snapshot the calls' equations and read the post-CSE order.
-
-Limitations:
-
-- The recipe is stopped at the end of the first bake after which every placeholder has been reported. Everything the
-  recipe does before that point still happens. In particular, a recipe that bakes and generates several thorns emits
-  the code of each thorn it generates before that point (into the working directory).
-- If some placeholder is never reported, nothing stops the recipe: it runs to completion, emitting all of its code,
-  and the probe then fails.
-- The check that the recipe reads every provided name only sees the reads made before the recipe is stopped.
-- While probing, ``get_tuning_param`` returns the recipe's default for every name the probe does not provide.
-
-This module is imported by the engine, so it must stay lightweight: no optuna, and no import of
-``EinsteinEngine.tuning.tuning`` at module import time.
+Imported by the engine, so it must stay lightweight: no optuna, and no import of EinsteinEngine.tuning.tuning at
+module import time.
 """
 
 import functools
@@ -60,10 +44,7 @@ if TYPE_CHECKING:
 
 
 class _ProbeComplete(BaseException):
-    """Raised by ``bake_finished`` to stop the recipe once the probe has everything it needs.
-
-    It derives from BaseException so that a recipe's ``except Exception`` cannot swallow it.
-    """
+    """Stops the recipe once the probe has everything; a BaseException so that `except Exception` cannot catch it."""
 
 
 class _PlaceholderPredicate:
@@ -88,8 +69,8 @@ class _ProbeState:
     reports: dict[str, dict[str, set[int]]] = field(default_factory=dict)
     # The names the recipe asked for (through get_tuning_param / get_optional_tuning_param)
     read: set[str] = field(default_factory=set)
-    # While deriving: the ordering function the ranked function is baked with, each function's add_eqn origins at the
-    # start of the bake, and the derived add_eqn order of each function baked with ranking_fn.
+    # While deriving: the ranked function's ordering function, each function's add_eqn origins at the start of the
+    # bake, and the derived orders.
     ranking_fn: Any = None
     origins: dict[str, list[dict[Symbol, int]]] = field(default_factory=dict)
     derived: dict[str, tuple[int, ...]] = field(default_factory=dict)
@@ -108,25 +89,18 @@ _state: _ProbeState | None = None
 
 
 def active_params() -> Mapping[str, Any] | None:
-    """The recipe-facing params provided while probing, or None when no probe is running.
-
-    Used by ``get_tuning_param``: while probing, a provided name returns its value and any other name returns the
-    recipe's default. The caller reports each name it looks up with ``note_read``.
-    """
+    """The recipe-facing params provided while probing, or None when no probe is running."""
     return None if _state is None else _state.params
 
 
 def note_read(name: str) -> None:
-    """Record that the recipe read the tuning param ``name``. No-op unless probing."""
+    """Record that the recipe read the tuning param `name`. No-op unless probing."""
     if _state is not None:
         _state.read.add(name)
 
 
 def report_split_positions(predicate: object, function_name: str, count: int) -> None:
-    """Engine hook: ``function_name`` is about to evaluate ``predicate`` at positions ``0..count-1``.
-
-    No-op unless probing, and for predicates that are not probe placeholders.
-    """
+    """Engine hook, called when `function_name` is about to evaluate `predicate` at positions 0..count-1."""
     if _state is None:
         return
     name = _state.name_of(predicate)
@@ -141,7 +115,7 @@ _refused_cuts: list[str] | None = None
 
 @contextmanager
 def collect_refused_cuts() -> Iterator[list[str]]:
-    """Within this block, collect the auto splits the engine refuses (see ``report_refused_cuts``)."""
+    """Collect the auto splits the engine refuses within this block."""
     global _refused_cuts
     saved = _refused_cuts
     refused: list[str] = list()
@@ -153,14 +127,14 @@ def collect_refused_cuts() -> Iterator[list[str]]:
 
 
 def report_refused_cuts(function_name: str, positions: Collection[int], locus: str) -> None:
-    """Engine hook: ``function_name`` ignored the auto splits requested at ``positions`` of its locus."""
+    """Engine hook, called when `function_name` ignores the auto splits requested at `positions` of its locus."""
     if _refused_cuts is not None:
         _refused_cuts.append(f'{function_name}: positions {sorted(positions)} of the {locus} locus')
 
 
 def bake_started(frontend: 'DslFrontend[Any, Any, Any]') -> None:
-    """Engine hook, called at the start of ``DslFrontend.bake``. While deriving, snapshots each function's add_eqn
-    origins, before pull-out temporaries inherit them."""
+    """Engine hook, called at the start of `DslFrontend.bake`. While deriving, snapshots each function's add_eqn
+    origins before pull-out temporaries inherit them."""
     if _state is None or _state.ranking_fn is None:
         return
     _state.origins = {name: [dict(el.eqn_origin) for el in tf.eqn_complex.eqn_lists]
@@ -168,7 +142,7 @@ def bake_started(frontend: 'DslFrontend[Any, Any, Any]') -> None:
 
 
 def cse_finished(frontend: 'DslFrontend[Any, Any, Any]') -> None:
-    """Engine hook, called by ``DslFrontend.bake`` after global CSE (or where it would run). While deriving, ranks the
+    """Engine hook, called by `DslFrontend.bake` after global CSE (or where it would run). While deriving, ranks the
     add_eqn calls of each function baked with the ranking ordering function by their post-CSE positions."""
     if _state is None or _state.ranking_fn is None:
         return
@@ -181,12 +155,7 @@ def cse_finished(frontend: 'DslFrontend[Any, Any, Any]') -> None:
 
 
 def bake_finished() -> None:
-    """Engine hook, called at the very end of ``DslFrontend.bake``.
-
-    No-op unless probing. Once every placeholder predicate has been reported (and, while deriving, an order derived),
-    stops the recipe, so that it does not go on to emit code. Until then it does nothing, and the recipe continues
-    (see the module docstring).
-    """
+    """Engine hook, called at the end of `DslFrontend.bake`. Stops the recipe once the probe has everything it needs."""
     if _state is not None and _state.done():
         raise _ProbeComplete()
 
@@ -211,7 +180,7 @@ class ProbeResult(Mapping[str, int]):
 
     @staticmethod
     def from_counts(obj: object) -> 'ProbeResult':
-        """Validate and wrap a JSON-decoded ``{name: count}`` object."""
+        """Validate and wrap a JSON-decoded `{name: count}` object."""
         if not isinstance(obj, dict):
             raise ValueError(f'Expected a JSON object of probe counts, got {obj!r}')
         for name, count in obj.items():
@@ -225,17 +194,13 @@ EMPTY_PROBE = ProbeResult()
 
 def probe_recipe(recipe_path: str, predicate_names: Collection[str],
                  extra_params: Mapping[str, Any] | None = None) -> ProbeResult:
-    """Run ``recipe_path`` and count the split positions seen by each out-param in ``predicate_names``.
+    """
+    Run `recipe_path` and count the split positions seen by each out-param in `predicate_names`. `extra_params`
+    supplies fixed recipe-facing params that change the count (e.g. the locus or an ordering function). The recipe
+    runs as remote_feedback runs it (as `__main__`, with `sys.argv` reset).
 
-    Each name is bound to a placeholder predicate that never splits. ``extra_params`` supplies fixed recipe-facing
-    params that change the count (e.g. ``auto_split_locus`` or an ordering function); every other
-    ``get_tuning_param`` call returns the recipe's default. The recipe runs as ``remote_feedback`` runs it (as
-    ``__main__``, with ``sys.argv`` reset), and is stopped at the end of the first bake after which every placeholder
-    has been reported (see the module docstring for what it may do before then).
-
-    Raises RuntimeError if the recipe fails, never reads one of the provided names (an ordering function or locus it
-    ignores would make the count wrong), never evaluates a placeholder, or evaluates one placeholder with different
-    counts in different functions.
+    Raises RuntimeError if the recipe fails, never reads a provided name, never evaluates a placeholder, or evaluates
+    one placeholder with different counts in different functions.
     """
     names = list(dict.fromkeys(predicate_names))
     if not names:
@@ -280,26 +245,22 @@ class RankByPostPopulation:
 
 def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulation:
     """
-    For a tuner's ``early_ordering_fn``: order the add_eqn calls of the tuned function by where `ordering_fn` puts
-    their equations after CSE.
-
-    ``tuning.build_experiment`` resolves it once per checkpoint with ``derive_add_eqn_order`` and records the order in
-    the checkpoint's probe file. The probe and every trial then use ``add_eqn_order(<that order>)``, and so does
-    ``generate_best``, which reads the recorded order instead of deriving it again.
+    For a tuner's `early_ordering_fn`: order the add_eqn calls of the tuned function by where `ordering_fn` puts
+    their equations after CSE. `build_experiment` derives the order once per checkpoint and records it in the probe
+    file.
     """
     return RankByPostPopulation(ordering_fn)
 
 
 def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
                          extra_params: Mapping[str, Any] | None = None) -> tuple[str, tuple[int, ...]]:
-    """Run ``recipe_path`` without auto splits, with `ordering_fn` as the ``ordering_fn`` out-param and no early (or,
-    if ``extra_params`` provides one, pre-population) ordering function, and rank the add_eqn calls of the function
-    baked with it by the median post-CSE position of the equations each call produced
-    (``eqn_grouping.rank_add_eqn_calls``).
+    """
+    Run `recipe_path` without auto splits or early and pre-population ordering functions, with `ordering_fn` as the
+    `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
+    of their equations. Returns the function's name and its 0-based add_eqn order.
 
-    ``extra_params`` supplies other fixed recipe-facing params, as for ``probe_recipe``. Returns the function's name
-    and its 0-based add_eqn order. Raises RuntimeError if the recipe fails, never reads one of the provided names, or
-    does not bake exactly one function with `ordering_fn`.
+    Raises RuntimeError if the recipe fails, never reads a provided name, or does not bake exactly one function with
+    `ordering_fn`.
     """
     # A distinct object, so the hooks can tell the ranked function by its ordering function; pre_cse_stand_in and
     # respects_dependency_order look through the partial, so it bakes exactly as ordering_fn would.
@@ -345,10 +306,6 @@ def _run(state: _ProbeState, doing: str) -> None:
 def _check_read(state: _ProbeState) -> None:
     if unread := [name for name in state.params if name not in state.read]:
         raise RuntimeError(
-            f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} while being probed. The tuner '
-            f'provides them because they are the probed split predicates or change the number of split positions '
-            f'(the locus and the ordering functions), so the probe would count the wrong positions. Read each one '
-            f'with get_optional_tuning_param(name, default) (or get_tuning_param) and pass it to create_function or '
-            f'bake; see docs/TUNING-QUICKSTART.md, section 1. Only reads made before the probe stopped the recipe '
-            f'(at the end of the first bake after which every probed predicate was evaluated) are seen, so a name '
-            f'read only later (e.g. for a second thorn) counts as never read.')
+            f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} before the probe stopped it, so '
+            f'the probe would count the wrong positions. Read each with get_optional_tuning_param(name, default) and '
+            f'pass it to create_function or bake.')

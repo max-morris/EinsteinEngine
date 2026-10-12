@@ -155,9 +155,8 @@ class ThornFunction(DslFunctionFrontend["ThornDef"]):
 
     def infer_tile_temp_centerings(self) -> None:
         """
-        Give a centering to each undeclared temporary that is written in one of this function's loops and read in
-        another, but has no centering yet (e.g., a pull-out temp that a cut turned into a tile temp). The centering
-        is inferred from the temporary's RHS, the same way _global_cse_pre_materialization does for CSE temps.
+        Give each undeclared temp that is written in one of this function's loops and read in another, but has no
+        centering yet, the centering inferred from its RHS.
         """
         td = self.thorn_def
         eqn_lists = self.eqn_complex.eqn_lists
@@ -300,9 +299,8 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
 
     def _infer_temp_centerings(self, temps: Iterable[Symbol], rhs_of: Mapping[Symbol, Expr]) -> None:
         """
-        Give each of `temps` the centering of the symbols its RHS in `rhs_of` reads, inferring those that are
-        themselves in `rhs_of` recursively first. A temp whose RHS reads nothing with a centering defaults to VVV, with
-        a warning; conflicting centerings raise.
+        Give each of `temps` the centering of what its RHS in `rhs_of` reads, inferring those in `rhs_of` recursively.
+        A temp that reads nothing with a centering defaults to VVV; conflicting centerings raise.
         """
         visiting: set[Symbol] = set()
 
@@ -446,14 +444,12 @@ class ThornDef(DslFrontend[CactusParam, CactusDeclOptionalArgs, ThornFunction]):
                         auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
                         auto_split_locus: SplitLocus = SplitLocus.Early) -> ThornFunction:
         """
-        Creates a new thorn function.
-
         :param auto_hard_split_predicate: Called with 0-based positions at `auto_split_locus`; True means "hard split
-                                          after the element at this position".
-        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declined; True or a retainment
-                                          strategy means "soft split after the element at this position".
-        :param auto_split_locus: The point in the bake at which the predicates are evaluated. At SplitLocus.Early (the
-                                 default), elements are author-level add_eqn calls.
+                                          after this position".
+        :param auto_soft_split_predicate: Queried where the hard predicate is absent or declines; True or a retainment
+                                          strategy means "soft split after this position".
+        :param auto_split_locus: When in the bake the predicates are evaluated. At SplitLocus.Early (the default),
+                                 positions are add_eqn calls.
         """
         tf = ThornFunction(name, schedule_target, self, schedule_before, schedule_after, intent_override,
                            auto_hard_split_predicate=auto_hard_split_predicate,

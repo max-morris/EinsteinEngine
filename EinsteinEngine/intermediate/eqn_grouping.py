@@ -16,27 +16,14 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Author-level equation groups, used by the early ordering locus.
+Author-level equation groups for the early ordering locus. A group is the scalar equations of one add_eqn call (those
+sharing an `eqn_origin`); an equation without an origin is its own group. The early locus reorders whole groups, never
+the equations inside one. Groups in a dependency cycle (possible even when the scalar equations are acyclic) are
+condensed into one super-group.
 
-A group is the set of scalar equations created by one author-level ``add_eqn`` call, i.e., those sharing an
-``eqn_origin``; equations without an origin (e.g., from synthetic functions) are each their own group. The early locus
-reorders whole groups, never the equations inside one:
+A group reading X must precede a group writing X' (see `DslFrontend.overwrite`), though no free symbol connects them.
 
-1. The ordering function is run over the list's scalar equations, and each group is ranked by the median position of
-   its members in that order (ties go to recipe order).
-2. Groups can depend on each other in a cycle even when the scalar equations are acyclic. Such cycles are condensed
-   into strongly connected super-groups, ranked by the median over the union of their members.
-3. The super-groups are topologically sorted by priority (Kahn's algorithm on a heap): the lowest-ranked super-group
-   whose dependencies have all been emitted comes next.
-
-Besides the dependencies through RHS free symbols, a group reading ``X`` gets an explicit "reader before overwriter"
-edge to a group writing ``X'`` (see ``DslFrontend.overwrite``), since no free symbol connects the two. For the same
-reason, `cut_hazards` tells the split loci where a cut would separate a writer of ``X'`` from a later reader of ``X``;
-it also finds the cuts that would put a read before its write, which the early locus meets without an early ordering
-function, since the recipe order of the add_eqn calls need not respect their dependencies.
-
-Ordering functions run here directly, never through ``EqnList.order_builder`` or ``set_eqn_annotation``; any
-annotations they yield are ignored.
+Ordering functions run here directly, not through `EqnList.order_builder`, so any annotations they yield are ignored.
 """
 
 from __future__ import annotations
@@ -75,10 +62,9 @@ def author_groups(eqn_list: EqnList, order: Iterable[Symbol]) -> list[tuple[Symb
 
 def scalar_positions(eqn_list: EqnList, ordering_fn: EqnOrderingFn) -> dict[Symbol, int]:
     """
-    The 0-based position of each equation in the order `ordering_fn` yields. Annotations are stripped, repeats are
-    ignored, and equations the function does not yield rank last, in recipe order.
-
-    The ordering function may read ``eqn_list.complexity``, so run ``_run_preliminary_complexity_analysis`` first.
+    The 0-based position of each equation in the order `ordering_fn` yields; equations it does not yield rank last, in
+    recipe order. The ordering function may read `eqn_list.complexity`, so run `_run_preliminary_complexity_analysis`
+    first.
     """
     positions: dict[Symbol, int] = dict()
     for item in ordering_fn(eqn_list.eqns, eqn_list):
@@ -93,10 +79,8 @@ def scalar_positions(eqn_list: EqnList, ordering_fn: EqnOrderingFn) -> dict[Symb
 
 def median_rank_key(positions: Collection[int], tiebreak: int) -> tuple[float, int]:
     """
-    The sort key of a group whose members sit at `positions` in some order: their median position, then `tiebreak`
-    (lower first). A group with no positions (e.g., whose equations were all optimized away) ranks after every other.
-    Used both to rank groups at the early locus (`order_groups`) and to derive an early order from a post-CSE order
-    (`rank_add_eqn_calls`), so that the two agree on medians and ties.
+    The sort key of a group whose members sit at `positions`: their median, then `tiebreak`. An empty group ranks last.
+    Shared by `order_groups` and `rank_add_eqn_calls` so that the two agree on medians and ties.
     """
     return (float(median(positions)) if len(positions) > 0 else float('inf')), tiebreak
 
@@ -105,24 +89,15 @@ def rank_add_eqn_calls(origins_by_list: Sequence[Mapping[Symbol, int]],
                        orders: Sequence[Sequence[Symbol]],
                        origin_count: int) -> list[int]:
     """
-    Rank a function's add_eqn calls by the median position of their equations; this is the ranking step of
-    ``rank_by_post_population`` (see ``EinsteinEngine.tuning.probe``).
+    Rank a function's add_eqn calls by the median position of their equations in the post-CSE orders.
 
-    - origins_by_list[i]: for list i, the equations each add_eqn call produced, mapped to the call's 0-based index.
-      This is snapshotted before the bake, so that pull-out temporaries (which inherit the origin of the equation they
-      were pulled out of) and CSE temporaries (which have none) do not count.
-    - orders[i]: list i's order after the post-CSE rebake. An equation missing from it does not count.
+    - origins_by_list[i]: maps list i's equations to the 0-based index of the add_eqn call that produced them. It must
+      be snapshotted before the bake, so that pull-out and CSE temporaries do not count.
+    - orders[i]: list i's order after the post-CSE rebake; equations missing from it do not count.
     - origin_count: the function's number of add_eqn calls.
 
-    Within each list, the calls are sorted by `median_rank_key` of their equations' positions, ties going to the lower
-    call index; a call none of whose equations is in the order goes last (in call-index order). The lists' rankings
-    are concatenated in list order. A call that produced no equation at all ranks with the last list's calls that
-    have none in the order, by call index, as in the offline derivation (which ranked one list and gave every call
-    without a position the median ``inf``). So the result is a permutation of ``range(origin_count)``. Only the
-    relative order of the calls within a list matters to the early locus, which orders each list's groups on its own.
-
-    Example: with one list whose order is ``[u, a, vD0, vD1, vD2]`` and origins ``{u: 0, vD0: 1, vD1: 1, vD2: 1,
-    a: 2}``, the medians are 0 (call 0), 3 (call 1) and 1 (call 2), so the result is ``[0, 2, 1]``.
+    Each list's calls are sorted by `median_rank_key`, and the rankings are concatenated in list order. Calls that
+    produced no equation at all rank with the last list's, so the result is a permutation of range(origin_count).
     """
     present = {origin for origins in origins_by_list for origin in origins.values()}
     ranked: list[int] = list()
@@ -135,7 +110,6 @@ def rank_add_eqn_calls(origins_by_list: Sequence[Mapping[Symbol, int]],
             if lhs in position:
                 here.append(position[lhs])
         if list_idx == len(origins_by_list) - 1:
-            # Calls that produced no equation at all rank last with this list's calls that have none in the order.
             for origin in range(origin_count):
                 if origin not in present:
                     members[origin] = list()
@@ -156,31 +130,25 @@ class CutHazard:
     """
     A reason not to cut at a position (see `cut_hazards`).
 
-    - An overwrite (`overwrite` is X'): an element at or before the cut writes X', and an element after it reads `read`,
-      an earlier version of X (X, ...), which the later loop would find already overwritten. This forbids every cut.
-    - A backward read (`overwrite` is None): an element at or before the cut reads `read`, which an element after it
-      writes, so the earlier loop would read a value that only the later loop computes. This forbids hard cuts only: a
-      soft cut is harmless, since merge_soft_splits rejoins the two loops and the rebake of the merged loop puts the
-      write first, as it did before the split loci existed.
+    - An overwrite (`overwrite` is X'): the later loop would read `read`, an earlier version of X, after it was
+      overwritten. This forbids every cut.
+    - A backward read (`overwrite` is None): the earlier loop would read `read` before the later loop computes it.
+      This forbids hard cuts only, since merge_soft_splits rejoins a soft cut's loops and the rebake puts the write
+      first.
     """
     read: Symbol
     overwrite: Optional[Symbol] = field(default=None, kw_only=True)
 
     def forbids(self, *, soft: bool) -> bool:
-        """Whether this hazard forbids a hard (`soft` False) or soft (`soft` True) cut."""
         return self.overwrite is not None or not soft
 
 
 def cut_hazards(reads: Sequence[Collection[Symbol]],
                 writes: Sequence[Collection[Symbol]]) -> dict[int, set[CutHazard]]:
     """
-    The cut positions in a sequence of elements that a hazard (see `CutHazard`) forbids, at least for hard cuts. Element
-    i reads `reads[i]` and writes `writes[i]`, and position p means "cut after element p". A cut at p is hazardous if:
-    - an element at or before p writes a version of X (X', X'', ...) and an element after p reads an earlier version
-      (X, X', ...), since the later loop would read the overwritten value; or
-    - an element at or before p reads a symbol that an element after p writes (a backward read).
-    Maps each hazardous position to its hazards. An order in which every element follows what it reads (e.g., a baked
-    order) has no backward reads.
+    Map each position p ("cut after element p") that a `CutHazard` forbids, at least for hard cuts, to its hazards.
+    Element i reads `reads[i]` and writes `writes[i]`. A baked order has no backward reads, but the recipe order of
+    add_eqn calls may.
     """
     forbidden: dict[int, set[CutHazard]] = defaultdict(set)
 
@@ -197,7 +165,6 @@ def cut_hazards(reads: Sequence[Collection[Symbol]],
     if len(overwritten) == 0:
         return dict(forbidden)
 
-    # readers[base]: the (element, version, symbol) triples that read a version of base.
     readers: dict[str, list[tuple[int, int, Symbol]]] = {base: list() for base in overwritten}
     for idx, syms in enumerate(reads):
         for sym in syms:
@@ -273,10 +240,9 @@ def _strongly_connected_components(successors: list[set[int]]) -> list[list[int]
 
 def order_groups(eqn_list: EqnList, ordering_fn: EqnOrderingFn) -> list[tuple[Symbol, ...]]:
     """
-    Rank the author-level groups of `eqn_list` by `ordering_fn` and sort them topologically by rank.
-
-    Returns the resulting super-groups in order; each is a single group unless groups formed a dependency cycle.
-    Members of a super-group are in recipe order. Flattening the result gives the new pre-population order.
+    Rank the author-level groups of `eqn_list` by the median position of their members in the order `ordering_fn`
+    yields, and sort them topologically by rank. Returns the super-groups in order, each with its members in recipe
+    order; flattening the result gives the new pre-population order.
     """
     if len(eqn_list.eqns) == 0:
         return list()

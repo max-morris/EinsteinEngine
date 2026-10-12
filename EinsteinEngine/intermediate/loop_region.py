@@ -15,12 +15,6 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-"""
-The region a loop runs over (Interior, Boundary, or Everywhere), inferred from the grid variables it writes or reads.
-
-The generators use this to pick the loop region of each EqnList, and `EqnComplex` uses it to validate refinements.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -39,13 +33,11 @@ NON_GRID_VARIABLE_NAMES: frozenset[str] = frozenset({'t', 'x', 'y', 'z', 'DXI', 
 
 
 def may_be_grid_variable(sym: Symbol) -> bool:
-    """False for symbols that are never grid variables by name: coordinates, time, and grid spacings."""
     return str(sym).replace("'", "") not in NON_GRID_VARIABLE_NAMES
 
 
 @dataclass(frozen=True)
 class LoopRegion:
-    """The result of `infer_loop_region`."""
     region: Optional[IntentRegion]  # None if it cannot be inferred because the candidate regions conflict
     writes_grid_vars: bool  # True iff the region was inferred from written grid variables
     from_mixed_reads: bool = False  # True iff Interior was inferred from reads that mix Everywhere and Interior
@@ -53,11 +45,9 @@ class LoopRegion:
 
 def infer_loop_region(eqn_list: EqnList, is_grid_var: Callable[[Symbol], bool]) -> LoopRegion:
     """
-    The region the loop for `eqn_list` runs over. All grid variables it writes must share one write region, which is
-    the loop region. A loop that writes no grid variables (e.g., one that only computes tile temps) runs over the
-    Interior if it applies a stencil with a nonzero offset, and otherwise over the read region of the grid variables it
-    reads; a mix of Everywhere and Interior reads gives Interior. A loop that neither writes nor reads grid variables
-    is analytic and runs Everywhere.
+    A loop runs over the common write region of the grid variables it writes. One that writes none runs Everywhere
+    if it reads none, else over the Interior if it applies a stencil with a nonzero offset, else over the read region
+    of the grid variables it reads (Interior for mixed Everywhere and Interior reads).
     """
     writes = frozenset(region for sym, region in eqn_list.write_decls.items() if is_grid_var(sym))
     reads = frozenset(region for sym, region in eqn_list.read_decls.items() if is_grid_var(sym))

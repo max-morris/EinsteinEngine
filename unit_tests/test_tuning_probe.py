@@ -169,7 +169,7 @@ def test_probe_errors(r: Recipes) -> None:
         bake_finished()
         """)
     expect_error(RuntimeError, lambda: probe_recipe(never_read, [HARD]), 'never read', HARD,
-                 'read only later (e.g. for a second thorn) counts as never read')
+                 'before the probe stopped it')
     ignores_locus = r.write('ignores_locus', f"""\
         report_split_positions(get_tuning_param('{HARD}', None), 'rhs', 3)
         bake_finished()

@@ -16,32 +16,15 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Closure assignment for auto splits at the post-population locus, i.e., after global CSE has populated the equation
-lists with temporaries ("population" here means CSE populating the lists with temporaries, not the paper's populating
-of the abstract program). `DslFunctionFrontend._apply_post_population_splits` queries the predicates and hands each
-source list's cuts to `assign_pieces`.
+Auto splits at the post-population locus, after global CSE. A Local CSE temporary may be read on both sides of a cut,
+so a list is not simply sliced: each piece gets the equations of its slice that are not CSE temporaries (its roots),
+plus the closure of the Local temporaries they read. A Local temporary is thus moved, duplicated, or dropped.
 
-Positions are 0-based over each list's baked ``order``, running across lists; position ``i`` means "split after the
-i-th equation". Cutting a list whose Local CSE temporaries are already in place cannot simply slice it, because a
-temporary may be read on both sides of a cut. Instead, each piece is assigned by closure:
-
-- The roots of a piece are the equations in its slice that are neither Local CSE temporaries nor tile temporaries.
-- The piece receives its roots, plus the transitive closure of the Local CSE temporaries that the roots read.
-
-A Local temporary needed only after a cut therefore moves, one needed on both sides is duplicated (recomputed), and a
-temporary that no piece needs is dropped, so dead copies never appear.
-
-Promotion follows the paper's rule that a soft split generates no tile temporaries. A Local temporary needed by
-pieces separated only by soft cuts is always duplicated: the soft cuts are merged away again, and the retainment
-strategy of merge_soft_splits then decides whether the merged loop keeps one copy or forgets and recomputes it. Only
-when the pieces that need it span a hard cut may the promotion predicate from global CSE promote it to a tile
-temporary instead, computed in the first piece that needs it.
-
-A tile temporary that global CSE already placed in the list (Tile kind) is never duplicated. It moves to the first
-piece of its list that reads it, so no piece computes a tile temporary that nothing in it reads.
-
-Named symbols (recipe equations and pull-out temporaries) stay in their slices and are never duplicated; one that
-crosses a hard cut becomes a tile temporary through ``EqnComplex._calc_tile_temps``, as with manual splits.
+Since a soft split generates no tile temporaries, a Local temporary needed on both sides of only soft cuts is
+duplicated; merge_soft_splits' retainment strategy later decides whether to keep one copy. Only if the pieces that
+need it span a hard cut may it be promoted to a tile temporary, computed in the first of them. A CSE tile temporary is
+never duplicated; it moves to the first piece that reads it. Named symbols stay in their slices; one that crosses a
+hard cut becomes a tile temporary through `EqnComplex._calc_tile_temps`, as with manual splits.
 """
 
 from __future__ import annotations
@@ -61,7 +44,6 @@ from EinsteinEngine.intermediate.temp_kind import TempKind
 def local_cse_temps(eqn_list: EqnList,
                     temp_kinds: Mapping[Symbol, TempKind],
                     tile_temporaries: Collection[Symbol]) -> OrderedSet[Symbol]:
-    """The LHSes of the list that are Local CSE temporaries, given the CSE tile temporaries."""
     local_temps: OrderedSet[Symbol] = OrderedSet(
         lhs for lhs in eqn_list.eqns if lhs in eqn_list.synthetic_symbols and lhs not in tile_temporaries
     )
@@ -72,7 +54,6 @@ def local_cse_temps(eqn_list: EqnList,
 
 @dataclass(frozen=True)
 class PieceAssignment:
-    """The result of `assign_pieces`."""
     pieces: list[EqnListPiece]
     promoted: OrderedSet[Symbol]  # Local temporaries promoted to tile temporaries
 
@@ -84,20 +65,16 @@ def assign_pieces(eqn_list: EqnList,
                   tile_temps: Collection[Symbol],
                   can_promote: Callable[[Symbol], bool]) -> PieceAssignment:
     """
-    Assign the equations of the baked `eqn_list` to the pieces that `cuts` (pairs of a 0-based position in the list's
-    order and the boundary after it, sorted by position) cut it into, as the module docstring describes.
-
-    - local_temps: the list's Local CSE temporaries, which may be duplicated or dropped.
-    - tile_temps: the list's LHSes that are already tile temporaries; each moves to the first piece that reads it.
-    - can_promote: whether a Local temporary whose pieces span a hard cut is promoted to a tile temporary.
+    Assign the equations of the baked `eqn_list` to the pieces that `cuts` cut it into. Each cut is a 0-based position
+    in the list's order, after which the cut goes, and its boundary; the cuts are sorted by position.
     """
     order = eqn_list.order
     assert set(order) == set(eqn_list.eqns.keys()), \
-        f"The order of a baked list must cover exactly its equations; got {order} for {list(eqn_list.eqns.keys())}"
+        f"Order {order} does not cover exactly the equations {list(eqn_list.eqns.keys())}"
 
     position_of = {lhs: pos for pos, lhs in enumerate(order)}
 
-    # Slice the order after each cut position. A cut after the final equation leaves an empty trailing slice.
+    # A cut after the final equation leaves an empty trailing slice.
     slice_starts = [0, *(pos + 1 for pos, _ in cuts)]
     slice_ends = [*slice_starts[1:], len(order)]
     slices = [order[start:end] for start, end in zip(slice_starts, slice_ends)]
@@ -111,7 +88,7 @@ def assign_pieces(eqn_list: EqnList,
     movable_reads = {lhs: free_symbols(rhs).intersection(movable) for lhs, rhs in eqn_list.eqns.items()}
 
     # need[t]: the pieces that read t. placed_in[lhs]: the pieces that compute lhs.
-    # Readers come after what they read in the order, so walking it backward settles every reader of t first.
+    # Walking the order backward settles every reader of t before t.
     need: dict[Symbol, set[int]] = {t: set() for t in movable}
     placed_in: dict[Symbol, set[int]] = dict()
     promoted: OrderedSet[Symbol] = OrderedSet()
@@ -147,8 +124,8 @@ def _piece_order(sl: list[Symbol],
                  movable_reads: dict[Symbol, set[Symbol]],
                  position_of: dict[Symbol, int]) -> tuple[Symbol, ...]:
     """
-    The slice keeps its order. A temporary borrowed from an earlier slice is placed just before its first reader
-    (after its own borrowed dependencies), so the result respects dependencies without relying on repair.
+    The slice keeps its order. A temporary borrowed from an earlier slice goes just before its first reader, after its
+    own borrowed dependencies, so the result respects dependencies without relying on repair.
     """
     in_slice = set(sl)
     emitted: set[Symbol] = set()
