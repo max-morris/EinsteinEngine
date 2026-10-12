@@ -469,8 +469,9 @@ searched when `allow_unused_cuts`; 1: soft; 2: hard) and
 - `tuning/z4c_splitting_qbd/`: `CombinatorialSplitTuner()` at the early locus
   in recipe order.
 - `tuning/z4c_derived_order/`: the same, with the `add_eqn` groups in the
-  order `rank_by_post_population(prioritize_rare_symbols)` derives (for Z4c,
-  `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, 0-based `add_eqn` call indices).
+  order `rank_by_post_population(prioritize_rare_symbols)` derives (for Z4c
+  with the default CSE optimizations, `[8, 1, 0, 2, 3, 4, 7, 5, 10, 9, 12, 11, 6]`,
+  0-based `add_eqn` call indices).
 
 Each has a `tuner.py` and `run-tuning.sh` / `generate-best.sh` wrappers.
 

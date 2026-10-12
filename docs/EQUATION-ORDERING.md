@@ -988,13 +988,25 @@ checkpoints" for converting checkpoints with 1-based split params (`split_1..N`)
 
 `add_eqn_order([...])` needs you to know a good order of the `add_eqn` calls. A tuner can instead take
 `early_ordering_fn=rank_by_post_population(fn)` (from `EinsteinEngine.tuning.probe`; it can only be the
-`early_ordering_fn`), which orders the calls by where `fn` places their equations **after CSE**. On Z4c,
-`rank_by_post_population(prioritize_rare_symbols)` derives `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`.
+`early_ordering_fn`), which orders the calls by where `fn` places their equations **after CSE**. On Z4c, with the
+default CSE optimizations, `rank_by_post_population(prioritize_rare_symbols)` derives
+`[8, 1, 0, 2, 3, 4, 7, 5, 10, 9, 12, 11, 6]`.
 
 ```python
 def get_tuner() -> Tuner:
     return CombinatorialSplitTuner(early_ordering_fn=rank_by_post_population(prioritize_rare_symbols))
 ```
+
+On Z4c, the order depends on the CSE optimizations, since they decide where the equations land after CSE:
+
+- With no CSE optimizations, it derives `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, the order Steve derived
+  offline. With Steve's converted checkpoint, `generate_best` through the derived rule produced code byte-identical
+  to his tuned build, and so did the explicit list. That build ran in 4.933 s versus 5.332 s for the recipe order at
+  128³ on his runs.
+- With the default CSE optimizations (`CsePreset.BasicCollectAfter`), it derives
+  `[8, 1, 0, 2, 3, 4, 7, 5, 10, 9, 12, 11, 6]`. Tuned at the early locus on one V100S (60 trials each), the two
+  orders' best splits ran equally fast: the best three of each, run back to back on one GPU, had mean RHS times of
+  39.4 s and 39.3 s (25 iterations at 256³, run-to-run spread about 10%).
 
 ### Why it needs a separate run
 
