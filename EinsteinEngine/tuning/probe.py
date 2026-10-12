@@ -133,6 +133,11 @@ def report_refused_cuts(function_name: str, positions: Collection[int], locus: s
         _refused_cuts.append(f'{function_name}: positions {sorted(positions)} of the {locus} locus')
 
 
+def deriving() -> bool:
+    """Engine hook: whether an add_eqn order is being derived, during which no function makes auto splits."""
+    return _state is not None and _state.ranking_fn is not None
+
+
 def bake_started(frontend: 'DslFrontend[Any, Any, Any]') -> None:
     """Engine hook, called at the start of `DslFrontend.bake`. While deriving, snapshots each function's add_eqn
     origins before pull-out temporaries inherit them."""

@@ -247,7 +247,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         """
         cuts_by_list: list[list[tuple[int, SplitBoundary]]] = [list() for _ in counts]
         hard, soft = self._auto_hard_split_predicate, self._auto_soft_split_predicate
-        if hard is None and soft is None:
+        if (hard is None and soft is None) or probe.deriving():
             return cuts_by_list
 
         for predicate in (hard, soft):
