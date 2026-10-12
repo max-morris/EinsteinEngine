@@ -37,6 +37,7 @@ from sympy import Symbol
 
 # Re-exported: describe_param lives in common so that the intermediate layer can use it without importing tuning.
 from EinsteinEngine.common.describe_param import describe_param as describe_param
+from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 
 if TYPE_CHECKING:
     from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
@@ -239,6 +240,10 @@ class RankByPostPopulation:
     def __init__(self, ordering_fn: 'EqnOrderingFn') -> None:
         self.ordering_fn = ordering_fn
 
+    def __call__(self, *_args: Any) -> Any:
+        raise DslException(f'{self!r} is resolved by a tuner and cannot order equations itself. In a recipe, use '
+                        f'add_eqn_order(<the order recorded in the checkpoint\'s probe file>).')
+
     def __repr__(self) -> str:
         return f'rank_by_post_population({describe_param(self.ordering_fn)})'
 
@@ -255,8 +260,8 @@ def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulatio
 def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
                          extra_params: Mapping[str, Any] | None = None) -> tuple[str, tuple[int, ...]]:
     """
-    Run `recipe_path` without auto splits or early and pre-population ordering functions, with `ordering_fn` as the
-    `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
+    Run `recipe_path` without auto splits or an early ordering function (nor a pre-population one, if `extra_params`
+    provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
     of their equations. Returns the function's name and its 0-based add_eqn order.
 
     Raises RuntimeError if the recipe fails, never reads a provided name, or does not bake exactly one function with
@@ -308,4 +313,5 @@ def _check_read(state: _ProbeState) -> None:
         raise RuntimeError(
             f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} before the probe stopped it, so '
             f'the probe would count the wrong positions. Read each with get_optional_tuning_param(name, default) and '
-            f'pass it to create_function or bake.')
+            f'pass it to create_function or bake; a name read only after the probe stopped the recipe (e.g. for a second '
+            f'thorn) counts as never read.')

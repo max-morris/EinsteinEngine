@@ -741,9 +741,10 @@ that would change what the code computes:
 | overwrite     | separate a write of `X'` (at or before p) from a later read of `X` (after p)            | hard and soft | `which would separate X' from a later read of X`         |
 | backward read | leave an element at or before p reading a symbol that an element after p writes        | hard only   | `which would put a read of b before its write` (or `reads of a2, b ... their writes`) |
 
-The predicates are still asked at refused positions, so the probe counts are unaffected. Outside tuning, a split
-they request there is ignored with one warning per function (when both kinds apply, the warning joins both parts
-with "and"). In a tuning trial, any refused cut fails the trial (section 6).
+The predicates are still asked at refused positions, so the probe counts are unaffected. A split they
+request there is ignored with one warning per function (when both kinds apply, the warning joins both parts with
+"and"). In a `remote_feedback` run, i.e. a tuning trial or its own command line, any refused cut fails the run
+(section 6).
 
 #### The overwrite guard
 
@@ -864,7 +865,7 @@ bake makes on its loops, whatever made the split. In a tuning run, a trial that 
 | `After splitting, the inferred write region of 'X' in loop i (cut from loop s) changed from A to B.`                    | A piece would write the output `X` over a different region (Interior, Boundary, Everywhere) than the unsplit list did. The engine seeds each piece with what it knew was analytic to prevent this, so this points to an engine problem. Report it, and avoid the position. |
 | `After splitting, loop i, which runs over R1, reads temporary 't', which loop j only computes over R2.`                 | The cut made `t` cross into another loop, as a tile temporary, but the loop that computes it runs over a smaller region than a loop that reads it and writes grid variables. The reading loop would use values that were never computed. Choose another position.         |
 | `After splitting, loop i reads 'X', which loop j (cut from the same loop s) has already overwritten.`                   | A backstop for the overwrite guard. Auto splits never cut there, so it points to an engine problem.                                                                                                                                                                  |
-| `'b' is written in loop 1 after it is read in loop(s) [0]: a loop cannot read a value that a later loop computes.` | Raised for any split, but in practice by a manual `split_loop()` placed between an equation and a later one it reads (auto hard cuts are refused there). Move the manual split, or make it a `soft_split()`. |
+| `'b' is written in loop 1 after it is read in loop(s) [0]: a loop cannot read a value that a later loop computes. Move the split that separates them, or make it a soft_split().` | Raised for any split, but in practice by a manual `split_loop()` placed between an equation and a later one it reads (auto hard cuts are refused there). Move the manual split, or make it a `soft_split()`. |
 
 The region check is a heuristic that predicts the loop regions the generator will infer. Here is a cut it rejects:
 `tmp = sin(x)` is analytic, so the unsplit function writes it (and `b`, which reads it) everywhere. A hard cut after
@@ -1014,8 +1015,9 @@ So the order is derived from a separate run of the recipe, and the trials then u
 `tuning.build_experiment` resolves it once per checkpoint:
 
 1. If the checkpoint's probe file already records an order for it (with the same description), that order is used.
-2. Otherwise `probe.derive_add_eqn_order` runs the recipe once, with `fn` as the `ordering_fn` out-param, no early or
-   pre-population ordering function, and no auto split predicates. The engine calls the probe at the start of the
+2. Otherwise `probe.derive_add_eqn_order` runs the recipe once, with `fn` as the `ordering_fn` out-param, no
+   `early_ordering_fn`, no `pre_population_ordering_fn` if the tuner provides one (otherwise the recipe's default
+   applies), and no auto split predicates. The engine calls the probe at the start of the
    bake (`probe.bake_started`, which snapshots each call's equations before pull-out temporaries inherit their
    origin) and after global CSE (`probe.cse_finished`, which reads the post-CSE order of the function baked with
    `fn`). The whole thorn is baked, because global CSE works across functions.
@@ -1088,7 +1090,8 @@ that ranks before a group it reads is moved after it.
   splitmaxxing and temporary recycling (section 7).
 - **Memory across tuning trials.** Class-level caches keep references to every baked function, so memory grows over
   many in-process trials.
-- **Post-population cutting is the most complex code path** and the least tested.
+- **Whether post-population cuts pay off is untested.** An earlier experiment that cut a globally sorted post-CSE
+  list found the cuts harmful, and post-population cutting is the most complex code path.
 
 ---
 
@@ -1136,8 +1139,9 @@ One of:
 
 ### Which locus should I tune?
 
-- **Early** has the fewest positions (13 for Z4c) and works with `CombinatorialSplitTuner`. Combine it with an
-  `early_ordering_fn` to search splits in a different group order. Start here.
+- **Early** has the fewest positions (13 for Z4c), works with `CombinatorialSplitTuner`, and is the only locus with a
+  measured speedup. Combine it with an `early_ordering_fn` to search splits in a different group order (for Z4c,
+  `rank_by_post_population(prioritize_rare_symbols)` gives the order of that speedup). Start here.
 - **PrePopulation** (64 for Z4c) can cut inside a tensor equation and between pull-out temporaries and their readers,
   before CSE decides what to share. Use `CutPositionSplitTuner`.
 - **PostPopulation** (1061 for Z4c) cuts the final order, CSE temporaries included, and recomputes or promotes shared

@@ -270,6 +270,9 @@ examples.
 | `PrePopulation`  | scalar equations and pull-out temporaries, before CSE temporaries exist | the pre-CSE bake order: `pre_population_ordering_fn`, or `ordering_fn` when that is None               | 64    |
 | `PostPopulation` | scalar equations and temporaries after global CSE                       | `ordering_fn` (the post-CSE order)                                                                      | 1061  |
 
+With manual soft splits, a Bayesian `ordering_fn` is replaced by `prioritize_rare_symbols` at the post-CSE rebake,
+so the `PostPopulation` positions follow that order.
+
 With two params per position, `CombinatorialSplitTuner` is only practical at the `Early` locus; use
 `CutPositionSplitTuner` at the others.
 

@@ -186,7 +186,7 @@ class CheckpointedOptimizer:
             total_iterations=total_iterations,
         )
 
-        # Append to JSONL checkpoint (same format as before).
+        # Append to the JSONL checkpoint.
         entry: dict[str, Any] = {
             'target': value,
             'params': in_args,

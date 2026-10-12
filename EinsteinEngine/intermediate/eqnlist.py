@@ -861,7 +861,8 @@ class EqnComplex:
                 if any(read_el < written_el for read_el in read_els):
                     raise DslException(
                         f"'{temp}' is written in loop {written_el} after it is read in loop(s) {sorted(read_els)}: a "
-                        f"loop cannot read a value that a later loop computes."
+                        f"loop cannot read a value that a later loop computes. Move the split that separates them, or "
+                        f"make it a soft_split()."
                     )
 
                 self._tile_temporaries.add(temp)

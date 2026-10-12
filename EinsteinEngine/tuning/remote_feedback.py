@@ -88,11 +88,11 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
             traceback.print_exception(e)
             raise TrialFailed("Error when executing recipe") from e
 
+    clear_caches()
+
     # Code generated without those cuts is not the configuration the optimizer chose, so it must not be scored.
     if refused_cuts:
         raise TrialFailed(f"The engine refused cuts this trial asked for: {'; '.join(refused_cuts)}.")
-
-    clear_caches()
 
     pprint("Done generating. Syncing to remote..." if not is_local else "Done generating. Syncing locally...")
 
