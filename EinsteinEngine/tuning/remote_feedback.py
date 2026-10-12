@@ -53,10 +53,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate a recipe, execute on a remote machine, and collect timing information.")
     parser.add_argument("recipe", help="Path to the Einstein Engine recipe.")
-    parser.add_argument("--local-path", type=str, default="/home/max/src/EmitCactus/EinsteinEngine/tuning/Cottonmouth/", help="Local path containing generated code.")
-    parser.add_argument("--remote-host", type=str, default="qbd", help="Remote host to which generated code should be copied.")
-    parser.add_argument("--remote-path", type=str, default="/home/mmorris/project/Cottonmouth/", help="Remote path into which generated code should be copied.")
-    parser.add_argument("--remote-cactus-path", type=str, default="/home/mmorris/project/Cactus/", help="Remote path containing the Cactus installation.")
+    parser.add_argument("--local-path", type=str, required=True, help="Local path containing generated code.")
+    parser.add_argument("--remote-host", type=str, required=True, help="Remote host to which generated code should be copied.")
+    parser.add_argument("--remote-path", type=str, required=True, help="Remote path into which generated code should be copied.")
+    parser.add_argument("--remote-cactus-path", type=str, required=True, help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine. Must print a single number to optimize for.")
 
