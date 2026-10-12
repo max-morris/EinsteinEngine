@@ -19,10 +19,7 @@
 
 set -euo pipefail
 
-# Generate the Z4c code for the best entry of the checkpoint, with the add_eqn groups in the derived order of tuner.py.
-# To reproduce the tuned build of the feature/eqn-order-instrumentation branch, convert that branch's
-# tuning/z4c_splitting_rostam/split_tuning_fixed_order.jsonl first:
-#     python scripts/shift_checkpoint_indices.py <that file> tuning/z4c_derived_order/split_tuning_checkpt.jsonl
+# Generate the Z4c code for the best entry of the checkpoint, with the add_eqn order recorded in its probe file.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$(dirname "${SCRIPT_DIR}")")"

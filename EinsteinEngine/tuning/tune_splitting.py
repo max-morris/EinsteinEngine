@@ -36,7 +36,7 @@ from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSpli
 from EinsteinEngine.intermediate.split_locus import SplitLocus
 
 from EinsteinEngine.tuning.experiment import Experiment
-from EinsteinEngine.tuning.probe import ProbeResult
+from EinsteinEngine.tuning.probe import ProbeResult, RankByPostPopulation
 from EinsteinEngine.tuning.tuning import Tuner
 
 HardSplitPredicate = Callable[[int], bool]
@@ -55,7 +55,7 @@ _TUNING_DIR = os.path.dirname(__file__) + os.sep
 class _SplitTuner(Tuner):
     """The locus and ordering functions shared by the split tuners, and the out-params that carry them."""
 
-    def __init__(self, *, locus: SplitLocus, early_ordering_fn: EqnOrderingFn | None,
+    def __init__(self, *, locus: SplitLocus, early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None,
                  pre_population_ordering_fn: EqnOrderingFn | None, ordering_fn: EqnOrderingFn | None) -> None:
         self.locus = locus
         self.early_ordering_fn = early_ordering_fn
@@ -114,7 +114,7 @@ class CombinatorialSplitTuner(_SplitTuner):
     """
 
     def __init__(self, n_vars: int | None = None, *, locus: SplitLocus = SplitLocus.Early,
-                 early_ordering_fn: EqnOrderingFn | None = None,
+                 early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None = None,
                  pre_population_ordering_fn: EqnOrderingFn | None = None,
                  ordering_fn: EqnOrderingFn | None = None) -> None:
         super().__init__(locus=locus, early_ordering_fn=early_ordering_fn,
@@ -171,7 +171,8 @@ class CutPositionSplitTuner(_SplitTuner):
     the pre-population and post-population loci.
     """
 
-    def __init__(self, n_cuts: int, *, locus: SplitLocus, early_ordering_fn: EqnOrderingFn | None = None,
+    def __init__(self, n_cuts: int, *, locus: SplitLocus,
+                 early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None = None,
                  pre_population_ordering_fn: EqnOrderingFn | None = None,
                  ordering_fn: EqnOrderingFn | None = None, allow_unused_cuts: bool = True) -> None:
         if n_cuts < 1:
