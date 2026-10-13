@@ -268,7 +268,7 @@ class EqnComplex:
         for eqn_list in self.eqn_lists:
             eqn_list.madd()
 
-    def do_cse(self) -> None:
+    def do_cse(self, optimizations: Sequence[CseOptimization] = ()) -> None:
         old_shape: list[int] = list()
         old_lhses: list[Symbol] = list()
         old_rhses: list[Expr] = list()
@@ -282,7 +282,7 @@ class EqnComplex:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        substitutions_list, new_rhses = cse(old_rhses)
+        substitutions_list, new_rhses = cse(old_rhses, optimizations=optimizations)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}

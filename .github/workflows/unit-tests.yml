@@ -42,3 +42,6 @@ jobs:
           python unit_tests/test_tuning_domains.py
           python unit_tests/test_rank_by_post_population.py
           python unit_tests/test_sympy_complexity.py
+          python unit_tests/test_cse_optimizations.py
+          python unit_tests/test_collect.py
+          python unit_tests/test_tune_cse.py

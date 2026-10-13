@@ -19,5 +19,10 @@ from enum import Enum, auto
 
 
 class CseOptimizationLevel(Enum):
+    """
+    Deprecated: use the cse_isolate_grid_variables bake option. Optimal is cse_isolate_grid_variables=True and Fast is
+    cse_isolate_grid_variables=False. The name was misleading: this never chose any optimization, only whether grid
+    variables are isolated from the CSE (see cse_isolate).
+    """
     Fast = auto()
     Optimal = auto()

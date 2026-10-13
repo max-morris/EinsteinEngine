@@ -1120,7 +1120,8 @@ cottonmouth_bssnok.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=False,
-    cse_optimization_level=CseOptimizationLevel.Optimal,
+    cse_isolate_grid_variables=True,
+    cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()),
     soft_split_retainment_strategy=retain_rank(150),
     ordering_fn=prioritize_rare_symbols,
 )

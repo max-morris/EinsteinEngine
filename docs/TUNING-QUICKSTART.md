@@ -38,14 +38,15 @@ raises (this catches typos). A knob that a tuner may leave out is read with
 the tuner does not provide it.
 
 ```python
-from EinsteinEngine import SplitLocus, get_optional_tuning_param, get_tuning_param, maximize_symbol_reuse
+from EinsteinEngine import SplitLocus, get_optional_tuning_param, maximize_symbol_reuse
 
 fun = mod.create_function(
     "my_rhs",
     rhs_group,
-    # These come from the tuner during a search; None (the default) otherwise.
-    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', None),
-    auto_soft_split_predicate=get_tuning_param('auto_soft_split_predicate', None),
+    # These come from a split tuner during a search; None (the default, which never splits) otherwise. They are
+    # optional, so that a tuner that does not split can leave them out.
+    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate', None),
+    auto_soft_split_predicate=get_optional_tuning_param('auto_soft_split_predicate', None),
     # Where in the bake the predicates are evaluated (see section 5).
     auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
 )
@@ -183,6 +184,19 @@ best, and steers the search away from that region. Other errors (rsync errors,
 ssh connection failures, no Slurm job id in the output, a failed `squeue`)
 stop the tuning run instead; the checkpoint keeps the completed trials, so
 rerun to resume.
+
+### Timing on a GPU
+
+Time each trial on a warm GPU. A GPU that starts a run idle runs it faster
+than one that has been busy for a while: on Deep Bayou's V100S GPUs, a cold
+start ran the Z4c RHS about 13% faster, more than most of the differences a
+search is looking for. A trial that happens to start on an idle GPU then looks
+better than its configuration is. So have the job that `--remote-command`
+submits run the executable once untimed, for a few iterations, before the
+timed run, and have `--remote-timing-command` read only the timed run. (This
+is unrelated to `--warmup-iterations`, which counts the tuner's exploratory
+trials.) The same holds when comparing finished builds: run them back to back
+in one job on one GPU, alternating their order, rather than as separate jobs.
 
 ### Iterations and the budget
 
@@ -455,8 +469,9 @@ searched when `allow_unused_cuts`; 1: soft; 2: hard) and
 - `tuning/z4c_splitting_qbd/`: `CombinatorialSplitTuner()` at the early locus
   in recipe order.
 - `tuning/z4c_derived_order/`: the same, with the `add_eqn` groups in the
-  order `rank_by_post_population(prioritize_rare_symbols)` derives (for Z4c,
-  `[8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]`, 0-based `add_eqn` call indices).
+  order `rank_by_post_population(prioritize_rare_symbols)` derives (for Z4c
+  with the default CSE optimizations, `[8, 1, 0, 2, 3, 4, 7, 5, 10, 9, 12, 11, 6]`,
+  0-based `add_eqn` call indices).
 
 Each has a `tuner.py` and `run-tuning.sh` / `generate-best.sh` wrappers.
 
@@ -482,7 +497,37 @@ file that exists, and warns if it found no split keys to shift.
 
 ---
 
-## 6. Advanced domains
+## 6. The CSE optimization tuner
+
+`EinsteinEngine.tuning.tune_cse.CseOptimizationTuner` searches the
+`cse_optimizations` bake option: which `CsePreset`, and, for the presets that
+run `cse_collect_greedy` (`CsePreset.collects`), which budget (`max_iter`).
+
+```python
+from EinsteinEngine.tuning.tune_cse import CseOptimizationTuner
+from EinsteinEngine.tuning.tuning import Tuner
+
+
+def get_tuner() -> Tuner:
+    return CseOptimizationTuner()  # every preset; budgets 5, 10, 25, 50, 100
+```
+
+Its params are `cse_preset`, an index into `presets` (by default
+`list(CsePreset)`, whose order does not change), and `cse_collect_max_iter`,
+one of `budgets`. A checkpoint records the index, so resume it with the same
+`presets`. The recipe reads the one out-param it provides as optional, and
+passes it to the bake:
+
+```python
+mod.bake(cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()))
+```
+
+Every other knob keeps its default, so the recipe must read those as optional
+too; split predicates read that way never split.
+
+---
+
+## 7. Advanced domains
 
 The `(lo, hi)` tuple is shorthand for `Interval(lo, hi)`. When a plain interval
 isn't the right search space, `add_in_param` also accepts a `Domain` object or a

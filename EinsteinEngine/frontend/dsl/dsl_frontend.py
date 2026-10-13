@@ -16,6 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
@@ -69,7 +70,8 @@ from EinsteinEngine.frontend.definitions import (
     one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
-from EinsteinEngine.common.sympywrap import cse, free_symbols
+from EinsteinEngine.common.sympywrap import cse, CseOptimization, free_symbols
+from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
@@ -99,7 +101,15 @@ class SymbolDeclarationKwargs(TypedDict, total=False):
 class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBakeOptions](TypedDict, total=False):
     # Frontend opts
     do_cse: bool
+    # Whether the global CSE isolates grid variables (see cse_isolate), so that their reads, such as access()es, are
+    # CSE'd correctly. True by default; False skips the isolation, which is faster.
+    cse_isolate_grid_variables: bool
+    # Deprecated: use cse_isolate_grid_variables (Optimal is True, Fast is False).
     cse_optimization_level: CseOptimizationLevel
+    # The CSE optimizations of the global CSE, in order (see CseOptimization), e.g.
+    # [cse_collect_greedy(max_iter=50), cse_basic()], or a preset such as CsePreset.CollectBeforeBasic(max_iter=50).
+    # default_cse_optimizations() (CsePreset.BasicCollectAfter) by default; [] for none.
+    cse_optimizations: Sequence[CseOptimization]
     temporary_promotion_strategy: TemporaryPromotionStrategy
 
     # Function frontend default opts
@@ -318,7 +328,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _mk_default_dsl_frontend_bake_options() -> DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]:
         opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions] = {
             "do_cse": True,
-            "cse_optimization_level": CseOptimizationLevel.Optimal,
+            "cse_isolate_grid_variables": True,
+            "cse_optimizations": default_cse_optimizations(),
             "temporary_promotion_strategy": promote_none(),
             "ordering_fn": maximize_symbol_reuse,
             "functions": dict(),
@@ -352,6 +363,17 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
         my_opts = self._mk_default_bake_options()
         my_opts.update(opts)
+        if "cse_optimization_level" in opts:
+            level = opts["cse_optimization_level"]
+            if level not in (CseOptimizationLevel.Optimal, CseOptimizationLevel.Fast):
+                raise DslException(f"Unrecognized CSE optimization level: {level}")
+            isolate = level is CseOptimizationLevel.Optimal
+            if "cse_isolate_grid_variables" in opts and opts["cse_isolate_grid_variables"] != isolate:
+                raise DslException(f"cse_optimization_level={level} contradicts "
+                                   f"cse_isolate_grid_variables={opts['cse_isolate_grid_variables']}.")
+            warnings.warn(f"The cse_optimization_level bake option is deprecated; use "
+                          f"cse_isolate_grid_variables={isolate} instead.", DeprecationWarning, stacklevel=2)
+            my_opts["cse_isolate_grid_variables"] = isolate
         my_tf_opts = self._mk_function_bake_options(my_opts)
         probe.bake_started(self)
 
@@ -361,7 +383,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
         if my_opts["do_cse"]:
             pprint("Performing CSE...")
-            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_isolate_grid_variables"],
+                                optimizations=my_opts["cse_optimizations"])
         else:
             # The post-CSE rebake is what orders a list with ordering_fn after a pre_population_ordering_fn; without
             #  CSE, rebake here instead.
@@ -467,7 +490,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _do_global_cse(
             self,
             promotion_strategy: TemporaryPromotionStrategy = promote_all(),
-            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+            isolate_grid_variables: bool = True,
+            *,
+            optimizations: Sequence[CseOptimization] = ()
     ) -> None:
         for tf in self.functions.values():
             if tf.been_late_baked:
@@ -497,15 +522,14 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
 
-        if optimization_level is CseOptimizationLevel.Optimal:
+        if isolate_grid_variables:
             substitutions_list, new_rhses = cse_isolate(
                 list(chain(*chain(*old_tf_rhses.values()))),
-                symbols_to_isolate=grid_vars
+                symbols_to_isolate=grid_vars,
+                optimizations=optimizations
             )
-        elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
         else:
-            raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
+            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))), optimizations=optimizations)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}

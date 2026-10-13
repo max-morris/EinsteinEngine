@@ -842,8 +842,11 @@ Z4C_RHS_SOFT_SPLITS = {1: 0.013, 2: 0.007, 3: 0.912, 4: 0.964, 5: 0.977, 6: 0.97
 fun_z4c_rhs = cottonmouth_Z4c.create_function(
     "z4c_rhs",
     rhs_group,
-    auto_hard_split_predicate=get_tuning_param('auto_hard_split_predicate', lambda i: i in Z4C_RHS_HARD_SPLITS),
-    auto_soft_split_predicate=get_tuning_param(
+    # Optional, so that a tuner that does not split (one over the CSE optimizations, say) can leave them out and keep
+    # the default splits.
+    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate',
+                                                        lambda i: i in Z4C_RHS_HARD_SPLITS),
+    auto_soft_split_predicate=get_optional_tuning_param(
         'auto_soft_split_predicate',
         lambda i: retain_percentile(Z4C_RHS_SOFT_SPLITS[i]) if i in Z4C_RHS_SOFT_SPLITS else False),
     auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
@@ -1273,7 +1276,8 @@ cottonmouth_Z4c.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=False,
-    cse_optimization_level=CseOptimizationLevel.Optimal,
+    cse_isolate_grid_variables=True,
+    cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()),
     soft_split_retainment_strategy=retain_rank(50),
     ordering_fn=ordering_fn,
     # The tuners' ordering knobs refer to the z4c_rhs add_eqn calls, so they apply to z4c_rhs only.

@@ -494,7 +494,7 @@ cottonmouth_bssnok.bake(
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
     do_recycle_temporaries=False,
-    cse_optimization_level=CseOptimizationLevel.Fast,
+    cse_isolate_grid_variables=False,
     soft_split_retainment_strategy=retain_rank(50),
     functions={
         "rhs": {
