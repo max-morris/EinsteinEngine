@@ -120,7 +120,7 @@ gf.bake(
     do_recycle_temporaries=False,
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
-    cse_optimization_level=CseOptimizationLevel.Fast
+    cse_isolate_grid_variables=False
 )
 
 CppCarpetXWizard(

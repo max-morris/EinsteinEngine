@@ -16,6 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import chain
@@ -27,7 +28,7 @@ from typing import Set, NamedTuple, Iterable, TypedDict, Optional, cast, Unpack,
 
 import sympy as sy
 from multimethod import multimethod
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sympy import Symbol, Idx, Expr, IndexedBase, Indexed, Function, Basic, Matrix, ImmutableDenseMatrix, MatrixBase
 
 from EinsteinEngine.common.sympywrap import (
@@ -69,7 +70,8 @@ from EinsteinEngine.frontend.definitions import (
     one
 )
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
-from EinsteinEngine.common.sympywrap import cse, free_symbols
+from EinsteinEngine.common.sympywrap import cse, CseOptimization, free_symbols
+from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
 from EinsteinEngine.intermediate.coef import coef
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
@@ -80,6 +82,8 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import (
 )
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
+from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.tuning import probe
 from EinsteinEngine.common.util import get_or_compute, pprint, verbose
 from EinsteinEngine.common.util import wprint
 
@@ -97,14 +101,27 @@ class SymbolDeclarationKwargs(TypedDict, total=False):
 class DslFrontendBakeOptions[FunctionFrontendBakeOptionsT: DslFunctionFrontendBakeOptions](TypedDict, total=False):
     # Frontend opts
     do_cse: bool
+    # Whether the global CSE isolates grid variables (see cse_isolate), so that their reads, such as access()es, are
+    # CSE'd correctly. True by default; False skips the isolation, which is faster.
+    cse_isolate_grid_variables: bool
+    # Deprecated: use cse_isolate_grid_variables (Optimal is True, Fast is False).
     cse_optimization_level: CseOptimizationLevel
+    # The CSE optimizations of the global CSE, in order (see CseOptimization), e.g.
+    # [cse_collect_greedy(max_iter=50), cse_basic()], or a preset such as CsePreset.CollectBeforeBasic(max_iter=50).
+    # default_cse_optimizations() (CsePreset.BasicCollectAfter) by default; [] for none.
+    cse_optimizations: Sequence[CseOptimization]
     temporary_promotion_strategy: TemporaryPromotionStrategy
 
     # Function frontend default opts
     do_madd: bool
     do_recycle_temporaries: bool
     splitmaxxing: bool
-    ordering_fn: EqnOrderingFn
+    ordering_fn: EqnOrderingFn  # The post-population ordering function
+    # Orders each function's add_eqn groups (the early locus). add_eqn_order is per function, so pass it through
+    # `functions`.
+    early_ordering_fn: Optional[EqnOrderingFn]
+    # Orders each function's scalar equations before CSE (the pre-population locus); None uses ordering_fn.
+    pre_population_ordering_fn: Optional[EqnOrderingFn]
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
     # Overrides for function frontend default opts
@@ -135,9 +152,17 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     tile_temporaries: OrderedSet[Symbol]
     global_temporaries: OrderedSet[Symbol]
 
+    # Saved by global CSE for post-population splits: the kind of each CSE temporary (Inline temps are absent), and
+    #  the predicate the kinds were clamped by. Empty and None if CSE did not run.
+    cse_temp_kinds: dict[Symbol, TempKind]
+    cse_promotion_predicate: Optional[TemporaryPromotionPredicate]
+
     overwrite_symbols: dict[str, OverwriteSymbolRecord]
 
     is_stencil: dict[UFunc, bool]  # Obsolesce sometime?
+
+    # Overridden by frontends whose backend emits some operations more cheaply than the generic cost model assumes.
+    complexity_visitor_type: type[SympyComplexityVisitor] = SympyComplexityVisitor
 
     div_makers: dict[str, DivMakerVisitor]
     apply_div: Applier
@@ -166,6 +191,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         self.functions = dict()
         self.tile_temporaries = OrderedSet()
         self.global_temporaries = OrderedSet()
+        self.cse_temp_kinds = dict()
+        self.cse_promotion_predicate = None
 
         self.overwrite_symbols = dict()
 
@@ -301,7 +328,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _mk_default_dsl_frontend_bake_options() -> DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]:
         opts: DslFrontendBakeOptions[DslFunctionFrontendBakeOptions] = {
             "do_cse": True,
-            "cse_optimization_level": CseOptimizationLevel.Optimal,
+            "cse_isolate_grid_variables": True,
+            "cse_optimizations": default_cse_optimizations(),
             "temporary_promotion_strategy": promote_none(),
             "ordering_fn": maximize_symbol_reuse,
             "functions": dict(),
@@ -320,6 +348,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     ) -> dict[str, DslFunctionFrontendBakeOptions]:
         my_tf_opts: dict[str, DslFunctionFrontendBakeOptions] = dict()
 
+        if unknown := sorted(opts.get("functions", dict()).keys() - self.functions.keys()):
+            raise DslException(f"The bake options name unknown functions {unknown}; the functions are {sorted(self.functions.keys())}.")
+
         for tf in self.functions.values():
             tf_opts = self._mk_default_function_bake_options()
             tf_opts.update(cast(DslFunctionFrontendBakeOptions, opts))
@@ -332,7 +363,19 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
         my_opts = self._mk_default_bake_options()
         my_opts.update(opts)
+        if "cse_optimization_level" in opts:
+            level = opts["cse_optimization_level"]
+            if level not in (CseOptimizationLevel.Optimal, CseOptimizationLevel.Fast):
+                raise DslException(f"Unrecognized CSE optimization level: {level}")
+            isolate = level is CseOptimizationLevel.Optimal
+            if "cse_isolate_grid_variables" in opts and opts["cse_isolate_grid_variables"] != isolate:
+                raise DslException(f"cse_optimization_level={level} contradicts "
+                                   f"cse_isolate_grid_variables={opts['cse_isolate_grid_variables']}.")
+            warnings.warn(f"The cse_optimization_level bake option is deprecated; use "
+                          f"cse_isolate_grid_variables={isolate} instead.", DeprecationWarning, stacklevel=2)
+            my_opts["cse_isolate_grid_variables"] = isolate
         my_tf_opts = self._mk_function_bake_options(my_opts)
+        probe.bake_started(self)
 
         for _, tf in sorted(self.functions.items(), key=lambda kv: kv[0]):
             assert tf.name in my_tf_opts, f"Function '{tf.name}' not found in my_tf_opts"
@@ -340,7 +383,23 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
         if my_opts["do_cse"]:
             pprint("Performing CSE...")
-            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_optimization_level"])
+            self._do_global_cse(my_opts["temporary_promotion_strategy"], my_opts["cse_isolate_grid_variables"],
+                                optimizations=my_opts["cse_optimizations"])
+        else:
+            # The post-CSE rebake is what orders a list with ordering_fn after a pre_population_ordering_fn; without
+            #  CSE, rebake here instead.
+            for tf in self.functions.values():
+                if my_tf_opts[tf.name]["pre_population_ordering_fn"] is not None:
+                    for eqn_list in tf.eqn_complex.eqn_lists:
+                        eqn_list.bake(force_rebake=True, force_fast=tf.needs_merge())
+        probe.cse_finished(self)
+
+        for tf in self.functions.values():
+            if tf.auto_split_locus is SplitLocus.PostPopulation:
+                # Like _do_global_cse, the frontend records every Tile-kind CSE temporary, including promoted ones.
+                self.tile_temporaries.update(tf._apply_post_population_splits(temp_kinds=self.cse_temp_kinds,
+                                                                              promotion_predicate=self.cse_promotion_predicate,
+                                                                              tile_temporaries=self.tile_temporaries))
 
         for tf in self.functions.values():
             if tf.needs_merge():
@@ -354,6 +413,8 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                 if my_tf_opts[tf.name]["splitmaxxing"]:
                     tf._do_splitmaxxing()
                 tf._late_bake(**my_tf_opts[tf.name])
+
+        probe.bake_finished()
 
     @staticmethod
     def _classify_temps(
@@ -373,13 +434,21 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             tfs_active_reads[new_temp].update(tfs_reading_direct[new_temp])
 
             for td in new_temp_dependents[new_temp]:
-                if temp_kinds.get(td, None) == TempKind.Global:
+                td_kind = temp_kinds.get(td, None)
+                if td_kind == TempKind.Global:
                     synthetic_global_dependents[new_temp].add(td)
                 else:
                     if len(synthetic_global_dependents[td]) > 0:
                         synthetic_global_dependents[new_temp].update(synthetic_global_dependents[td])
                     for transitive_read_tf, transitive_read_els in tfs_active_reads.get(td, dict()).items():
-                        get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
+                        # If the dependent td is a tile temp, new_temp is read in the kernel which mutates the tile temp (the first read).
+                        # If td is a local or inline, then it will be computed in every kernel that reads it, and so new_temp is transitively read in all those kernels.
+                        if td_kind == TempKind.Tile:
+                            if len(transitive_read_els) > 0:
+                                get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).add(min(transitive_read_els))
+                        else:
+                            assert td_kind in (TempKind.Local, TempKind.Inline), f"Expected td_kind to be Local or Inline here, found {td_kind} for td {td}; new_temp {new_temp}; transitive_read_tf {transitive_read_tf}; transitive_read_els {transitive_read_els}"
+                            get_or_compute(tfs_active_reads[new_temp], transitive_read_tf, lambda _: set()).update(transitive_read_els)
 
             assert len(synthetic_global_dependents[new_temp]) + len(tfs_active_reads[new_temp]) > 0, f"Temporary {new_temp} has 0 active reads"
 
@@ -421,7 +490,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
     def _do_global_cse(
             self,
             promotion_strategy: TemporaryPromotionStrategy = promote_all(),
-            optimization_level: CseOptimizationLevel = CseOptimizationLevel.Optimal
+            isolate_grid_variables: bool = True,
+            *,
+            optimizations: Sequence[CseOptimization] = ()
     ) -> None:
         for tf in self.functions.values():
             if tf.been_late_baked:
@@ -451,15 +522,14 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
 
-        if optimization_level is CseOptimizationLevel.Optimal:
+        if isolate_grid_variables:
             substitutions_list, new_rhses = cse_isolate(
                 list(chain(*chain(*old_tf_rhses.values()))),
-                symbols_to_isolate=grid_vars
+                symbols_to_isolate=grid_vars,
+                optimizations=optimizations
             )
-        elif optimization_level is CseOptimizationLevel.Fast:
-            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))))
         else:
-            raise DslException(f"Unrecognized CSE optimization level: {optimization_level}")
+            substitutions_list, new_rhses = cse(list(chain(*chain(*old_tf_rhses.values()))), optimizations=optimizations)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
@@ -513,7 +583,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             for eqn_list in tf.eqn_complex.eqn_lists:
                 complexities.update(eqn_list.complexity)
 
-        complexity_visitor = SympyComplexityVisitor(
+        complexity_visitor = self.complexity_visitor_type(
             lambda s: s in grid_vars
         )
         for new_temp, new_rhs in substitutions.items():
@@ -555,7 +625,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                                              temp_kinds=temp_kinds)
 
         for new_temp in substitutions.keys():
-            vprint(colorize("Temporary:", "cyan"), new_temp, colorize(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
+            vprint(colored("Temporary:", "cyan"), new_temp, colored(f"[kind = {temp_kinds.get(new_temp, TempKind.Inline)}]", "magenta"))
 
         inline_temps: list[tuple[Symbol, Expr]] = list()
         for new_temp, new_rhs in sorted(substitutions.items(),
@@ -584,7 +654,7 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     global_eqn_idx += 1
 
         for new_temp in substitutions.keys():
-            if new_temp not in temp_kinds or temp_kinds[new_temp] in [TempKind.Inline, TempKind.Global]:
+            if new_temp not in temp_kinds or temp_kinds[new_temp] == TempKind.Inline:
                 continue
             elif temp_kinds[new_temp] == TempKind.Local:
                 for tf, els_reading in tfs_active_reads[new_temp].items():
@@ -593,12 +663,14 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                     for el in (ec.eqn_lists[el_idx] for el_idx in els_reading):
                         el.add_eqn(new_temp, substitutions[new_temp])
                         el.temporaries.add(new_temp)
+                        el.synthetic_symbols.add(new_temp)
             elif temp_kinds[new_temp] == TempKind.Tile:
                 self.tile_temporaries.add(new_temp)
 
                 for tf, els_reading in tfs_active_reads[new_temp].items():
                     ec = tf.eqn_complex
                     primary_el = ec.eqn_lists[primary_idx := min(els_reading)]
+                    primary_el.synthetic_symbols.add(new_temp)
 
                     if len(els_reading) == 1:
                         primary_el.add_eqn(new_temp, substitutions[new_temp])
@@ -609,6 +681,11 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
                         primary_el.uninitialized_tile_temporaries.add(new_temp)
                         for eqn_list in [ec.eqn_lists[el_idx] for el_idx in els_reading if el_idx != primary_idx]:
                             eqn_list.preinitialized_tile_temporaries.add(new_temp)
+                            eqn_list.synthetic_symbols.add(new_temp)
+            elif temp_kinds[new_temp] == TempKind.Global:
+                for tf, els_reading in tfs_active_reads[new_temp].items():
+                    for eqn_list in [tf.eqn_complex.eqn_lists[el_idx] for el_idx in els_reading]:
+                        eqn_list.synthetic_symbols.add(new_temp)
 
         self._global_cse_handle_global_temps(
             substitutions=substitutions,
@@ -616,6 +693,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
             tfs_active_reads=tfs_active_reads,
             new_temp_dependencies=new_temp_dependencies
         )
+
+        self.cse_temp_kinds = {t: k for t, k in temp_kinds.items() if t in substitutions}
+        self.cse_promotion_predicate = promotion_predicate
 
         for tf in self.functions.values():
             for idx, eqn_list in enumerate(tf.eqn_complex.eqn_lists):
@@ -733,9 +813,9 @@ class DslFrontend[ParamDataT, SymbolDeclarationKwargsT: SymbolDeclarationKwargs,
 
     def _on_substitution_mapping(self, source: Indexed | IndexedBase, target: Expr) -> None:
         if isinstance(source, IndexedBase):
-            vprint(colorize(source, "cyan"), colorize("->", "green"), colorize(target, "yellow"))
+            vprint(colored(source, "cyan"), colored("->", "green"), colored(target, "yellow"))
         else:
-            vprint(colorize(source, "red"), colorize("->", "magenta"), colorize(target, "cyan"))
+            vprint(colored(source, "red"), colored("->", "magenta"), colored(target, "cyan"))
 
     def mk_coords(self, with_time: bool = False) -> tuple[Symbol, ...]:
         if with_time:

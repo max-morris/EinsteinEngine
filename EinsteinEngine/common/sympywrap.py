@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from itertools import chain
-from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Collection
+from typing import Tuple, List, Dict, Any, Union, cast, Mapping, Callable, Set, Optional, Collection, Sequence
 
 import sympy.core.numbers
 from sympy import Expr, Matrix, Piecewise
@@ -85,7 +85,7 @@ from multimethod import multimethod
 __all__ = ["Applier", "sqrt", "cbrt", "log", "exp", "Pow", "PowType", "UFunc",
            "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "coth", "sech", "csch",
            "erf", "pi", "atan",
-           "inv", "det", "sympify", "simplify", "cse", "mk_idx", "mk_symbol",
+           "inv", "det", "sympify", "simplify", "cse", "CseOptimization", "mk_idx", "mk_symbol",
            "mk_matrix", "do_subs", "mk_function", "mk_eq", "do_replace", "mk_indexed_base", "mk_piecewise",
            "mk_zeros", "free_indexed", "mk_indexed", "mk_wild", "mk_idxes", "free_symbols",
            "do_match", "h_step"]
@@ -107,7 +107,14 @@ def inv(e: Matrix) -> Matrix:
     return cast(Matrix, e.inv())  # type: ignore[no-untyped-call]
 
 
-cse: Callable[[List[Expr]], cse_return] = cse_
+# One of sympy's CSE optimizations: a (preprocessor, postprocessor) pair, either of which may be None. cse() applies the
+# preprocessors, in list order, to each expression before the CSE, and the postprocessors, in reverse list order, to each
+# replacement and reduced expression after it. See EinsteinEngine.common.cse_optimizations for the ones we provide.
+CseOptimization = Tuple[Optional[Callable[[Expr], Expr]], Optional[Callable[[Expr], Expr]]]
+
+
+def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse_return:
+    return cast(cse_return, cse_(exprs, optimizations=list(optimizations)))  # type: ignore[no-untyped-call]
 
 
 def mk_idx(name: str) -> Idx:

@@ -18,18 +18,26 @@
 from __future__ import annotations
 
 from collections import defaultdict, OrderedDict
-from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, Optional, TypedDict, Unpack, Callable, Collection, Sequence
 
 import EinsteinEngine.common.util as util
 from sympy import Symbol, Expr, Idx, Indexed, IndexedBase, Matrix
 
 from EinsteinEngine.common.intent_override import IntentOverride
-from EinsteinEngine.common.util import OrderedSet, pprint
+from EinsteinEngine.common.sympywrap import free_symbols
+from EinsteinEngine.common.util import OrderedSet, pprint, wprint
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse
-from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList
+from EinsteinEngine.intermediate.eqn_grouping import CutHazard, author_groups, cut_hazards, order_groups
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, pre_cse_stand_in
+from EinsteinEngine.intermediate.eqnlist import EqnComplex, EqnList, EqnListPiece, SplitBoundary
+from EinsteinEngine.intermediate.post_population_split import assign_pieces, local_cse_temps
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy, retain_none
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.intermediate.splitmaxxer import SplitMaxxer
+from EinsteinEngine.intermediate.temp_kind import TempKind
+from EinsteinEngine.intermediate.temporary_promotion_predicate import TemporaryPromotionPredicate
+from EinsteinEngine.tuning import probe
 
 if TYPE_CHECKING:
     from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend
@@ -39,7 +47,15 @@ class DslFunctionFrontendBakeOptions(TypedDict, total=False):
     do_madd: bool
     do_recycle_temporaries: bool
     splitmaxxing: bool
+    # The post-population ordering function; also used for the pre-CSE bake unless pre_population_ordering_fn is set.
+    # Before CSE, a 'bayesian' ordering function is replaced by pre_cse_stand_in, since CSE rewrites that order anyway.
+    # This includes the fast post-CSE rebake of a function with soft splits, so its post-population locus cuts the
+    # stand-in's order.
     ordering_fn: EqnOrderingFn
+    # Orders the author-level add_eqn groups at the early locus; None keeps the recipe order.
+    early_ordering_fn: Optional[EqnOrderingFn]
+    # Orders the pre-CSE bake and sets the pre-population order; None uses ordering_fn and leaves that order alone.
+    pre_population_ordering_fn: Optional[EqnOrderingFn]
     soft_split_retainment_strategy: SoftSplitRetainmentStrategy
 
 
@@ -60,20 +76,42 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
     been_baked: bool
     been_late_baked: bool
     intent_override: Optional[IntentOverride]
+    auto_split_locus: SplitLocus
 
-    def __init__(self, name: str, frontend: FrontendT, intent_override: Optional[IntentOverride], *, owner_name: str) -> None:
+    # As requested at creation: None = default by final index, '' = suppressed.
+    _loop_annotations: list[Optional[str]]
+
+    # Per-equation annotations from the last _refine(), restored by _rebake_refined().
+    _refined_eqn_annotations: dict[int, dict[Symbol, str]]
+
+    def __init__(self,
+                 name: str,
+                 frontend: FrontendT,
+                 intent_override: Optional[IntentOverride],
+                 *,
+                 owner_name: str,
+                 auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                 auto_soft_split_predicate: Optional[Callable[[int], bool|SoftSplitRetainmentStrategy]] = None,
+                 auto_split_locus: SplitLocus = SplitLocus.Early) -> None:
         self.name = name
         self.frontend = frontend
         self.source_annotations = SourceAnnotations()
         self.source_annotations.loops[0] = f"{self.name} loop 0"
+        self._loop_annotations = [None]
 
         def set_eqn_annotation(loop_idx: int, key: Symbol, annotation: str) -> None:
             self.source_annotations.eqns[loop_idx][key] = annotation
 
-        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation)
+        def clear_eqn_annotations(loop_idx: int) -> None:
+            if loop_idx in self.source_annotations.eqns:
+                del self.source_annotations.eqns[loop_idx]
+
+        self.eqn_complex = EqnComplex(frontend.is_stencil, intent_override, set_eqn_annotation, clear_eqn_annotations,
+                                      complexity_visitor_type=frontend.complexity_visitor_type)
         self.been_baked = False
         self.been_late_baked = False
         self.intent_override = intent_override
+        self._refined_eqn_annotations = dict()
         from EinsteinEngine.frontend.dsl.add_eqn_manager import AddEqnManager
         self._add_eqn_manager = AddEqnManager(
             frontend,
@@ -81,6 +119,10 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             lambda: self.been_baked,
             owner_name=owner_name,
         )
+
+        self._auto_hard_split_predicate = auto_hard_split_predicate
+        self._auto_soft_split_predicate = auto_soft_split_predicate
+        self.auto_split_locus = auto_split_locus
 
     def needs_merge(self) -> bool:
         return self.eqn_complex.needs_merge()
@@ -96,6 +138,7 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
 
         for el_idx in range(len(self.eqn_complex.eqn_lists)):
             self.source_annotations.loops[el_idx] = f"{self.name} loop {el_idx}"
+        self._loop_annotations = [None] * len(self.eqn_complex.eqn_lists)
 
     @property
     def _eqn_list(self) -> EqnList:
@@ -112,8 +155,9 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             raise DslException("Cannot split loop because the EqnComplex has already been baked.")
 
         loop_idx = len(self.eqn_complex.eqn_lists)
+        self._loop_annotations.append(annotation)
         if annotation is None:
-            annotation = f"{self.name} loop {loop_idx}"
+            annotation = self._default_loop_annotation(loop_idx, soft=False)
 
         if annotation.strip() != "":
             self.source_annotations.loops[loop_idx] = annotation
@@ -125,13 +169,246 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             raise DslException("Cannot split loop because the EqnComplex has already been baked.")
 
         loop_idx = len(self.eqn_complex.eqn_lists)
+        self._loop_annotations.append(annotation)
         if annotation is None:
-            annotation = f"{self.name} loop {loop_idx} (soft split)"
+            annotation = self._default_loop_annotation(loop_idx, soft=True)
 
         if annotation.strip() != "":
             self.source_annotations.loops[loop_idx] = annotation
 
         self.eqn_complex._new_eqn_list(True, soft_split_retainment_strategy=retainment_strategy)
+
+    def _default_loop_annotation(self, loop_idx: int, *, soft: bool) -> str:
+        return f"{self.name} loop {loop_idx}" + (" (soft split)" if soft else "")
+
+    def _sync_loop_annotations(self) -> None:
+        """Rewrite source_annotations.loops from _loop_annotations, naming default annotations by final index."""
+        ec = self.eqn_complex
+        assert len(self._loop_annotations) == len(ec.eqn_lists)
+        self.source_annotations.loops.clear()
+        for loop_idx, annotation in enumerate(self._loop_annotations):
+            if annotation is None:
+                annotation = self._default_loop_annotation(loop_idx, soft=loop_idx > 0 and loop_idx not in ec._hard_splits)
+            if annotation.strip() != "":
+                self.source_annotations.loops[loop_idx] = annotation
+
+    def _refine(self,
+                pieces_by_source: Sequence[Sequence[EqnListPiece]],
+                *,
+                tile_kind_temps: Collection[Symbol] = ()) -> None:
+        """
+        Cut the lists into pieces via `EqnComplex.refine`, keeping the source annotations consistent.
+        The refined lists are unbaked; call `_rebake_refined` if they had been baked.
+        """
+        old_eqn_annotations = {idx: dict(annotations) for idx, annotations in self.source_annotations.eqns.items()}
+        refined = self.eqn_complex.refine(pieces_by_source, tile_kind_temps=tile_kind_temps,
+                                          inherited_annotations=self._loop_annotations)
+
+        self._loop_annotations = [r.annotation for r in refined]
+        self._sync_loop_annotations()
+
+        self._refined_eqn_annotations = {
+            new_idx: {lhs: annotation for lhs, annotation in old_eqn_annotations.get(r.source_idx, dict()).items() if lhs in r.piece_order}
+            for new_idx, r in enumerate(refined)
+        }
+        self.source_annotations.eqns.clear()
+        self.infer_tile_temp_centerings()
+
+    def _rebake_refined(self) -> None:
+        """Rebake the lists from the last `_refine`, restoring their per-equation annotations."""
+        self.eqn_complex.rebake_refined()
+        for loop_idx, annotations in self._refined_eqn_annotations.items():
+            for lhs, annotation in annotations.items():
+                self.source_annotations.eqns[loop_idx][lhs] = annotation
+        self._refined_eqn_annotations = dict()
+
+    def infer_tile_temp_centerings(self) -> None:
+        """
+        Hook for frontends whose tile temps need a centering: give one to each temp written in one list and read in
+        another that has none yet. Called at the end of `_refine`; idempotent.
+        """
+        pass
+
+    def _query_auto_splits(self,
+                           counts: Sequence[int],
+                           hazards: Sequence[Mapping[int, Collection[CutHazard]]]
+                           ) -> list[list[tuple[int, SplitBoundary]]]:
+        """
+        Evaluate the auto split predicates at the function's locus, where list i has `counts[i]` positions. Positions
+        run across lists; position p means "split after element p". The soft predicate is queried only where the hard
+        one is absent or declines.
+
+        `hazards[i]` maps positions within list i to the hazards that make a cut there unsafe: separating an overwrite
+        from a later read (forbids hard and soft cuts) or putting a read before its write (forbids hard cuts only, since
+        the merge rejoins soft ones). The predicates are still queried there, so the probe counts are unchanged, but a
+        forbidden split is ignored with one warning per function.
+
+        Returns, for each list, its cuts as (position within the list, boundary) pairs in order.
+        """
+        cuts_by_list: list[list[tuple[int, SplitBoundary]]] = [list() for _ in counts]
+        hard, soft = self._auto_hard_split_predicate, self._auto_soft_split_predicate
+        if (hard is None and soft is None) or probe.deriving():
+            return cuts_by_list
+
+        for predicate in (hard, soft):
+            if predicate is not None:
+                probe.report_split_positions(predicate, self.name, sum(counts))
+
+        ignored: list[int] = list()
+        reasons: set[CutHazard] = set()
+        position = 0
+        for cuts, count, list_hazards in zip(cuts_by_list, counts, hazards):
+            for local_position in range(count):
+                boundary: Optional[SplitBoundary] = None
+                if hard is not None and hard(position):
+                    boundary = SplitBoundary(soft=False)
+                elif soft is not None:
+                    strategy: bool | SoftSplitRetainmentStrategy = soft(position)
+                    if not isinstance(strategy, bool):
+                        boundary = SplitBoundary(soft=True, retainment_strategy=strategy)
+                    elif strategy:
+                        boundary = SplitBoundary(soft=True)
+                if boundary is not None:
+                    forbidding = [h for h in list_hazards.get(local_position, ()) if h.forbids(soft=boundary.soft)]
+                    if len(forbidding) > 0:
+                        ignored.append(position)
+                        reasons.update(forbidding)
+                    else:
+                        cuts.append((local_position, boundary))
+                position += 1
+
+        if len(ignored) > 0:
+            overwrites = sorted((h for h in reasons if h.overwrite is not None), key=lambda h: str((h.overwrite, h.read)))
+            backward = sorted({str(h.read) for h in reasons if h.overwrite is None})
+            why: list[str] = list()
+            if len(overwrites) > 0:
+                why.append("separate " + ", ".join(f"{h.overwrite} from a later read of {h.read}" for h in overwrites))
+            if len(backward) == 1:
+                why.append(f"put a read of {backward[0]} before its write")
+            elif len(backward) > 1:
+                why.append(f"put reads of {', '.join(backward)} before their writes")
+            wprint(f"{self.name}: ignoring the auto splits at positions {ignored} of the {self.auto_split_locus.name} "
+                   f"locus, which would {' and '.join(why)}.")
+            probe.report_refused_cuts(self.name, ignored, self.auto_split_locus.name)
+        return cuts_by_list
+
+    @staticmethod
+    def _cut_hazards(eqn_list: EqnList,
+                     elements: Sequence[tuple[Symbol, ...]],
+                     movable: Collection[Symbol] = ()) -> dict[int, set[CutHazard]]:
+        """
+        The positions in `elements` (the elements of `eqn_list` in order) at which a cut would be unsafe, mapped to
+        their hazards (see eqn_grouping.cut_hazards). A read can only precede its write at the early locus without an
+        early ordering function; every other locus cuts an order that respects dependencies.
+
+        For overwrites, an element also reads, transitively, what the `movable` temporaries it reads read, since the
+        post-population closure assignment may move or duplicate them into its piece. `elements` must respect
+        dependencies on the `movable` temporaries.
+        """
+        # The transitive reads only matter to overwrites; without any, the direct reads suffice.
+        has_overwrites = any("'" in str(lhs) for element in elements for lhs in element)
+
+        movable = set(movable)
+        reads_through: dict[Symbol, set[Symbol]] = dict()
+        element_reads: list[set[Symbol]] = list()
+        for element in elements:
+            reads: set[Symbol] = set()
+            for lhs in element:
+                lhs_reads = set(free_symbols(eqn_list.eqns[lhs]))
+                if has_overwrites:
+                    for temp in lhs_reads.intersection(movable):
+                        lhs_reads |= reads_through.get(temp, set())
+                    reads_through[lhs] = lhs_reads
+                reads |= lhs_reads
+            element_reads.append(reads)
+        return cut_hazards(element_reads, elements)
+
+    def _apply_auto_splits(self, elements_by_list: Sequence[Sequence[tuple[Symbol, ...]]]) -> bool:
+        """
+        Evaluate the auto split predicates over `elements_by_list` and cut the lists between elements; an element is a
+        group of LHSes that is never split. Returns True iff any cut was made.
+
+        Since `refine` drops empty pieces, an empty list left by manual splits is dropped too, but only when some auto
+        split fires.
+        """
+        cuts_by_list = self._query_auto_splits(
+            [len(elements) for elements in elements_by_list],
+            [self._cut_hazards(eqn_list, elements) for eqn_list, elements in zip(self.eqn_complex.eqn_lists, elements_by_list)]
+        )
+        if not any(cuts_by_list):
+            return False
+
+        pieces_by_source: list[list[EqnListPiece]] = list()
+        for elements, cuts in zip(elements_by_list, cuts_by_list):
+            pieces: list[EqnListPiece] = list()
+            start = 0
+            boundary: Optional[SplitBoundary] = None
+            for position, cut in cuts:
+                pieces.append(EqnListPiece(tuple(lhs for element in elements[start:position + 1] for lhs in element), boundary))
+                start, boundary = position + 1, cut
+            pieces.append(EqnListPiece(tuple(lhs for element in elements[start:] for lhs in element), boundary))
+            pieces_by_source.append(pieces)
+
+        pprint(f"Applying {self.auto_split_locus.name} auto splits to {self.name}...")
+        self._refine(pieces_by_source)
+        return True
+
+    def _apply_post_population_splits(self,
+                                      *,
+                                      temp_kinds: Mapping[Symbol, TempKind],
+                                      promotion_predicate: Optional[TemporaryPromotionPredicate],
+                                      tile_temporaries: Collection[Symbol]) -> OrderedSet[Symbol]:
+        """
+        Evaluate the auto split predicates over each list's baked order and cut the lists by closure assignment (see
+        post_population_split). `temp_kinds` and `promotion_predicate` come from global CSE; they are empty and None
+        if it did not run. Returns the Local temps promoted to tile temps, which the caller adds to `tile_temporaries`.
+        """
+        if self._auto_hard_split_predicate is None and self._auto_soft_split_predicate is None:
+            return OrderedSet()
+
+        ec = self.eqn_complex
+        # Not the tile_temporaries property: it runs the @cache'd _calc_tile_temps, after which the complex can no
+        #  longer be refined.
+        all_tile_temps = set(tile_temporaries) | set(ec._tile_temporaries)
+        local_temps_by_list = [local_cse_temps(eqn_list, temp_kinds, tile_temporaries) for eqn_list in ec.eqn_lists]
+        tile_temps_by_list = [[lhs for lhs in eqn_list.eqns if lhs in eqn_list.synthetic_symbols and lhs in all_tile_temps]
+                              for eqn_list in ec.eqn_lists]
+
+        cuts_by_list = self._query_auto_splits(
+            [len(el.order) for el in ec.eqn_lists],
+            [self._cut_hazards(eqn_list, [(lhs,) for lhs in eqn_list.order], movable=[*local_temps, *tile_temps])
+             for eqn_list, local_temps, tile_temps in zip(ec.eqn_lists, local_temps_by_list, tile_temps_by_list)]
+        )
+        if not any(cuts_by_list):
+            return OrderedSet()
+
+        pprint(f"Applying PostPopulation auto splits to {self.name}...")
+
+        # Promoting to a tile temp is only sound for a temporary computed in a single source list; a Local temp that
+        # global CSE placed in several lists of the function stays duplicated.
+        writer_count: dict[Symbol, int] = dict()
+        for eqn_list in ec.eqn_lists:
+            for lhs in eqn_list.eqns:
+                writer_count[lhs] = writer_count.get(lhs, 0) + 1
+
+        def can_promote(temp: Symbol) -> bool:
+            return (promotion_predicate is not None
+                    and writer_count[temp] == 1
+                    and TempKind.Tile.clamp(promotion_predicate(temp)) == TempKind.Tile)
+
+        assignments = [
+            assign_pieces(eqn_list, cuts, local_temps=local_temps, tile_temps=tile_temps, can_promote=can_promote)
+            for eqn_list, cuts, local_temps, tile_temps in zip(ec.eqn_lists, cuts_by_list, local_temps_by_list, tile_temps_by_list)
+        ]
+
+        promoted: OrderedSet[Symbol] = OrderedSet()
+        for assignment in assignments:
+            promoted.update(assignment.promoted)
+
+        # refine() keeps the complex's existing tile temps and adds the promoted ones to it.
+        self._refine([assignment.pieces for assignment in assignments], tile_kind_temps=promoted)
+        self._rebake_refined()
+        return promoted
 
     def _do_splitmaxxing(self) -> None:
         assert self.been_baked, "Cannot perform splitmaxxing because the EqnComplex has not been baked."
@@ -159,7 +436,14 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
                 eqn_list.dump()
 
     def add_eqn(self, lhs: Indexed | IndexedBase, rhs: Expr | Matrix | list[Expr]) -> None:
-        self._add_eqn_manager.add_eqn(lhs, rhs)
+        # The auto split predicates are not evaluated here but at bake time, at the function's auto_split_locus.
+        # This call's origin is its 0-based index among the author-level add_eqn calls.
+        self._add_eqn_manager.current_origin = self.eqn_complex.origin_count
+        try:
+            self._add_eqn_manager.add_eqn(lhs, rhs)
+        finally:
+            self._add_eqn_manager.current_origin = None
+        self.eqn_complex.origin_count += 1
 
     def madd(self) -> None:
         self.eqn_complex.do_madd()
@@ -187,6 +471,8 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
             "do_recycle_temporaries": True,
             "splitmaxxing": False,
             "ordering_fn": maximize_symbol_reuse,
+            "early_ordering_fn": None,
+            "pre_population_ordering_fn": None,
             "soft_split_retainment_strategy": retain_none(),
         }
 
@@ -198,6 +484,28 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         options = self._mk_default_dsl_function_frontend_bake_options()
         options.update(kwargs)
 
+        ordering_fn = options["ordering_fn"]
+        early_ordering_fn = options["early_ordering_fn"]
+        pre_population_ordering_fn = options["pre_population_ordering_fn"]
+
+        # Early locus: order the add_eqn groups of each list, then cut between groups. Without an early ordering
+        # function, the groups stay in recipe order.
+        early_elements: list[list[tuple[Symbol, ...]]] = list()
+        if early_ordering_fn is not None:
+            early_ordering_fn = pre_cse_stand_in(early_ordering_fn)
+            for eqn_list in self.eqn_complex.eqn_lists:
+                # The ordering function may need complexities.
+                eqn_list._run_preliminary_complexity_analysis()
+                elements = order_groups(eqn_list, early_ordering_fn)
+                eqn_list.set_pre_population_order(lhs for element in elements for lhs in element)
+                early_elements.append(elements)
+
+        has_predicates = self._auto_hard_split_predicate is not None or self._auto_soft_split_predicate is not None
+        if self.auto_split_locus is SplitLocus.Early and has_predicates:
+            if early_ordering_fn is None:
+                early_elements = [author_groups(el, el.eqn_pre_population_order) for el in self.eqn_complex.eqn_lists]
+            self._apply_auto_splits(early_elements)
+
         self.eqn_complex.do_pull_out(self.frontend._unique_name('pull_out'))
 
         # Doing a first pass of complexity analysis for CSE
@@ -207,7 +515,18 @@ class DslFunctionFrontend[FrontendT: "DslFrontend[Any, Any, Any]"]:
         if options["do_madd"]:
             self.madd()
 
-        self.eqn_bake(options["ordering_fn"])
+        # Pre-population locus: the pre-CSE bake fixes the order CSE sees.
+        self.eqn_bake(pre_population_ordering_fn or ordering_fn)
+
+        for eqn_list in self.eqn_complex.eqn_lists:
+            if pre_population_ordering_fn is not None:
+                eqn_list.set_pre_population_order(eqn_list.order)
+            # ordering_fn is sticky (every later rebake reuses it), so it must be the post-population function now.
+            eqn_list.ordering_fn = ordering_fn
+
+        if self.auto_split_locus is SplitLocus.PrePopulation:
+            if self._apply_auto_splits([[(lhs,) for lhs in eqn_list.order] for eqn_list in self.eqn_complex.eqn_lists]):
+                self._rebake_refined()
 
         self.been_baked = True
 

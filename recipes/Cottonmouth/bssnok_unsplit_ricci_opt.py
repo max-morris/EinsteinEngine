@@ -955,7 +955,7 @@ if False:
         temporary_promotion_strategy=promote_none(),
         do_madd=False,
         do_recycle_temporaries=False,
-        cse_optimization_level=CseOptimizationLevel.Fast,
+        cse_isolate_grid_variables=False,
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0)
         #functions={"rhs":{"ordering_fn": functools.partial(
         #    bayesian_optimization, exploration_iter=50, optimization_iter=200,
@@ -970,7 +970,7 @@ else:
         temporary_promotion_strategy=promote_none(),
         do_madd=False,
         do_recycle_temporaries=False,
-        cse_optimization_level=CseOptimizationLevel.Fast,
+        cse_isolate_grid_variables=False,
         ordering_fn=functools.partial(prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0),
         functions={
             "rhs": {

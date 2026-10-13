@@ -41,6 +41,10 @@ It can generate complete CarpetX thorns from simple recipes written in Python.
    python ./path/to/recipe.py
    ```
 
+## Documentation:
+- [Tuner quick-start](docs/TUNING-QUICKSTART.md): tune a recipe's parameters (e.g. its loop splits) with a checkpointed Bayesian search on a remote machine.
+- [Equation ordering and split loci](docs/EQUATION-ORDERING.md): how a function's equations are ordered during the bake, and where automatic splits cut it into loops.
+
 # Licensing and Attribution
 If you use the Einstein Engine in your research, we ask that you cite this repository. When our paper is published, we will update this section accordingly.
 

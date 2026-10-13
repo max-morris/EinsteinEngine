@@ -833,9 +833,24 @@ sync_z4c_pt2 = ExplicitSyncBatch(
 ###
 # Z4 Evolution equations
 ###
+
+# Default splits of the z4c_rhs add_eqn calls: split after call i. The best of a split search in recipe order;
+# a tuner replaces both predicates.
+Z4C_RHS_HARD_SPLITS = {0, 8}
+Z4C_RHS_SOFT_SPLITS = {1: 0.013, 2: 0.007, 3: 0.912, 4: 0.964, 5: 0.977, 6: 0.975, 7: 0.021, 10: 0.007}  # call index: retained percentile
+
 fun_z4c_rhs = cottonmouth_Z4c.create_function(
     "z4c_rhs",
-    rhs_group
+    rhs_group,
+    # Optional, so that a tuner that does not split (one over the CSE optimizations, say) can leave them out and keep
+    # the default splits.
+    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate',
+                                                        lambda i: i in Z4C_RHS_HARD_SPLITS),
+    auto_soft_split_predicate=get_optional_tuning_param(
+        'auto_soft_split_predicate',
+        lambda i: retain_percentile(Z4C_RHS_SOFT_SPLITS[i]) if i in Z4C_RHS_SOFT_SPLITS else False),
+    auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
+    intent_override=IntentOverride.WriteInterior
 )
 
 # Eq (8) of [1]
@@ -847,8 +862,6 @@ fun_z4c_rhs.add_eqn(
     - Rational(3, 4) * (1 / (chi**2)) *
     gt[li, lj] * gt[ul, uk] * D(chi, lk) * D(chi, ll)
 )
-
-fun_z4c_rhs.split_loop()
 
 # Eq (9) of [1]
 fun_z4c_rhs.add_eqn(
@@ -864,8 +877,6 @@ fun_z4c_rhs.add_eqn(
     )
 )
 
-fun_z4c_rhs.split_loop()
-
 fun_z4c_rhs.add_eqn(
     Rt[li, lj],
     Rt_tmp[li, lj]
@@ -878,8 +889,6 @@ fun_z4c_rhs.add_eqn(
     R[li, lj],
     Rchi[li, lj] + Rt[li, lj]
 )
-
-fun_z4c_rhs.soft_split()
 
 # Eq. (6) of [1]
 fun_z4c_rhs.add_eqn(
@@ -937,8 +946,6 @@ fun_z4c_rhs.add_eqn(
     + use_matter_terms * 4 * pi * evo_lapse * (trS + rho)
 )
 
-fun_z4c_rhs.split_loop()
-
 # Eq. (5) of [1]
 fun_z4c_rhs.add_eqn(
     evo_Gammat_rhs[ui],
@@ -971,8 +978,6 @@ fun_z4c_rhs.add_eqn(
     # Advection
     + evo_shift[uk] * D(gt[li, lj], lk)
 )
-
-fun_z4c_rhs.split_loop()
 
 fun_z4c_rhs.add_eqn(
     At_rhs[li, lj],
@@ -1258,16 +1263,29 @@ nrx_evo_shift = NewRadXBoundaryBatch(
 ###
 # Bake the cake
 ###
+#ordering_fn = functools.partial(
+#    prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
+#)
+ordering_fn = cartesian_product(
+    functools.partial(pre_population_order, exclude_synthetic_symbols=True),
+    prioritize_rare_symbols
+)
+
 cottonmouth_Z4c.bake(
     do_cse=True,
     temporary_promotion_strategy=promote_none(),
     do_madd=False,
-    do_recycle_temporaries=True,
-    cse_optimization_level=CseOptimizationLevel.Optimal,
+    do_recycle_temporaries=False,
+    cse_isolate_grid_variables=True,
+    cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()),
     soft_split_retainment_strategy=retain_rank(50),
-    ordering_fn=functools.partial(
-        prioritize_rare_symbols, consider_frequency=True, complexity_factor=0.0
-    )
+    ordering_fn=ordering_fn,
+    # The tuners' ordering knobs refer to the z4c_rhs add_eqn calls, so they apply to z4c_rhs only.
+    functions={"z4c_rhs": {
+        "early_ordering_fn": get_optional_tuning_param('early_ordering_fn', None),
+        "pre_population_ordering_fn": get_optional_tuning_param('pre_population_ordering_fn', None),
+        "ordering_fn": get_optional_tuning_param('ordering_fn', ordering_fn),
+    }}
 )
 
 ###

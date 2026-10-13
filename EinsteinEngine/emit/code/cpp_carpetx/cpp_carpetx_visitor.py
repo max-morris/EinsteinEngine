@@ -16,7 +16,7 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import typing
-from typing import Dict
+from typing import Dict, Optional
 
 from multimethod import multimethod
 
@@ -27,12 +27,21 @@ from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunc
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
     StandardizedFunctionCall, VerbatimExpr, IfElseExpr, IfElseStmt, GroupedExpr
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot
+from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_named_roots import named_root
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_sympy_visitor import CppCarpetXSympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, String, Bool, Float, LineComment, BlockComment
 from EinsteinEngine.emit.util import encode_stencil_idx
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.cactus_generator import CactusGenerator
 from EinsteinEngine.common.util import indent
+
+
+def _named_root_of(exponent: Expr) -> Optional[str]:
+    # The sympy visitor emits a rational exponent p/q as the float division p.0 / q.0.
+    if (isinstance(exponent, BinOpExpr) and exponent.op is BinOp.Div
+            and isinstance(exponent.lhs, FloatLiteralExpr) and isinstance(exponent.rhs, FloatLiteralExpr)):
+        return named_root(exponent.lhs.fl, exponent.rhs.fl)
+    return None
 
 
 class CppVisitor(Visitor[CodeNode]):
@@ -142,10 +151,8 @@ class CppVisitor(Visitor[CodeNode]):
                 return f'pow2({lhs})'
             elif isinstance(n.rhs, IntLiteralExpr):
                 return f'pown<vreal>({lhs}, {rhs})'
-            elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=2.0)):
-                return f'sqrt({lhs})'
-            elif n.rhs == BinOpExpr(lhs=FloatLiteralExpr(fl=1.0), op=BinOp.Div, rhs=FloatLiteralExpr(fl=3.0)):
-                return f'cbrt({lhs})'
+            elif (root := _named_root_of(n.rhs)) is not None:
+                return f'{root}({lhs})'
             else:
                 return f'pow(static_cast<vreal>({lhs}), {rhs})'
 

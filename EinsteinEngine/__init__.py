@@ -19,7 +19,9 @@
 
 # Export dynamic derivative functions
 from EinsteinEngine.frontend.dsl.cactus.carpetx import ExplicitSyncBatch, NewRadXBoundaryBatch
-from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, insertion_order
+from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn, maximize_symbol_reuse, prioritize_rare_symbols, bayesian_optimization, lexicographical_order, cartesian_product, \
+    recipe_order, pre_population_order, add_eqn_key_order, add_eqn_order
+from EinsteinEngine.intermediate.split_locus import SplitLocus
 from EinsteinEngine.frontend.dsl.indices import *
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
@@ -31,6 +33,8 @@ from EinsteinEngine.intermediate.temporary_promotion_predicate import *
 from EinsteinEngine.frontend.dsl.use_indices import D, div, idx_to_int, IndexedSubstFnType, MkSubstType, subst_tensor_xyz, \
     noop, stencil, DD, DDI
 from EinsteinEngine.common.cse_optimization_level import CseOptimizationLevel
+from EinsteinEngine.common.sympywrap import CseOptimization
+from EinsteinEngine.common.cse_optimizations import cse_basic, cse_collect_greedy, CsePreset, default_cse_optimizations
 from EinsteinEngine.emit.ccl.schedule.schedule_tree import GroupOrFunction, ScheduleBlock, AtOrIn, IntentRegion
 from EinsteinEngine.emit.tree import Identifier, String, Centering
 from EinsteinEngine.common.sympywrap import Applier, sqrt, cbrt, log, exp, Pow, PowType, UFunc, diff, \
@@ -48,6 +52,7 @@ from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFronten
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
+from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
 from sympy.core.relational import Relational
 
@@ -75,6 +80,9 @@ __all__ = [
     "promote_all", "promote_none", "promote_rank", "promote_percentile", "promote_threshold", "CseOptimizationLevel",
     "retain_percentile", "retain_rank", "retain_threshold", "retain_all", "retain_none",
     "NewRadXBoundaryBatch", "TempKind",
-    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "insertion_order", "promote_all", "promote_none", "promote_rank",
+    "EqnOrderingFn", "maximize_symbol_reuse", "prioritize_rare_symbols", "lexicographical_order", "cartesian_product", "promote_all", "promote_none", "promote_rank",
+    "recipe_order", "pre_population_order", "add_eqn_key_order", "add_eqn_order", "SplitLocus",
     "promote_percentile", "promote_threshold", "CseOptimizationLevel", "NewRadXBoundaryBatch", "TempKind",
-    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out"]
+    "IntentRegion", "IntentOverride", "bayesian_optimization", "kreiss_oliger_stencil", "finite_difference_stencil", "pull_out",
+    "get_tuning_param", "get_optional_tuning_param", "CseOptimization", "cse_basic", "cse_collect_greedy",
+    "CsePreset", "default_cse_optimizations"]

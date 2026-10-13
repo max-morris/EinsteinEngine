@@ -16,13 +16,13 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from functools import wraps, partial
-from typing import overload, Optional, Callable, cast, Collection, List
+from typing import overload, Optional, Callable, cast, Collection, List, Sequence
 
 from sympy import Function, Symbol, Expr
 
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.definitions import stencil
-from EinsteinEngine.common.sympywrap import cse_return, cse
+from EinsteinEngine.common.sympywrap import cse_return, cse, CseOptimization
 
 
 @overload
@@ -46,7 +46,8 @@ def require_baked[**P, T](func: Optional[Callable[P, T]] = None,
     return cast(Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T], wrapper)
 
 
-def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbol]] = None) -> cse_return:
+def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbol]] = None,
+                optimizations: Sequence[CseOptimization] = ()) -> cse_return:
     if symbols_to_isolate:
         dummy = Function('isolated_symbol_dummy')
         iso_map = {s: dummy(s) for s in symbols_to_isolate}
@@ -59,7 +60,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
             lambda e: stencil(inv_iso_map[e.args[0]], *e.args[1:])
         ) for e in exprs_sub]
 
-        new_syms, new_exprs = cse(exprs_sub)
+        new_syms, new_exprs = cse(exprs_sub, optimizations=optimizations)
 
         # Restore original symbols
         new_syms = [(lhs, rhs.xreplace(inv_iso_map)) for lhs, rhs in new_syms]  # type: ignore[no-untyped-call]
@@ -67,7 +68,7 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
 
         return new_syms, new_exprs
     else:
-        return cse(exprs)
+        return cse(exprs, optimizations=optimizations)
 
 def require[T](expr: Optional[T], msg: Callable[[], str] = lambda: "Expression is required.") -> T:
     if expr is None:

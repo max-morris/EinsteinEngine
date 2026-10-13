@@ -17,15 +17,15 @@
 
 import typing
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache, partial
 from functools import cached_property
 from itertools import chain
 from statistics import mean, median
-from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple, Never, Generator
+from typing import cast, Dict, List, Optional, Set, Callable, Iterable, NamedTuple, Never, Generator, Sequence, Collection
 
 from multimethod import multimethod
-from nrpy.helpers.coloring import coloring_is_enabled as colorize
+from termcolor import colored
 from sortedcontainers import SortedDict
 # noinspection PyUnusedImports
 from sympy import Basic, IndexedBase, Symbol, Integer, Expr
@@ -33,8 +33,8 @@ from sympy import Basic, IndexedBase, Symbol, Integer, Expr
 from EinsteinEngine.intermediate.analytic_function_checker import AnalyticFunctionChecker
 from EinsteinEngine.intermediate.dependencies import Dependencies
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, \
-    prioritize_rare_symbols, respects_dependency_order
+from EinsteinEngine.intermediate.eqn_ordering import maximize_symbol_reuse, EqnOrderingFn, score_memory_pressure, pre_cse_stand_in, \
+    respects_dependency_order, fixed_order
 from EinsteinEngine.frontend.definitions import *
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
@@ -46,6 +46,8 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.generators.sympy_complexity import SympyComplexityVisitor
 from EinsteinEngine.common.util import OrderedSet, consolidate, vprint, wprint, pprint, get_or_compute
 from EinsteinEngine.intermediate.intermediate_exception import IntermediateException
+from EinsteinEngine.intermediate.loop_region import infer_loop_region, may_be_grid_variable
+from EinsteinEngine.intermediate.eqn_grouping import overwrite_version
 
 
 # These symbols represent the inverse of the
@@ -102,10 +104,68 @@ class TemporaryReplacement:
     end_eqn: int
 
 
+@dataclass(frozen=True)
+class SplitBoundary:
+    """How a piece is separated from the piece before it."""
+    soft: bool  # False = hard split
+    retainment_strategy: Optional[SoftSplitRetainmentStrategy] = None  # Soft only; None = use the bake default
+    annotation: Optional[str] = None  # None = default loop annotation by final index; '' = none
+
+
+@dataclass(frozen=True)
+class EqnListPiece:
+    """
+    One piece of a source EqnList, as passed to `EqnComplex.refine`. The order of `lhses` is kept (with dependency
+    repair). Only a synthetic symbol may appear in several pieces of one source list. `boundary` must be None for the
+    first piece of each source list, which inherits the source list's boundary, and must not be None for the others.
+    """
+    lhses: tuple[Symbol, ...]
+    boundary: Optional[SplitBoundary]
+
+
+@dataclass(frozen=True)
+class RefinedList:
+    """One EqnList produced by `EqnComplex.refine`."""
+    source_idx: int
+    inherits_boundary: bool  # True iff its boundary is its source list's (a manual split), possibly made hard by folding
+    boundary: Optional[SplitBoundary]  # None only for the first list of the complex
+    piece_order: tuple[Symbol, ...]
+    # The first list keeps the annotation of the boundary it had before the lists in front of it were dropped
+    first_annotation: Optional[str] = None
+
+    @property
+    def annotation(self) -> Optional[str]:
+        return self.boundary.annotation if self.boundary is not None else self.first_annotation
+
+    def fold_into(self, kept: 'RefinedList') -> 'RefinedList':
+        """
+        `kept` with the boundary of this dropped, empty piece folded in. A hard boundary wins; between two soft ones,
+        `kept`'s wins. The annotation is the first that is not None of: the inherited (manual) boundaries' (`kept`'s
+        first), the winner's, and the loser's.
+        """
+        assert self.boundary is not None and kept.boundary is not None
+        hard_wins = not self.boundary.soft and kept.boundary.soft
+        winner, loser = (self.boundary, kept.boundary) if hard_wins else (kept.boundary, self.boundary)
+        candidates = [r.boundary.annotation for r in (kept, self) if r.inherits_boundary and r.boundary is not None]
+        annotation = next((a for a in (*candidates, winner.annotation, loser.annotation) if a is not None), None)
+        return replace(kept,
+                       inherits_boundary=kept.inherits_boundary or self.inherits_boundary,
+                       boundary=replace(winner, annotation=annotation))
+
+
+@dataclass(frozen=True)
+class _SourceSnapshot:
+    """What post-refinement validation needs to know about a source list that had already been baked."""
+    params: frozenset[Symbol]
+    outputs: frozenset[Symbol]
+    write_decls: dict[Symbol, IntentRegion]
+
+
 class EqnComplex:
     eqn_lists: list['EqnList']
     is_stencil: dict[UFunc, bool]
     intent_override: Optional[IntentOverride]
+    complexity_visitor_type: type[SympyComplexityVisitor]
     been_baked: bool
 
     _tile_temporaries: set[Symbol]
@@ -124,21 +184,55 @@ class EqnComplex:
     # Maps EqnList indices to their corresponding SoftSplitRetainmentStrategies as set by soft_split()
     _soft_split_retainment_strategies: dict[int, SoftSplitRetainmentStrategy]
 
+    # The number of add_eqn calls made on the owning function; valid eqn_origin values are 0..origin_count-1.
+    origin_count: int
+
+    # Set once any of the @cache'd _calc_* methods has run. refine() must happen before that.
+    _derived_state_computed: bool
+
+    # The lists produced by the most recent refine(), consumed by rebake_refined().
+    _refinement: Optional[list[RefinedList]]
+    _refinement_snapshots: list[Optional[_SourceSnapshot]]
+
     def __init__(self,
                  is_stencil: Dict[UFunc, bool],
                  intent_override: Optional[IntentOverride] = None,
-                 set_eqn_annotation: Optional[Callable[[int, Symbol, str], None]] = None) -> None:
+                 set_eqn_annotation: Optional[Callable[[int, Symbol, str], None]] = None,
+                 clear_eqn_annotations: Optional[Callable[[int], None]] = None,
+                 *,
+                 complexity_visitor_type: type[SympyComplexityVisitor] = SympyComplexityVisitor) -> None:
         self.is_stencil = is_stencil
         self.intent_override = intent_override
         self.set_eqn_annotation = set_eqn_annotation
-        self.eqn_lists = [EqnList(self, is_stencil, partial(self.set_eqn_annotation, 0) if self.set_eqn_annotation else None)]
+        self.clear_eqn_annotations = clear_eqn_annotations
+        self.complexity_visitor_type = complexity_visitor_type
+        self._next_recipe_position = 0
+        self.origin_count = 0
+        self._derived_state_computed = False
+        self._refinement = None
+        self._refinement_snapshots = list()
+        self.eqn_lists = [self._mk_eqn_list(0)]
         self.been_baked = False
         self._tile_temporaries = OrderedSet()
         self._hard_splits = set()
         self._soft_split_retainment_strategies = dict()
 
+    def _mk_eqn_list(self, el_idx: int) -> 'EqnList':
+        new_list = EqnList(self, self.is_stencil)
+        self._bind_annotation_callbacks(new_list, el_idx)
+        return new_list
+
+    def _bind_annotation_callbacks(self, eqn_list: 'EqnList', el_idx: int) -> None:
+        eqn_list.set_eqn_annotation = partial(self.set_eqn_annotation, el_idx) if self.set_eqn_annotation else None
+        eqn_list.clear_eqn_annotations = partial(self.clear_eqn_annotations, el_idx) if self.clear_eqn_annotations else None
+
+    def _take_recipe_position(self) -> int:
+        position = self._next_recipe_position
+        self._next_recipe_position += 1
+        return position
+
     def _new_eqn_list(self, soft_split: bool = False, soft_split_retainment_strategy: Optional[SoftSplitRetainmentStrategy] = None) -> 'EqnList':
-        new_list = EqnList(self, self.is_stencil, partial(self.set_eqn_annotation, len(self.eqn_lists)) if self.set_eqn_annotation else None)
+        new_list = self._mk_eqn_list(len(self.eqn_lists))
         self.eqn_lists.append(new_list)
 
         if not soft_split:
@@ -174,7 +268,7 @@ class EqnComplex:
         for eqn_list in self.eqn_lists:
             eqn_list.madd()
 
-    def do_cse(self) -> None:
+    def do_cse(self, optimizations: Sequence[CseOptimization] = ()) -> None:
         old_shape: list[int] = list()
         old_lhses: list[Symbol] = list()
         old_rhses: list[Expr] = list()
@@ -188,7 +282,7 @@ class EqnComplex:
 
         substitutions_list: list[tuple[Symbol, Expr]]
         new_rhses: list[Expr]
-        substitutions_list, new_rhses = cse(old_rhses)
+        substitutions_list, new_rhses = cse(old_rhses, optimizations=optimizations)
 
         substitutions = {lhs: rhs for lhs, rhs in substitutions_list}
         substitutions_order = {lhs: idx for idx, (lhs, _) in enumerate(substitutions_list)}
@@ -363,6 +457,11 @@ class EqnComplex:
 
             new_eqns: dict[Symbol, Expr] = dict()
             recipient_el = self.eqn_lists[first_el]
+            # The source list of each absorbed equation that keeps its LHS; the others are mangled copies.
+            absorbed_from: dict[Symbol, EqnList] = dict()
+            range_origins: dict[Symbol, int] = dict()
+            for el in self.eqn_lists[first_el:last_el + 1]:
+                range_origins.update(el.eqn_origin)
 
             completed_syms: set[Symbol] = set()
             for el_idx in range(first_el + 1, last_el + 1):
@@ -372,7 +471,10 @@ class EqnComplex:
                 local_mangled_reads: set[Symbol] = set()
                 local_mangled_reads_by_kernel[el_idx] = local_mangled_reads
 
-                for lhs, rhs in eqn_list.eqns.items():
+                # The recipient's pre-population order is extended by the absorbed list's.
+                assert eqn_list.eqn_pre_population_order.keys() == eqn_list.eqns.keys()
+                for lhs in eqn_list.eqn_pre_population_order:
+                    rhs = eqn_list.eqns[lhs]
                     new_lhs = subst.get(lhs, lhs)
 
                     if new_lhs in new_eqns or new_lhs in recipient_el.eqns:
@@ -384,6 +486,8 @@ class EqnComplex:
                     local_mangled_reads.update(eqn_mangled_reads)
 
                     new_eqns[new_lhs] = new_rhs
+                    if new_lhs == lhs:
+                        absorbed_from[lhs] = eqn_list
 
                 # Make sure all mangled symbols have definitions
                 check = list(local_mangled_reads)
@@ -400,15 +504,43 @@ class EqnComplex:
 
                 els_to_delete.append(el_idx)
                 recipient_el.params.update(eqn_list.params)
+                recipient_el.analytic_seed.update(eqn_list.analytic_seed)
 
+            # Drop mangled copies that nothing reads (and the mangled copies only they read); left in, they would
+            # become outputs of the merged list. They arise when a retained temporary's later copy is skipped while a
+            # temporary that copy read is forgotten there.
+            read_count: dict[Symbol, int] = defaultdict(int)
+            for rhs in chain(recipient_el.eqns.values(), new_eqns.values()):
+                for sym in free_symbols(rhs):
+                    read_count[sym] += 1
+            dead = [lhs for lhs in new_eqns if lhs in inv_subst and read_count[lhs] == 0]
+            while len(dead) > 0:
+                mangled_sym = dead.pop()
+                for sym in free_symbols(new_eqns.pop(mangled_sym)):
+                    read_count[sym] -= 1
+                    if read_count[sym] == 0 and sym in new_eqns and sym in inv_subst:
+                        dead.append(sym)
+                original = inv_subst.pop(mangled_sym)
+                all_subst[original].discard(mangled_sym)
+                if len(all_subst[original]) == 0:
+                    del all_subst[original]
+
+            # An absorbed equation keeps its recipe position, origin, and recorded params. A mangled copy takes a new
+            # recipe position and the origin of the temporary it copies.
             for lhs, rhs in new_eqns.items():
-                recipient_el.add_eqn(lhs, rhs)
+                if (source := absorbed_from.get(lhs)) is not None:
+                    recipient_el.add_eqn(lhs, rhs,
+                                         recipe_position=source.eqn_recipe_order[lhs],
+                                         origin=source.eqn_origin.get(lhs, None),
+                                         recorded_params=source.eqn_recorded_params.get(lhs, None))
+                else:
+                    recipient_el.add_eqn(lhs, rhs, origin=range_origins.get(inv_subst[lhs], None))
 
         for el_idx in reversed(els_to_delete):
             del self.eqn_lists[el_idx]
 
         for el_idx, el in enumerate(self.eqn_lists):
-            el.set_eqn_annotation = partial(self.set_eqn_annotation, el_idx) if self.set_eqn_annotation else None
+            self._bind_annotation_callbacks(el, el_idx)
 
         pprint(f'Rebaking loops after merge_soft_splits...')
         # Rebaking all loops instead of just recipients because CSE will have rebaked with force_fast=True.
@@ -420,8 +552,294 @@ class EqnComplex:
 
         return _MergeSoftSplitsResult(all_subst, inv_subst)
 
+    def refine(self,
+               pieces_by_source: Sequence[Sequence[EqnListPiece]],
+               *,
+               tile_kind_temps: Collection[Symbol] = (),
+               inherited_annotations: Sequence[Optional[str]] = ()) -> list[RefinedList]:
+        """
+        Split each EqnList into the ordered pieces `pieces_by_source[i]` of `self.eqn_lists[i]`. Every auto split goes
+        through here. Each piece becomes a new, unbaked EqnList with its share of the source's equations, orders,
+        origins, and params; `tile_kind_temps` and the existing tile temps are reassigned to the new lists. The first
+        piece of each source list inherits its boundary, annotated with `inherited_annotations[i]`.
+
+        Empty pieces are dropped, folding their boundaries into the next list's (see `RefinedList.fold_into`). If a
+        source list had already been baked, its pieces are seeded with its analytic symbols so that inferred write
+        regions do not change, and `rebake_refined` validates the result.
+        """
+        assert not self._derived_state_computed \
+               and 'stencil_limits' not in self.__dict__ \
+               and 'stencil_idxes' not in self.__dict__, \
+            "Cannot refine an EqnComplex after its derived state (tile temps, vars, decls, stencils) has been computed."
+
+        self._check_pieces(pieces_by_source)
+        assert len(inherited_annotations) in (0, len(self.eqn_lists)), \
+            f"refine(): Got {len(inherited_annotations)} inherited annotations for {len(self.eqn_lists)} EqnLists."
+        refined = self._flatten_pieces(pieces_by_source, inherited_annotations)
+
+        snapshots: list[Optional[_SourceSnapshot]] = list()
+        seeds: list[set[Symbol]] = list()
+        for src in self.eqn_lists:
+            if src.been_baked:
+                snapshots.append(_SourceSnapshot(frozenset(src.params), frozenset(src.outputs), dict(src.write_decls)))
+                seeds.append(src._analytic_symbols())
+            else:
+                snapshots.append(None)
+                seeds.append(set(src.analytic_seed))
+
+        new_lists: list[EqnList] = list()
+        new_hard_splits: set[int] = set()
+        new_strategies: dict[int, SoftSplitRetainmentStrategy] = dict()
+        for new_idx, r in enumerate(refined):
+            new_list = self._mk_eqn_list(new_idx)
+            new_list._populate_from_piece(self.eqn_lists[r.source_idx], r.piece_order, seeds[r.source_idx])
+            new_lists.append(new_list)
+
+            if r.boundary is None:
+                continue
+            if not r.boundary.soft:
+                new_hard_splits.add(new_idx)
+            elif (strategy := r.boundary.retainment_strategy) is not None:
+                new_strategies[new_idx] = strategy
+
+        self._tile_temporaries = self._rebuild_tile_sets(new_lists, tile_kind_temps)
+        self.eqn_lists = new_lists
+        self._hard_splits = new_hard_splits
+        self._soft_split_retainment_strategies = new_strategies
+        self._refinement = refined
+        self._refinement_snapshots = snapshots
+
+        return refined
+
+    def _check_pieces(self, pieces_by_source: Sequence[Sequence[EqnListPiece]]) -> None:
+        assert len(pieces_by_source) == len(self.eqn_lists), \
+            f"refine(): Got pieces for {len(pieces_by_source)} of {len(self.eqn_lists)} EqnLists."
+
+        for src_idx, (src, pieces) in enumerate(zip(self.eqn_lists, pieces_by_source)):
+            assert len(pieces) > 0, f"refine(): EqnList {src_idx} has no pieces."
+            assert pieces[0].boundary is None, f"refine(): The first piece of EqnList {src_idx} has a boundary."
+            covered: set[Symbol] = set()
+            for piece_idx, piece in enumerate(pieces):
+                assert piece_idx == 0 or piece.boundary is not None, \
+                    f"refine(): Piece {piece_idx} of EqnList {src_idx} needs a boundary."
+                assert len(set(piece.lhses)) == len(piece.lhses), \
+                    f"refine(): Piece {piece_idx} of EqnList {src_idx} lists a LHS more than once."
+                for lhs in piece.lhses:
+                    assert lhs in src.eqns, f"refine(): '{lhs}' in piece {piece_idx} is not an equation of EqnList {src_idx}."
+                    assert lhs not in covered or lhs in src.synthetic_symbols, \
+                        f"refine(): Non-synthetic '{lhs}' appears in several pieces of EqnList {src_idx}."
+                    covered.add(lhs)
+            missing = [lhs for lhs in src.eqns if lhs not in covered and lhs not in src.synthetic_symbols]
+            assert len(missing) == 0, f"refine(): The pieces of EqnList {src_idx} do not cover {sorted(missing, key=str)}."
+
+    def _flatten_pieces(self,
+                        pieces_by_source: Sequence[Sequence[EqnListPiece]],
+                        inherited_annotations: Sequence[Optional[str]]) -> list[RefinedList]:
+        candidates: list[RefinedList] = list()
+        for src_idx, pieces in enumerate(pieces_by_source):
+            for piece_idx, piece in enumerate(pieces):
+                if piece_idx > 0:
+                    candidates.append(RefinedList(src_idx, False, piece.boundary, piece.lhses))
+                elif src_idx > 0:
+                    inherited = SplitBoundary(soft=src_idx not in self._hard_splits,
+                                              retainment_strategy=self._soft_split_retainment_strategies.get(src_idx, None),
+                                              annotation=inherited_annotations[src_idx] if len(inherited_annotations) > 0 else None)
+                    candidates.append(RefinedList(src_idx, True, inherited, piece.lhses))
+                else:
+                    candidates.append(RefinedList(src_idx, True, None, piece.lhses,
+                                                  first_annotation=inherited_annotations[0] if len(inherited_annotations) > 0 else None))
+
+        refined: list[RefinedList] = list()
+        dropped: Optional[RefinedList] = None  # With every earlier dropped piece folded into it
+        for cand in candidates:
+            if dropped is not None:
+                cand = dropped.fold_into(cand)
+                dropped = None
+
+            if len(cand.piece_order) > 0:
+                refined.append(cand)
+            elif cand.boundary is not None:
+                dropped = cand
+
+        if len(refined) == 0:
+            refined.append(RefinedList(0, True, None, tuple()))
+
+        # The first list has no boundary, even if it comes from a later source list, but keeps its annotation.
+        refined[0] = replace(refined[0], boundary=None, first_annotation=refined[0].annotation)
+        return refined
+
+    def _rebuild_tile_sets(self, new_lists: list['EqnList'], tile_kind_temps: Collection[Symbol]) -> set[Symbol]:
+        """
+        Mark each of `tile_kind_temps` and the existing tile temps as uninitialized in the new list that writes it and
+        preinitialized in those that read it; one not read outside its writer becomes a plain temporary.
+        """
+        new_tile_temporaries: set[Symbol] = OrderedSet(self._tile_temporaries)
+        for temp in OrderedSet(chain(tile_kind_temps, self._tile_temporaries)):
+            writers = [idx for idx, el in enumerate(new_lists) if temp in el.eqns]
+            readers = [idx for idx, el in enumerate(new_lists)
+                       if temp not in el.eqns and any(temp in free_symbols(rhs) for rhs in el.eqns.values())]
+
+            if len(writers) == 0:
+                assert len(readers) == 0, f"refine(): Tile temporary '{temp}' is read in EqnLists {readers} but never written."
+                new_tile_temporaries.discard(temp)
+                continue
+
+            if len(readers) == 0:
+                new_tile_temporaries.discard(temp)
+                for idx in writers:
+                    new_lists[idx].temporaries.add(temp)
+                continue
+
+            assert len(writers) == 1, f"refine(): Tile temporary '{temp}' is written in several EqnLists: {writers}."
+            [writer] = writers
+            assert not any(reader < writer for reader in readers), \
+                f"refine(): Tile temporary '{temp}' is written in EqnList {writer} after it is read in EqnLists {readers}."
+
+            new_tile_temporaries.add(temp)
+            new_lists[writer].uninitialized_tile_temporaries.add(temp)
+            for idx in readers:
+                new_lists[idx].preinitialized_tile_temporaries.add(temp)
+
+        return new_tile_temporaries
+
+    def rebake_refined(self) -> None:
+        """
+        Bake every EqnList produced by the most recent `refine` in its piece order, then raise a DslException if the
+        refinement changed the meaning of the complex.
+        """
+        assert self._refinement is not None, "rebake_refined() called without a preceding refine()."
+        assert len(self._refinement) == len(self.eqn_lists)
+
+        try:
+            for el_idx, (eqn_list, refined) in enumerate(zip(self.eqn_lists, self._refinement)):
+                pprint(f"Rebaking loop {el_idx} after refinement...")
+                eqn_list.bake(force_rebake=True, ordering_fn_override=fixed_order(refined.piece_order))
+
+            self._validate_refinement()
+        finally:
+            # A refinement is rebaked once, even if validation fails.
+            self._refinement = None
+            self._refinement_snapshots = list()
+
+    def _validate_refinement(self) -> None:
+        """
+        Check that the most recent refinement did not change the meaning of the complex. Only lists cut from source
+        lists that had already been baked are checked; early cuts, like manual splits, have nothing to compare with.
+        """
+        assert self._refinement is not None
+        refinement = self._refinement
+        snapshots = self._refinement_snapshots
+
+        # Outputs whose inferred write region changed.
+        for el_idx, (eqn_list, refined) in enumerate(zip(self.eqn_lists, refinement)):
+            if (snapshot := snapshots[refined.source_idx]) is None:
+                continue
+
+            where = f"loop {el_idx} (cut from loop {refined.source_idx})"
+            assert all(p in eqn_list.params for rhs in eqn_list.eqns.values() for p in free_symbols(rhs) if p in snapshot.params), \
+                f"After splitting, {where} reads parameters which were not carried over to it."
+
+            for lhs in eqn_list.outputs:
+                if lhs not in snapshot.outputs or lhs not in snapshot.write_decls or lhs not in eqn_list.write_decls:
+                    continue
+                if (old_region := snapshot.write_decls[lhs]) is not (new_region := eqn_list.write_decls[lhs]):
+                    raise DslException(f"After splitting, the inferred write region of '{lhs}' in {where} changed from {old_region.name} to {new_region.name}.")
+
+        self._validate_overwrites()
+
+        # A temporary that crosses a new cut becomes a tile temp, valid only where the loop writing it runs (and
+        # where the tile temps that loop read were valid). A loop that writes grid variables must not read it outside
+        # that region. This heuristic predicts the regions the generators will infer, and checks neither loops that
+        # write no grid variables (they only narrow the valid region; checking them would reject legitimate pull-out
+        # chains) nor crossings that existed before the refinement.
+        writer_of: dict[Symbol, int] = dict()
+        for el_idx, eqn_list in enumerate(self.eqn_lists):
+            for lhs in eqn_list.eqns:
+                writer_of.setdefault(lhs, el_idx)
+
+        all_crossing: set[Symbol] = set()
+        new_crossing_reads: list[set[Symbol]] = [set() for _ in self.eqn_lists]
+        for el_idx, eqn_list in enumerate(self.eqn_lists):
+            for rhs in eqn_list.eqns.values():
+                for sym in free_symbols(rhs):
+                    if sym in eqn_list.eqns or (writer := writer_of.get(sym)) is None:
+                        continue
+                    all_crossing.add(sym)
+                    if refinement[writer].source_idx != refinement[el_idx].source_idx:
+                        continue  # This crossing existed before refinement
+                    if (snapshot := snapshots[refinement[writer].source_idx]) is None or sym in snapshot.outputs:
+                        continue
+                    new_crossing_reads[el_idx].add(sym)
+
+        if not any(new_crossing_reads):
+            return
+
+        everywhere = frozenset({IntentRegion.Interior, IntentRegion.Boundary})
+
+        def points(region: Optional[IntentRegion]) -> Optional[frozenset[IntentRegion]]:
+            if region is None:
+                return None
+            return everywhere if region is IntentRegion.Everywhere else frozenset({region})
+
+        def describe(pts: frozenset[IntentRegion]) -> str:
+            return IntentRegion.Everywhere.name if pts == everywhere else ", ".join(sorted(r.name for r in pts)) or "nothing"
+
+        valid: list[Optional[frozenset[IntentRegion]]] = list()
+        for el_idx, eqn_list in enumerate(self.eqn_lists):
+            def is_grid_var(sym: Symbol, el: EqnList = eqn_list) -> bool:
+                return (may_be_grid_variable(sym)
+                        and sym not in all_crossing
+                        and sym not in el.params
+                        and sym not in el.temporaries
+                        and sym not in el.tile_temporaries)
+
+            inferred = infer_loop_region(eqn_list, is_grid_var)
+            loop_points = points(inferred.region)
+
+            for temp in sorted(new_crossing_reads[el_idx], key=str):
+                temp_points = valid[writer_of[temp]]
+                if loop_points is None or temp_points is None:
+                    continue
+                if inferred.writes_grid_vars and not loop_points <= temp_points:
+                    raise DslException(
+                        f"After splitting, loop {el_idx}, which runs over {describe(loop_points)}, reads temporary "
+                        f"'{temp}', which loop {writer_of[temp]} only computes over {describe(temp_points)}."
+                    )
+                loop_points = loop_points & temp_points
+
+            valid.append(loop_points)
+
+    def _validate_overwrites(self) -> None:
+        """
+        Raise a DslException if a list reads X after an earlier list cut from the same source list wrote X'. Auto splits
+        never cut there, so this is a backstop. Reads across source lists come from manual splits and are the author's
+        responsibility.
+        """
+        assert self._refinement is not None
+        refinement, snapshots = self._refinement, self._refinement_snapshots
+        if not any("'" in str(lhs) for eqn_list in self.eqn_lists for lhs in eqn_list.eqns):
+            return
+
+        # (source list, base name) -> (the latest version written so far, the list writing it)
+        overwritten: dict[tuple[int, str], tuple[int, int]] = dict()
+        for el_idx, (eqn_list, refined) in enumerate(zip(self.eqn_lists, refinement)):
+            if snapshots[refined.source_idx] is None:
+                continue
+            for sym in sorted(set(chain(*(free_symbols(rhs) for rhs in eqn_list.eqns.values()))), key=str):
+                base, version = overwrite_version(sym)
+                if (written := overwritten.get((refined.source_idx, base))) is not None and version < written[0]:
+                    raise DslException(
+                        f"After splitting, loop {el_idx} reads '{sym}', which loop {written[1]} (cut from the same loop "
+                        f"{refined.source_idx}) has already overwritten."
+                    )
+            for lhs in eqn_list.eqns:
+                base, version = overwrite_version(lhs)
+                if version > overwritten.get((refined.source_idx, base), (0, -1))[0]:
+                    overwritten[(refined.source_idx, base)] = (version, el_idx)
+
     @cache
     def _calc_tile_temps(self) -> None:
+        self._derived_state_computed = True
         # Don't clear out self._tile_temporaries because it will already be populated by global_cse
 
         for temp in self.temporaries:
@@ -439,7 +857,13 @@ class EqnComplex:
                         break
 
             if written_el is not None and len(read_els) > 0:
-                assert all(read_el > written_el for read_el in read_els), f"Determined {temp} should be a tile-temp in {self}, but it is written ({written_el}) after is is read ({read_els})"
+                # Auto splits never cut there; a manual split_loop() can.
+                if any(read_el < written_el for read_el in read_els):
+                    raise DslException(
+                        f"'{temp}' is written in loop {written_el} after it is read in loop(s) {sorted(read_els)}: a "
+                        f"loop cannot read a value that a later loop computes. Move the split that separates them, or "
+                        f"make it a soft_split()."
+                    )
 
                 self._tile_temporaries.add(temp)
                 self.eqn_lists[written_el].uninitialized_tile_temporaries.add(temp)
@@ -448,6 +872,7 @@ class EqnComplex:
 
     @cache
     def _calc_vars(self) -> None:
+        self._derived_state_computed = True
         self._inputs = OrderedSet()
         self._outputs = OrderedSet()
         self._params = OrderedSet()
@@ -467,6 +892,7 @@ class EqnComplex:
 
     @cache
     def _calc_decls(self) -> None:
+        self._derived_state_computed = True
         self._read_decls = OrderedDict()
         self._write_decls = OrderedDict()
 
@@ -570,10 +996,7 @@ class EqnList:
     symbols as inputs/outputs/params.
     """
 
-    def __init__(self,
-                 parent: EqnComplex,
-                 is_stencil: Dict[UFunc, bool],
-                 set_eqn_annotation: Optional[Callable[[Symbol, str], None]] = None) -> None:
+    def __init__(self, parent: EqnComplex, is_stencil: Dict[UFunc, bool]) -> None:
         self.eqns: Dict[Symbol, Expr] = dict()
         self.params: Set[Symbol] = OrderedSet()
         self.inputs: Set[Symbol] = OrderedSet()
@@ -594,8 +1017,22 @@ class EqnList:
         self.parent = parent
         self.complexity: dict[Symbol, int] = dict()
         self.ordering_fn: EqnOrderingFn = maximize_symbol_reuse
-        self.set_eqn_annotation = set_eqn_annotation
-        self.eqn_insertion_order: OrderedDict[Symbol, int] = OrderedDict()
+        # Set by EqnComplex._bind_annotation_callbacks.
+        self.set_eqn_annotation: Optional[Callable[[Symbol, str], None]] = None
+        self.clear_eqn_annotations: Optional[Callable[[], None]] = None
+        # The function-wide recipe position of each equation. Never rewritten; temporaries are appended.
+        self.eqn_recipe_order: OrderedDict[Symbol, int] = OrderedDict()
+        # The recipe order as rewritten by the early and pre-population ordering functions; temporaries are appended.
+        self.eqn_pre_population_order: OrderedDict[Symbol, int] = OrderedDict()
+        # The 0-based index of the add_eqn call that created each equation. Pull-out temps inherit it; CSE temps and
+        # equations of synthetic functions have none.
+        self.eqn_origin: dict[Symbol, int] = dict()
+        # The params each recipe equation registered, so refine() can repartition them.
+        self.eqn_recorded_params: dict[Symbol, frozenset[Symbol]] = dict()
+        # Symbols read here and known to be analytic in the list this one was cut from, so that cutting does not change
+        # inferred write regions.
+        self.analytic_seed: Set[Symbol] = OrderedSet()
+        self.synthetic_symbols: Set[Symbol] = OrderedSet()
 
         # The modeling system treats these special
         # symbols as parameters.
@@ -665,21 +1102,53 @@ class EqnList:
         assert lhs not in self.params, f"The symbol '{lhs}' is already in outputs"
         self.outputs.add(lhs)
 
-    def add_eqn(self, lhs: Symbol, rhs: Expr) -> None:
+    def add_eqn(self,
+                lhs: Symbol,
+                rhs: Expr,
+                *,
+                recipe_position: Optional[int] = None,
+                origin: Optional[int] = None,
+                recorded_params: Optional[frozenset[Symbol]] = None) -> None:
+        """
+        `recipe_position` is the position of an equation moved from another list of the complex; otherwise it takes the
+        next one.
+        """
         if lhs in self.eqns:
             raise IntermediateException(f"Equation for '{lhs}' is already defined")
 
         # Ensure we only have symbols in eqnlist
         self.eqns[lhs := symbify(lhs)] = symbify(rhs)
-        self.eqn_insertion_order[lhs] = len(self.eqns) - 1
+        if recipe_position is None:
+            self.eqn_recipe_order[lhs] = self.parent._take_recipe_position()
+        else:
+            later = [k for k, pos in self.eqn_recipe_order.items() if pos > recipe_position]
+            self.eqn_recipe_order[lhs] = recipe_position
+            for k in later:
+                self.eqn_recipe_order.move_to_end(k)
+        self.eqn_pre_population_order[lhs] = len(self.eqn_pre_population_order)
+        if origin is not None:
+            self.eqn_origin[lhs] = origin
+        if recorded_params is not None:
+            self.eqn_recorded_params[lhs] = recorded_params
+
+    def set_pre_population_order(self, order: Iterable[Symbol]) -> None:
+        new_order: OrderedDict[Symbol, int] = OrderedDict()
+        for lhs in order:
+            if lhs not in self.eqns or lhs in new_order:
+                raise IntermediateException(f"The new pre-population order lists '{lhs}', which is unknown or repeated.")
+            new_order[lhs] = len(new_order)
+        if len(new_order) != len(self.eqns):
+            raise IntermediateException(f"The new pre-population order is missing {sorted(set(self.eqns) - set(new_order), key=str)}.")
+        self.eqn_pre_population_order = new_order
 
     def do_pull_out(self, name_generator: Generator[str, Never, Never]) -> None:
         new_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
+        new_origins: dict[Symbol, int] = dict()
         modify_eqns: OrderedDict[Symbol, Expr] = OrderedDict()
 
-        assert self.eqns.keys() == self.eqn_insertion_order.keys()
+        assert self.eqns.keys() == self.eqn_pre_population_order.keys()
 
-        for lhs in self.eqn_insertion_order.keys():
+        for lhs in self.eqn_pre_population_order.keys():
             rhs = self.eqns[lhs]
             for sub_expr in sorted(rhs.find(pull_out), key=str):  # type: ignore[no-untyped-call]
                 if len(sub_expr_args := sub_expr.args) > 1:
@@ -687,16 +1156,56 @@ class EqnList:
                 new_sym = mk_symbol(next(name_generator))
                 assert new_sym not in new_eqns
                 new_eqns[new_sym] = sub_expr_args[0]
+                if (origin := self.eqn_origin.get(lhs, None)) is not None:
+                    new_origins[new_sym] = origin
                 rhs = rhs.xreplace({sub_expr: new_sym})  # type: ignore[no-untyped-call]
             assert lhs not in modify_eqns
             modify_eqns[lhs] = rhs
 
         for lhs, rhs in new_eqns.items():
-            self.add_eqn(lhs, rhs)
+            self.add_eqn(lhs, rhs, origin=new_origins.get(lhs, None))
             self.temporaries.add(lhs)
 
         for lhs, rhs in modify_eqns.items():
             self.eqns[lhs] = rhs
+
+    def _populate_from_piece(self, source: 'EqnList', lhses: Sequence[Symbol], analytic_seed: set[Symbol]) -> None:
+        lhs_set = set(lhses)
+
+        # Keep the source's dict orders; rebake_refined applies the piece order.
+        for lhs, rhs in source.eqns.items():
+            if lhs in lhs_set:
+                self.eqns[lhs] = rhs
+        self.eqn_recipe_order = OrderedDict((lhs, pos) for lhs, pos in source.eqn_recipe_order.items() if lhs in lhs_set)
+        self.eqn_pre_population_order = OrderedDict(
+            (lhs, pos) for pos, lhs in enumerate(lhs for lhs in source.eqn_pre_population_order if lhs in lhs_set)
+        )
+        self.eqn_origin = {lhs: origin for lhs, origin in source.eqn_origin.items() if lhs in lhs_set}
+        self.eqn_recorded_params = {lhs: params for lhs, params in source.eqn_recorded_params.items() if lhs in lhs_set}
+        self.complexity = {lhs: c for lhs, c in source.complexity.items() if lhs in lhs_set}
+
+        read_syms: set[Symbol] = set(chain(*(free_symbols(rhs) for rhs in self.eqns.values())))
+        recorded_params: set[Symbol] = set(chain(*self.eqn_recorded_params.values()))
+        for param in source.params:
+            if param in read_syms or param in recorded_params:
+                self.add_param(param)
+
+        used = lhs_set | read_syms
+        self.synthetic_symbols.update(sym for sym in source.synthetic_symbols if sym in used)
+        self.temporaries.update(sym for sym in source.temporaries if sym in lhs_set)
+        self.analytic_seed.update(sym for sym in analytic_seed if sym in read_syms and sym not in lhs_set)
+
+        self.ordering_fn = source.ordering_fn
+        self.default_read_write_spec = source.default_read_write_spec
+
+    def _analytic_checker(self) -> AnalyticFunctionChecker:
+        # Seed symbols are passed like params: known to be analytic, and excluded from the result.
+        known_analytic: set[Symbol] = set(self.params) | {sym for sym in self.analytic_seed if sym not in self.eqns}
+        return AnalyticFunctionChecker(known_analytic, self.eqns)
+
+    def _analytic_symbols(self) -> set[Symbol]:
+        """The symbols this list writes or reads that are known to be analytic."""
+        return self._analytic_checker().analytic() | {sym for sym in self.analytic_seed if sym not in self.eqns}
 
     def recycle_temporaries(self) -> None:
         temp_reads: Dict[Symbol, OrderedSet[int]] = OrderedDict()
@@ -911,25 +1420,36 @@ class EqnList:
 
     def _run_preliminary_complexity_analysis(self) -> None:
         grid_vars = self._grid_variables()
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in grid_vars)
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in grid_vars)
         for lhs, rhs in self.eqns.items():
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_main_complexity_analysis(self) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in self._grid_variables())
         for lhs, rhs in self.eqns.items():
             self.complexity[lhs] = complexity_visitor.complexity(rhs)
 
     def _run_complexity_analysis(self, *lhses: Symbol) -> None:
-        complexity_visitor = SympyComplexityVisitor(lambda s: s in self._grid_variables())
+        complexity_visitor = self.parent.complexity_visitor_type(lambda s: s in self._grid_variables())
         for lhs in lhses:
             self.complexity[lhs] = complexity_visitor.complexity(self.eqns[lhs])
 
-    def bake(self, *, force_rebake: bool = False, force_fast: bool = False) -> None:
-        """ Discover inconsistencies and errors in the param/input/output/equation sets. """
+    def bake(self,
+             *,
+             force_rebake: bool = False,
+             force_fast: bool = False,
+             ordering_fn_override: Optional[EqnOrderingFn] = None) -> None:
+        """
+        Discover inconsistencies and errors in the param/input/output/equation sets.
+        `ordering_fn_override` replaces `ordering_fn` for this bake only.
+        """
         if self.been_baked and not force_rebake:
             raise DslException("Can't bake an EqnList that has already been baked.")
         self.been_baked = True
+
+        # Stale annotations from an earlier order must not survive.
+        if self.clear_eqn_annotations:
+            self.clear_eqn_annotations()
 
         rd_overwrites: OrderedSet[Symbol] = OrderedSet()
         wr_overwrites: OrderedSet[Symbol] = OrderedSet()
@@ -1013,14 +1533,14 @@ class EqnList:
 
 
         if not override_2i:
-            checker = AnalyticFunctionChecker(self.params, self.eqns)
+            checker = self._analytic_checker()
             for lhs in checker.analytic():
                 if lhs in self.outputs:
                     self.write_decls[lhs] = IntentRegion.Everywhere
 
-        vprint(colorize("Inputs:", "green"), self.inputs)
-        vprint(colorize("Outputs:", "green"), self.outputs)
-        vprint(colorize("Params:", "green"), self.params)
+        vprint(colored("Inputs:", "green"), self.inputs)
+        vprint(colored("Outputs:", "green"), self.outputs)
+        vprint(colored("Params:", "green"), self.params)
 
         for k in self.eqns:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -1028,8 +1548,8 @@ class EqnList:
             for q in free_symbols(self.eqns[k]):
                 read.add(q)
 
-        vprint(colorize("Read:", "green"), read)
-        vprint(colorize("Written:", "green"), written)
+        vprint(colored("Read:", "green"), read)
+        vprint(colored("Written:", "green"), written)
 
         for k in self.inputs:
             assert isinstance(k, Symbol), f"{k}, type={type(k)}"
@@ -1061,9 +1581,9 @@ class EqnList:
                     and k not in self.preinitialized_tile_temporaries):
                 self.temporaries.add(k)
 
-        vprint(colorize("Temps:", "green"), self.temporaries)
-        vprint(colorize("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
-        vprint(colorize("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
+        vprint(colored("Temps:", "green"), self.temporaries)
+        vprint(colored("Uninitialized Tile Temps:", "green"), self.uninitialized_tile_temporaries)
+        vprint(colored("Preinitialized Tile Temps:", "green"), self.preinitialized_tile_temporaries)
 
         class FindBad:
             def __init__(self, outer: EqnList) -> None:
@@ -1093,28 +1613,17 @@ class EqnList:
 
         self._run_main_complexity_analysis()
 
-        order_builder_kwargs = dict()
-
         # Simple stopgap to prevent wasteful bayesian optimization calls before CSE
-        # todo: maybe make this check less hacky?
-        if (
-                hasattr(self.ordering_fn, 'func')
-                and 'bayesian' in self.ordering_fn.func.__name__
-                and (not force_rebake or force_fast)
-        ) or (
-                hasattr(self.ordering_fn, '__name__')
-                and 'bayesian' in self.ordering_fn.__name__
-                and (not force_rebake or force_fast)
-        ):
-            order_builder_kwargs['override_ordering_fn'] = prioritize_rare_symbols
+        if ordering_fn_override is None and (not force_rebake or force_fast):
+            ordering_fn_override = pre_cse_stand_in(self.ordering_fn)
 
-        self.order_builder(complete, **order_builder_kwargs)
+        self.order_builder(complete, override_ordering_fn=ordering_fn_override)
 
-        vprint(colorize("Order:", "green"), self.order)
+        vprint(colored("Order:", "green"), self.order)
 
         try:
             memory_pressure = score_memory_pressure(self.eqns, self.order)
-            vprint(colorize("Memory Pressure:", "magenta"))
+            vprint(colored("Memory Pressure:", "magenta"))
             vprint(f"  Total: {sorted(memory_pressure.items(), key=lambda kv: kv[1], reverse=True)}")
             vprint(f"  Mean: {mean(memory_pressure.values())}")
             vprint(f"  Median: {median(memory_pressure.values())}")
@@ -1131,15 +1640,15 @@ class EqnList:
         for k in read:
             assert k in self.inputs or self.params or self.temporaries, f"Symbol '{k}' is read, but it is not a temp, parameter, or input."
 
-        vprint(colorize("READS:", "green"), end="")
+        vprint(colored("READS:", "green"), end="")
         for var, spec in self.read_decls.items():
             if var in self.inputs:
-                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+                vprint(" ", var, "=", colored(repr(spec), "yellow"), sep="", end="")
         vprint()
-        vprint(colorize("WRITES:", "green"), end="")
+        vprint(colored("WRITES:", "green"), end="")
         for var, spec in self.write_decls.items():
             if var in self.outputs:
-                vprint(" ", var, "=", colorize(repr(spec), "yellow"), sep="", end="")
+                vprint(" ", var, "=", colored(repr(spec), "yellow"), sep="", end="")
         vprint()
 
         for k, v in self.eqns.items():
@@ -1160,7 +1669,7 @@ class EqnList:
         for lhs in self.eqns:
             assert isinstance(lhs, Symbol), f"{lhs}, type={type(lhs)}"
             rhs = self.eqns[lhs]
-            vprint(colorize("EQN:", "cyan"), lhs, colorize("=", "cyan"), rhs, " ", colorize(f"[complexity = {self.complexity[lhs]}]", "magenta"))
+            vprint(colored("EQN:", "cyan"), lhs, colored("=", "cyan"), rhs, " ", colored(f"[complexity = {self.complexity[lhs]}]", "magenta"))
 
     def trim(self) -> None:
         """ Remove temporaries of the form "a=b". They are clutter. """
@@ -1259,6 +1768,6 @@ class EqnList:
             result.add(StencilIdxWithName(tuple(int(typing.cast(Expr, a).evalf()) for a in call.args[1:]), str(call.args[0])))  # type: ignore[arg-type]
 
     def dump(self) -> None:
-        print(colorize("Dumping Equations:", "green"))
+        print(colored("Dumping Equations:", "green"))
         for k in self.order:
-            print(" ", colorize(k, "cyan"), "=", self.eqns[k])
+            print(" ", colored(k, "cyan"), "=", self.eqns[k])
