@@ -45,3 +45,4 @@ jobs:
           python unit_tests/test_cse_optimizations.py
           python unit_tests/test_collect.py
           python unit_tests/test_tune_cse.py
+          python unit_tests/test_cse_booleans.py
