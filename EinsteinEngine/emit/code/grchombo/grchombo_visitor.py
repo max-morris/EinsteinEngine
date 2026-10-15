@@ -230,17 +230,15 @@ class GRChomboVisitor(Visitor[CodeNode]):
             + '\n};'
         )
         helpers = (
-            '// |x| for double (std::abs) and, through argument-dependent lookup, GRChombo\'s simd<double> (abs).\n'
-            'template <class data_t> ALWAYS_INLINE data_t ee_abs(const data_t &x)\n'
-            '{\n'
-            '    using std::abs;\n'
-            '    return abs(x);\n'
-            '}'
+            '// |x|, exactly, for double and simd<double>, through GRChombo\'s simd_max. GRChombo\'s simd<double> abs\n'
+            '// overload is not used: it applies an unqualified abs to each lane, which resolves to the C abs(int),\n'
+            '// truncating |x| < 1 to 0, unless abs(double) happens to be declared before simd_base.hpp is included.\n'
+            'template <class data_t> ALWAYS_INLINE data_t ee_abs(const data_t &x) { return simd_max(x, -x); }'
         )
         return (
             f'{n.banner}\n'
             f'#ifndef {guard}\n#define {guard}\n\n'
-            f'{includes}\n#include <cmath>\n\n'
+            f'{includes}\n\n'
             f'namespace {n.namespace}\n{{\n\n{helpers}\n\n{cls}\n\n}} // namespace {n.namespace}\n\n'
             f'#endif /* {guard} */\n'
         )

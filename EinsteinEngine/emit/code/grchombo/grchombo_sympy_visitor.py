@@ -29,7 +29,7 @@ from EinsteinEngine.emit.tree import Identifier
 class GRChomboSympyVisitor(BaseSympyExprVisitor[Expr]):
     """
     Lowers grid-variable reads to GridLoads at the stencil offset (0 for a plain symbol), and |x| to the header's
-    ee_abs helper (std::abs for double, GRChombo's simd abs overload for simd<double>).
+    ee_abs helper (simd_max(x, -x), for double and simd<double>).
     """
     is_grid_var: Callable[[str], bool]
 
