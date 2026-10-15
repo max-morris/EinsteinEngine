@@ -36,6 +36,7 @@ machine and in every process.
 from typing import Callable, Iterator, List, Tuple
 
 from sympy import Add, Expr, Mul, Pow, Symbol, cancel, collect, count_ops, expand, factor, factor_terms, together
+from sympy.core.parameters import distribute
 from sympy.core.sorting import default_sort_key
 from sympy.core.traversal import preorder_traversal
 
@@ -169,7 +170,10 @@ def collect_greedy(expr: Expr, cost: CostFn | None = None,
         current, current_cost = best, best_cost
     if current is abstracted:
         return expr
-    result: Expr = current.xreplace(restore)  # type: ignore[no-untyped-call]
+    # Restoring the atoms rebuilds every node above one, which must not distribute a number over a sum that the search
+    # factored out: 3*(a*b + g) would become 3*a*b + 3*g, and the check below would then throw the move away.
+    with distribute(False):
+        result: Expr = current.xreplace(restore)  # type: ignore[no-untyped-call]
     # The search compared costs with each atom standing in as a Symbol. An atom can cost more than that as written (an
     # undefined function call counts as an operation), so a move that repeats an atom could cost more once restored.
     return result if cost(result) <= cost(expr) else expr
