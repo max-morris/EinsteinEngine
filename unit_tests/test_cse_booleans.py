@@ -29,6 +29,7 @@ from sympy import And, Basic, Expr, Piecewise, Symbol, cse as sympy_cse, exp
 from sympy.core.parameters import evaluate
 
 from EinsteinEngine import *
+from EinsteinEngine.common.collect import op_count
 from EinsteinEngine.common.cse_optimizations import CsePreset
 from EinsteinEngine.common.sympywrap import CseOptimization, cse, is_condition, mk_symbol
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef
@@ -140,20 +141,34 @@ def test_expensive_function_operand_shared() -> None:
 def test_bake_with_shared_condition() -> None:
     # Before the fix, the global CSE made `s > 0` a temporary and the rebake failed. Both global-CSE paths.
     for isolate in (True, False):
-        bake_shared_condition(isolate)
+        rhses = bake(isolate, shared=True)
+        assert not any(is_condition(rhs) for rhs in rhses), rhses
+        assert sum(" > 0" in str(rhs) for rhs in rhses) == 2, rhses  # the condition stays inline in both
 
 
-def bake_shared_condition(isolate: bool) -> None:
-    gf = ThornDef("ARR", f"CSEBOOLEANS{int(isolate)}")
+def test_bake_structure_preserved() -> None:
+    # Inlining a shared condition must cost no more than an unshared one, through the whole bake (with isolation,
+    # cse_isolate's restoring substitution must not undo the default preset's factoring of o1).
+    for isolate in (True, False):
+        shared = sum(op_count(rhs) for rhs in bake(isolate, shared=True))
+        unshared = sum(op_count(rhs) for rhs in bake(isolate, shared=False))
+        assert shared <= unshared, (isolate, shared, unshared)
+
+
+_bakes = 0
+
+
+def bake(isolate: bool, shared: bool) -> list[Expr]:
+    global _bakes
+    _bakes += 1
+    gf = ThornDef("ARR", f"CSEBOOLEANS{_bakes}")
     u, v, s = gf.decl("u", []), gf.decl("v", []), gf.decl("s", [])
     o1, o2 = gf.decl("o1", []), gf.decl("o2", [])
     fun = gf.create_function("fn", ScheduleBin.Evolve)
-    fun.add_eqn(o1, pw((u, s > 0), (v, True)) + u * v)
-    fun.add_eqn(o2, pw((v, s > 0), (u, True)) * u * v)
+    fun.add_eqn(o1, 3 * u + 3 * v + 3 * pw((u, s > 0), (v, True)))
+    fun.add_eqn(o2, pw((v, s > 0 if shared else s > 1), (u, True)) * u * v)
     gf.bake(cse_isolate_grid_variables=isolate)
-    rhses = [el.eqns[lhs] for el in fun.eqn_complex.eqn_lists for lhs in el.order]
-    assert not any(is_condition(rhs) for rhs in rhses), rhses
-    assert sum("s > 0" in str(rhs) for rhs in rhses) == 2, rhses  # the condition stays inline in both
+    return [el.eqns[lhs] for el in fun.eqn_complex.eqn_lists for lhs in el.order]
 
 
 if __name__ == "__main__":
@@ -168,6 +183,7 @@ if __name__ == "__main__":
         test_isolated_grid_variables,
         test_expensive_function_operand_shared,
         test_bake_with_shared_condition,
+        test_bake_structure_preserved,
     ]
     for test in tests:
         test()

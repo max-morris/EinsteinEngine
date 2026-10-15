@@ -132,8 +132,10 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
     The substitution does not re-evaluate the nodes it rebuilds: re-evaluation would undo the CSE's own structure
     and the optimizations' postprocessing (e.g., 3*(c + d + p) would be distributed again).
     """
-    taken = set().union(*(e.free_symbols for e in exprs))
-    names = numbered_symbols('x', exclude=taken)  # type: ignore[no-untyped-call]  # sympy's names; reused below
+    # sympy's default names, minus any name already in use (by name: a Symbol with assumptions, or an Idx, prints
+    # the same), shared by sympy and the operand temporaries below.
+    taken = {str(sym) for e in exprs for sym in e.free_symbols}
+    names = (sym for sym in numbered_symbols('x') if sym.name not in taken)  # type: ignore[no-untyped-call]
     # Still a mix of numeric and condition replacements here; the loop below makes them all numeric.
     replacements, reduced = cast(cse_return, cse_(exprs, symbols=names,  # type: ignore[no-untyped-call]
                                                   optimizations=list(optimizations)))
@@ -146,6 +148,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
             return cast(Basic, b.func(*[share_operands(arg) for arg in b.args]))
         if _trivial(b):
             return b
+        assert isinstance(b, Expr), f"non-numeric operand {b} in a condition"
         if b not in operands:
             operands[b] = next(names)
             numeric.append((operands[b], cast(Expr, b)))
@@ -164,15 +167,15 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
         return replacements, reduced
     with evaluate(False):  # type: ignore[no-untyped-call]
         reduced = [e.xreplace(conditions) for e in reduced]  # type: ignore[no-untyped-call]
-    assert not any(e.has(*conditions) for e in chain((rhs for _, rhs in numeric), reduced))
+    assert not any(e.free_symbols & conditions.keys() for e in chain((rhs for _, rhs in numeric), reduced))
     return numeric, reduced
 
 
 def _trivial(b: Basic) -> bool:
-    """Cheaper to repeat than to store: an atom, an indexed read, or an undefined function of atoms (EE's grid-access
-    markers such as stencil() and cse_isolate's wrapper of a grid variable). Not, e.g., exp(x)."""
-    return b.is_Atom or isinstance(b, Indexed) or \
-        (isinstance(b.func, UFunc) and all(a.is_Atom for a in b.args))
+    """Cheaper to repeat than to store: an atom or an indexed read. Anything else, including a grid read wrapped by
+    cse_isolate (whose restoring substitution re-evaluates every path to it) or a stencil(), becomes a temporary, as
+    sympy makes any repeated subexpression one."""
+    return b.is_Atom or isinstance(b, Indexed)
 
 
 def mk_idx(name: str) -> Idx:
