@@ -151,7 +151,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
         assert isinstance(b, Expr), f"non-numeric operand {b} in a condition"
         if b not in operands:
             operands[b] = next(names)
-            numeric.append((operands[b], cast(Expr, b)))
+            numeric.append((operands[b], b))
         return operands[b]
 
     # Replacements come in dependency order, so each is free of earlier conditions after this substitution.
