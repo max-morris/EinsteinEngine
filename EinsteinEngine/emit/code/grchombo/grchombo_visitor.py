@@ -233,7 +233,9 @@ class GRChomboVisitor(Visitor[CodeNode]):
             '// |x|, exactly, for double and simd<double>, through GRChombo\'s simd_max. GRChombo\'s simd<double> abs\n'
             '// overload is not used: it applies an unqualified abs to each lane, which resolves to the C abs(int),\n'
             '// truncating |x| < 1 to 0, unless abs(double) happens to be declared before simd_base.hpp is included.\n'
-            'template <class data_t> ALWAYS_INLINE data_t ee_abs(const data_t &x) { return simd_max(x, -x); }'
+            'template <class data_t> ALWAYS_INLINE data_t ee_abs(const data_t &x) { return simd_max(x, -x); }\n\n'
+            '// The recipe is written in three dimensions; GRChombo lets GR_SPACEDIM be overridden.\n'
+            'static_assert(GR_SPACEDIM == 3, "EE kernels are generated for GR_SPACEDIM == 3");'
         )
         return (
             f'{n.banner}\n'
