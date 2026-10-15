@@ -50,6 +50,7 @@ from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, Mul, Indexed
     sec as sec_, csc as csc_, diff as diff_, atan as atan_, det as det_, sympify as sympify_, pi
 from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
     sech as sech_, csch as csch_, coth as coth_
+from sympy.logic.boolalg import Boolean
 
 sqrt = sqrt_
 cbrt = cbrt_
@@ -113,8 +114,31 @@ def inv(e: Matrix) -> Matrix:
 CseOptimization = Tuple[Optional[Callable[[Expr], Expr]], Optional[Callable[[Expr], Expr]]]
 
 
+def is_condition(e: Basic) -> bool:
+    """True for a truth value: a relational, a logical combination of them, or true/false. (A Symbol is also a sympy
+    Boolean, but it is an Expr, and here a number.)"""
+    return isinstance(e, Boolean) and not isinstance(e, Expr)
+
+
 def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse_return:
-    return cast(cse_return, cse_(exprs, optimizations=list(optimizations)))  # type: ignore[no-untyped-call]
+    """
+    sympy's cse, except that no replacement is a Boolean (a relational such as ``x > 0``, or a logical combination of
+    them). EE's temporaries are numeric, so a condition that sympy extracts because several Piecewise expressions share
+    it is substituted back where it is used, and its replacement is dropped.
+    """
+    replacements, reduced = cast(cse_return, cse_(exprs, optimizations=list(optimizations)))  # type: ignore[no-untyped-call]
+    conditions: Dict[Symbol, Basic] = {}
+    numeric: List[Tuple[Symbol, Expr]] = []
+    # Replacements come in dependency order, so each is free of earlier conditions after this substitution.
+    for lhs, rhs in replacements:
+        rhs = rhs.xreplace(conditions) if conditions else rhs  # type: ignore[no-untyped-call]
+        if is_condition(rhs):
+            conditions[lhs] = rhs
+        else:
+            numeric.append((lhs, rhs))
+    if not conditions:
+        return replacements, reduced
+    return numeric, [e.xreplace(conditions) for e in reduced]  # type: ignore[no-untyped-call]
 
 
 def mk_idx(name: str) -> Idx:
