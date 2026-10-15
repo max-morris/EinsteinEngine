@@ -111,13 +111,16 @@ def test_both_cse_paths_take_the_option() -> None:
 def test_isolation_keeps_factoring() -> None:
     # Isolating the grid variables must not undo the optimizations' factoring when it restores them: the reduced
     # expressions must cost what they cost without isolation, 3*(c + x0*x1) and not 3*c + 3*x0*x1.
-    y = mk_symbol("y")
-    exprs = [3 * a * b + 3 * c, 6 * a * x + 6 * b * y]
+    y, z, w, g = mk_symbol("y"), mk_symbol("z"), mk_symbol("w"), mk_symbol("g")
+    exprs = [3 * a * b + 3 * c, 6 * a * x + 6 * b * y, 9 * g * z - 6 * w]
     for optimizations in (CsePreset.CollectAfter(), CsePreset.BasicCollectAfter()):
-        subs, reduced = cse_isolate(exprs, {a, b, c}, optimizations)
+        subs, reduced = cse_isolate(exprs, {a, b, c, g}, optimizations)
         _, plain = cse(exprs, optimizations)
-        assert [op_count(e) for e in reduced] == [op_count(e) for e in plain] == [3, 4], (reduced, plain)
-        assert all(expand(e.xreplace(dict(subs)) - p) == 0 for e, p in zip(reduced, plain)), (subs, reduced, plain)
+        # cse_basic() factors the last one into 3*(3*g*z - 2*w), and collecting must undo that under isolation too.
+        assert [op_count(e) for e in reduced] == [op_count(e) for e in plain] == [3, 4, 4], (reduced, plain)
+        for lhs, rhs in reversed(subs):
+            reduced = [e.xreplace({lhs: rhs}) for e in reduced]
+        assert all(expand(e - orig) == 0 for e, orig in zip(reduced, exprs)), (subs, reduced)
 
 
 def test_deprecated_cse_optimization_level() -> None:

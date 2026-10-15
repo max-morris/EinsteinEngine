@@ -94,7 +94,10 @@ def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
         return expr, {}
     reps: dict[Expr, Expr] = {atom: Dummy(f"collect_atom_{i:06d}")  # type: ignore[no-untyped-call]
                               for i, atom in enumerate(sorted(atoms, key=default_sort_key))}
-    relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
+    # Like the restoration in collect_greedy, this must only relabel: distributing 3*(3*f(g)*t - 2*u) here would hand
+    # the search an expression it cannot improve on, and the factored input would be returned as it is.
+    with distribute(False):
+        relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
     return relocated, {v: k for k, v in reps.items()}
 
 

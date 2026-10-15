@@ -63,8 +63,8 @@ def cse_isolate(exprs: List[Expr], symbols_to_isolate: Optional[Collection[Symbo
 
         new_syms, new_exprs = cse(exprs_sub, optimizations=optimizations)
 
-        # Restore original symbols. xreplace() rebuilds every node above a restored symbol, and rebuilding a number times
-        # a sum, such as the 3*(a*b + g) that the optimizations factor out, would distribute the number again.
+        # Restore original symbols. xreplace() rebuilds every node above a restored symbol, and rebuilding a number
+        # times a sum, such as the 3*(a*b + g) that the optimizations factor out, would distribute the number again.
         with distribute(False):
             new_syms = [(lhs, rhs.xreplace(inv_iso_map)) for lhs, rhs in new_syms]  # type: ignore[no-untyped-call]
             new_exprs = [e.xreplace(inv_iso_map) for e in new_exprs]  # type: ignore[no-untyped-call]
