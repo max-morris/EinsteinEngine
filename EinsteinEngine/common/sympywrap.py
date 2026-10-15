@@ -133,7 +133,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
     and the optimizations' postprocessing (e.g., 3*(c + d + p) would be distributed again).
     """
     taken = set().union(*(e.free_symbols for e in exprs))
-    names = numbered_symbols('x', exclude=taken)  # sympy's default names, continued below for the operands
+    names = numbered_symbols('x', exclude=taken)  # type: ignore[no-untyped-call]  # sympy's names; reused below
     # Still a mix of numeric and condition replacements here; the loop below makes them all numeric.
     replacements, reduced = cast(cse_return, cse_(exprs, symbols=names,  # type: ignore[no-untyped-call]
                                                   optimizations=list(optimizations)))
@@ -143,7 +143,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
 
     def share_operands(b: Basic) -> Basic:
         if is_condition(b):
-            return b.func(*[share_operands(arg) for arg in b.args])
+            return cast(Basic, b.func(*[share_operands(arg) for arg in b.args]))
         if _trivial(b):
             return b
         if b not in operands:
@@ -154,7 +154,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
     # Replacements come in dependency order, so each is free of earlier conditions after this substitution.
     for lhs, rhs in replacements:
         if conditions:
-            with evaluate(False):
+            with evaluate(False):  # type: ignore[no-untyped-call]
                 rhs = rhs.xreplace(conditions)  # type: ignore[no-untyped-call]
         if is_condition(rhs):
             conditions[lhs] = share_operands(rhs)
@@ -162,7 +162,7 @@ def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse
             numeric.append((lhs, rhs))
     if not conditions:
         return replacements, reduced
-    with evaluate(False):
+    with evaluate(False):  # type: ignore[no-untyped-call]
         reduced = [e.xreplace(conditions) for e in reduced]  # type: ignore[no-untyped-call]
     assert not any(e.has(*conditions) for e in chain((rhs for _, rhs in numeric), reduced))
     return numeric, reduced
