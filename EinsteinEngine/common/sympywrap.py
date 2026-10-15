@@ -50,6 +50,9 @@ from sympy import cse as cse_, IndexedBase, Idx, Symbol, Eq, Basic, Mul, Indexed
     sec as sec_, csc as csc_, diff as diff_, atan as atan_, det as det_, sympify as sympify_, pi
 from sympy import cosh as cosh_, sinh as sinh_, tanh as tanh_, erf as erf_, \
     sech as sech_, csch as csch_, coth as coth_
+from sympy.logic.boolalg import Boolean
+from sympy.core.parameters import evaluate
+from sympy.utilities.iterables import numbered_symbols
 
 sqrt = sqrt_
 cbrt = cbrt_
@@ -85,7 +88,7 @@ from multimethod import multimethod
 __all__ = ["Applier", "sqrt", "cbrt", "log", "exp", "Pow", "PowType", "UFunc",
            "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "coth", "sech", "csch",
            "erf", "pi", "atan",
-           "inv", "det", "sympify", "simplify", "cse", "CseOptimization", "mk_idx", "mk_symbol",
+           "inv", "det", "sympify", "simplify", "cse", "is_condition", "CseOptimization", "mk_idx", "mk_symbol",
            "mk_matrix", "do_subs", "mk_function", "mk_eq", "do_replace", "mk_indexed_base", "mk_piecewise",
            "mk_zeros", "free_indexed", "mk_indexed", "mk_wild", "mk_idxes", "free_symbols",
            "do_match", "h_step"]
@@ -113,8 +116,66 @@ def inv(e: Matrix) -> Matrix:
 CseOptimization = Tuple[Optional[Callable[[Expr], Expr]], Optional[Callable[[Expr], Expr]]]
 
 
+def is_condition(e: Basic) -> bool:
+    """True for a truth value: a relational, a logical combination of them, or true/false. (A Symbol is also a sympy
+    Boolean, but it is an Expr, and here a number.)"""
+    return isinstance(e, Boolean) and not isinstance(e, Expr)
+
+
 def cse(exprs: List[Expr], optimizations: Sequence[CseOptimization] = ()) -> cse_return:
-    return cast(cse_return, cse_(exprs, optimizations=list(optimizations)))  # type: ignore[no-untyped-call]
+    """
+    sympy's cse, except that no replacement is a Boolean (a relational such as ``x > 0``, or a logical combination of
+    them). EE's temporaries are numeric, so a condition that sympy extracts because several Piecewise expressions share
+    it is substituted back where it is used, and its replacement is dropped. The numeric operands of a dropped condition
+    stay shared: each one that is not trivial to recompute (see `_trivial`) becomes a numeric temporary in the
+    condition's place (sympy's cse does not look inside a subexpression it extracts whole, so they have none).
+    The substitution does not re-evaluate the nodes it rebuilds: re-evaluation would undo the CSE's own structure
+    and the optimizations' postprocessing (e.g., 3*(c + d + p) would be distributed again).
+    """
+    # sympy's default names, minus any name already in use (by name: a Symbol with assumptions, or an Idx, prints
+    # the same), shared by sympy and the operand temporaries below.
+    taken = {str(sym) for e in exprs for sym in e.free_symbols}
+    names = (sym for sym in numbered_symbols('x') if sym.name not in taken)  # type: ignore[no-untyped-call]
+    # Still a mix of numeric and condition replacements here; the loop below makes them all numeric.
+    replacements, reduced = cast(cse_return, cse_(exprs, symbols=names,  # type: ignore[no-untyped-call]
+                                                  optimizations=list(optimizations)))
+    conditions: Dict[Symbol, Basic] = {}
+    operands: Dict[Basic, Symbol] = {}
+    numeric: List[Tuple[Symbol, Expr]] = []
+
+    def share_operands(b: Basic) -> Basic:
+        if is_condition(b):
+            return cast(Basic, b.func(*[share_operands(arg) for arg in b.args]))
+        if _trivial(b):
+            return b
+        assert isinstance(b, Expr), f"non-numeric operand {b} in a condition"
+        if b not in operands:
+            operands[b] = next(names)
+            numeric.append((operands[b], b))
+        return operands[b]
+
+    # Replacements come in dependency order, so each is free of earlier conditions after this substitution.
+    for lhs, rhs in replacements:
+        if conditions:
+            with evaluate(False):  # type: ignore[no-untyped-call]
+                rhs = rhs.xreplace(conditions)  # type: ignore[no-untyped-call]
+        if is_condition(rhs):
+            conditions[lhs] = share_operands(rhs)
+        else:
+            numeric.append((lhs, rhs))
+    if not conditions:
+        return replacements, reduced
+    with evaluate(False):  # type: ignore[no-untyped-call]
+        reduced = [e.xreplace(conditions) for e in reduced]  # type: ignore[no-untyped-call]
+    assert not any(e.free_symbols & conditions.keys() for e in chain((rhs for _, rhs in numeric), reduced))
+    return numeric, reduced
+
+
+def _trivial(b: Basic) -> bool:
+    """Cheaper to repeat than to store: an atom or an indexed read. Anything else, including a grid read wrapped by
+    cse_isolate (whose restoring substitution re-evaluates every path to it) or a stencil(), becomes a temporary, as
+    sympy makes any repeated subexpression one."""
+    return b.is_Atom or isinstance(b, Indexed)
 
 
 def mk_idx(name: str) -> Idx:
