@@ -51,6 +51,10 @@ from EinsteinEngine.wizards.vanilla_f90_wizard import VanillaF90Wizard
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
+from EinsteinEngine.frontend.dsl.grchombo.grchombo_frontend import GRChomboComputeClass, GRChomboCtorArg, \
+    GRChomboCtorCheck, subst_tensor_grchombo
+from EinsteinEngine.generators.grchombo_generator import GRChomboGenerator
+from EinsteinEngine.wizards.grchombo_wizard import GRChomboWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
@@ -63,6 +67,8 @@ __all__ = [
     "cbrt", "sqrt", "mk_matrix", "mk_piecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
+    "GRChomboComputeClass", "GRChomboCtorArg", "GRChomboCtorCheck", "subst_tensor_grchombo", "GRChomboGenerator",
+    "GRChomboWizard",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
