@@ -732,6 +732,11 @@ sync_bssn_pt2 = ExplicitSyncBatch(
 fun_bssn_rhs = cottonmouth_bssnok.create_function(
     "rhs",
     rhs_group,
+    # These come from a split tuner during a search; None (the default, which never splits) otherwise. The manual
+    # splits below still apply.
+    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate', None),
+    auto_soft_split_predicate=get_optional_tuning_param('auto_soft_split_predicate', None),
+    auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
     intent_override=IntentOverride.WriteInterior
 )
 
@@ -1124,6 +1129,12 @@ cottonmouth_bssnok.bake(
     cse_optimizations=get_optional_tuning_param('cse_optimizations', default_cse_optimizations()),
     soft_split_retainment_strategy=retain_rank(150),
     ordering_fn=prioritize_rare_symbols,
+    # The tuners' ordering knobs refer to the rhs add_eqn calls, so they apply to rhs only.
+    functions={"rhs": {
+        "early_ordering_fn": get_optional_tuning_param('early_ordering_fn', None),
+        "pre_population_ordering_fn": get_optional_tuning_param('pre_population_ordering_fn', None),
+        "ordering_fn": get_optional_tuning_param('ordering_fn', prioritize_rare_symbols),
+    }},
 )
 
 recipe_dir = Path(__file__).resolve().parent
