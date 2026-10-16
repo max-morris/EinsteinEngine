@@ -25,7 +25,7 @@ import tempfile
 import warnings
 from typing import Any
 
-from sympy import Expr, Rational, cse as sympy_cse
+from sympy import Expr, Rational, cse as sympy_cse, expand
 
 from EinsteinEngine import *
 from EinsteinEngine.common.collect import op_count
@@ -33,6 +33,7 @@ from EinsteinEngine.common.cse_optimizations import CsePreset, cse_basic, cse_co
 from EinsteinEngine.common.sympywrap import cse, mk_symbol, sqrt
 from EinsteinEngine.frontend.dsl.cactus.cactus_frontend import ScheduleBin, ThornDef, ThornFunction
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
+from EinsteinEngine.frontend.util import cse_isolate
 from EinsteinEngine.intermediate.eqn_ordering import prioritize_rare_symbols
 from EinsteinEngine.tuning.probe import derive_add_eqn_order
 
@@ -105,6 +106,21 @@ def test_both_cse_paths_take_the_option() -> None:
         plain = total_ops(bake_thorn(cse_isolate_grid_variables=isolate, cse_optimizations=[]))
         collected = total_ops(bake_thorn(cse_isolate_grid_variables=isolate, cse_optimizations=[cse_collect_greedy()]))
         assert collected < plain, (isolate, collected, plain)
+
+
+def test_isolation_keeps_factoring() -> None:
+    # Isolating the grid variables must not undo the optimizations' factoring when it restores them: the reduced
+    # expressions must cost what they cost without isolation, 3*(c + x0*x1) and not 3*c + 3*x0*x1.
+    y, z, w, g = mk_symbol("y"), mk_symbol("z"), mk_symbol("w"), mk_symbol("g")
+    exprs = [3 * a * b + 3 * c, 6 * a * x + 6 * b * y, 9 * g * z - 6 * w]
+    for optimizations in (CsePreset.CollectAfter(), CsePreset.BasicCollectAfter()):
+        subs, reduced = cse_isolate(exprs, {a, b, c, g}, optimizations)
+        _, plain = cse(exprs, optimizations)
+        # cse_basic() factors the last one into 3*(3*g*z - 2*w), and collecting must undo that under isolation too.
+        assert [op_count(e) for e in reduced] == [op_count(e) for e in plain] == [3, 4, 4], (reduced, plain)
+        for lhs, rhs in reversed(subs):
+            reduced = [e.xreplace({lhs: rhs}) for e in reduced]
+        assert all(expand(e - orig) == 0 for e, orig in zip(reduced, exprs)), (subs, reduced)
 
 
 def test_deprecated_cse_optimization_level() -> None:
@@ -201,6 +217,7 @@ if __name__ == "__main__":
         test_collect_greedy_reduces_operations,
         test_collect_greedy_budget,
         test_both_cse_paths_take_the_option,
+        test_isolation_keeps_factoring,
         test_deprecated_cse_optimization_level,
         test_derivation_takes_the_option,
         test_collect_after_cse,

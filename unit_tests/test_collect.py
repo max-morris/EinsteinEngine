@@ -76,6 +76,11 @@ def test_wrapped_grid_variables() -> None:
     _ = [Dummy() for _ in range(1000)]  # type: ignore[no-untyped-call]
     assert collect_greedy(e) == first
     assert_exact_and_never_worse(e, first)
+    # Restoring the atoms must not distribute a factored-out number again, or the move would be thrown away.
+    e = 3 * gx + 3 * a * b
+    out = collect_greedy(e)
+    assert op_count(out) == op_count(e) - 1, out
+    assert_exact_and_never_worse(e, out)
 
 
 def test_iteration_budget() -> None:
