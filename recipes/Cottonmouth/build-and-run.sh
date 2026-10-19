@@ -73,6 +73,8 @@ echo Cottonmouth/CottonmouthBSSNOK4m >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthGaugeWaveID >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthLinearWaveID >> .pre_cottonmouth.th
 echo Cottonmouth/CottonmouthZ4c4m >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthBosonStarID >> .pre_cottonmouth.th
+echo Cottonmouth/CottonmouthBS4m >> .pre_cottonmouth.th
 
 set -e
 
@@ -83,6 +85,7 @@ parfiles=(
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/mag_TOV_z4c.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/qc0_bssnok.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthZ4c4m/qc0_z4c.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBS4m/boson_star.par"
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/apples_with_apples/gauge_wave_z4c.par"
 )
 
@@ -112,6 +115,7 @@ fi
 
 TARGET_TEST_DIR_BSSNOK=arrangements/Cottonmouth/CottonmouthBSSNOK4m/test
 TARGET_TEST_DIR_Z4c=arrangements/Cottonmouth/CottonmouthZ4c4m/test
+TARGET_TEST_DIR_BS=arrangements/Cottonmouth/CottonmouthBS4m/test
 
 bssnok_test_data=(
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBSSNOK4m/linear_wave_bssnok"
@@ -133,6 +137,12 @@ z4c_test_dirs=(
   "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
 )
 
+bs_test_data=(
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBS4m/boson_star"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/CottonmouthBS4m/boson_star.par"
+  "$EINSTEIN_ENGINE_DIR/recipes/Cottonmouth/test/test.ccl"
+)
+
 if [ ! -d $TARGET_TEST_DIR_BSSNOK ]
 then
     mkdir $TARGET_TEST_DIR_BSSNOK
@@ -149,6 +159,14 @@ then
     done
 fi
 
+if [ ! -d $TARGET_TEST_DIR_BS ]
+then
+    mkdir $TARGET_TEST_DIR_BS
+    for test_dir in "${bs_test_data[@]}"; do
+        ln -s $test_dir $TARGET_TEST_DIR_BS
+    done
+fi
+
 if [ -d $HOME/simulations/cottonmouth-testsuite ]; then
     rm -r $HOME/simulations/cottonmouth-testsuite
 fi
@@ -158,7 +176,7 @@ export OMP_PLACES=${OMP_PLACES:-cores}
 export OMP_PROC_BIND=${OMP_PROC_BIND:-close}
 
 TESTSUITE_RUN_PROCESSORS=${COTTONMOUTH_TESTSUITE_RUN_PROCESSORS:-2}
-TESTSUITE_RUN_TESTS=${COTTONMOUTH_TESTSUITE_RUN_TESTS:-"CottonmouthBSSNOK4m CottonmouthZ4c4m"}
+TESTSUITE_RUN_TESTS=${COTTONMOUTH_TESTSUITE_RUN_TESTS:-"CottonmouthBSSNOK4m CottonmouthZ4c4m CottonmouthBS4m"}
 
 make \
     cottonmouth-testsuite \
