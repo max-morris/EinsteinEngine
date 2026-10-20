@@ -44,13 +44,16 @@ import argparse
 import sys
 from typing import cast
 
-from sympy import Rational, Idx, IndexedBase, Expr, Abs
+from sympy import Add, Rational, Idx, IndexedBase, Expr, Abs, Integer
 
 from EinsteinEngine import *
 
 parser = argparse.ArgumentParser(description='GRChombo CCZ4 RHS slot-in kernel')
 parser.add_argument('--fd-order', type=int, default=4, choices=[4], help='Finite-difference order (GRChombo: 4).')
 parser.add_argument('--out-dir', default='.', help='Directory to write the header to.')
+parser.add_argument('--mixed-d2', choices=['ee', 'nested'], default='ee',
+                    help="Mixed second derivatives: EE's built-in grouping (default; the validated kernel), or the "
+                         "differences across one direction first (a diagnostic variant).")
 args = parser.parse_args(sys.argv[1:])
 
 fd_order = args.fd_order
@@ -131,6 +134,28 @@ kdelta = cc.decl("kdelta", [la, lb], symmetries=[(la, lb)],
 # (A Piecewise here would make the global CSE extract the condition beta^a > 0 as a Boolean temporary, which EE does
 # not support.)
 adv_up = cc.mk_stencil("adv_up", la, finite_difference_stencil(fd_order, 1, 1, la))
+if args.mixed_d2 == 'nested':
+    # Diagnostic variant (Max, 2026-10-20): mixed second derivatives with the differences across the second direction
+    # first, ((f(A,B) - f(A,-B)) - (f(-A,B) - f(-A,-B))), then the weighted sum over the offset pairs (A, B), as AthenaK's
+    # Dxy. The weights are the same, (8, -1)/12 per direction (GRChombo's mixed_diff2: 64, 8, 1 over 144). EE's built-in
+    # D(f, la, lb) adds equal-|weight| corners first. The diagonal keeps EE's built-in stencil: finite_difference_stencil
+    # returns the Taylor coefficient f''/2 (it omits the factor ndivs!), so each term is doubled here, as D does.
+    _den, _w = {4: (12, [8, -1])}[fd_order]
+    _dxy = Rational(1, _den ** 2) * noop(sum(
+        Integer(na * nb) * noop(noop(stencil(la * a + lb * b) - stencil(la * a - lb * b))
+                                - noop(stencil(-la * a + lb * b) - stencil(-la * a - lb * b)))
+        for a, na in enumerate(_w, 1) for b, nb in enumerate(_w, 1))) * DDI(la) * DDI(lb)
+    _dxx = finite_difference_stencil(fd_order, 2, 0, la) / DDI(la) ** 2
+    _dxx = Add(*(2 * t for t in _dxx.args)) * DDI(la) ** 2
+    d2 = cc.mk_stencil("d2", la, la, cast(Expr, _dxx), la, lb, cast(Expr, _dxy))
+
+
+def D2(f: Expr, i: Idx, j: Idx) -> Expr:
+    """Second derivative: EE's D(f, i, j), or with --mixed-d2 nested the recipe's d2 (mixed terms grouped
+    one direction first)."""
+    return cast(Expr, d2(f, i, j) if args.mixed_d2 == 'nested' else D(f, i, j))
+
+
 adv_down = cc.mk_stencil("adv_down", la, finite_difference_stencil(fd_order, 1, -1, la))
 # dissipation_term: sigma / 64 * (f_{-3} - 6 f_{-2} + 15 f_{-1} - 20 f_0 + 15 f_1 - 6 f_2 + f_3) / dx per direction.
 diss = cc.mk_stencil("diss", la, kreiss_oliger_stencil(fd_order + 1, la))
@@ -182,7 +207,7 @@ cc.add_substitution_rule(Z_over_chi[ui], Rational(1, 2) * (Gamma[ui] - chris_c[u
 
 # covdtilde2chi[k][l] = d_k d_l chi - ULL[m][k][l] d_m chi
 covdtilde2chi = cc.decl("covdtilde2chi", [lk, ll], symmetries=[(lk, ll)])
-cc.add_substitution_rule(covdtilde2chi[lk, ll], D(chi, lk, ll) - chris[um, lk, ll] * D(chi, lm))
+cc.add_substitution_rule(covdtilde2chi[lk, ll], D2(chi, lk, ll) - chris[um, lk, ll] * D(chi, lm))
 boxtildechi = cc.decl("boxtildechi", [])
 cc.add_substitution_rule(boxtildechi, h[ui, uj] * covdtilde2chi[li, lj])
 dchi_dot_dchi = cc.decl("dchi_dot_dchi", [])
@@ -196,7 +221,7 @@ cc.add_substitution_rule(
     ricci_hat[li, lj],
     Rational(1, 2) * (h[lk, li] * D(Gamma[uk], lj) + h[lk, lj] * D(Gamma[uk], li))
     + Rational(1, 2) * Gamma[uk] * D(h[li, lj], lk)
-    - Rational(1, 2) * h[uk, ul] * D(h[li, lj], lk, ll)
+    - Rational(1, 2) * h[uk, ul] * D2(h[li, lj], lk, ll)
     + chris[uk, ll, li] * chris[lj, lk, ul]
     + chris[uk, ll, lj] * chris[li, lk, ul]
     + chris[uk, li, ll] * chris[lk, lj, ul]
@@ -241,7 +266,7 @@ cc.add_substitution_rule(dlapse_dot_dchi, h[um, un] * D(lapse, lm) * D(chi, ln))
 covd2lapse = cc.decl("covd2lapse", [lk, ll], symmetries=[(lk, ll)])
 cc.add_substitution_rule(
     covd2lapse[lk, ll],
-    chi * (D(lapse, lk, ll) - chris[um, lk, ll] * D(lapse, lm))
+    chi * (D2(lapse, lk, ll) - chris[um, lk, ll] * D(lapse, lm))
     + Rational(1, 2) * (D(lapse, lk) * D(chi, ll) + D(chi, lk) * D(lapse, ll) - h[lk, ll] * dlapse_dot_dchi)
 )
 
@@ -252,7 +277,7 @@ cc.add_substitution_rule(
     tr_covd2lapse,
     -Rational(d, 2) * dlapse_dot_dchi
     - chi * chris_c[ui] * D(lapse, li)
-    + h[ui, uj] * (chi * D(lapse, li, lj) + D(lapse, li) * D(chi, lj))
+    + h[ui, uj] * (chi * D2(lapse, li, lj) + D(lapse, li) * D(chi, lj))
 )
 
 # A_UU = raise_all(A, h_UU); tr_A2 = A_ij A^ij
@@ -282,8 +307,8 @@ cc.add_substitution_rule(
     - lapse * (Rational(2 * (d - 1), d) * h[ui, uj] * D(K, lj) + d * A[ui, uj] * D(chi, lj) / chi)
     - (chris_c[uj] + 2 * kappa3 * Z_over_chi[uj]) * D(shift[ui], lj)
     + 2 * lapse * chris[ui, lj, lk] * A[uj, uk]
-    + h[uj, uk] * D(shift[ui], lj, lk)
-    + Rational(d - 2, d) * h[ui, uj] * D(shift[uk], lj, lk)
+    + h[uj, uk] * D2(shift[ui], lj, lk)
+    + Rational(d - 2, d) * h[ui, uj] * D2(shift[uk], lj, lk)
 )
 Gamma_rhs_nodiss = cc.decl("Gamma_rhs_nodiss", [ui])
 cc.add_substitution_rule(Gamma_rhs_nodiss[ui], advec(Gamma[ui]) + Gammadot[ui])
@@ -360,6 +385,7 @@ fn.add_eqn(
 cc.bake(**get_optional_tuning_param('bake_options', dict()))
 
 GRChomboWizard(cc, out_dir=args.out_dir).generate_header(
-    banner=f"// Generated by EinsteinEngine from recipes/foreign/grchombo/ccz4_grchombo.py --fd-order {fd_order}.\n"
+    banner=f"// Generated by EinsteinEngine from recipes/foreign/grchombo/ccz4_grchombo.py --fd-order {fd_order}"
+           + (" --mixed-d2 nested" if args.mixed_d2 == 'nested' else "") + ".\n"
            "// Drop-in replacement for CCZ4RHS<MovingPunctureGauge, FourthOrderDerivatives> (CCZ4 formulation)."
 )
