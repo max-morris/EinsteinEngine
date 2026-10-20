@@ -53,8 +53,9 @@ Usage: python ccz4_grteclyn.py [--fd-order 4] [--out-dir DIR]
 
 import argparse
 import sys
+from typing import Any, cast
 
-from sympy import Rational, Idx, IndexedBase, Expr, Abs, Piecewise, sqrt, Float
+from sympy import Rational, Idx, IndexedBase, Expr, Abs, Piecewise, Float
 
 from EinsteinEngine import *
 
@@ -119,9 +120,12 @@ x, y, z = cc.mk_coords()
 # State variables (Source/CCZ4/CCZ4StateVariables.hpp) and their right-hand sides.
 ###
 def state(name: str, indices: list[Idx], symmetric: bool = False) -> tuple[IndexedBase, IndexedBase]:
-    syms = dict(symmetries=[(indices[0], indices[1])]) if symmetric else dict()
-    rhs = cc.decl(f"{name}_rhs", indices, **syms)
-    return cc.decl(name, indices, rhs=rhs, **syms), rhs
+    if symmetric:
+        sym = [(indices[0], indices[1])]
+        rhs = cc.decl(f"{name}_rhs", indices, symmetries=sym)
+        return cc.decl(name, indices, rhs=rhs, symmetries=sym), rhs
+    rhs = cc.decl(f"{name}_rhs", indices)
+    return cc.decl(name, indices, rhs=rhs), rhs
 
 chi, chi_rhs = state("chi", [])                  # conformal factor
 h, h_rhs = state("h", [li, lj], symmetric=True)  # conformal metric
@@ -149,16 +153,16 @@ diss = cc.mk_stencil("diss", la, kreiss_oliger_stencil(fd_order + 1, la))
 
 def advec(f: Expr) -> Expr:
     """FourthOrderDerivatives::advection: sum over directions a of beta^a (upwinded D_a f)."""
-    return sum(
+    return cast(Expr, sum(
         (Rational(1, 2) * (shift[ua_] + Abs(shift[ua_])) * adv_up(f, la_)
          + Rational(1, 2) * (shift[ua_] - Abs(shift[ua_])) * adv_down(f, la_))
         for ua_, la_ in ((u0, l0), (u1, l1), (u2, l2))
-    )
+    ))
 
 
 def dissipation(f: Expr) -> Expr:
     """FourthOrderDerivatives::calculate_dissipation(..., m_sigma, ivar): sigma * sum_i KO_i f."""
-    return sigma * (diss(f, l0) + diss(f, l1) + diss(f, l2))
+    return cast(Expr, sigma * (diss(f, l0) + diss(f, l1) + diss(f, l2)))
 
 
 divshift = cc.decl("divshift", [])
@@ -196,7 +200,7 @@ fn_A = cc.create_function(
 # h^{ij}: the inverse of the evolved h_ij (compute_inverse_metric), not assuming det h = 1.
 h_mat = cc.get_matrix(h[li, lj])
 hUU = cc.decl("hUU", [ui, uj], symmetries=[(ui, uj)])
-fn_A.add_eqn(hUU[ui, uj], h_mat.adjugate() * (1 / h_mat.det()))
+fn_A.add_eqn(hUU[ui, uj], h_mat.adjugate() * (1 / h_mat.det()))  # type: ignore[no-untyped-call]
 cc.add_substitution_rule(h[ui, uj], hUU[ui, uj])
 
 # chris.LLL[i][j][k] = 1/2 (d_k h_ji + d_j h_ki - d_i h_jk)
@@ -377,7 +381,8 @@ fn_gauge = cc.create_function("gauge_and_dissipation")
 r_raw = sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2 + (z - center[2]) ** 2)
 # A temporary, so that r is squared as GRTeclyn squares it (sympy would fold max(sqrt(s), 1e-6)^2 into s).
 radius = cc.decl("radius", [])
-fn_gauge.add_eqn(radius, Piecewise((Float('1.0e-6'), r_raw < Float('1.0e-6')), (r_raw, True)))  # std::max(r, 1.0e-6_rt)
+fn_gauge.add_eqn(radius, Piecewise((Float('1.0e-6'), r_raw < Float('1.0e-6')),  # type: ignore[no-untyped-call]
+                                   (r_raw, True)))  # std::max(r, 1.0e-6_rt)
 eta_cutoff_radius_squared = eta_cutoff_radius * eta_cutoff_radius
 eta_of_x = eta * (eta_cutoff_coeff * (eta_cutoff_radius_squared / (radius * radius + eta_cutoff_radius_squared))
                   + (1 - eta_cutoff_coeff))
@@ -410,8 +415,8 @@ for var, var_rhs, idx in ((chi, chi_rhs, []), (h, h_rhs, [li, lj]), (K, K_rhs, [
 
 # Bake options (e.g. CSE settings, a global ordering_fn) may come from a tuner; kernel 2's ordering functions are the
 # split tuners' out-params, passed for that function only (an add_eqn_order refers to its add_eqn calls).
-bake_options = dict(get_optional_tuning_param('bake_options', dict()))
-kernel2_orders = {k: v for k in ('early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
+bake_options: dict[str, Any] = dict(get_optional_tuning_param('bake_options', dict()))
+kernel2_orders: dict[str, Any] = {k: v for k in ('early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
                   if (v := get_optional_tuning_param(k, None)) is not None}
 if kernel2_orders:
     bake_options['functions'] = {**bake_options.get('functions', dict()),
