@@ -37,12 +37,14 @@ def toy(read_unwritten: bool = False) -> str:
     w_rhs = cc.decl("w_rhs", [])
     w = cc.decl("w", [], rhs=w_rhs)
     t = cc.decl("t", [])
+    s = cc.decl("s", [])
 
     f1 = cc.create_function("first")
     f1.add_eqn(t, kappa * (D(u, l0, l0) + D(u, l1, l1) + D(u, l2, l2)))
     f1.add_eqn(u_rhs, t * w + x)
+    f1.add_eqn(s, kappa * w * w)  # read only by loop 1: an output of loop 0 that goes to the scratch, not the rhs
     f1.split_loop()
-    f1.add_eqn(w_rhs, t * t - Rational(1, 3) * w)
+    f1.add_eqn(w_rhs, t * t - Rational(1, 3) * w + s)
 
     f2 = cc.create_function("second")
     u_rhs2 = cc.overwrite(u_rhs)
@@ -69,7 +71,8 @@ def main() -> None:
         'void first_0(', 'void first_1(', 'void second(',  # one device function per loop
         'amrex::MultiFab tile_first(', 'The_Async_Arena()',  # the scratch for t
         'tile_first_arrays[box_no]',
-        'tile_ptr[0 * tn] = t;', 'const amrex::Real t = tile_ptr[0 * tn];',  # stored by loop 0, loaded by loop 1
+        'tile_ptr[1 * tn] = t;', 'const amrex::Real t = tile_ptr[1 * tn];',  # stored by loop 0, loaded by loop 1
+        'tile_ptr[0 * tn] = s;', 'const amrex::Real s = tile_ptr[0 * tn];',
         'const amrex::Real u_rhs = rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn];',  # read before the update
         'rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] =',
         'const amrex::Real x = (i + 0.5) * DX;',

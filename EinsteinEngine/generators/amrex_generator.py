@@ -74,9 +74,12 @@ class AMReXGenerator(DslGenerator[AMReXKernelClass]):
             # Classify the symbols the equations read and write. An overwrite X' is written to X's component, while a
             # read of X (no prime) is the value an earlier loop wrote, so temporaries are matched by their raw names.
             lhs_raw = {str(lhs) for lhs, _ in subst.eqns}
-            written_raw = {str(lhs) for lhs in eqn_list.outputs}
+            # A tile temporary that its writer loop does not read itself is among that loop's outputs: it is stored to
+            # the scratch MultiFab, not to the rhs.
+            outputs = [lhs for lhs in eqn_list.outputs if str(lhs) not in stored_tiles]
+            written_raw = {str(lhs) for lhs in outputs}
             written: dict[str, str] = dict()  # rhs component -> state component
-            for lhs in eqn_list.outputs:
+            for lhs in outputs:
                 w = _name(lhs)
                 if (state := frontend.state_of_rhs_component(w)) is None:
                     raise GeneratorException(f"{where}: {w} is written but is not the rhs of a state variable.")
