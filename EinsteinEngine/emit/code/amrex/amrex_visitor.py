@@ -16,16 +16,13 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-Prints an AMReX kernel class (see frontend/dsl/amrex). Each device function is
-
-    AMREX_GPU_DEVICE AMREX_FORCE_INLINE void f(int i, int j, int k, amrex::Array4<amrex::Real> const &rhs,
-                                               amrex::Array4<amrex::Real const> const &state) const
-
-and reads the state through per-component pointers with int strides, and writes the rhs through one pointer to the
-cell, the way GRTeclyn's derivative classes and CellData do. The host function compute() launches one
-amrex::ParallelFor per device function over the rhs MultiFab's valid boxes, in order, on the current stream; the caller
-synchronizes, as GRTeclyn's specific_eval_rhs does after its launches.
+Prints the shared AMReX backend's code tree (docs/AMREX-BACKEND-DESIGN.md, section 6). Kernel mode prints a class of
+AMREX_GPU_DEVICE member functions on Array4 and a host compute() launching one ParallelFor per loop; point mode prints
+inline AMREX_GPU_HOST_DEVICE functions with register outputs. Field reads print through each array's AccessScheme.
 """
+
+from fractions import Fraction
+from typing import Callable, Mapping
 
 from multimethod import multimethod
 
@@ -33,11 +30,15 @@ from EinsteinEngine.common.util import indent
 from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunctionCallType, IntLiteralExpr, \
     IdExpr, FloatLiteralExpr, VerbatimExpr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, IfElseExpr, FunctionCall, \
     StandardizedFunctionCall, GroupedExpr
-from EinsteinEngine.emit.code.amrex.amrex_tree import StateLoad, StatePointerDecl, RhsLoad, CoordDecl, TempDecl, \
-    RhsStore, TileLoad, TileStore, DeviceFunctionDecl, LaunchGroup, KernelClassDecl
+from EinsteinEngine.emit.code.common.literals import real_literal
+from EinsteinEngine.emit.code.amrex.amrex_tree import FieldLoad, Line, RhsLoad, TileLoad, TileStore, CoordDecl, \
+    TempDecl, RhsStore, OutputAssign, DeviceFunctionDecl, LaunchGroup, KernelClassDecl, PointFunctionDecl, \
+    PointHeaderDecl
 from EinsteinEngine.emit.tree import Identifier, LineComment, Verbatim
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.generator_exception import GeneratorException
+
+MAX_EXPANDED_POWER = 4
 
 
 class AMReXVisitor(Visitor[CodeNode]):
@@ -54,7 +55,13 @@ class AMReXVisitor(Visitor[CodeNode]):
     }
 
     comparisons: dict[BinOp, str] = {BinOp.Gt: '>', BinOp.Lt: '<', BinOp.Gte: '>=', BinOp.Lte: '<=',
-                                     BinOp.Eq: '==', BinOp.Neq: '!='}
+                                     BinOp.Eq: '==', BinOp.Neq: '!=', BinOp.And: '&&', BinOp.Or: '||'}
+
+    # var -> its load printer (set by the generator per function: the array's AccessScheme and component)
+    field_load: Callable[[FieldLoad], str]
+
+    def __init__(self) -> None:
+        self.field_load = lambda n: (_ for _ in ()).throw(GeneratorException(f'no field binding for {n.var}'))
 
     @multimethod
     def visit(self, n: CodeNode) -> str:
@@ -74,8 +81,11 @@ class AMReXVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: FloatLiteralExpr) -> str:
-        # repr() is the shortest decimal string that rounds back to the same double.
-        return f'{float(n.fl)!r}'
+        return self.float_literal(float(n.fl))
+
+    def float_literal(self, fl: float) -> str:
+        """The shortest decimal that reads back as exactly `fl` (subclass hook)."""
+        return real_literal(fl)
 
     @visit.register
     def _(self, n: Verbatim) -> str:
@@ -96,14 +106,16 @@ class AMReXVisitor(Visitor[CodeNode]):
     @visit.register
     def _(self, n: BinOpExpr) -> str:
         if n.op is BinOp.Pow:
-            return self._pow(n)
+            return self.pow(n)
         if n.op in self.comparisons:
             return f'({self.visit(n.lhs)} {self.comparisons[n.op]} {self.visit(n.rhs)})'
         if n.op in (BinOp.Add, BinOp.Sub, BinOp.Mul, BinOp.Div):
             return f'({self.visit(n.lhs)} {n.op.representation} {self.visit(n.rhs)})'
         raise GeneratorException(f'AMReX backend: operator {n.op} is not supported')
 
-    def _pow(self, n: BinOpExpr) -> str:
+    def pow(self, n: BinOpExpr) -> str:
+        """Powers (docs, section 6): 0 -> 1.0; +-1..4 -> products or 1.0/products; +-1/2 -> sqrt forms; any other
+        exponent -> pow(x, p) with p the exact double or the symbol (subclass hook)."""
         base = self.visit(n.lhs)
         exponent = n.rhs
         if isinstance(exponent, UnOpExpr) and isinstance(exponent.e, IntLiteralExpr):
@@ -112,8 +124,10 @@ class AMReXVisitor(Visitor[CodeNode]):
             k = exponent.integer
             if k == 0:
                 return '1.0'
-            power = ' * '.join([base] * abs(k))
-            return f'({power})' if k > 0 else f'(1.0 / ({power}))'
+            if abs(k) <= MAX_EXPANDED_POWER:
+                power = ' * '.join([base] * abs(k))
+                return f'({power})' if k > 0 else f'(1.0 / ({power}))'
+            return f'pow({base}, {self.float_literal(float(k))})'
         if (isinstance(exponent, BinOpExpr) and exponent.op is BinOp.Div
                 and isinstance(exponent.lhs, FloatLiteralExpr) and isinstance(exponent.rhs, FloatLiteralExpr)):
             p, q = exponent.lhs.fl, exponent.rhs.fl
@@ -121,6 +135,7 @@ class AMReXVisitor(Visitor[CodeNode]):
                 return f'sqrt({base})'
             if (p, q) == (-1.0, 2.0):
                 return f'(1.0 / sqrt({base}))'
+            return f'pow({base}, {self.float_literal(float(Fraction(int(p), int(q))))})'
         return f'pow({base}, {self.visit(exponent)})'
 
     @visit.register
@@ -139,6 +154,8 @@ class AMReXVisitor(Visitor[CodeNode]):
         fn_args = ", ".join(visit_each(self, n.args))
         if fn_name == "noop":
             return f'({fn_args})'
+        if fn_name == "!":
+            return f'(!({fn_args}))'
         if len(n.template_args) > 0:
             raise GeneratorException(f'AMReX backend: unexpected template call {fn_name}')
         return f'{fn_name}({fn_args})'
@@ -154,20 +171,12 @@ class AMReXVisitor(Visitor[CodeNode]):
         return f'{self.standardized_function_calls[n.type]}({", ".join(visit_each(self, n.args))})'
 
     @visit.register
-    def _(self, n: StateLoad) -> str:
-        # i is the unit-stride direction; sy and sz are the state's j and k strides.
-        offset = ''
-        for k, stride in zip(n.offset, (None, 'sy', 'sz')):
-            if k == 0:
-                continue
-            magnitude = abs(k)
-            term = str(magnitude) if stride is None else stride if magnitude == 1 else f'{magnitude} * {stride}'
-            offset += f' {"+" if k > 0 else "-"} {term}'
-        return f'in_{n.var}[{offset.lstrip(" +") or "0"}]'
+    def _(self, n: FieldLoad) -> str:
+        return self.field_load(n)
 
     @visit.register
-    def _(self, n: StatePointerDecl) -> str:
-        return f'const amrex::Real *const in_{n.var} = state_ptr + static_cast<std::ptrdiff_t>({n.enum}) * sn;'
+    def _(self, n: Line) -> str:
+        return n.text
 
     @visit.register
     def _(self, n: RhsLoad) -> str:
@@ -183,7 +192,7 @@ class AMReXVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: CoordDecl) -> str:
-        return f'const amrex::Real {n.name} = ({n.index} + 0.5) * DX;'
+        return f'const amrex::Real {n.name} = {n.expr};'
 
     @visit.register
     def _(self, n: TempDecl) -> str:
@@ -199,16 +208,18 @@ class AMReXVisitor(Visitor[CodeNode]):
         return line + (f' // {n.comment}' if n.comment else '')
 
     @visit.register
+    def _(self, n: OutputAssign) -> str:
+        line = f'{n.target} = {self.visit(n.expr)};'
+        return line + (f' // {n.comment}' if n.comment else '')
+
+    # Kernel mode
+
+    @visit.register
     def _(self, n: DeviceFunctionDecl) -> str:
-        head = (
-            'const amrex::Real *const state_ptr = state.ptr(i, j, k);\n'
-            'const int sy = static_cast<int>(state.stride.a[0]);\n'
-            'const int sz = static_cast<int>(state.stride.a[1]);\n'
-            'const std::ptrdiff_t sn = state.stride.a[2];\n'
-            'amrex::Real *const rhs_ptr = rhs.ptr(i, j, k);\n'
-            'const std::ptrdiff_t rn = rhs.stride.a[2];\n'
-            '(void)sy;\n(void)sz;\n(void)sn;\n(void)rn;\n'
-        )
+        head = '\n'.join([*n.preamble,
+                          f'amrex::Real *const rhs_ptr = {n.rhs_array}.ptr(i, j, k);',
+                          f'const std::ptrdiff_t rn = {n.rhs_array}.stride.a[2];',
+                          *(f'(void){u};' for u in [*n.unused, 'rn'])]) + '\n'
         tile_arg = ''
         if n.uses_tile:
             tile_arg = ',\n    amrex::Array4<amrex::Real> const &tile'
@@ -217,8 +228,8 @@ class AMReXVisitor(Visitor[CodeNode]):
         return (
             f'// {n.comment}\n'
             f'AMREX_GPU_DEVICE AMREX_FORCE_INLINE void {n.name}(\n'
-            '    int i, int j, int k, amrex::Array4<amrex::Real> const &rhs,\n'
-            f'    amrex::Array4<amrex::Real const> const &state{tile_arg}) const\n'
+            f'    int i, int j, int k, amrex::Array4<amrex::Real> const &{n.rhs_array},\n'
+            f'    amrex::Array4<amrex::Real const> const &{n.state_array}{tile_arg}) const\n'
             '{\n'
             + indent(head + '\n'.join(visit_each(self, n.body)))
             + '\n}'
@@ -244,8 +255,8 @@ class AMReXVisitor(Visitor[CodeNode]):
     def _(self, n: KernelClassDecl) -> str:
         guard = f'{n.namespace}_{n.name}_HPP_'.upper()
         includes = '\n'.join(f'#include {h}' if h.startswith('<') else f'#include "{h}"'
-                             for h in ['<AMReX_Array4.H>', '<AMReX_MultiFab.H>', '<AMReX_REAL.H>', '<cstddef>', '<type_traits>',
-                                       'StateVariables.hpp', *n.includes])
+                             for h in ['<AMReX_Array4.H>', '<AMReX_MultiFab.H>', '<AMReX_REAL.H>', '<cstddef>',
+                                       '<type_traits>', *n.includes])
         ctor_args = ',\n'.join(
             f'{t} {name}' + (f' = {default}' if default is not None else '') for t, name, default in n.ctor_args
         )
@@ -296,4 +307,42 @@ class AMReXVisitor(Visitor[CodeNode]):
             f'static_assert(std::is_trivially_copyable_v<{n.name}>, "{n.name} is captured by value in device lambdas");\n\n'
             f'}} // namespace {n.namespace}\n\n'
             f'#endif /* {guard} */\n'
+        )
+
+    # Point mode
+
+    @visit.register
+    def _(self, n: PointFunctionDecl) -> str:
+        args = ',\n'.join(f'    {"" if a.used else "[[maybe_unused]] "}{a.cpp_type} {a.name}' for a in n.args)
+        ret = n.struct_name if n.struct_name is not None else 'void'
+        body = '\n'.join(visit_each(self, n.body))
+        struct = ''
+        if n.struct_name is not None:
+            struct = (f'// The outputs of {n.name}, in order.\nstruct {n.struct_name}\n{{\n'
+                      + indent('\n'.join(f'amrex::Real {o};' for o in n.outputs)) + '\n};\n\n')
+            body = f'{n.struct_name} out{{}};\n' + body + '\nreturn out;'
+        return (
+            struct
+            + f'// {n.comment}\n'
+            f'AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE {ret} {n.name}(\n{args})\n'
+            '{\n' + indent(body) + '\n}'
+        )
+
+    @visit.register
+    def _(self, n: PointHeaderDecl) -> str:
+        includes = '\n'.join(f'#include {h}' if h.startswith('<') else f'#include "{h}"'
+                             for h in ['<AMReX_Array4.H>', '<AMReX_REAL.H>', '<AMReX_GpuQualifiers.H>',
+                                       '<AMReX_Array.H>', '<AMReX_Algorithm.H>', '<AMReX_Math.H>', '<cmath>',
+                                       *n.includes])
+        functions = '\n\n'.join(visit_each(self, n.functions))
+        return (
+            f'{n.banner}\n'
+            f'#ifndef {n.guard}\n#define {n.guard}\n\n'
+            f'{includes}\n\n'
+            f'namespace {n.namespace}\n{{\n\n'
+            '// The recipe is written in three dimensions.\n'
+            'static_assert(AMREX_SPACEDIM == 3, "EE kernels are generated for AMREX_SPACEDIM == 3");\n\n'
+            f'{functions}\n\n'
+            f'}} // namespace {n.namespace}\n\n'
+            f'#endif /* {n.guard} */\n'
         )

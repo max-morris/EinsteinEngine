@@ -16,47 +16,37 @@
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 """
-A frontend for AMReX kernel classes: a C++ class whose `AMREX_GPU_DEVICE` member functions compute a right-hand side
-at one cell `(i, j, k)` of two `amrex::Array4`s, the state (read only) and the right-hand side (written, and read where
-a later function updates what an earlier one wrote), and whose host function `compute(MultiFab &rhs,
-const MultiFab &state)` launches one `amrex::ParallelFor` per device function, in the order the functions were created.
-This is the shape of GRTeclyn's CCZ4RHS and MovingPunctureGauge (Examples/BinaryBH/BinaryBHLevel.cpp,
-`specific_eval_rhs`), and of other AMReX codes that keep their evolved variables as components of one MultiFab.
+The frontend of EE's shared AMReX backend (docs/AMREX-BACKEND-DESIGN.md): an AMReXModule declares fields, outputs,
+parameters and temporaries, and its functions; its strategies (arrays and their access, coordinates, parameters,
+emission mode) are required constructor arguments, so that a code-specific subclass states every interface choice.
 
-The generated class replaces existing host-code classes without edits to the generated code, so the frontend
-describes the interface in the host code's terms:
-
-* the constructor signature (`ctor_args`), C++ statements run first in the constructor (`ctor_prelude`, e.g. reading
-  parameter structs), and how each DSL parameter is initialized from them (`add_param(..., init=...)`);
-* the grid spacing expression (`dx`), from which the DX/DXI/DYI/DZI members are formed;
-* constructor checks for configurations the generated code does not implement (`ctor_checks`).
-
-Grid variables are components of the MultiFabs: a variable `X` (or a component `X11` of a tensor) is component
-`c_X` (`enum_prefix`) of the state. A variable declared with `rhs=R` is a state variable whose time derivative is R;
-a component of R is component `c_X` of the right-hand side MultiFab. A function may read an rhs component written by an
-earlier function, and may update it through an overwrite (`overwrite(R)`, then `add_eqn(R', R + ...)`).
-
-The coordinates x, y, z are the cell centers `(i + 1/2) dx` (and likewise in y and z), measured from the index
-origin, as GRTeclyn's Coordinates class computes them before subtracting its center.
+Classification is by declaration, never by name:
+- a field (an input read from an array) is declared by `field(...)`, by `decl(..., rhs=R)` (a field whose time
+  derivative is the output R; kernel mode), or by a plain `decl` that the module's `binder` binds;
+- an output is declared by `output(...)` (point mode) or as the R of `decl(..., rhs=R)`;
+- parameters by `add_param`; everything else declared with `decl` is a temporary.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, Callable, Iterable, Unpack, cast
+from typing import Callable, Iterable, Optional, Sequence, Unpack, cast
 
-from sympy import Idx, IndexedBase, Symbol
+from sympy import Idx, Indexed, IndexedBase, Symbol
 
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import mk_symbol
+from EinsteinEngine.frontend.dsl.amrex.layout import ArrayParam, FieldBinder, FieldBinding
+from EinsteinEngine.frontend.dsl.amrex.naming import digit_component_names
+from EinsteinEngine.frontend.dsl.amrex.schemes import CoordinateScheme, EmissionMode, KernelLaunchMode, \
+    MemberParams, ParamScheme, PointFunctionMode, StructParams
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
-from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend, SymbolDeclarationKwargs
-from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
-from EinsteinEngine.frontend.dsl.grchombo.grchombo_frontend import subst_tensor_grchombo
+from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend, DslFrontendBakeOptions, SymbolDeclarationKwargs
+from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
 from EinsteinEngine.intermediate.soft_split_retainment_predicate import SoftSplitRetainmentStrategy
 from EinsteinEngine.intermediate.split_locus import SplitLocus
 
 
 class AMReXDeclKwargs(SymbolDeclarationKwargs, total=False):
-    # The time derivative of this state variable: component c_X of the right-hand side MultiFab.
+    # The time derivative of this field: an output, written to this field's component of the rhs array (kernel mode).
     rhs: IndexedBase
 
 
@@ -64,146 +54,194 @@ class AMReXDeclKwargs(SymbolDeclarationKwargs, total=False):
 class AMReXParam:
     name: str
     cpp_type: str  # 'amrex::Real', 'int' or 'bool'
-    init: str  # C++ expression, valid after the constructor prelude
+    init: Optional[str]  # MemberParams: the C++ expression assigned in the constructor; StructParams: unused
 
 
-@dataclass
-class AMReXCtorArg:
-    cpp_type: str
-    name: str
-    default: Optional[str] = None
+@dataclass(frozen=True)
+class OutputInfo:
+    """An output component: its base, and in kernel mode the field component whose rhs component it is."""
+    base: str
+    field_component: Optional[str]
 
 
-@dataclass
-class AMReXCtorCheck:
-    failure_condition: str  # C++ expression, valid after the constructor prelude
-    message: str
-
-
-class AMReXFunction(DslFunctionFrontend["AMReXKernelClass"]):
-    def __init__(self,
-                 name: str,
-                 frontend: "AMReXKernelClass",
-                 intent_override: Optional[IntentOverride] = None,
-                 *,
+class AMReXFunction(DslFunctionFrontend["AMReXModule"]):
+    def __init__(self, name: str, frontend: "AMReXModule", intent_override: Optional[IntentOverride] = None, *,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
                  auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
                  auto_split_locus: SplitLocus = SplitLocus.Early) -> None:
-        super().__init__(
-            name,
-            frontend,
-            intent_override,
-            owner_name="AMReXFunction",
-            auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate,
-            auto_split_locus=auto_split_locus
-        )
+        super().__init__(name, frontend, intent_override, owner_name="AMReXFunction",
+                         auto_hard_split_predicate=auto_hard_split_predicate,
+                         auto_soft_split_predicate=auto_soft_split_predicate, auto_split_locus=auto_split_locus)
 
 
-class AMReXKernelClass(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
+class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
     name: str
     namespace: str
-    ctor_args: list[AMReXCtorArg]
-    ctor_prelude: list[str]
-    dx: str
-    ctor_checks: list[AMReXCtorCheck]
+    arrays: list[ArrayParam]
+    binder: Callable[[str], Optional[FieldBinder]]
+    rhs_binder: Optional[FieldBinder]
+    coordinate_scheme: CoordinateScheme
+    param_scheme: ParamScheme
+    mode: EmissionMode
+    naming: Callable[..., Symbol]
     includes: list[str]
-    enum_prefix: str
-    rhs: dict[str, str]  # state variable base name -> rhs variable base name
-    function_order: list[str]  # launch order: creation order
+    max_stencil_offset: int
+    function_order: list[str]
+    field_binders: dict[str, FieldBinder]  # field base -> binder
+    output_bases: dict[str, Optional[str]]  # output base -> field base (rhs= shorthand) or None
+    component_of: dict[tuple[str, tuple[int, ...]], str]  # (base, component indices) -> component name
+    indices_of: dict[str, tuple[str, tuple[int, ...]]]  # component name -> (base, component indices)
 
-    def __init__(
-            self,
-            name: str,
-            *,
-            ctor_args: Sequence[AMReXCtorArg],
-            dx: str,
-            namespace: str = "EE",
-            ctor_prelude: Sequence[str] = (),
-            ctor_checks: Sequence[AMReXCtorCheck] = (),
-            includes: Sequence[str] = (),
-            enum_prefix: str = "c_",
-            derivative_stencil_width: int = 5,
-    ) -> None:
+    def __init__(self, name: str, *, arrays: Sequence[ArrayParam], binder: Callable[[str], Optional[FieldBinder]],
+                 coordinates: CoordinateScheme, params: ParamScheme, mode: EmissionMode, namespace: str = "EE",
+                 rhs_binder: Optional[FieldBinder] = None, naming: Callable[..., Symbol] = digit_component_names,
+                 includes: Sequence[str] = (), derivative_stencil_width: int = 5, max_stencil_offset: int = 3) -> None:
         super().__init__(dimensionality=3, derivative_stencil_width=derivative_stencil_width)
+        supported = {KernelLaunchMode: (MemberParams,), PointFunctionMode: (StructParams,)}
+        if type(params) not in supported.get(type(mode), ()):
+            raise DslException(f"Unsupported combination: {type(mode).__name__} with {type(params).__name__} "
+                               f"(supported: {', '.join(f'{m.__name__} with {p[0].__name__}' for m, p in supported.items())}).")
+        array_names = [a.name for a in arrays]
+        if len(set(array_names)) != len(array_names):
+            raise DslException(f"Array names must be unique: {array_names}")
         self.name = name
         self.namespace = namespace
-        self.ctor_args = list(ctor_args)
-        self.ctor_prelude = list(ctor_prelude)
-        self.dx = dx
-        self.ctor_checks = list(ctor_checks)
+        self.arrays = list(arrays)
+        self.binder = binder
+        self.rhs_binder = rhs_binder
+        self.coordinate_scheme = coordinates
+        self.param_scheme = params
+        self.mode = mode
+        self.naming = naming
         self.includes = list(includes)
-        self.enum_prefix = enum_prefix
-        self.rhs = dict()
+        self.max_stencil_offset = max_stencil_offset
         self.function_order = list()
+        self.field_binders = dict()
+        self.output_bases = dict()
+        self.component_of = dict()
+        self.indices_of = dict()
+
+    # Declarations
+
+    def _record_components(self, base: IndexedBase | Symbol, basename: str, indices: tuple[Idx, ...]) -> None:
+        """Scalars are their own component; tensor components are recorded as the substitution rule names them."""
+        if len(indices) == 0:
+            self.component_of[(basename, ())] = basename
+            self.indices_of[basename] = (basename, ())
+
+    def _on_substitution_symbol_created(self, indexed: Indexed, sub_symbol: Symbol) -> None:
+        from EinsteinEngine.frontend.dsl.use_indices import idx_to_int
+        base = str(indexed.base)
+        key = (base, tuple(idx_to_int(cast(Idx, ind)) for ind in indexed.indices))
+        self.component_of[key] = str(sub_symbol)
+        self.indices_of[str(sub_symbol)] = key
 
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[AMReXDeclKwargs]) -> IndexedBase:
         """
-        Declares a variable, named GRChombo/GRTeclyn-style by default (h11, Gamma1, ...; see `subst_tensor_grchombo`).
-        `rhs=R` makes it a state variable whose time derivative is the (previously declared) variable R.
+        Declares a variable, named by the module's naming rule. With `rhs=R` (R declared first), it is a field bound by
+        the module's `rhs_binder`, whose time derivative is the output R. Otherwise the module's `binder` decides: a
+        FieldBinder makes it a field, None a temporary.
         """
-        if (rhs := kwargs.pop('rhs', None)) is not None:
+        rhs = kwargs.pop('rhs', None)
+        kwargs.setdefault('substitution_rule', self.naming)
+        indices = tuple(indices)
+        if rhs is not None:
             rhs_name = str(rhs.args[0])
-            if rhs_name not in self.declarations:
-                raise DslException(f"rhs variable {rhs_name} of {basename} must be declared first.")
-            self.rhs[basename] = rhs_name
-        kwargs.setdefault('substitution_rule', subst_tensor_grchombo)
-        return super().decl(basename, indices, **cast(SymbolDeclarationKwargs, kwargs))
+            if rhs_name not in self.output_bases:
+                raise DslException(f"rhs variable {rhs_name} of {basename} must be declared (as an output) first.")
+            if self.rhs_binder is None:
+                raise DslException(f"{basename}: rhs= needs the module's rhs_binder (the array the fields live in).")
+            self.output_bases[rhs_name] = basename
+            self.field_binders[basename] = self.rhs_binder
+        elif (binder := self.binder(basename)) is not None:
+            self.field_binders[basename] = binder
+        result = super().decl(basename, indices, **cast(SymbolDeclarationKwargs, kwargs))
+        self._record_components(result, basename, indices)
+        return result
 
-    @staticmethod
-    def _component_of(component: str, base: str) -> Optional[str]:
-        """The component suffix if `component` is `base` or one of its components (h12 of h -> '12'), else None."""
-        suffix = component[len(base):]
-        if component.startswith(base) and (suffix == '' or suffix.isdigit()):
-            return suffix
-        return None
+    def field(self, basename: str, indices: Iterable[Idx], *, array: str, component: Callable[[str], str],
+              **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
+        """Declares a field explicitly: every component is read from `array` with component expression
+        `component(name)`."""
+        if self.binder(basename) is not None:
+            raise DslException(f"{basename} is declared as a field both by the binder and by field().")
+        if array not in {a.name for a in self.arrays}:
+            raise DslException(f"{basename}: unknown array {array}")
+        kwargs.setdefault('substitution_rule', self.naming)
+        indices = tuple(indices)
+        self.field_binders[basename] = FieldBinder(array, component)
+        result = super().decl(basename, indices, **kwargs)
+        self._record_components(result, basename, indices)
+        return result
 
-    def state_component(self, component: str) -> bool:
-        """True iff `component` is a component of a state variable (chi, h12, ...)."""
-        return any(self._component_of(component, state) is not None for state in self.rhs)
+    def output(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
+        """Declares an output: in point mode a register output of the functions that assign it; also the R that a
+        later `decl(X, rhs=R)` attaches to field X."""
+        if self.binder(basename) is not None:
+            raise DslException(f"{basename} is bound as a field and cannot be an output.")
+        kwargs.setdefault('substitution_rule', self.naming)
+        indices = tuple(indices)
+        self.output_bases[basename] = None
+        result = super().decl(basename, indices, **kwargs)
+        self._record_components(result, basename, indices)
+        return result
 
-    def state_of_rhs_component(self, component: str) -> Optional[str]:
-        """The state-variable component whose rhs is `component` (h_rhs12 -> h12), or None."""
-        for state, rhs in self.rhs.items():
-            if (suffix := self._component_of(component, rhs)) is not None:
-                return state + suffix
-        return None
-
-    def create_function(self,
-                        name: str,
-                        *,
-                        intent_override: Optional[IntentOverride] = None,
-                        auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
-                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
-                        auto_split_locus: SplitLocus = SplitLocus.Early) -> AMReXFunction:
-        """
-        Creates a device function of the class. `compute()` launches one ParallelFor per function, in creation order,
-        so a function sees every rhs component the earlier ones wrote.
-        """
-        if name in self.functions:
-            raise DslException(f"Function {name} already exists.")
-        if name == "compute":
-            raise DslException("'compute' is the name of the generated host launcher.")
-        fn = AMReXFunction(
-            name,
-            self,
-            intent_override,
-            auto_hard_split_predicate=auto_hard_split_predicate,
-            auto_soft_split_predicate=auto_soft_split_predicate,
-            auto_split_locus=auto_split_locus
-        )
-        self.functions[name] = fn
-        self.function_order.append(name)
-        return fn
-
-    def add_param(self, name: str, *, cpp_type: str = 'amrex::Real', init: str) -> Symbol:
-        """
-        Declares a parameter: a member of the generated class, of type `cpp_type`, assigned the C++ expression `init`
-        in the constructor body, after the prelude.
-        """
+    def add_param(self, name: str, *, cpp_type: str = 'amrex::Real', init: Optional[str] = None) -> Symbol:
+        """Declares a parameter. MemberParams needs `init`, the C++ expression assigned in the constructor."""
         if cpp_type not in ('amrex::Real', 'int', 'bool'):
             raise DslException(f"Unsupported parameter type {cpp_type} for {name}")
         if name in self.params:
             raise DslException(f"Parameter {name} already declared.")
+        if isinstance(self.param_scheme, MemberParams) and init is None:
+            raise DslException(f"Parameter {name}: MemberParams needs an init expression.")
         self.params[name] = AMReXParam(name, cpp_type, init)
         return mk_symbol(name)
+
+    def create_function(self, name: str, *, intent_override: Optional[IntentOverride] = None,
+                        auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
+                        auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
+                        auto_split_locus: SplitLocus = SplitLocus.Early) -> AMReXFunction:
+        """Creates a function. Kernel mode launches them in creation order; point mode emits one inline function each."""
+        if name in self.functions:
+            raise DslException(f"Function {name} already exists.")
+        if name == "compute":
+            raise DslException("'compute' is the name of the generated host launcher.")
+        fn = AMReXFunction(name, self, intent_override, auto_hard_split_predicate=auto_hard_split_predicate,
+                           auto_soft_split_predicate=auto_soft_split_predicate, auto_split_locus=auto_split_locus)
+        self.functions[name] = fn
+        self.function_order.append(name)
+        return fn
+
+    # Classification (used by the generator)
+
+    def field_binding(self, component: str) -> Optional[FieldBinding]:
+        """The array and component expression of a field component, or None if `component` is not a field's."""
+        if (key := self.indices_of.get(component)) is None or key[0] not in self.field_binders:
+            return None
+        return self.field_binders[key[0]].bind(component)
+
+    def output_info(self, component: str) -> Optional[OutputInfo]:
+        """An output component's base, and the field component it is the rhs of (rhs= shorthand), or None."""
+        if (key := self.indices_of.get(component)) is None or key[0] not in self.output_bases:
+            return None
+        base, indices = key
+        field_base = self.output_bases[base]
+        field_component = None if field_base is None else self.component_of.get((field_base, indices))
+        if field_base is not None and field_component is None:
+            raise DslException(f"Output {component} has no matching component of field {field_base}.")
+        return OutputInfo(base, field_component)
+
+    # Bake: the guard fold always comes first (docs, section 7).
+
+    def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
+        from EinsteinEngine.generators.amrex.guards import fold_guards, fold_guards_optimization
+        from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
+        if opts.get('do_cse', True):
+            optimizations = list(opts.get('cse_optimizations', default_cse_optimizations()))
+            opts['cse_optimizations'] = [fold_guards_optimization(), *optimizations]
+        else:
+            for fn in self.functions.values():
+                for eqn_list in fn.eqn_complex.eqn_lists:
+                    for lhs, rhs in list(eqn_list.eqns.items()):
+                        eqn_list.eqns[lhs] = fold_guards(rhs)
+        super().bake(**opts)

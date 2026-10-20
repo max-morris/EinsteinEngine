@@ -15,7 +15,9 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from dataclasses import dataclass
+"""Code tree of the shared AMReX backend (kernel-launch and point-function modes)."""
+
+from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
 from EinsteinEngine.common.stencil_idx import StencilIdx
@@ -23,46 +25,45 @@ from EinsteinEngine.emit.code.common.code_tree import Expr, Stmt, CodeNode
 
 
 @dataclass
-class StateLoad(Expr):
-    """A read of a state component at a stencil offset from the current cell: in_<var>[offset]."""
+class FieldLoad(Expr):
+    """A read of a field component at a stencil offset from (i, j, k); printed by its array's AccessScheme."""
     var: str
     offset: StencilIdx
 
 
 @dataclass
-class StatePointerDecl(Stmt):
-    """const amrex::Real *const in_<var> = state_ptr + <enum> * sn;"""
-    var: str
-    enum: str
+class Line(Stmt):
+    """A verbatim statement (preamble lines, per-component declarations)."""
+    text: str
 
 
 @dataclass
 class RhsLoad(Stmt):
-    """const amrex::Real <name> = rhs_ptr[<enum> * rn]; an rhs component written by an earlier function. Loaded before
-    any store, so that an update of the same component in this function reads the earlier value."""
+    """Kernel mode: `const amrex::Real <name> = rhs_ptr[<enum> * rn];`, an rhs component an earlier loop wrote, loaded
+    before any store, so that an update of the same component in this loop reads the earlier value."""
     name: str
     enum: str
 
 
 @dataclass
 class TileLoad(Stmt):
-    """const amrex::Real <name> = tile_ptr[<index> * tn]; a tile temporary an earlier loop of this function stored."""
+    """Kernel mode: `const amrex::Real <name> = tile_ptr[<index> * tn];`."""
     name: str
     index: int
 
 
 @dataclass
 class TileStore(Stmt):
-    """tile_ptr[<index> * tn] = <name>; a tile temporary this loop computed, for later loops of this function."""
+    """Kernel mode: `tile_ptr[<index> * tn] = <name>;`."""
     name: str
     index: int
 
 
 @dataclass
 class CoordDecl(Stmt):
-    """const amrex::Real <name> = (<index> + 0.5) * DX; the cell-center coordinate."""
+    """`const amrex::Real <name> = <expr>;`, a cell coordinate."""
     name: str
-    index: str
+    expr: str
 
 
 @dataclass
@@ -77,8 +78,16 @@ class TempDecl(Stmt):
 
 @dataclass
 class RhsStore(Stmt):
-    """rhs_ptr[<enum> * rn] = <expr>;"""
+    """Kernel mode: `rhs_ptr[<enum> * rn] = <expr>;`."""
     enum: str
+    expr: Expr
+    comment: Optional[str] = None
+
+
+@dataclass
+class OutputAssign(Stmt):
+    """Point mode: `<target> = <expr>;`, an output out-parameter or struct member."""
+    target: str
     expr: Expr
     comment: Optional[str] = None
 
@@ -92,18 +101,22 @@ class KernelParam(CodeNode):
 
 @dataclass
 class DeviceFunctionDecl(CodeNode):
-    """An AMREX_GPU_DEVICE member function computing one cell of one loop. `uses_tile`: it takes the function's tile
-    scratch array as a further argument."""
+    """Kernel mode: an AMREX_GPU_DEVICE member function computing one cell of one loop. `preamble`: the state access's
+    preamble; `unused`: names to void; `uses_tile`: it takes the function's tile scratch array."""
     name: str
     comment: str
     body: Sequence[Stmt]
+    state_array: str
+    rhs_array: str
+    preamble: Sequence[str]
+    unused: Sequence[str]
     uses_tile: bool = False
 
 
 @dataclass
 class LaunchGroup(CodeNode):
-    """The loops of one DSL function, launched in order, sharing a scratch MultiFab with one component per tile
-    temporary (none if `tiles` is empty)."""
+    """Kernel mode: the loops of one DSL function, launched in order, sharing a scratch MultiFab with one component per
+    tile temporary (none if `tiles` is empty)."""
     name: str
     tiles: Sequence[str]
     functions: Sequence[DeviceFunctionDecl]
@@ -121,3 +134,31 @@ class KernelClassDecl(CodeNode):
     params: Sequence[KernelParam]
     launches: Sequence[LaunchGroup]  # in launch order
     banner: str
+
+
+@dataclass
+class PointArg(CodeNode):
+    cpp_type: str
+    name: str
+    used: bool
+
+
+@dataclass
+class PointFunctionDecl(CodeNode):
+    """Point mode: an inline AMREX_GPU_HOST_DEVICE function. `outputs`: (name, member) in order; with a struct, the
+    function returns `struct_name`."""
+    name: str
+    comment: str
+    args: Sequence[PointArg]
+    body: Sequence[Stmt]
+    outputs: Sequence[str]
+    struct_name: Optional[str] = None
+
+
+@dataclass
+class PointHeaderDecl(CodeNode):
+    namespace: str
+    includes: Sequence[str]
+    functions: Sequence[PointFunctionDecl]
+    banner: str
+    guard: str

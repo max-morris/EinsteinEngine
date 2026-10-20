@@ -67,12 +67,12 @@ args = parser.parse_args(sys.argv[1:])
 fd_order = args.fd_order
 d = 3  # GR_SPACEDIM
 
-cc = AMReXKernelClass(
+cc = GRTeclynKernelClass(
     f"CCZ4RHS{fd_order}",
     namespace="EE",
     ctor_args=[
-        AMReXCtorArg("amrex::Real", "a_dx"),
-        AMReXCtorArg("amrex::Real", "a_cosmological_constant", "0"),
+        CtorArg("amrex::Real", "a_dx"),
+        CtorArg("amrex::Real", "a_cosmological_constant", "0"),
     ],
     # CCZ4RHS's constructor (CCZ4_params_t::fill_params, evolution.sigma) and MovingPunctureGauge's (params_t::fill_params).
     ctor_prelude=[
@@ -122,9 +122,9 @@ x, y, z = cc.mk_coords()
 def state(name: str, indices: list[Idx], symmetric: bool = False) -> tuple[IndexedBase, IndexedBase]:
     if symmetric:
         sym = [(indices[0], indices[1])]
-        rhs = cc.decl(f"{name}_rhs", indices, symmetries=sym)
+        rhs = cc.output(f"{name}_rhs", indices, symmetries=sym)
         return cc.decl(name, indices, rhs=rhs, symmetries=sym), rhs
-    rhs = cc.decl(f"{name}_rhs", indices)
+    rhs = cc.output(f"{name}_rhs", indices)
     return cc.decl(name, indices, rhs=rhs), rhs
 
 chi, chi_rhs = state("chi", [])                  # conformal factor

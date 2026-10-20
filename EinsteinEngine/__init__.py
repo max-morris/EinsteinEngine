@@ -55,8 +55,14 @@ from EinsteinEngine.frontend.dsl.grchombo.grchombo_frontend import GRChomboCompu
     GRChomboCtorCheck, subst_tensor_grchombo
 from EinsteinEngine.generators.grchombo_generator import GRChomboGenerator
 from EinsteinEngine.wizards.grchombo_wizard import GRChomboWizard
-from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXKernelClass, AMReXCtorArg, AMReXCtorCheck
-from EinsteinEngine.generators.amrex_generator import AMReXGenerator
+from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXModule, AMReXFunction
+from EinsteinEngine.frontend.dsl.amrex.layout import ArrayParam, FieldBinder, FieldBinding, StridedPointer, \
+    Array4Call
+from EinsteinEngine.frontend.dsl.amrex.schemes import CellCentered, NodeCentered, MemberParams, StructParams, \
+    CtorArg, CtorCheck, KernelLaunchMode, PointFunctionMode
+from EinsteinEngine.frontend.dsl.amrex.naming import digit_component_names
+from EinsteinEngine.generators.amrex import AMReXGenerator
+from EinsteinEngine.frontend.dsl.amrex.grteclyn import GRTeclynKernelClass
 from EinsteinEngine.wizards.amrex_wizard import AMReXWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
@@ -71,7 +77,10 @@ __all__ = [
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
     "GRChomboComputeClass", "GRChomboCtorArg", "GRChomboCtorCheck", "subst_tensor_grchombo", "GRChomboGenerator",
-    "GRChomboWizard", "AMReXKernelClass", "AMReXCtorArg", "AMReXCtorCheck", "AMReXGenerator", "AMReXWizard",
+    "GRChomboWizard",
+    "AMReXModule", "AMReXFunction", "ArrayParam", "FieldBinder", "FieldBinding", "StridedPointer", "Array4Call",
+    "CellCentered", "NodeCentered", "MemberParams", "StructParams", "CtorArg", "CtorCheck", "KernelLaunchMode",
+    "PointFunctionMode", "digit_component_names", "AMReXGenerator", "AMReXWizard", "GRTeclynKernelClass",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
