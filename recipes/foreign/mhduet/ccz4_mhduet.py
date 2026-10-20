@@ -71,9 +71,13 @@ def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False) -> d
     """Declare the fields and add the 22 interior right-hand sides to `fn`. `param(name)` returns the symbol of
     MHDuet parameter `name` (its frontend-specific declaration). With `ko`, each RHS also gets MHDuet's
     Kreiss-Oliger dissipation, dissipation_factor_<field> sum_a meshDissipation_a(<field>) (MHDuet adds it only when
-    the factor is positive; a zero factor adds an exact zero here). MHDuet adds it after its outer-boundary
-    override, so whether it belongs in the generated function is the slot-in's choice. Returns the declared state
-    and RHS symbols."""
+    the factor is positive, and so does this; a factor <= 0 adds an exact zero). MHDuet adds it after its outer-boundary
+    override, so whether it belongs in the generated function is the slot-in's choice.
+
+    For the slot-in: MHDuet's coordinates are grid nodes, x = prob_lo + i dx (its `xcoord(i)`), not cell centers;
+    the radial damping (D1 of the justification) depends on them. Returns the declared state and RHS symbols."""
+    # D(f, ...) must be MHDuet's 4th-order centered stencils (D1CDO4, D2CDO4, D1CDO4crossed): width 5.
+    assert cc.apply_div.n == 5, f"derivative stencil width {cc.apply_div.n}, MHDuet needs 5"
     ul, ll = cc.mk_pair("l")
     um, lm = cc.mk_pair("m")
     x, y, z = cc.mk_coords()
@@ -120,8 +124,9 @@ def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False) -> d
         diss = cc.mk_stencil("diss", la, kreiss_oliger_stencil(5, la))
 
     def KO(f: Expr, factor: Expr) -> Expr:
-        """factor * sum_a meshDissipation_a(f): the 7-point sixth difference / (64 dx) per direction."""
-        return factor * (diss(f, l0) + diss(f, l1) + diss(f, l2)) if ko else 0
+        """MHDuet's `if (factor > 0.0) RHS += factor * sum_a meshDissipation_a(f)`, meshDissipation the 7-point sixth
+        difference / (64 dx) per direction. The guard is kept: a factor <= 0 adds an exact zero."""
+        return Piecewise((factor, 0 < factor), (0, True)) * (diss(f, l0) + diss(f, l1) + diss(f, l2)) if ko else 0
 
     def dfac(name: str) -> Expr:
         return param(f"dissipation_factor_{name}")
