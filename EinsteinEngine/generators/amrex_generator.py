@@ -59,6 +59,7 @@ class AMReXGenerator(DslGenerator[AMReXKernelClass]):
         # Classify the symbols the equations read and write. An overwrite X' is written to X's component, while a
         # read of X (no prime) is the value an earlier function wrote, so temporaries are matched by their raw names.
         lhs_raw = {str(lhs) for lhs, _ in subst.eqns}
+        written_raw = {str(lhs) for lhs in eqn_list.outputs}
         written: dict[str, str] = dict()  # rhs component -> state component
         for lhs in eqn_list.outputs:
             w = _name(lhs)
@@ -78,6 +79,10 @@ class AMReXGenerator(DslGenerator[AMReXKernelClass]):
                     state_reads.add(var)
             for s in free_symbols(rhs):
                 name = _name(s)
+                if str(s) in written_raw:
+                    # A store goes to the rhs array, not to a local: a later read in this function would print the
+                    # value loaded before the store (or an undeclared name).
+                    raise GeneratorException(f"{fn.name}: reads {s}, which this function writes to the rhs array.")
                 if str(s) in params or str(s) in lhs_raw or name in self.vars_to_ignore - set(COORDS):
                     continue
                 if "'" in str(s):
