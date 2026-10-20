@@ -34,7 +34,7 @@ class AthenaKSympyVisitor(BaseSympyExprVisitor[Expr]):
 
     standard_fns_rewrite = {
         **BaseSympyExprVisitor.standard_fns_rewrite,
-        sy.Abs: lambda a, *_: sy.Function('Kokkos::fabs')(a),  # type: ignore[no-untyped-call]
+        sy.Abs: lambda a, *_: sy.Function('Kokkos::fabs')(a),
     }
 
     def __init__(self, *, stencil_fns: Optional[set[str]] = None,

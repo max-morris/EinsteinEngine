@@ -117,9 +117,9 @@ class AthenaKGenerator(DslGenerator[AthenaKKernel]):
         loops: list[KernelLoop] = []
         used_params: set[sy.Symbol] = set()
         for fn in frontend.functions.values():
-            loop, params = self._generate_loop(fn)
+            loop, loop_params = self._generate_loop(fn)
             loops.append(loop)
-            used_params |= params
+            used_params |= loop_params
 
         params = [KernelParam(p.name, p.cpp_type, p.init)
                   for p in sorted(frontend.params.values(), key=lambda p: p.name)

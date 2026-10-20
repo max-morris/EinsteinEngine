@@ -43,7 +43,9 @@ import argparse
 import sys
 from math import comb
 
-from sympy import Rational, Expr, Piecewise, Integer, Idx
+from typing import Any, cast
+
+from sympy import Rational, Expr, Piecewise, Integer, Idx, IndexedBase
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 from EinsteinEngine import *
@@ -119,10 +121,18 @@ if args.ssl:
 ###
 # State (Z4c::Z4c_vars, views u0 and u_rhs, indices Z4c::I_Z4C_*).
 ###
-def state(var: str, enum: str, indices: list, symmetric: bool = False) -> tuple:
-    syms = dict(symmetries=[(indices[0], indices[1])]) if symmetric else dict()
-    rhs = kk.decl(f"{var}_rhs", indices, view="u_rhs", enum=I + enum, **syms)
-    return kk.decl(var, indices, view="u0", enum=I + enum, **syms), rhs
+def state(var: str, enum: str, indices: list[Idx], symmetric: bool = False) -> tuple[IndexedBase, IndexedBase]:
+    if symmetric:
+        sym = [(indices[0], indices[1])]
+        return (kk.decl(var, indices, view="u0", enum=I + enum, symmetries=sym),
+                kk.decl(f"{var}_rhs", indices, view="u_rhs", enum=I + enum, symmetries=sym))
+    return (kk.decl(var, indices, view="u0", enum=I + enum),
+            kk.decl(f"{var}_rhs", indices, view="u_rhs", enum=I + enum))
+
+
+def pw(*pairs: tuple[object, object]) -> Expr:
+    """A typed Piecewise."""
+    return cast(Expr, Piecewise(*pairs))  # type: ignore[no-untyped-call]
 
 chi, chi_rhs = state("chi", "CHI", [])                            # conformal factor, psi^chi_psi_power
 g, g_rhs = state("g", "G", [li, lj], symmetric=True)              # conformal metric g_dd
@@ -155,7 +165,7 @@ def _stencil(den: int, weights: dict[int, int]) -> Expr:
     """1/den * sum_k w_k f(x + k h) * DDI(la), with integer weights w_k, grouped so the weights sum to zero exactly."""
     assert all(isinstance(w, int) for w in weights.values())
     total = sum(Integer(w) * stencil(la * k) for k, w in weights.items())
-    return Rational(1, den) * noop(total) * DDI(la)
+    return cast(Expr, Rational(1, den) * noop(total) * DDI(la))
 
 
 # Lx: lopsided first derivatives for the advection terms. dl (offsets -ng .. ng - 2) where the shift component is
@@ -176,14 +186,15 @@ diss_op = kk.mk_stencil("diss_op", la, _stencil(1, _diss_w))
 def advect(f: Expr) -> Expr:
     """sum_a Lx(a, beta, f): beta^a dl_a f where beta^a < 0, else beta^a dr_a f (finite_diff.hpp: Lx)."""
     return sum(
-        Piecewise((beta[ua_] * adv_dl(f, la_), beta[ua_] < 0), (beta[ua_] * adv_dr(f, la_), True))
-        for ua_, la_ in ((u0, l0), (u1, l1), (u2, l2))
+        (pw((beta[ua_] * adv_dl(f, la_), beta[ua_] < 0), (beta[ua_] * adv_dr(f, la_), True))
+         for ua_, la_ in ((u0, l0), (u1, l1), (u2, l2))),
+        sympify(0)
     )
 
 
 def dissipation(f: Expr) -> Expr:
     """diss * sum_a Diss(a, f) (z4c_calcrhs.cpp, the K-O Dissipation loop)."""
-    return diss * (diss_op(f, l0) + diss_op(f, l1) + diss_op(f, l2))
+    return cast(Expr, diss * (diss_op(f, l0) + diss_op(f, l1) + diss_op(f, l2)))
 
 
 ###
@@ -195,7 +206,7 @@ fn = kk.create_function("rhs", label=f"EE z4c rhs {name}")
 # chi_guarded = max(chi, chi_div_floor), as chi > floor ? chi : floor. (A temporary: a Piecewise in a substitution
 # rule would be folded into its neighbors by the rule's simplify().)
 chi_g = kk.decl("chi_g", [])
-fn.add_eqn(chi_g, Piecewise((chi, chi > chi_div_floor), (chi_div_floor, True)))
+fn.add_eqn(chi_g, pw((chi, chi > chi_div_floor), (chi_div_floor, True)))
 p = chi_psi_power
 # oopsi4 = pow(chi_guarded, -4 / chi_psi_power), once per point (a temporary: as a substitution rule, simplify()
 # would merge it with the other powers of chi_guarded into several pow calls).
@@ -208,7 +219,7 @@ kk.add_substitution_rule(K, Khat + 2 * Theta)
 # g_uu = SpatialInv(1/SpatialDet(g_dd), g_dd): the inverse of the evolved g_dd, not assuming det g = 1.
 g_mat = kk.get_matrix(g[li, lj])
 gu = kk.decl("gu", [ui, uj], symmetries=[(ui, uj)])
-fn.add_eqn(gu[ui, uj], g_mat.adjugate() * (1 / g_mat.det()))
+fn.add_eqn(gu[ui, uj], g_mat.adjugate() * (1 / g_mat.det()))  # type: ignore[no-untyped-call]
 kk.add_substitution_rule(g[ui, uj], gu[ui, uj])
 
 # Gamma_ddd(c,a,b) = 1/2 (d_a g_bc + d_b g_ac - d_c g_ab)   (dg_ddd(c,a,b) = d_c g_ab)
@@ -290,23 +301,25 @@ kk.add_substitution_rule(ddbeta[la], Rational(1, 3) * D(beta[ub], la, lb))
 # Lie derivatives along the shift (advection by Lx plus the finalization terms). These contain the Piecewise of the
 # advection, so they are inlined (Python functions), not substitution rules.
 def Lchi() -> Expr:
-    return advect(chi) + Rational(1, 6) * p * chi_g * dbeta
+    return cast(Expr, advect(chi) + Rational(1, 6) * p * chi_g * dbeta)
 
 
 def LGam(a: Idx, la_: Idx) -> Expr:
     """LGam_u(a) = Lx(Gam^a) + 2/3 Gamma_u(a) dbeta + g^ab ddbeta_b - Gamma_u(b) d_b beta^a + g^bc d_b d_c beta^a"""
-    return (advect(Gam[a]) + Rational(2, 3) * Gu[a] * dbeta + gu[a, ub] * ddbeta[lb] - Gu[ub] * D(beta[a], lb)
-            + gu[ub, uc] * D(beta[a], lb, lc))
+    return cast(Expr, advect(Gam[a]) + Rational(2, 3) * Gu[a] * dbeta + gu[a, ub] * ddbeta[lb]
+                - Gu[ub] * D(beta[a], lb) + gu[ub, uc] * D(beta[a], lb, lc))
 
 
 def Lg(a: Idx, b: Idx) -> Expr:
     """Lg_dd(a,b) = Lx(g_ab) - 2/3 g_ab dbeta + d_a beta^c g_bc + d_b beta^c g_ac   (dbeta_du(a,c) = d_a beta^c)"""
-    return advect(g[a, b]) - Rational(2, 3) * g[a, b] * dbeta + D(beta[uc], a) * g[b, lc] + D(beta[uc], b) * g[a, lc]
+    return cast(Expr, advect(g[a, b]) - Rational(2, 3) * g[a, b] * dbeta + D(beta[uc], a) * g[b, lc]
+                + D(beta[uc], b) * g[a, lc])
 
 
 def LA(a: Idx, b: Idx) -> Expr:
     """LA_dd(a,b) = Lx(A_ab) - 2/3 A_ab dbeta + d_b beta^c A_ac + d_a beta^c A_bc"""
-    return advect(A[a, b]) - Rational(2, 3) * A[a, b] * dbeta + D(beta[uc], b) * A[a, lc] + D(beta[uc], a) * A[b, lc]
+    return cast(Expr, advect(A[a, b]) - Rational(2, 3) * A[a, b] * dbeta + D(beta[uc], b) * A[a, lc]
+                + D(beta[uc], a) * A[b, lc])
 
 
 # With the dissipation fused into this loop, each right-hand side gets its dissipation term here.
@@ -345,7 +358,7 @@ alpha_value = (lapse_advect * advect(alpha)
 if args.ssl:
     # slow start lapse: += ssl_damping_amp (W - alpha) W^ssl_damping_index exp(-1/2 (time / ssl_damping_time)^2),
     # W = max(chi, chi_min_floor)^(1/2)
-    W = Piecewise((chi, chi > chi_min_floor), (chi_min_floor, True)) ** Rational(1, 2)
+    W = pw((chi, chi > chi_min_floor), (chi_min_floor, True)) ** Rational(1, 2)
     alpha_value += (ssl_damping_amp * (W - alpha) * W ** ssl_damping_index
                     * exp(-Rational(1, 2) * (time / ssl_damping_time) ** 2))
 fn.add_eqn(alpha_rhs, rhs(alpha, alpha_value))

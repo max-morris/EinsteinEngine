@@ -38,7 +38,7 @@ are named with `subst_tensor_xyz` (gxy, betax, ...). Variables declared without 
 """
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, Callable, Iterable, Unpack
+from typing import Any, Optional, Sequence, Callable, Iterable, Unpack, cast
 
 from sympy import Idx, IndexedBase, Symbol
 
@@ -164,7 +164,7 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
                 self.grid[basename.replace("'", "")] = AthenaKGridVar(basename.replace("'", ""), len(indices),
                                                                        view, enum)
         kwargs.setdefault('substitution_rule', subst_tensor_xyz)
-        return super().decl(basename, indices, **kwargs)
+        return super().decl(basename, indices, **cast(Any, kwargs))
 
     def grid_location(self, component: str) -> Optional[tuple[str, str]]:
         """The (view, index) of a grid-variable component symbol (gxy -> (u0, I_Z4C_GXY)), or None."""
