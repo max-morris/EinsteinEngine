@@ -55,6 +55,9 @@ from EinsteinEngine.frontend.dsl.grchombo.grchombo_frontend import GRChomboCompu
     GRChomboCtorCheck, subst_tensor_grchombo
 from EinsteinEngine.generators.grchombo_generator import GRChomboGenerator
 from EinsteinEngine.wizards.grchombo_wizard import GRChomboWizard
+from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXKernelClass, AMReXCtorArg, AMReXCtorCheck
+from EinsteinEngine.generators.amrex_generator import AMReXGenerator
+from EinsteinEngine.wizards.amrex_wizard import AMReXWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
@@ -68,7 +71,7 @@ __all__ = [
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
     "GRChomboComputeClass", "GRChomboCtorArg", "GRChomboCtorCheck", "subst_tensor_grchombo", "GRChomboGenerator",
-    "GRChomboWizard",
+    "GRChomboWizard", "AMReXKernelClass", "AMReXCtorArg", "AMReXCtorCheck", "AMReXGenerator", "AMReXWizard",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
