@@ -62,7 +62,10 @@ args = parser.parse_args(sys.argv[1:])
 
 ng = args.nghost
 width = 2 * ng - 1  # centered stencil width: order 2 * (ng - 1)
-name = f"Z4cRHS{ng}{'SSL' if args.ssl else ''}{'F' if args.diss == 'fused' else ''}"
+# The function name does not depend on --diss (the dispatch header calls Z4cRHS<ng>[SSL]); the par_for labels and
+# the banner record the variant.
+name = f"Z4cRHS{ng}{'SSL' if args.ssl else ''}"
+variant = '' if args.diss == 'separate' else ' fused-diss'
 
 kk = AthenaKKernel(
     name,
@@ -174,6 +177,11 @@ _lx_dl = {2: (2, {-2: 1, -1: -4, 0: 3}),
           3: (12, {-3: -1, -2: 6, -1: -18, 0: 10, 1: 3}),
           4: (60, {-4: 1, -3: -8, -2: 30, -1: -80, 0: 35, 1: 24, 2: -2})}
 _dl_den, _dl_w = _lx_dl[ng]
+# Check them against the one-point-lopsided stencils of the same width (nrpy, offsets -1 and +1).
+for _off, _w in ((-1, _dl_w), (1, {-k: -w for k, w in _dl_w.items()})):
+    _c = setup_FD_matrix__return_inverse_lowlevel(width, _off).col(1)
+    assert {i - width // 2 + _off: _c[i] for i in range(width)} == {k: Rational(w, _dl_den) for k, w in _w.items()}, \
+        "the Lx weights are not the lopsided first derivative"
 adv_dl = kk.mk_stencil("adv_dl", la, _stencil(_dl_den, _dl_w))
 adv_dr = kk.mk_stencil("adv_dr", la, _stencil(_dl_den, {-k: -w for k, w in _dl_w.items()}))
 
@@ -201,7 +209,7 @@ def dissipation(f: Expr) -> Expr:
 # The right-hand side loop (z4c_calcrhs.cpp, "z4c rhs loop"). As in AthenaK, the inverse metric, the Christoffel
 # symbols and the Ricci tensor are computed once per point (here as add_eqn temporaries), then the right-hand sides.
 ###
-fn = kk.create_function("rhs", label=f"EE z4c rhs {name}")
+fn = kk.create_function("rhs", label=f"EE z4c rhs {name}{variant}")
 
 # chi_guarded = max(chi, chi_div_floor), as chi > floor ? chi : floor. (A temporary: a Piecewise in a substitution
 # rule would be folded into its neighbors by the rule's simplify().)
