@@ -1,6 +1,7 @@
 # A shared AMReX backend: design
 
-Status: design for review, version 3.1 (2026-10-20): version 3 plus reviewer A's round-3 notes. Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
+Status: design version 3.2 (2026-10-20), signed off by both reviewers (round 3), for Max's approval. Version 3.2 is
+3.1 plus reviewer B's round-3 notes. Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
 implemented on this branch yet. Versions 1 (`0861b89e`) and 2 (`d0e6ae61`) were blocked by both reviewers; section
 12 maps every finding to its resolution.
 
@@ -223,7 +224,12 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
      has a zero branch in any position (two or more branches) with a non-constant factor F, whether the Piecewise is a direct factor or reaches the product through a
      temporary (a recipe's `g = Piecewise(...)`, then `g*S`). This is an unconditional hard error in both modes, so a
      bypassed fold cannot pass silently. A constant multiple is allowed and tested: sympy's CSE preprocessing turns a
-     folded guard into `3*(2*a - P)` and then `-3*x0`, which is still exactly 0 when the guard is false.
+     folded guard into `3*(2*a - P)` and then `-3*x0`, which is still exactly 0 when the guard is false. The check
+     follows a guard through products, constant multiples and temporaries holding such products, not through sums:
+     `DXI*(A + P)`, which the default `BasicCollectAfter` preset can produce, is safe and is tested.
+   - A guard held in a temporary (`g = Piecewise(...)`, then `g*S`) is not folded and therefore raises. A recipe
+     writes the guarded product directly, as MHDuet's does. Guards with three or more pieces are checked but not
+     folded, so they raise too.
    - What CSE may still do is compute some arithmetic of a guarded branch unconditionally. sympy's CSE places all
      temporaries at top level, so the shared stencil loads and, for example, the center weight `-20*f0` of MHDuet's
      KO are computed whether or not the guard holds. That costs work but cannot change the result: those temporaries
@@ -235,7 +241,8 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
    - Skipping that work too would need an intermediate-layer option that keeps CSE out of guarded branches: an
      EE-core change and a `[DECISION]` for Max, only if MHDuet's timings call for it.
 
-   R10 accordingly means: a false guard contributes exactly 0, and no `0 * S` is computed. The skipping of the
+   R10 accordingly means: a false guard contributes exactly +0.0, and no `0 * S` reaches an output. Where MHDuet skips
+   the statement, a -0.0 stays -0.0; here it becomes +0.0, which compares equal and does not affect validation. The skipping of the
    branch's own work is not guaranteed.
 
 3. **The fold cannot be bypassed.**
