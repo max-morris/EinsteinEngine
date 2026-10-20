@@ -36,7 +36,7 @@ AthenaK's gauge options, its chi floor in divisions, its lopsided advection and 
 [4] H. Zhu et al., arXiv:2409.10383 (2024) (AthenaK); src/z4c/z4c_calcrhs.cpp, src/z4c/z4c.cpp (options, diss),
     src/utils/finite_diff.hpp (stencils), src/coordinates/adm.hpp (SpatialDet, SpatialInv).
 
-Usage: python z4c_athenak.py --nghost {2,3,4} [--ssl] [--diss {separate,fused}] [--out-dir DIR]
+Usage: python z4c_athenak.py --nghost {2,3,4} [--ssl] [--diss {separate,fused,per-component}] [--out-dir DIR]
 """
 
 import argparse
@@ -55,8 +55,10 @@ parser.add_argument('--nghost', type=int, default=4, choices=[2, 3, 4],
                     help='AthenaK ghost zones: 2, 3, 4 give 2nd, 4th, 6th order (CalcRHS<NGHOST>).')
 parser.add_argument('--ssl', action='store_true',
                     help='Include the slow-start lapse term (z4c/slow_start_lapse = true).')
-parser.add_argument('--diss', choices=['separate', 'fused'], default='separate',
-                    help='separate: the dissipation is a second par_for, as in AthenaK; fused: one par_for.')
+parser.add_argument('--diss', choices=['separate', 'fused', 'per-component'], default='separate',
+                    help='separate: the dissipation is a second par_for over all 22 variables; fused: inside the '
+                         'right-hand-side par_for; per-component: one par_for per variable component (22), each '
+                         'thread doing one variable, as AthenaK\'s (m, n, k, j, i) loop does.')
 parser.add_argument('--out-dir', default='.', help='Directory to write the header to.')
 args = parser.parse_args(sys.argv[1:])
 
@@ -65,7 +67,7 @@ width = 2 * ng - 1  # centered stencil width: order 2 * (ng - 1)
 # The function name does not depend on --diss (the dispatch header calls Z4cRHS<ng>[SSL]); the par_for labels and
 # the banner record the variant.
 name = f"Z4cRHS{ng}{'SSL' if args.ssl else ''}"
-variant = '' if args.diss == 'separate' else ' fused-diss'
+variant = {'separate': '', 'fused': ' fused-diss', 'per-component': ' diss-per-component'}[args.diss]
 
 kk = AthenaKKernel(
     name,
@@ -384,16 +386,33 @@ fn.add_eqn(
 # The dissipation loop (z4c_calcrhs.cpp, "K-O Dissipation"): u_rhs(n) += diss * sum_a Diss(a, u0(n)) for all 22
 # variables.
 ###
-if not fused:
+_diss_vars = ((chi, chi_rhs, ()), (g, g_rhs, (li, lj)), (Khat, Khat_rhs, ()), (A, A_rhs, (li, lj)),
+              (Gam, Gam_rhs, (ui,)), (Theta, Theta_rhs, ()), (alpha, alpha_rhs, ()), (beta, beta_rhs, (ui,)))
+if args.diss == 'separate':
     fn_diss = kk.create_function("diss", label=f"EE z4c diss {name}")
-    for var, var_rhs, idxs in ((chi, chi_rhs, ()), (g, g_rhs, (li, lj)), (Khat, Khat_rhs, ()), (A, A_rhs, (li, lj)),
-                               (Gam, Gam_rhs, (ui,)), (Theta, Theta_rhs, ()), (alpha, alpha_rhs, ()),
-                               (beta, beta_rhs, (ui,))):
+    for var, var_rhs, idxs in _diss_vars:
         new = kk.overwrite(var_rhs)
         if idxs:
             fn_diss.add_eqn(new[idxs], var_rhs[idxs] + dissipation(var[idxs]))
         else:
             fn_diss.add_eqn(new, var_rhs + dissipation(var))
+elif args.diss == 'per-component':
+    _lo, _up = (l0, l1, l2), (u0, u1, u2)
+    for var, var_rhs, idxs in _diss_vars:
+        new = kk.overwrite(var_rhs)
+        if not idxs:
+            comps: list[tuple[Idx, ...]] = [()]
+        elif len(idxs) == 1:
+            comps = [(_up[a],) for a in range(3)]
+        else:
+            comps = [(_lo[a], _lo[b]) for a in range(3) for b in range(a, 3)]
+        for c in comps:
+            tag = str(var) + ''.join('xyz'[int(str(i)[-1])] for i in c)
+            fc = kk.create_function(f"diss_{tag}", label=f"EE z4c diss {name} {tag}")
+            if c:
+                fc.add_eqn(new[c], var_rhs[c] + dissipation(var[c]))
+            else:
+                fc.add_eqn(new, var_rhs + dissipation(var))
 
 kk.bake(**get_optional_tuning_param('bake_options', dict()))
 
