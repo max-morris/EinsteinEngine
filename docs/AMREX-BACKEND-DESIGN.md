@@ -295,7 +295,10 @@ Required gates, run on mel5bash or in a qbd GPU job and recorded with each EE mi
 
 6. **Compile:** both golden headers and GRTeclyn's CCZ4 header compile against real AMReX 26.10 (GRTeclyn's) and
    25.11 (MHDuet's), with `g++ -fsyntax-only` (CPU AMReX) and `nvcc -x cu -fsyntax-only` (CUDA 12.2 and GCC 11, sm_80,
-   in a qbd job).
+   in a qbd job). Found by the gate: `StridedPointer` reads `Array4::stride`, which AMReX releases before 26.x do not
+   have (25.11 has `jstride`, `kstride`, `nstride`), so kernel-launch mode with `StridedPointer` needs AMReX 26.x.
+   GRTeclyn uses 26.10. Against 25.11 the gate builds the point toy only (`make POINT_ONLY=TRUE`), which is MHDuet's
+   mode with `Array4Call`.
 7. **Differential:** a toy point function and a toy kernel class, compiled with g++ against CPU AMReX, run on random
    data. The data has anisotropic dx, an `Array4` with nonzero `begin`, and distinct enums per array. The results are
    compared with sympy's 50-digit evaluation of the baked equations, to 1e-13 relative.

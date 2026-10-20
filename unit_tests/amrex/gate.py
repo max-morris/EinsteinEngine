@@ -71,20 +71,25 @@ def main() -> int:
     run = Path(sys.argv[2])
     print(f'tolerance: every output passes if max|C++ - ref| / max|ref| <= {TOLERANCE:g}')
     ok = True
-    # Kernel toy: c_u = 0, c_w = 1; outputs u_rhs -> c_u, w_rhs -> c_w; dx 0.1, kappa 1.3.
-    cc = toys.kernel_toy()
-    state = read(run / 'kernel_inputs.txt')
-    outs = read(run / 'kernel_outputs.txt')
-    dx = mpmath.mpf(0.1)
-    reference = {}
-    for (i, j, k, c) in outs:
-        if c != 0:
-            continue
-        comps = toys.STATE_COMPONENTS
-        vals = toys.values(cc, lambda v, o: state[(i + o[0], j + o[1], k + o[2], comps[v])], {'kappa': mpmath.mpf(1.3)},
-                           (dx, dx, dx), tuple(mpmath.mpf(float((n + 0.5) * 0.1)) for n in (i, j, k)))
-        reference[(i, j, k)] = {'u_rhs': (0, vals['u_rhs']), 'w_rhs': (1, vals['w_rhs'])}
-    ok &= compare('kernel', outs, reference)
+    # Kernel toy: c_u = 0, c_w = 1; outputs u_rhs -> c_u, w_rhs -> c_w; dx 0.1, kappa 1.3. Absent in a point-only
+    # build (main.cpp, GATE_POINT_ONLY).
+    if not (run / 'kernel_outputs.txt').exists():
+        print('kernel: not built (point-only gate)')
+    else:
+        cc = toys.kernel_toy()
+        state = read(run / 'kernel_inputs.txt')
+        outs = read(run / 'kernel_outputs.txt')
+        dx = mpmath.mpf(0.1)
+        reference = {}
+        for (i, j, k, c) in outs:
+            if c != 0:
+                continue
+            comps = toys.STATE_COMPONENTS
+            vals = toys.values(cc, lambda v, o: state[(i + o[0], j + o[1], k + o[2], comps[v])],
+                               {'kappa': mpmath.mpf(1.3)}, (dx, dx, dx),
+                               tuple(mpmath.mpf(float((n + 0.5) * 0.1)) for n in (i, j, k)))
+            reference[(i, j, k)] = {'u_rhs': (0, vals['u_rhs']), 'w_rhs': (1, vals['w_rhs'])}
+        ok &= compare('kernel', outs, reference)
     # Point toy: un (u = 0, trK = 1), prim (Df = 0); outputs v_rhs -> 0, ko_u -> 1.
     cc = toys.point_toy()
     un, prim = read(run / 'point_un.txt'), read(run / 'point_prim.txt')

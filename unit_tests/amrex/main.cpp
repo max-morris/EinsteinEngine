@@ -2,8 +2,12 @@
 // kernel toy through compute() on a multi-box MultiFab with a nonzero box origin, and the point toy at every cell of a
 // box with anisotropic dx and prob_lo, and writes every input and output value (%.17g) for gate.py to compare with its
 // 50-digit evaluation of the baked equations. Usage: AMReXGate OUT_DIR
+// With -DGATE_POINT_ONLY (make POINT_ONLY=TRUE) only the point toy is built: the kernel toy's StridedPointer access
+// reads Array4::stride, which AMReX releases before 26.x (e.g. 25.11, MHDuet's) do not have.
 #include "toy_enums.H"
+#ifndef GATE_POINT_ONLY
 #include "KernelToy.hpp"
+#endif
 #include "PointToy.H"
 
 #include <AMReX.H>
@@ -35,12 +39,13 @@ int main(int argc, char *argv[])
     int amrex_argc = 1;
     amrex::Initialize(amrex_argc, argv, false);
     {
+        const amrex::MFInfo info = amrex::MFInfo().SetArena(amrex::The_Managed_Arena());
+#ifndef GATE_POINT_ONLY
         // Kernel toy: 2 components (c_u, c_w), 8 boxes from (5, -3, 7) to (12, 4, 14), 3 ghost cells.
         const amrex::Box domain(amrex::IntVect(5, -3, 7), amrex::IntVect(12, 4, 14));
         amrex::BoxArray ba(domain);
         ba.maxSize(4);
         const amrex::DistributionMapping dm(ba);
-        const amrex::MFInfo info = amrex::MFInfo().SetArena(amrex::The_Managed_Arena());
         amrex::MultiFab state(ba, dm, 2, 3, info), rhs(ba, dm, 2, 0, info);
         for (amrex::MFIter mfi(state); mfi.isValid(); ++mfi)
         {
@@ -52,6 +57,7 @@ int main(int argc, char *argv[])
         amrex::Gpu::streamSynchronize();
         dump(state, 3, out + "/kernel_inputs.txt");
         dump(rhs, 0, out + "/kernel_outputs.txt");
+#endif
 
         // Point toy: un (u, trK) and prim (Df) on one box from (-2, 3, 1), anisotropic dx and prob_lo.
         const amrex::Box pbox(amrex::IntVect(-2, 3, 1), amrex::IntVect(3, 8, 6));
