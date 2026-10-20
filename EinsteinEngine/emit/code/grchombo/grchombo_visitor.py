@@ -84,7 +84,7 @@ class GRChomboVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: VerbatimExpr) -> str:
-        return n.text
+        return n.v.text
 
     @visit.register
     def _(self, n: LineComment) -> str:

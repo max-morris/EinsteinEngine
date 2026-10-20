@@ -42,6 +42,7 @@ Usage: python ccz4_grchombo.py [--fd-order 4] [--out-dir DIR]
 
 import argparse
 import sys
+from typing import cast
 
 from sympy import Rational, Idx, IndexedBase, Expr, Abs
 
@@ -99,9 +100,12 @@ cosmological_constant = cc.add_param("cosmological_constant", init="a_cosmologic
 # State variables (Source/CCZ4/CCZ4UserVariables.hpp) and their right-hand sides.
 ###
 def state(name: str, indices: list[Idx], symmetric: bool = False) -> tuple[IndexedBase, IndexedBase]:
-    syms = dict(symmetries=[(indices[0], indices[1])]) if symmetric else dict()
-    rhs = cc.decl(f"{name}_rhs", indices, **syms)
-    return cc.decl(name, indices, rhs=rhs, **syms), rhs
+    if symmetric:
+        sym = [(indices[0], indices[1])]
+        rhs = cc.decl(f"{name}_rhs", indices, symmetries=sym)
+        return cc.decl(name, indices, rhs=rhs, symmetries=sym), rhs
+    rhs = cc.decl(f"{name}_rhs", indices)
+    return cc.decl(name, indices, rhs=rhs), rhs
 
 chi, chi_rhs = state("chi", [])                  # conformal factor
 h, h_rhs = state("h", [li, lj], symmetric=True)  # conformal metric
@@ -134,16 +138,16 @@ diss = cc.mk_stencil("diss", la, kreiss_oliger_stencil(fd_order + 1, la))
 
 def advec(f: Expr) -> Expr:
     """FourthOrderDerivatives::advection: sum over directions a of beta^a (upwinded D_a f)."""
-    return sum(
+    return cast(Expr, sum(
         (Rational(1, 2) * (shift[ua_] + Abs(shift[ua_])) * adv_up(f, la_)
          + Rational(1, 2) * (shift[ua_] - Abs(shift[ua_])) * adv_down(f, la_))
         for ua_, la_ in ((u0, l0), (u1, l1), (u2, l2))
-    )
+    ))
 
 
 def dissipation(f: Expr) -> Expr:
     """FourthOrderDerivatives::add_dissipation(rhs, cell, m_sigma): sigma * sum_i KO_i f."""
-    return sigma * (diss(f, l0) + diss(f, l1) + diss(f, l2))
+    return cast(Expr, sigma * (diss(f, l0) + diss(f, l1) + diss(f, l2)))
 
 
 ###
@@ -156,7 +160,7 @@ fn = cc.create_function("compute")
 # h^{ij}: the inverse of the evolved h_ij (compute_inverse_sym), not assuming det h = 1.
 h_mat = cc.get_matrix(h[li, lj])
 hUU = cc.decl("hUU", [ui, uj], symmetries=[(ui, uj)])
-fn.add_eqn(hUU[ui, uj], h_mat.adjugate() * (1 / h_mat.det()))
+fn.add_eqn(hUU[ui, uj], h_mat.adjugate() * (1 / h_mat.det()))  # type: ignore[no-untyped-call]
 cc.add_substitution_rule(h[ui, uj], hUU[ui, uj])
 
 # chris.LLL[i][j][k] = 1/2 (d_k h_ji + d_j h_ki - d_i h_jk)

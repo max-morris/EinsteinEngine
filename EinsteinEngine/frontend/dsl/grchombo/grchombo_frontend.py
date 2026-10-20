@@ -34,7 +34,7 @@ state component, as GRChombo's `Cell::store_vars` does.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Sequence, Callable, Iterable, Unpack, Any
+from typing import Optional, Sequence, Callable, Iterable, Unpack, Any, cast
 
 from sympy import Idx, IndexedBase, Indexed, Symbol
 
@@ -149,7 +149,7 @@ class GRChomboComputeClass(DslFrontend[GRChomboParam, GRChomboDeclKwargs, GRChom
                 raise DslException(f"rhs variable {rhs_name} of {basename} must be declared first.")
             self.rhs[basename] = rhs_name
         kwargs.setdefault('substitution_rule', subst_tensor_grchombo)
-        return super().decl(basename, indices, **kwargs)
+        return super().decl(basename, indices, **cast(SymbolDeclarationKwargs, kwargs))
 
     def state_of_rhs_component(self, component: str) -> Optional[str]:
         """The state-variable component written by an rhs component (h_rhs12 -> h12), or None."""

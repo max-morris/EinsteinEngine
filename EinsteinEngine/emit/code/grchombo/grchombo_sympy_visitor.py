@@ -35,7 +35,7 @@ class GRChomboSympyVisitor(BaseSympyExprVisitor[Expr]):
 
     standard_fns_rewrite = {
         **BaseSympyExprVisitor.standard_fns_rewrite,
-        sy.Abs: lambda a, *_: sy.Function('ee_abs')(a),  # type: ignore[no-untyped-call]
+        sy.Abs: lambda a, *_: sy.Function('ee_abs')(a),
     }
 
     def __init__(self, *, stencil_fns: Optional[set[str]] = None, is_grid_var: Callable[[str], bool]):
