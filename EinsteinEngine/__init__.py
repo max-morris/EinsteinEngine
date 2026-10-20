@@ -51,6 +51,9 @@ from EinsteinEngine.wizards.vanilla_f90_wizard import VanillaF90Wizard
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
+from EinsteinEngine.frontend.dsl.athenak.athenak_frontend import AthenaKKernel, AthenaKCheck
+from EinsteinEngine.generators.athenak_generator import AthenaKGenerator
+from EinsteinEngine.wizards.athenak_wizard import AthenaKWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
@@ -63,6 +66,7 @@ __all__ = [
     "cbrt", "sqrt", "mk_matrix", "mk_piecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
+    "AthenaKKernel", "AthenaKCheck", "AthenaKGenerator", "AthenaKWizard",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
