@@ -1,6 +1,6 @@
 # A shared AMReX backend: design
 
-Status: design for review, version 3 (2026-10-20). Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
+Status: design for review, version 3.1 (2026-10-20): version 3 plus reviewer A's round-3 notes. Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
 implemented on this branch yet. Versions 1 (`0861b89e`) and 2 (`d0e6ae61`) were blocked by both reviewers; section
 12 maps every finding to its resolution.
 
@@ -77,8 +77,10 @@ wizards/amrex_wizard.py
 **Classification is by declaration, never by name.** In version 1, a symbol was a field if its name looked like
 `<state><digits>`. That broke MHDuet's names (`gtd_xx`), its read-only fields, and its parameter `trK0`, which
 printed as a state load. Version 2 classifies every symbol by its declaration:
-- A **field binder**, a required module-level callable `binder(name) -> FieldBinding(array, component) | None`, is
-  consulted by every declaration. `decl` and the `rhs=` shorthand consult it, so a frontend-agnostic recipe that
+- A **field binder**, a required module-level callable `binder(base_name) -> FieldBinder | None`, is consulted by
+  every declaration. It sees the declared base name (`gtd`, `Df`, `h`). The returned object maps each component, as
+  the module's naming rule names it (`gtd_xy`, `h12`; one name per symmetric pair, the canonical one), to an array
+  and a component expression (`simflowny_vars::gtd_xy`, `c_h12`). An equation that assigns a bound field raises. `decl` and the `rhs=` shorthand consult it, so a frontend-agnostic recipe that
   declares its fields with a plain `cc.decl` (MHDuet's `Df`, `vfd`, ...) gets them bound by the subclass, without
   editing the recipe.
 - `module.field(name, indices, array=..., component=...)` is an explicit declaration, for recipes written against
@@ -139,7 +141,7 @@ silently move MHDuet's coordinates, which changes its results.
    - **Fixed signature order**, the same for every function of a module: `i, j, k`; the module's arrays, in
      declaration order; the coordinate and spacing arguments (`prob_lo`, `dx`); the parameter struct; then the
      outputs this function assigns, in output-declaration order. The order is documented in the header comment, and
-     a test pins it.
+     a test pins it. Arguments a function does not use are marked `[[maybe_unused]]`.
    - **Each DSL function is one self-contained inline function.** A function may read only fields. A value computed
      by another function reaches it only as a field the host passes in.
    - **MHDuet's `ko` function** outputs the KO increments, each a declared output (`ko_<field>`). The recipe today
@@ -183,7 +185,8 @@ silently move MHDuet's coordinates, which changes its results.
 
   This is today's `foreign/grteclyn` rule with the integer range limited to 4 (no GRTeclyn or MHDuet expression has
   a larger integer power), so GRTeclyn's header is unchanged. Version 1's cap of 8 and 3/2 rule are dropped.
-- **`Abs`** prints `amrex::Math::abs(x)`. **`Max`/`Min`** print `amrex::max(a, b)`/`amrex::min(a, b)`, with every
+- **`Abs`** prints `amrex::Math::abs(x)`. **`Max`/`Min`** (reachable only from sympy expressions that bypass EE's
+  index visitor, which rejects them in `add_eqn` today) print `amrex::max(a, b)`/`amrex::min(a, b)`, with every
   operand printed as a `Real` (`amrex::Real(1)`, not `1`). `sympy.Max` and `Min` are not `sympy.Function`s, so the
   base visitor's function-rewrite table cannot reach them; the AMReX sympy visitor handles them itself before
   delegating to the base visitor. A printing test pins this.
@@ -192,8 +195,9 @@ silently move MHDuet's coordinates, which changes its results.
   unqualified. Anything else raises.
 - **Piecewise** prints as a C++ conditional expression. Only the selected operand is evaluated; section 7 covers what
   CSE can hoist out of it.
-- **Includes.** Kernel mode: `AMReX_Array4.H`, `AMReX_MultiFab.H`, `AMReX_REAL.H`, `AMReX_Math.H`, `<cstddef>`,
-  `<type_traits>`. Point mode: `AMReX_Array4.H`, `AMReX_REAL.H`, `AMReX_GpuQualifiers.H`, `AMReX_Array.H`
+- **Includes.** Kernel mode: exactly today's list, `AMReX_Array4.H`, `AMReX_MultiFab.H`, `AMReX_REAL.H`,
+  `<cstddef>`, `<type_traits>` (`AMReX_MultiFab.H` brings in `amrex::Math::abs`; adding a line would change
+  GRTeclyn's md5). Point mode: `AMReX_Array4.H`, `AMReX_REAL.H`, `AMReX_GpuQualifiers.H`, `AMReX_Array.H`
   (`GpuArray`), `AMReX_Algorithm.H` (`amrex::max`), `AMReX_Math.H` (`amrex::Math::abs`), `<cmath>`.
 - **Contraction.** The printer never relies on any particular evaluation order beyond C++'s. Results depend on FMA
   contraction at roundoff level only, which nvcc does by default (`--fmad=true`) with or without fast math.
@@ -215,10 +219,11 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
      recipe code (section 5.4).
 2. **Check after CSE.** The correctness property is: no product of a zero-branch Piecewise with a non-constant factor
    survives into the emitted code. With it, a false guard yields exactly 0 whatever any other temporary holds.
-   - The generator follows temporaries through each equation and raises on any surviving product `Piecewise(...,
-     (0, True)) * F` with F non-constant, whether the Piecewise is a direct factor or reaches the product through a
+   - The generator follows temporaries through each equation and raises on any surviving product of a Piecewise that
+     has a zero branch in any position (two or more branches) with a non-constant factor F, whether the Piecewise is a direct factor or reaches the product through a
      temporary (a recipe's `g = Piecewise(...)`, then `g*S`). This is an unconditional hard error in both modes, so a
-     bypassed fold cannot pass silently.
+     bypassed fold cannot pass silently. A constant multiple is allowed and tested: sympy's CSE preprocessing turns a
+     folded guard into `3*(2*a - P)` and then `-3*x0`, which is still exactly 0 when the guard is false.
    - What CSE may still do is compute some arithmetic of a guarded branch unconditionally. sympy's CSE places all
      temporaries at top level, so the shared stencil loads and, for example, the center weight `-20*f0` of MHDuet's
      KO are computed whether or not the guard holds. That costs work but cannot change the result: those temporaries
