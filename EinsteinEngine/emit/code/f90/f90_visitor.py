@@ -20,6 +20,7 @@ from multimethod import multimethod
 import typing
 
 from EinsteinEngine.common.util import indent
+from EinsteinEngine.emit.code.common.literals import real_literal
 from EinsteinEngine.emit.code.f90.f90_tree import *
 from EinsteinEngine.emit.code.f90.f90_sympy_visitor import F90SympyVisitor
 from EinsteinEngine.emit.tree import Identifier, Integer, Verbatim, LineComment, BlockComment, String, Bool, Float
@@ -31,6 +32,11 @@ from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunc
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.emit.code.f90.f90_tree import F90CodeRoot
 from EinsteinEngine.emit.code.f90.f90_tree import Allocatable
+
+
+def f90_real_literal(fl: float) -> str:
+    """A double-precision Fortran literal that reads back as exactly `fl`, e.g. 0.1D0, 2.0D0, 1D-10."""
+    return real_literal(fl, "D")
 
 
 class F90Visitor(Visitor[CodeNode]):
@@ -79,7 +85,7 @@ class F90Visitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: FloatLiteralExpr) -> str:
-        return f'{n.fl:.1f}D0' if float(n.fl).is_integer() else f'{n.fl}D0'
+        return f90_real_literal(n.fl)
 
     @visit.register
     def _(self, n: Verbatim) -> str:

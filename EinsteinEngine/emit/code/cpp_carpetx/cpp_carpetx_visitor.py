@@ -26,6 +26,7 @@ from EinsteinEngine.emit.ccl.schedule.schedule_tree import IntentRegion
 from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunctionCallType, IdExpr, IntLiteralExpr, \
     FloatLiteralExpr, ExprStmt, SympyExpr, Expr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, FunctionCall, \
     StandardizedFunctionCall, VerbatimExpr, IfElseExpr, IfElseStmt, GroupedExpr
+from EinsteinEngine.emit.code.common.literals import real_literal
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_tree import DeclareCarpetXArgs, DeclareCarpetArgs, DeclareCarpetParams, IncludeDirective, ConstAssignDecl, MutableAssignDecl, ConstExprAssignDecl, ConstConstructDecl, UsingNamespace, Using, UsingAlias, ThornFunctionDecl, CarpetXGridLoopLambda, CarpetXGridLoopCall, CppCarpetXCodeRoot
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_named_roots import named_root
 from EinsteinEngine.emit.code.cpp_carpetx.cpp_carpetx_sympy_visitor import CppCarpetXSympyVisitor
@@ -42,6 +43,11 @@ def _named_root_of(exponent: Expr) -> Optional[str]:
             and isinstance(exponent.lhs, FloatLiteralExpr) and isinstance(exponent.rhs, FloatLiteralExpr)):
         return named_root(exponent.lhs.fl, exponent.rhs.fl)
     return None
+
+
+def cpp_real_literal(fl: float) -> str:
+    """A C++ double literal that reads back as exactly `fl`, e.g. 0.1, 2.0, 1e-10, 3.141592653589793."""
+    return real_literal(fl)
 
 
 class CppVisitor(Visitor[CodeNode]):
@@ -102,7 +108,7 @@ class CppVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: FloatLiteralExpr) -> str:
-        return f'{n.fl:.1f}' if float(n.fl).is_integer() else f'{n.fl}'
+        return cpp_real_literal(n.fl)
 
     @visit.register
     def _(self, n: Verbatim) -> str:

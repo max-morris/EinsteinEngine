@@ -15,6 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import math
 import typing
 from typing import List, Optional, cast, Callable
 
@@ -254,13 +255,23 @@ class BaseSympyExprVisitor[ExprT: Expr]:
 
     @visit.register
     def _(self, expr: sy.core.numbers.Float) -> Expr:
-        # Deliberately passes sympy's Float through so the emitted literal keeps
-        # sympy's decimal representation rather than Python float repr.
-        return FloatLiteralExpr(expr.n())  # type: ignore[arg-type]
+        # A Python float, so that printers emit the round-trip repr (up to 17 significant digits) of the double the
+        # Float denotes, rounded to nearest. Printing the sympy Float itself gave its decimal string at its own precision:
+        # 15 significant digits for a default Float, which is not always the same double. (A Float of less than 53 bits
+        # now prints its exact binary value, e.g. Float('0.1', 3) as 0.100006103515625; EE creates no such Floats.)
+        return FloatLiteralExpr(self._double(expr))
 
     @visit.register
     def _(self, expr: sy.core.numbers.Pi) -> Expr:
-        return FloatLiteralExpr(expr.n())  # type: ignore[arg-type]
+        # math.pi exactly (sympy's pi.n() prints as 3.14159265358979, 7 ulp below it).
+        return FloatLiteralExpr(self._double(expr))
+
+    @staticmethod
+    def _double(expr: sy.Expr) -> float:
+        value = float(expr)
+        if not math.isfinite(value):
+            raise DslException(f"The constant {expr.evalf(10)} is not a finite double ({value})")
+        return value
 
     @visit.register
     def _(self, expr: sy.core.numbers.Rational) -> Expr:
