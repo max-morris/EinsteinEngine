@@ -20,7 +20,8 @@ Tests of the AthenaK backend (frontend.dsl.athenak, generators.athenak_generator
 variables map to view(m, enum, k, j, i) at their stencil offsets, parameters are initialized on the host and only
 emitted when used, each function is one par_for in creation order, a loop may update its own outputs at offset 0,
 and the generator rejects what AthenaK's par_for cannot run (stencil reads of a variable written in the same loop,
-hard splits). Run as a plain script.
+hard splits without a scratch view, stencil reads of cross-loop temporaries); hard splits go through the scratch
+view; launch bounds. Run as a plain script.
 """
 
 from typing import Callable
@@ -113,8 +114,38 @@ def test_rejects_same_loop_stencil_read() -> None:
     expect(Exception, lambda: emit(kk), "would race", "Temporary passed to stencil")
 
 
-def test_rejects_hard_split() -> None:
+def test_hard_split_through_scratch() -> None:
     kk = kernel("K4")
+    kk.scratch_extents = ("nmb", "n3", "n2", "n1")
+    u = kk.decl("u", [], view="u0", enum="I_U")
+    t = kk.decl("t", [])
+    u_rhs = kk.decl("u_rhs", [], view="rhs", enum="I_U")
+    fn = kk.create_function("f", launch_bounds=(128, 2))
+    fn.add_eqn(t, D(u, l0) * D(u, l1))
+    fn.split_loop()
+    fn.add_eqn(u_rhs, t * u)
+    code = emit(kk)
+    assert '"EE K4 f 0"' in code and '"EE K4 f 1"' in code, code
+    assert "ee_scratch(m, 0, k, j, i) = t;" in code, code
+    assert "ee_scratch(m, 0, k, j, i)" in code.split('"EE K4 f 1"')[1], code
+    assert "Kokkos::LaunchBounds<128, 2>" in code and "push_finalize_hook" in code, code
+
+
+def test_hard_split_needs_scratch_extents() -> None:
+    kk = kernel("K6")
+    u = kk.decl("u", [], view="u0", enum="I_U")
+    t = kk.decl("t", [])
+    u_rhs = kk.decl("u_rhs", [], view="rhs", enum="I_U")
+    fn = kk.create_function("f")
+    fn.add_eqn(t, D(u, l0) * D(u, l1))
+    fn.split_loop()
+    fn.add_eqn(u_rhs, t * u)
+    expect(GeneratorException, lambda: emit(kk), "scratch_extents")
+
+
+def test_rejects_stencil_read_of_cross_loop_temporary() -> None:
+    kk = kernel("K7")
+    kk.scratch_extents = ("nmb", "n3", "n2", "n1")
     u = kk.decl("u", [], view="u0", enum="I_U")
     t = kk.decl("t", [])
     u_rhs = kk.decl("u_rhs", [], view="rhs", enum="I_U")
@@ -122,7 +153,7 @@ def test_rejects_hard_split() -> None:
     fn.add_eqn(t, u * u)
     fn.split_loop()
     fn.add_eqn(u_rhs, D(t, l0))
-    expect(GeneratorException, lambda: emit(kk), "hard split")
+    expect(Exception, lambda: emit(kk), "stencil")
 
 
 def test_decl_needs_view_and_enum() -> None:
@@ -132,7 +163,8 @@ def test_decl_needs_view_and_enum() -> None:
 
 if __name__ == "__main__":
     for test in [test_loads_stores_params, test_two_loops_and_update, test_rejects_same_loop_stencil_read,
-                 test_rejects_hard_split, test_decl_needs_view_and_enum]:
+                 test_hard_split_through_scratch, test_hard_split_needs_scratch_extents,
+                 test_rejects_stencil_read_of_cross_loop_temporary, test_decl_needs_view_and_enum]:
         test()
         print(f"ok: {test.__name__}")
     print("All AthenaK backend tests passed.")

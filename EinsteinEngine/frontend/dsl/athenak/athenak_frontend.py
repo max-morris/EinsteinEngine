@@ -29,7 +29,9 @@ generated code, so the frontend describes the host side in AthenaK's terms:
 * the inverse grid spacings (`inv_spacing`: three device expressions in the MeshBlock index m), from which
   DXI/DYI/DZI are formed in each loop;
 * how each DSL parameter is initialized on the host (`add_param(..., init=...)`); parameters are captured by value;
-* host checks for configurations the generated code does not implement (`checks`).
+* host checks for configurations the generated code does not implement (`checks`);
+* for hard-split functions, the extents (m, k, j, i) of the scratch view that carries values between their loops
+  (`scratch_extents`, host expressions; the view is allocated once, grown when needed, freed at Kokkos::finalize).
 
 Grid variables live in AthenaK's DvceArray5D views, indexed (m, n, k, j, i). A variable is declared with `view`
 (the C++ name of its view) and `enum` (the C++ index n of a scalar, or the prefix of its components' indices: a
@@ -87,6 +89,7 @@ class AthenaKCheck:
 
 class AthenaKFunction(DslFunctionFrontend["AthenaKKernel"]):
     label: str
+    launch_bounds: Optional[tuple[int, int]]
 
     def __init__(self,
                  name: str,
@@ -94,6 +97,7 @@ class AthenaKFunction(DslFunctionFrontend["AthenaKKernel"]):
                  intent_override: Optional[IntentOverride] = None,
                  *,
                  label: Optional[str] = None,
+                 launch_bounds: Optional[tuple[int, int]] = None,
                  auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
                  auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
                  auto_split_locus: SplitLocus = SplitLocus.Early) -> None:
@@ -107,6 +111,7 @@ class AthenaKFunction(DslFunctionFrontend["AthenaKKernel"]):
             auto_split_locus=auto_split_locus
         )
         self.label = label if label is not None else f"EE {frontend.name} {name}"
+        self.launch_bounds = launch_bounds
 
 
 class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction]):
@@ -118,6 +123,7 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
     inv_spacing: tuple[str, str, str]
     checks: list[AthenaKCheck]
     includes: list[str]
+    scratch_extents: Optional[tuple[str, str, str, str]]
     grid: dict[str, AthenaKGridVar]
 
     def __init__(
@@ -131,6 +137,7 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
             namespace: str = "ee",
             checks: Sequence[AthenaKCheck] = (),
             includes: Sequence[str] = ("athena.hpp",),
+            scratch_extents: Optional[tuple[str, str, str, str]] = None,
             derivative_stencil_width: int = 5,
     ) -> None:
         super().__init__(dimensionality=3, derivative_stencil_width=derivative_stencil_width)
@@ -142,6 +149,7 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
         self.inv_spacing = inv_spacing
         self.checks = list(checks)
         self.includes = list(includes)
+        self.scratch_extents = scratch_extents
         self.grid = dict()
 
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[AthenaKDeclKwargs]) -> IndexedBase:
@@ -180,13 +188,16 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
                         name: str,
                         *,
                         label: Optional[str] = None,
+                        launch_bounds: Optional[tuple[int, int]] = None,
                         intent_override: Optional[IntentOverride] = None,
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
                         auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
                         auto_split_locus: SplitLocus = SplitLocus.Early) -> AthenaKFunction:
         """
-        Creates a loop: one par_for over the cells, run after the loops created before it. `label` is the par_for's
-        Kokkos label (what the Kokkos Tools and nsys report).
+        Creates a loop: one par_for over the cells, run after the loops created before it (several if the function is
+        hard split; their cross-loop temporaries need `scratch_extents`). `label` is the par_for's Kokkos label (what
+        the Kokkos Tools and nsys report); `launch_bounds` = (max threads per block, min blocks per multiprocessor)
+        launches it with Kokkos::LaunchBounds.
         """
         if name in self.functions:
             raise DslException(f"Function {name} already exists.")
@@ -195,6 +206,7 @@ class AthenaKKernel(DslFrontend[AthenaKParam, AthenaKDeclKwargs, AthenaKFunction
             self,
             intent_override,
             label=label,
+            launch_bounds=launch_bounds,
             auto_hard_split_predicate=auto_hard_split_predicate,
             auto_soft_split_predicate=auto_soft_split_predicate,
             auto_split_locus=auto_split_locus

@@ -51,11 +51,13 @@ class GridStore(Stmt):
 
 @dataclass
 class KernelLoop(CodeNode):
-    """One par_for over (m, k, j, i)."""
+    """One par_for over (m, k, j, i); with launch_bounds (max threads per block, min blocks per SM), a
+    Kokkos::parallel_for over the same flattened range with Kokkos::LaunchBounds instead."""
     label: str
     loop_bounds: str
     inv_spacing: tuple[str, str, str]
     body: Sequence[Stmt]
+    launch_bounds: Optional[tuple[int, int]] = None
 
 
 @dataclass
@@ -76,3 +78,5 @@ class KernelFunctionDecl(CodeNode):
     params: Sequence[KernelParam]
     loops: Sequence[KernelLoop]
     banner: str
+    scratch_count: int = 0  # cross-loop temporaries (hard splits), stored in ee_scratch(m, t, k, j, i)
+    scratch_extents: Optional[tuple[str, str, str, str]] = None  # (m, k, j, i) extents, host C++ expressions

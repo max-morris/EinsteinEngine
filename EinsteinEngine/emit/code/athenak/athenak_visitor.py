@@ -173,11 +173,36 @@ class AthenaKVisitor(Visitor[CodeNode]):
     def _(self, n: KernelLoop) -> str:
         spacing = '\n'.join(f'const Real {d} = {e};\n(void){d};' for d, e in zip(('DXI', 'DYI', 'DZI'), n.inv_spacing))
         body = '\n'.join(visit_each(self, n.body))
+        if n.launch_bounds is None:
+            return (
+                f'par_for("{n.label}", DevExeSpace(), {n.loop_bounds},\n'
+                'KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {\n'
+                + indent(spacing + '\n' + body) + '\n'
+                '});'
+            )
+        # AthenaK's par_for (athena.hpp: 4D loop using a Kokkos 1D range), with LaunchBounds on the policy.
+        bounds = [b.strip() for b in n.loop_bounds.split(',')]
+        if len(bounds) != 8:
+            raise GeneratorException(f'AthenaK backend: launch bounds need 8 loop bounds, got {n.loop_bounds}')
+        ml, mu, kl, ku, jl, ju, il, iu = bounds
+        threads, blocks = n.launch_bounds
         return (
-            f'par_for("{n.label}", DevExeSpace(), {n.loop_bounds},\n'
-            'KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {\n'
-            + indent(spacing + '\n' + body) + '\n'
-            '});'
+            '{\n' + indent(
+                f'const int ee_nk = ({ku}) - ({kl}) + 1, ee_nj = ({ju}) - ({jl}) + 1, ee_ni = ({iu}) - ({il}) + 1;\n'
+                f'const int ee_nkji = ee_nk * ee_nj * ee_ni, ee_nji = ee_nj * ee_ni;\n'
+                f'const int ee_n = (({mu}) - ({ml}) + 1) * ee_nkji;\n'
+                f'Kokkos::parallel_for("{n.label}", '
+                f'Kokkos::RangePolicy<DevExeSpace, Kokkos::LaunchBounds<{threads}, {blocks}>>(DevExeSpace(), 0, ee_n),\n'
+                'KOKKOS_LAMBDA(const int &ee_idx) {\n'
+                + indent(
+                    'int m = ee_idx / ee_nkji;\n'
+                    'int k = (ee_idx - m * ee_nkji) / ee_nji;\n'
+                    'int j = (ee_idx - m * ee_nkji - k * ee_nji) / ee_ni;\n'
+                    f'const int i = (ee_idx - m * ee_nkji - k * ee_nji - j * ee_ni) + ({il});\n'
+                    f'm += ({ml});\nk += ({kl});\nj += ({jl});\n'
+                    + spacing + '\n' + body) + '\n'
+                '});') + '\n'
+            '}'
         )
 
     @visit.register
@@ -192,6 +217,26 @@ class AthenaKVisitor(Visitor[CodeNode]):
             f'}}' for cond, msg in n.checks
         )
         params = '\n'.join(f'const {p.cpp_type} {p.name} = {p.init};' for p in n.params)
+        if n.scratch_count > 0:
+            if n.scratch_extents is None:
+                raise GeneratorException(f'AthenaK backend: {n.name} is hard split but the kernel has no scratch_extents')
+            e_m, e_k, e_j, e_i = n.scratch_extents
+            params += (
+                '\n// Values carried between the hard-split loops: one view for the program, grown when needed and freed\n'
+                '// before Kokkos::finalize.\n'
+                'static DvceArray5D<Real> ee_scratch_store;\n'
+                'static bool ee_scratch_hooked = false;\n'
+                f'if (ee_scratch_store.extent_int(0) < ({e_m}) || ee_scratch_store.extent_int(2) != ({e_k}) ||\n'
+                f'    ee_scratch_store.extent_int(3) != ({e_j}) || ee_scratch_store.extent_int(4) != ({e_i})) {{\n'
+                '  if (!ee_scratch_hooked) {\n'
+                '    Kokkos::push_finalize_hook([] { ee_scratch_store = DvceArray5D<Real>(); });\n'
+                '    ee_scratch_hooked = true;\n'
+                '  }\n'
+                f'  ee_scratch_store = DvceArray5D<Real>(Kokkos::view_alloc(Kokkos::WithoutInitializing, "ee scratch"), '
+                f'({e_m}), {n.scratch_count}, ({e_k}), ({e_j}), ({e_i}));\n'
+                '}\n'
+                'auto ee_scratch = ee_scratch_store;'
+            )
         loops = '\n\n'.join(visit_each(self, n.loops))
         body = '\n'.join(s for s in ['\n'.join(n.preamble), checks, params, loops] if s)
         return (
