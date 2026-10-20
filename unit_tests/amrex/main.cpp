@@ -3,7 +3,7 @@
 // box with anisotropic dx and prob_lo, and writes every input and output value (%.17g) for gate.py to compare with its
 // 50-digit evaluation of the baked equations. Usage: AMReXGate OUT_DIR
 // With -DGATE_POINT_ONLY (make POINT_ONLY=TRUE) only the point toy is built: the kernel toy's StridedPointer access
-// reads Array4::stride, which AMReX releases before 26.x (e.g. 25.11, MHDuet's) do not have.
+// reads Array4::stride, which AMReX 25.11 (MHDuet's) does not have (26.10 does).
 #include "toy_enums.H"
 #ifndef GATE_POINT_ONLY
 #include "KernelToy.hpp"
