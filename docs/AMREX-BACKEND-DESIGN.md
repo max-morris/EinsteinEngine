@@ -259,7 +259,7 @@ which reassign shared C++ variables, and with C++ block scope.
 - **Stencil width** is the frontend's `derivative_stencil_width`, unchanged. Reach is checked against
   `max_stencil_offset`.
 - **Errors, never silent fallbacks:** unbound symbols, unsupported functions or operators, low-precision Floats,
-  unsupported scheme combinations, a hard split in point mode, an unassigned or doubly assigned point output, and an
+  unsupported scheme combinations, a hard split in point mode, an unassigned or doubly assigned point output, and a
   zero-branch Piecewise used as a product factor all raise.
 
 ## 9. Tests
@@ -270,7 +270,7 @@ Plain scripts in `unit_tests/`. The first group runs without AMReX:
    refusal; the reach check.
 2. **Each strategy and mode**, on toy modules, against expected fragments plus one golden header per mode, so any
    change in output shows as a diff.
-3. **Printing:** π, E, `1e-6`, a low-precision Float (refused), large Rationals, the exponent table (2, 3, 4, 1/2,
+3. **Printing:** π, E, `1e-6`, a low-precision Float (refused), large Rationals, the exponent table (-4, -2, -1, 2, 3, 4, 1/2,
    -1/2, -3/2), `Abs`, `Max` with an integer operand, And/Or/Not, Piecewise.
 4. **Guards:** the folding rewrite on MHDuet's exact KO form, several guard factors, both bypass paths; the post-CSE
    error on an unfolded product (direct and through a temporary); the hoisting warning; a NaN in the KO stencil with a
