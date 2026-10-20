@@ -388,3 +388,40 @@ def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False) -> d
                 RHS_chi=chi_rhs, RHS_gtd=gtd_rhs, RHS_Atd=Atd_rhs, RHS_trK=trK_rhs, RHS_theta=theta_rhs,
                 RHS_Gamh=Gamh_rhs, RHS_Alpha=Alpha_rhs, RHS_Betau=Betau_rhs)
 
+
+
+def add_ccz4_mhduet_ko(cc, fn, param: Callable[[str], Expr], decls: dict[str, IndexedBase],
+                       output: Callable[..., IndexedBase] | None = None) -> dict[str, IndexedBase]:
+    """Add to `fn` MHDuet's Kreiss-Oliger dissipation of the 22 spacetime fields as separate outputs `ko_<field>`
+    (same indices and symmetries as the field), for a slot-in that applies it after MHDuet's outer-boundary override:
+    ko_<field> = (factor > 0 ? factor : 0) * sum_a meshDissipation_a(<field>), with factor =
+    dissipation_factor_<field> and meshDissipation the 7-point sixth difference / (64 dx) (Functions.H). MHDuet adds
+    `factor * sum` to RHS_<field> only when factor > 0; RHS + ko_<field> is that, except that a skipped -0.0 becomes
+    +0.0. The guard is written as a direct product, as the AMReX backend's guard handling requires.
+
+    `decls` is what add_ccz4_mhduet returned (the fields must already be declared on `cc`). `output(name, indices,
+    **kwargs)` declares an output; the default is `cc.decl`. Returns the ko_<field> symbols."""
+    declare = output if output is not None else cc.decl
+    diss = cc.mk_stencil("diss_ko", la, kreiss_oliger_stencil(5, la))
+
+    def guarded_ko(f: Expr, name: str) -> Expr:
+        factor = param(f"dissipation_factor_{name}")
+        return Piecewise((factor, 0 < factor), (0, True)) * (diss(f, l0) + diss(f, l1) + diss(f, l2))
+
+    sym = [((l0, l0), "xx"), ((l0, l1), "xy"), ((l0, l2), "xz"), ((l1, l1), "yy"), ((l1, l2), "yz"), ((l2, l2), "zz")]
+    out: dict[str, IndexedBase] = {}
+    for name in STATE:
+        f = decls[name]
+        if name in ("gtd", "Atd"):
+            ko = declare(f"ko_{name}", [li, lj], symmetries=[(li, lj)])
+            for (i_, j_), c in sym:
+                fn.add_eqn(ko[i_, j_], guarded_ko(f[i_, j_], f"{name}_{c}"))
+        elif name in ("Gamh", "Betau"):
+            ko = declare(f"ko_{name}", [ui])
+            for n, (ui_, _) in enumerate(DIRS):
+                fn.add_eqn(ko[ui_], guarded_ko(f[ui_], f"{name}_{'xyz'[n]}"))
+        else:
+            ko = declare(f"ko_{name}", [])
+            fn.add_eqn(ko, guarded_ko(f, name))
+        out[f"ko_{name}"] = ko
+    return out
