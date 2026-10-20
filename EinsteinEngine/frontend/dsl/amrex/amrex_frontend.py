@@ -41,7 +41,7 @@ origin, as GRTeclyn's Coordinates class computes them before subtracting its cen
 """
 
 from dataclasses import dataclass
-from typing import Optional, Sequence, Callable, Iterable, Unpack
+from typing import Optional, Sequence, Callable, Iterable, Unpack, cast
 
 from sympy import Idx, IndexedBase, Symbol
 
@@ -148,7 +148,7 @@ class AMReXKernelClass(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                 raise DslException(f"rhs variable {rhs_name} of {basename} must be declared first.")
             self.rhs[basename] = rhs_name
         kwargs.setdefault('substitution_rule', subst_tensor_grchombo)
-        return super().decl(basename, indices, **kwargs)
+        return super().decl(basename, indices, **cast(SymbolDeclarationKwargs, kwargs))
 
     @staticmethod
     def _component_of(component: str, base: str) -> Optional[str]:

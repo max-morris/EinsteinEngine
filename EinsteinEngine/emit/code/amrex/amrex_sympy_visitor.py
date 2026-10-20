@@ -37,7 +37,7 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
 
     standard_fns_rewrite = {
         **BaseSympyExprVisitor.standard_fns_rewrite,
-        sy.Abs: lambda a, *_: sy.Function('amrex::Math::abs')(a),  # type: ignore[no-untyped-call]
+        sy.Abs: lambda a, *_: sy.Function('amrex::Math::abs')(a),
     }
 
     def __init__(self, *, stencil_fns: Optional[set[str]] = None, is_state: Callable[[str], bool]):

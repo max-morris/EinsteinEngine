@@ -34,7 +34,7 @@ from EinsteinEngine.emit.code.common.code_tree import CodeNode, StandardizedFunc
     IdExpr, FloatLiteralExpr, VerbatimExpr, UnOpExpr, BinOpExpr, BinOp, NArityOpExpr, IfElseExpr, FunctionCall, \
     StandardizedFunctionCall, GroupedExpr
 from EinsteinEngine.emit.code.amrex.amrex_tree import StateLoad, StatePointerDecl, RhsLoad, CoordDecl, TempDecl, \
-    RhsStore, DeviceFunctionDecl, KernelClassDecl
+    RhsStore, TileLoad, TileStore, DeviceFunctionDecl, LaunchGroup, KernelClassDecl
 from EinsteinEngine.emit.tree import Identifier, LineComment, Verbatim
 from EinsteinEngine.emit.visitor import Visitor, visit_each
 from EinsteinEngine.generators.generator_exception import GeneratorException
@@ -83,7 +83,7 @@ class AMReXVisitor(Visitor[CodeNode]):
 
     @visit.register
     def _(self, n: VerbatimExpr) -> str:
-        return n.text
+        return n.v.text
 
     @visit.register
     def _(self, n: LineComment) -> str:
@@ -174,6 +174,14 @@ class AMReXVisitor(Visitor[CodeNode]):
         return f'const amrex::Real {n.name} = rhs_ptr[static_cast<std::ptrdiff_t>({n.enum}) * rn];'
 
     @visit.register
+    def _(self, n: TileLoad) -> str:
+        return f'const amrex::Real {n.name} = tile_ptr[{n.index} * tn];'
+
+    @visit.register
+    def _(self, n: TileStore) -> str:
+        return f'tile_ptr[{n.index} * tn] = {n.name};'
+
+    @visit.register
     def _(self, n: CoordDecl) -> str:
         return f'const amrex::Real {n.name} = ({n.index} + 0.5) * DX;'
 
@@ -201,15 +209,36 @@ class AMReXVisitor(Visitor[CodeNode]):
             'const std::ptrdiff_t rn = rhs.stride.a[2];\n'
             '(void)sy;\n(void)sz;\n(void)sn;\n(void)rn;\n'
         )
+        tile_arg = ''
+        if n.uses_tile:
+            tile_arg = ',\n    amrex::Array4<amrex::Real> const &tile'
+            head += ('amrex::Real *const tile_ptr = tile.ptr(i, j, k);\n'
+                     'const std::ptrdiff_t tn = tile.stride.a[2];\n(void)tile_ptr;\n(void)tn;\n')
         return (
             f'// {n.comment}\n'
             f'AMREX_GPU_DEVICE AMREX_FORCE_INLINE void {n.name}(\n'
             '    int i, int j, int k, amrex::Array4<amrex::Real> const &rhs,\n'
-            '    amrex::Array4<amrex::Real const> const &state) const\n'
+            f'    amrex::Array4<amrex::Real const> const &state{tile_arg}) const\n'
             '{\n'
             + indent(head + '\n'.join(visit_each(self, n.body)))
             + '\n}'
         )
+
+    def _launches(self, g: LaunchGroup) -> str:
+        lines = []
+        if g.tiles:
+            lines += [
+                f'// Scratch for {g.name}\'s tile temporaries ({", ".join(g.tiles)}), on the valid cells; stream-ordered',
+                '// allocation, so freeing it at the end of compute() needs no synchronization.',
+                f'amrex::MultiFab tile_{g.name}(a_rhs.boxArray(), a_rhs.DistributionMap(), {len(g.tiles)}, 0,',
+                '                             amrex::MFInfo().SetArena(amrex::The_Async_Arena()));',
+                f'const auto &tile_{g.name}_arrays = tile_{g.name}.arrays();',
+            ]
+        for f in g.functions:
+            tile = f', tile_{g.name}_arrays[box_no]' if f.uses_tile else ''
+            lines.append(f'amrex::ParallelFor(a_rhs, [=] AMREX_GPU_DEVICE(int box_no, int i, int j, int k)\n'
+                         f'                   {{ self.{f.name}(i, j, k, rhs_arrays[box_no], state_arrays[box_no]{tile}); }});')
+        return '\n'.join(lines)
 
     @visit.register
     def _(self, n: KernelClassDecl) -> str:
@@ -227,11 +256,7 @@ class AMReXVisitor(Visitor[CodeNode]):
             + [f'{p.name} = {p.init};' for p in n.params]
             + [f'DX = {n.dx};'] + [f'{d} = 1.0 / ({n.dx});' for d in ('DXI', 'DYI', 'DZI')]
         )
-        launches = '\n'.join(
-            f'amrex::ParallelFor(a_rhs, [=] AMREX_GPU_DEVICE(int box_no, int i, int j, int k)\n'
-            f'                   {{ self.{f.name}(i, j, k, rhs_arrays[box_no], state_arrays[box_no]); }});'
-            for f in n.functions
-        )
+        launches = '\n'.join(self._launches(g) for g in n.launches)
         compute = (
             '// Launches the device functions, one ParallelFor each, in order, over the valid cells of a_rhs.\n'
             '// The caller synchronizes the stream.\n'
@@ -245,7 +270,7 @@ class AMReXVisitor(Visitor[CodeNode]):
             )
             + '\n}'
         )
-        functions = '\n\n'.join(visit_each(self, n.functions))
+        functions = '\n\n'.join(visit_each(self, [f for g in n.launches for f in g.functions]))
         cls = (
             f'class {n.name}\n'
             '{\n'

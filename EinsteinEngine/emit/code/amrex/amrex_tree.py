@@ -45,6 +45,20 @@ class RhsLoad(Stmt):
 
 
 @dataclass
+class TileLoad(Stmt):
+    """const amrex::Real <name> = tile_ptr[<index> * tn]; a tile temporary an earlier loop of this function stored."""
+    name: str
+    index: int
+
+
+@dataclass
+class TileStore(Stmt):
+    """tile_ptr[<index> * tn] = <name>; a tile temporary this loop computed, for later loops of this function."""
+    name: str
+    index: int
+
+
+@dataclass
 class CoordDecl(Stmt):
     """const amrex::Real <name> = (<index> + 0.5) * DX; the cell-center coordinate."""
     name: str
@@ -78,10 +92,21 @@ class KernelParam(CodeNode):
 
 @dataclass
 class DeviceFunctionDecl(CodeNode):
-    """An AMREX_GPU_DEVICE member function computing one cell."""
+    """An AMREX_GPU_DEVICE member function computing one cell of one loop. `uses_tile`: it takes the function's tile
+    scratch array as a further argument."""
     name: str
     comment: str
     body: Sequence[Stmt]
+    uses_tile: bool = False
+
+
+@dataclass
+class LaunchGroup(CodeNode):
+    """The loops of one DSL function, launched in order, sharing a scratch MultiFab with one component per tile
+    temporary (none if `tiles` is empty)."""
+    name: str
+    tiles: Sequence[str]
+    functions: Sequence[DeviceFunctionDecl]
 
 
 @dataclass
@@ -94,5 +119,5 @@ class KernelClassDecl(CodeNode):
     dx: str
     ctor_checks: Sequence[tuple[str, str]]  # (failure condition, message)
     params: Sequence[KernelParam]
-    functions: Sequence[DeviceFunctionDecl]  # in launch order
+    launches: Sequence[LaunchGroup]  # in launch order
     banner: str
