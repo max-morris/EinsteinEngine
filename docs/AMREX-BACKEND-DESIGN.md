@@ -1,8 +1,8 @@
 # A shared AMReX backend: design
 
-Status: design for review, version 2 (2026-10-20). Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
-implemented on this branch yet. Version 1 (`0861b89e`) was blocked by both reviewers; section 12 maps every finding
-to its resolution.
+Status: design for review, version 3 (2026-10-20). Branch `foreign/amrex`, from master `8e45a5b7`. Nothing is
+implemented on this branch yet. Versions 1 (`0861b89e`) and 2 (`d0e6ae61`) were blocked by both reviewers; section
+12 maps every finding to its resolution.
 
 Max's decision (2026-10-20): "I want a shared, subclassable/extensible amrex backend, as anything else requires a lot
 of repeated work."
@@ -77,7 +77,12 @@ wizards/amrex_wizard.py
 **Classification is by declaration, never by name.** In version 1, a symbol was a field if its name looked like
 `<state><digits>`. That broke MHDuet's names (`gtd_xx`), its read-only fields, and its parameter `trK0`, which
 printed as a state load. Version 2 classifies every symbol by its declaration:
-- `module.field(name, indices, array=..., component=...)` declares a field (an input), bound to an array (section 5).
+- A **field binder**, a required module-level callable `binder(name) -> FieldBinding(array, component) | None`, is
+  consulted by every declaration. `decl` and the `rhs=` shorthand consult it, so a frontend-agnostic recipe that
+  declares its fields with a plain `cc.decl` (MHDuet's `Df`, `vfd`, ...) gets them bound by the subclass, without
+  editing the recipe.
+- `module.field(name, indices, array=..., component=...)` is an explicit declaration, for recipes written against
+  this backend. Declaring the same name both ways is an error.
 - `module.output(name, indices, ...)` declares an output: an rhs component in kernel mode, a register output in point
   mode. `decl(name, ..., rhs=R)` stays as a shorthand for a field X whose output is R, written to X's component.
 - `add_param` declares parameters. `decl` with no binding declares temporaries.
@@ -128,15 +133,18 @@ silently move MHDuet's coordinates, which changes its results.
    | mode | outputs | splits | access | params |
    |---|---|---|---|---|
    | `KernelLaunchMode` | stores to an rhs array; overwrites (`X' = X + ...`) reload X before any store | hard splits, scratch MultiFab on `The_Async_Arena()` | any | `MemberParams` |
-   | `PointFunctionMode(outputs='refs'\|'struct')` | `Real&` out-parameters, or a returned POD struct; each output assigned exactly once (checked) | refused (a later version adds sequential inline functions) | any | `StructParams` or `MemberParams` |
+   | `PointFunctionMode(outputs='refs'\|'struct')` | `Real&` out-parameters, or a returned POD struct; each output assigned exactly once (checked) | refused (a later version adds sequential inline functions) | any | `StructParams` |
 
    Point mode details:
-   - **Fixed signature order:** `i, j, k`; the arrays in declaration order; the coordinate and spacing arguments
-     (`prob_lo`, `dx`); the parameter struct; the outputs in declaration order. The order is documented in the
-     header comment, and a test pins it.
+   - **Fixed signature order**, the same for every function of a module: `i, j, k`; the module's arrays, in
+     declaration order; the coordinate and spacing arguments (`prob_lo`, `dx`); the parameter struct; then the
+     outputs this function assigns, in output-declaration order. The order is documented in the header comment, and
+     a test pins it.
    - **Each DSL function is one self-contained inline function.** A function may read only fields. A value computed
      by another function reaches it only as a field the host passes in.
-   - **MHDuet's `ko` function** outputs the KO increments, each a declared output (`ko_<field>`).
+   - **MHDuet's `ko` function** outputs the KO increments, each a declared output (`ko_<field>`). The recipe today
+     adds KO into the RHS (`ko=True`), so a separate KO function is new recipe code, for MHDuet's agent and its
+     reviewers.
    - **No joining of functions.** The version-1 `fuse_functions` option is dropped: under `promote_none`, shared
      temporaries are duplicated as Locals with the same CSE names, so joining the bodies would redeclare them, and
      sharing would need Global temporaries, which both modes refuse. A recipe that wants shared CSE between rhs and
@@ -163,22 +171,30 @@ silently move MHDuet's coordinates, which changes its results.
 - **Constants.** π and E print as their correctly rounded doubles (`3.141592653589793`, `2.718281828459045`).
   Version 1's claim that π was 7 ulp low applies only to EE's generic printers; this path was already exact, which
   reviewer A verified. Any other constant makes the generator raise.
-- **Integer powers.**
-  - Exponents 2 to 4 are expanded into products, the range GRTeclyn's and MHDuet's code uses.
-  - Exponent 1/2 prints `sqrt(x)`, and -1/2 prints `1.0/sqrt(x)`.
-  - Every other exponent prints `pow(x, p)`, with p the exact double: `pow(chi_max, -1.5)`, as MHDuet writes it.
-  - Version 1's cap of 8 and its 3/2 rule are dropped: fewer special cases, each of them justified.
+- **Powers** (pinned by a printing test):
+
+  | exponent | prints |
+  |---|---|
+  | 0 | `1.0` |
+  | n = 1 to 4 | `(x * ... * x)`, n factors |
+  | -n, n = 1 to 4 | `(1.0 / (x * ... * x))` (GRTeclyn's header has six such divisions) |
+  | 1/2, -1/2 | `sqrt(x)`, `(1.0 / sqrt(x))` |
+  | any other (integer beyond 4, other rationals, symbols) | `pow(x, p)`, p the exact double or the symbol: `pow(chi_max, -1.5)`, `pow(lapse, lapse_power)` |
+
+  This is today's `foreign/grteclyn` rule with the integer range limited to 4 (no GRTeclyn or MHDuet expression has
+  a larger integer power), so GRTeclyn's header is unchanged. Version 1's cap of 8 and 3/2 rule are dropped.
 - **`Abs`** prints `amrex::Math::abs(x)`. **`Max`/`Min`** print `amrex::max(a, b)`/`amrex::min(a, b)`, with every
-  operand printed as a `Real` (`amrex::Real(1)`, not `1`). These now get explicit visitor rules; in version 1 they
-  were unreachable.
+  operand printed as a `Real` (`amrex::Real(1)`, not `1`). `sympy.Max` and `Min` are not `sympy.Function`s, so the
+  base visitor's function-rewrite table cannot reach them; the AMReX sympy visitor handles them itself before
+  delegating to the base visitor. A printing test pins this.
 - **Booleans.** Relations print as C++ comparisons; `And`, `Or` and `Not` print `&&`, `||`, `!`.
 - **Standard functions.** `sqrt`, `exp`, `log`, `sin`, `cos`, `tan`, `sinh`, `cosh`, `tanh` and `erf` print
   unqualified. Anything else raises.
 - **Piecewise** prints as a C++ conditional expression. Only the selected operand is evaluated; section 7 covers what
   CSE can hoist out of it.
-- **Includes.** Kernel mode: `AMReX_Array4.H`, `AMReX_MultiFab.H`, `AMReX_REAL.H`, `<cstddef>`, `<type_traits>`.
-  Point mode: `AMReX_Array4.H`, `AMReX_REAL.H`, `AMReX_GpuQualifiers.H`, `AMReX_Array.H` (`GpuArray`),
-  `AMReX_Algorithm.H`, `<cmath>`.
+- **Includes.** Kernel mode: `AMReX_Array4.H`, `AMReX_MultiFab.H`, `AMReX_REAL.H`, `AMReX_Math.H`, `<cstddef>`,
+  `<type_traits>`. Point mode: `AMReX_Array4.H`, `AMReX_REAL.H`, `AMReX_GpuQualifiers.H`, `AMReX_Array.H`
+  (`GpuArray`), `AMReX_Algorithm.H` (`amrex::max`), `AMReX_Math.H` (`amrex::Math::abs`), `<cmath>`.
 - **Contraction.** The printer never relies on any particular evaluation order beyond C++'s. Results depend on FMA
   contraction at roundoff level only, which nvcc does by default (`--fmad=true`) with or without fast math.
   Validation runs with the production flags and, as an envelope, without contraction.
@@ -195,16 +211,40 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
    - For finite S the value is unchanged.
    - Where the guard is false, the result is 0 instead of `0*S`. That is the intended guard semantics, and what
      MHDuet's `if (factor > 0)` does.
-   - The recipe stays as it is, so MHDuet's passed recipe gate is untouched.
-2. **Check after CSE.** CSE may still extract parts of `a*S` into temporaries that are evaluated unconditionally. The
-   generator lists each guarded Piecewise whose selected branch reads a temporary that is defined outside the branch
-   and reads a field under a stencil.
-   - Point mode raises on such a guard by default (`strict_guards=True`).
-   - Kernel mode only reports, because GRTeclyn has no guards.
+   - The fold needs no recipe change, so MHDuet's KO form stays as it is. Its separate `ko` function, though, is new
+     recipe code (section 5.4).
+2. **Check after CSE.** The correctness property is: no product of a zero-branch Piecewise with a non-constant factor
+   survives into the emitted code. With it, a false guard yields exactly 0 whatever any other temporary holds.
+   - The generator follows temporaries through each equation and raises on any surviving product `Piecewise(...,
+     (0, True)) * F` with F non-constant, whether the Piecewise is a direct factor or reaches the product through a
+     temporary (a recipe's `g = Piecewise(...)`, then `g*S`). This is an unconditional hard error in both modes, so a
+     bypassed fold cannot pass silently.
+   - What CSE may still do is compute some arithmetic of a guarded branch unconditionally. sympy's CSE places all
+     temporaries at top level, so the shared stencil loads and, for example, the center weight `-20*f0` of MHDuet's
+     KO are computed whether or not the guard holds. That costs work but cannot change the result: those temporaries
+     may hold Inf, but a false guard selects 0 without reading them. The generator reports, as a warning and never an error, the
+     arithmetic temporaries used only (transitively) inside guarded branches, so the cost is visible. Loads are never
+     reported. Raising here would fire on nearly all of MHDuet's 22 guards (the reviewers' emitted code shares KO
+     stencil sums with the second-derivative stencils), and the cost is zero in production, where the factors are
+     positive.
+   - Skipping that work too would need an intermediate-layer option that keeps CSE out of guarded branches: an
+     EE-core change and a `[DECISION]` for Max, only if MHDuet's timings call for it.
 
-   A guard that CSE hoists can be fixed in the recipe, or by an intermediate-layer option that keeps CSE out of
-   guarded branches. That option would be an EE-core change and a `[DECISION]` for Max. It is needed only if MHDuet
-   meets an unfixable case.
+   R10 accordingly means: a false guard contributes exactly 0, and no `0 * S` is computed. The skipping of the
+   branch's own work is not guaranteed.
+
+3. **The fold cannot be bypassed.**
+   - `AMReXModule.bake` inserts the fold first into whatever `cse_optimizations` list arrives, including one from a
+     recipe or tuner (`bake` replaces the default list). It goes first because `cse_basic`'s `factor_terms` would
+     otherwise split `Mul(Piecewise, S)`, folding with different roundoff.
+   - The fold is a custom rewrite of `Mul` nodes. It is not sympy's `piecewise_fold`, which also folds the enclosing
+     sum and duplicates the whole right-hand side.
+   - With `do_cse=False`, it applies the fold directly to every equation.
+   - The fold rewrites only the matched products. Every other node is returned unchanged (the identical object), so
+     a header without guards is byte-identical.
+   - It runs to a fixpoint, so a product with several guard factors folds completely.
+   - Tests cover both bypass paths (a recipe-supplied list, `do_cse=False`), MHDuet's exact KO form, several guard
+     factors, and the post-CSE check firing on an unfolded product.
 
 Version 1's statement-level code sinking (its section 9(a)) is dropped. It was unsound with recycled temporaries,
 which reassign shared C++ variables, and with C++ block scope.
@@ -220,7 +260,7 @@ which reassign shared C++ variables, and with C++ block scope.
   `max_stencil_offset`.
 - **Errors, never silent fallbacks:** unbound symbols, unsupported functions or operators, low-precision Floats,
   unsupported scheme combinations, a hard split in point mode, an unassigned or doubly assigned point output, and an
-  unsinkable guard in strict mode all raise.
+  zero-branch Piecewise used as a product factor all raise.
 
 ## 9. Tests
 
@@ -232,14 +272,18 @@ Plain scripts in `unit_tests/`. The first group runs without AMReX:
    change in output shows as a diff.
 3. **Printing:** π, E, `1e-6`, a low-precision Float (refused), large Rationals, the exponent table (2, 3, 4, 1/2,
    -1/2, -3/2), `Abs`, `Max` with an integer operand, And/Or/Not, Piecewise.
-4. **Guards:** the folding rewrite on MHDuet's exact KO form; the strict check (a hoisted guard raises); a golden
+4. **Guards:** the folding rewrite on MHDuet's exact KO form, several guard factors, both bypass paths; the post-CSE
+   error on an unfolded product (direct and through a temporary); the hoisting warning; a NaN in the KO stencil with a
+   false guard gives 0; a golden
    output.
-5. **Determinism:** the toy and the GRTeclyn header are byte-identical across `PYTHONHASHSEED` 0, 1 and 7.
+5. **Determinism:** the toy and the GRTeclyn header are byte-identical across `PYTHONHASHSEED` 0, 1 and 7 (about
+   5 minutes, so it runs on mel5bash or under the local-heavy lock).
 
 Required gates, run on mel5bash or in a qbd GPU job and recorded with each EE milestone:
 
-6. **Compile:** both golden headers and GRTeclyn's CCZ4 header compile against real AMReX 26.10, with
-   `g++ -fsyntax-only` (CPU AMReX) and `nvcc -x cu -fsyntax-only` (CUDA AMReX, sm_80).
+6. **Compile:** both golden headers and GRTeclyn's CCZ4 header compile against real AMReX 26.10 (GRTeclyn's) and
+   25.11 (MHDuet's), with `g++ -fsyntax-only` (CPU AMReX) and `nvcc -x cu -fsyntax-only` (CUDA 12.2 and GCC 11, sm_80,
+   in a qbd job).
 7. **Differential:** a toy point function and a toy kernel class, compiled with g++ against CPU AMReX, run on random
    data. The data has anisotropic dx, an `Array4` with nonzero `begin`, and distinct enums per array. The results are
    compared with sympy's 50-digit evaluation of the baked equations, to 1e-13 relative.
@@ -249,7 +293,8 @@ Required gates, run on mel5bash or in a qbd GPU job and recorded with each EE mi
 
 1. **New baseline first.** Merge master (`8e45a5b7`) into `foreign/grteclyn` with the current backend unchanged.
    - Regenerate the CCZ4 header and the six exploration variants (`bench/explore`, v0-v5).
-   - Record their md5s as the new baseline.
+   - Record their md5s, with the variant definitions in words (the tuning parameters as text, not lambda reprs), in a
+     tracked file, `grteclyn/bench/explore/baseline.md`, as the new baseline.
    - If master's CSE changes alter the header, it is revalidated at level 1 before it replaces `27b43325`.
    - Then cherry-pick the `naming.py` move, so the AMReX frontend no longer imports from the GRChombo backend.
 2. **`foreign/amrex`:** base classes, both modes, all strategies, the guard handling and the tests. The kernel-mode
@@ -288,3 +333,16 @@ goes to Max as a `[DECISION]`, and implementation starts only after his approval
 | `using namespace` and macros in MHDuet's translation unit | A | prefixed locals in point mode (section 5.4) |
 | maximum stencil offset | A, B | `max_stencil_offset` check (section 4) |
 | compile test optional; differential test needs nonzero `begin`, anisotropic dx, distinct enums; determinism | A, B | required compile gate with g++ and nvcc; differential test as specified; `PYTHONHASHSEED` test (section 9) |
+
+Version 2 findings (round 2) and their resolution:
+
+| finding | reviewer | resolution |
+|---|---|---|
+| the fold can be bypassed (`bake` replaces the CSE list; `do_cse=False`); the post-CSE check only looked inside branches | A R2-B1, B R2-B2 | the fold is always inserted first, or applied directly without CSE; an unconditional error on any zero-branch Piecewise used as a product factor, direct or through temporaries; bypass tests (sections 7.2, 7.3) |
+| the strict hoisting check fires on MHDuet's own KO and misses the real hazard | A R2-B2, B R2-B1 | no longer an error: a warning about arithmetic only; R10 restated (section 7.2) |
+| the power table sends negative integers to `pow`, breaking the md5 gate | A R2-B3, B R2-B3 | a full table, with -1 to -4 as `1.0/(product)`, pinned by a test (section 6) |
+| fields declared with a plain `cc.decl` in frontend-agnostic recipes | A, B | a required module-level field binder (section 4) |
+| which outputs a function's signature lists; a fixed signature per module | A | section 5.4 |
+| a fold through `piecewise_fold` duplicates the RHS | A | a custom `Mul` rewrite (section 7.3) |
+| baseline variants and md5s untracked | A | `grteclyn/bench/explore/baseline.md` (section 10) |
+| `MemberParams` in point mode; Max/Min reachability; `AMReX_Math.H`; AMReX 25.11; the cost of the PYTHONHASHSEED test; the KO function is recipe code | A, B | sections 5.4, 6, 9 and 7 |
