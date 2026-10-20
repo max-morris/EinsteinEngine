@@ -77,7 +77,9 @@ STATE = ["chi", "gtd", "Atd", "trK", "theta", "Gamh", "Alpha", "Betau"]  # recip
 
 
 def outputs(function: str) -> list[str]:
-    """The register outputs of a function, in the backend's output-declaration order (the recipe declares the state,
-    and so the RHS, in STATE order): RHS_<component> for rhs, ko_<component> for ko."""
+    """MHDuet's names of a function's register outputs: RHS_<component> for rhs, ko_<component> for ko, one per state
+    component (listed in STATE order). Names, not positions: EE orders a symmetric tensor's components 00, 01, 11,
+    02, 12, 22, so apply.sh binds each argument by its parameter name in the emitted signature, never by this list's
+    order."""
     prefix = {"rhs": "RHS_", "ko": "ko_"}[function]
     return [prefix + c for base in STATE for c in component_names(base)]
