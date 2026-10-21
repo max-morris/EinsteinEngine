@@ -137,6 +137,10 @@ def _or_absent(value: object) -> str:
     return 'absent' if value is None else repr(value)
 
 
+#  The out-param a rank_by_post_population probe param must be (after a split tuner's prefix).
+EARLY_ORDERING_FN = 'early_ordering_fn'
+
+
 def _count_checkpoint_entries(checkpoint_file: str) -> int:
     if not os.path.exists(checkpoint_file):
         return 0
@@ -162,8 +166,8 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     ranked = {name: value for name, value in params.items() if isinstance(value, RankByPostPopulation)}
     if not targets and not ranked:
         return tuner.get_probed_experiment(EMPTY_PROBE)
-    if bad := sorted(set(ranked) - {'early_ordering_fn'}):
-        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn, not {bad}.")
+    if bad := sorted(name for name in ranked if not name.endswith(EARLY_ORDERING_FN)):
+        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn (with any prefix), not {bad}.")
 
     sidecar = probe_sidecar_path(checkpoint_file)
     recorded: ProbeRecord | None = None
@@ -187,7 +191,8 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             else:
                 pprint(f"Deriving the add_eqn order for {rule!r} from {recipe}...")
                 others = {k: v for k, v in params.items() if k not in ranked}
-                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others)
+                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others,
+                                                                   prefix=name.removesuffix(EARLY_ORDERING_FN))
                 pprint(f"{function_name}: {rule!r} derived the add_eqn order {list(orders[name])}.")
         derived_orders = orders
         resolved = {**params, **{name: add_eqn_order(order) for name, order in derived_orders.items()}}
