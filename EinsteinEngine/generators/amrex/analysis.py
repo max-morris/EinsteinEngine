@@ -21,7 +21,7 @@ the statement list of one loop of one function, independent of the emission mode
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Mapping, Optional
 
 import sympy as sy
 
@@ -94,13 +94,13 @@ def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[s
     prior = set(prior_writes)
     for loop_idx, eqn_list in enumerate(complex_.eqn_lists):
         carried = set(module.output_bases_components()) | set(tiles)
-        loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index, guards, carried))
-        # A name this loop assigns has a new value: earlier zero forms that refer to it by name refer to the old one.
+        # A name this loop assigns has a new value: forms that refer to it by name for its value before the loop (the
+        # earlier ones, and this loop's own reads before the assignment) refer to the old one, one shared placeholder
+        # per name (round 5, A B9).
         assigned = {unprimed(lhs) for lhs, _ in eqn_list.sorted_eqns}
-        for name, z in list(guards.items()):
-            stale = {s_: sy.Dummy(str(s_)) for s_ in z.free_symbols if isinstance(s_, sy.Symbol) and str(s_) in assigned}  # type: ignore[no-untyped-call]
-            if stale:
-                guards[name] = z.xreplace(stale)  # type: ignore[no-untyped-call]
+        old = {n: sy.Dummy(n) for n in assigned}  # type: ignore[no-untyped-call]
+        loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index, guards, carried, old))
+        _rename(guards, old)
         # Only outputs and tile temporaries carry a value to later loops; a name's latest assignment decides.
         for name, z in loops[-1].zero_forms.items():
             if name not in carried:
@@ -113,16 +113,22 @@ def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[s
         writes |= set(loops[-1].writes)
     for t in tiles:  # tile temporaries are the function's own: forgotten, and opaque where others refer to them
         guards.pop(t, None)
-    for name, z in list(guards.items()):
-        stale = {s_: sy.Dummy(str(s_)) for s_ in z.free_symbols if isinstance(s_, sy.Symbol) and str(s_) in tiles}  # type: ignore[no-untyped-call]
-        if stale:
-            guards[name] = z.xreplace(stale)  # type: ignore[no-untyped-call]
+    _rename(guards, {t: sy.Dummy(t) for t in tiles})  # type: ignore[no-untyped-call]
     return loops, tiles, writes
+
+
+def _rename(forms: dict[str, sy.Expr], names: Mapping[str, sy.Basic]) -> None:
+    """Replaces, in every form, each symbol named in `names` (placeholders excluded) by its placeholder there."""
+    for key, z in list(forms.items()):
+        repl = {x: names[str(x)] for x in z.free_symbols
+                if isinstance(x, sy.Symbol) and not isinstance(x, sy.Dummy) and str(x) in names}
+        if repl:
+            forms[key] = z.xreplace(repl)  # type: ignore[no-untyped-call]
 
 
 def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops: int, eqn_list: EqnList,
                   prior: set[str], tile_index: dict[str, int], guards: dict[str, sy.Expr],
-                  carried: set[str]) -> LoopAnalysis:
+                  carried: set[str], old: Mapping[str, sy.Basic]) -> LoopAnalysis:
     where = fn.name if nloops == 1 else f"{fn.name} loop {loop_idx}"
     name = fn.name if nloops == 1 else f"{fn.name}_{loop_idx}"
     loop = LoopAnalysis(fn.name, loop_idx, name, fn.source_annotations.loops.get(loop_idx) or name)
@@ -132,7 +138,8 @@ def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops:
     loaded_tiles = {str(t) for t in eqn_list.preinitialized_tile_temporaries}
     if bad := sorted({str(x.new) for x in subst.substitutions} & loaded_tiles):
         raise GeneratorException(f"{where}: recycling reuses the loaded tile temporaries {bad}.")
-    loop.zero_forms = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards, carried)
+    loop.zero_forms = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards, carried,
+                                   old)
 
     # Every left-hand side is classified by declaration: assigning a field or a parameter is refused; an lhs declared
     # as an output is a write of that output, whether or not EE's EqnList counts it as one (it counts an lhs that a

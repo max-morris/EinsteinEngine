@@ -649,11 +649,108 @@ def test_round3() -> None:
     refuses(lambda: sv.visit(sy.Float('1e-400', 30)), "underflows")
 
 
+def test_round5() -> None:
+    """Implementation review round 5: a guard larger than the inlining bound stays a guard (A B8, B B1); one shared
+    placeholder per reassigned name (A B9); 0**n inside choices and after the fold (B B2); bounded cost: expansion,
+    Max/Min and the fold (A B10, B B3)."""
+    import time
+    from EinsteinEngine.generators.amrex.guards import MAX_INLINE, check_guards, tree_size
+    f, S, c, A, B, C, k, eps = sy.symbols('f S c A B C kappa eps')
+    G = Piecewise((f, f > 0), (0, True))
+    o, t, x0 = sy.Symbol('o'), sy.Symbol('t'), sy.Symbol('x0')
+    big = sum(Rational(1, n) * A ** n * B ** (n % 7) * C ** (n % 5) for n in range(1, 60))
+    assert tree_size(big) > MAX_INLINE
+    rows = [
+        # B8: a large guard, in a temporary or folded, then multiplied.
+        ('raise', {t: Piecewise((eps * big, eps > 0), (0, True)), o: t * S}),
+        ('raise', {t: fold_guards(G * big), o: t * S}),
+        ('pass', {t: fold_guards(G * big), o: (t + A) * S}),
+        ('raise', {x0: big, t: G * x0, o: t * S}),
+        # B B2: 0**n inside a choice, under a function, and rebuilt (Abs(0**k)**k).
+        ('raise', {o: sy.sin(sy.Abs(Piecewise((C, c > 0), (G, True))) ** k) * S}),
+        ('raise', {o: sy.sin(Piecewise((G, c > 0), (2, True)) ** k) * S}),
+        ('raise', {o: sy.Abs(sy.Min(G, sy.Abs(G) ** k)) ** k * S}),
+        ('raise', {o: (2 * sy.Abs(G) ** k) ** k * S}),
+        ('pass', {o: (sy.sin(Piecewise((G, c > 0), (2, True)) ** k) + 2) * S}),
+    ]
+    for want, eqns in rows:
+        folded = {lhs: fold_guards(rhs) for lhs, rhs in eqns.items()}
+        if want == 'raise':
+            refuses(lambda: check_guards(folded, set(folded) - {o}, str(o)), "multiplies a guard")
+        else:
+            check_guards(folded, set(folded) - {o}, str(o))
+    # B8 across a split: an output that is a large guard, carried by name.
+    zf = check_guards({sy.Symbol('q_rhs'): fold_guards(G * big)}, set(), 'r0', carried=['q_rhs'])
+    refuses(lambda: check_guards({o: sy.Symbol('q_rhs') * S}, set(), 'r1', zf), "multiplies a guard")
+    # Cost (A B10, B B3): each of these legal or refused forms is decided within a few seconds.
+    chain = {sy.Symbol('t0'): A + G}
+    for i in range(1, 23):
+        chain[sy.Symbol(f't{i}')] = sy.Symbol(f't{i - 1}') * (sy.Symbol(f'a{i}') + sy.Symbol(f'b{i}'))
+    chain[o] = sy.Symbol('t22') * S
+    T = sy.sin(A) * sy.exp(B) + sy.cos(C) ** 2
+    cases = [('pass', chain), ('pass', {o: (sy.Max(G, Piecewise((G, c > 0), (T, True))) + 1) * S}),
+             ('pass', {o: (A + G) * sy.Mul(*[(sy.Symbol(f'a{i}') + sy.Symbol(f'b{i}')) for i in range(18)]) * B})]
+    for want, eqns in cases:
+        t0 = time.time()
+        check_guards(eqns, set(eqns) - {o}, 'cost')
+        assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
+    # Identifier scan (A N35): members through (*this)., and a quote inside a character literal.
+    ids = AMReXModule.cpp_identifiers("char q = '\"'; alpha = eta; b = \"x\"; c = 2.0 * (*this).beta; n = 1'000;")
+    assert {'alpha', 'eta', 'beta'} <= ids and 'x' not in ids, ids
+    refuses(lambda: (lambda cc: (cc.add_param("alpha", init="2.0 * (*this).beta"), cc.add_param("beta", init="1.0")))(
+        kernel_module()), "reads it, unset")
+    # Many choices around a guard are refused, loudly, rather than folded without end.
+    many = sum(Piecewise((G, sy.Symbol(f'c{i}') > 0), (sy.Symbol(f'd{i}'), True)) for i in range(12))
+    refuses(lambda: check_guards({o: many * S}, set(), 'many'), "combinations of choices")
+
+
+def test_round5_reassigned() -> None:
+    """Round 5, A B9: two carried forms that name the same old value share one placeholder, also when an unrelated
+    overwrite or a function boundary sits between the writer and the reader (end to end, kernel mode)."""
+    A_, B_ = sy.symbols('A_ B_')
+
+    def build(middle: str) -> None:
+        cc = kernel_module()
+        eps = cc.add_param("eps", init="0.1")
+        bb = cc.add_param("bb", init="2.0")
+        outs = {}
+        for nm in ('u', 'w', 'q', 'p'):
+            r = cc.output(f"{nm}_rhs", [])
+            outs[nm] = (cc.decl(nm, [], rhs=r), r)
+        (u, ru), (w, rw), (q, rq), (p, rp) = (outs[x] for x in 'uwqp')
+        G = Piecewise((eps, eps > 0), (0, True))
+        H = Piecewise((bb, bb > 1), (0, True))
+        big = sum(Rational(1, n) * u ** n * w ** (n % 7) * q ** (n % 5) for n in range(1, 60))
+        f = cc.create_function("f")
+        if middle == 'tile':
+            tt = cc.decl("tt", [])
+            f.add_eqn(tt, big)
+            f.split_loop()
+            f.add_eqn(ru, tt + G)
+            f.add_eqn(rw, tt + H)
+            f.add_eqn(rq, q)
+        else:
+            f.add_eqn(rq, big)
+            f.add_eqn(ru, rq + G)
+            f.add_eqn(rw, rq + H)
+            if middle == 'overwrite':
+                g = cc.create_function("g")
+                g.add_eqn(cc.overwrite(rq), 2 * rq)
+        h = cc.create_function("h")
+        h.add_eqn(rp, (ru - rw) * D(p, l0, l0))
+        cc.bake()
+        text(cc)
+    for middle in ('none', 'overwrite', 'tile'):
+        refuses(lambda: build(middle), "multiplies a guard")
+
+
 def test_random_guards(trials: int = 300) -> None:
     """Review round 4 (B): random equation systems with guards. Wherever the output is NaN with the guards false and
     S infinite at two generic points of the other symbols, but not with the guards true (a guard-caused 0 * S), the
     check must raise, in one loop and after a split at a random point (the first part's zero forms carried, its values
-    read by name)."""
+    read by name). Round 5 (A N34, B): Min among the operations, and at the split only a random half of the first
+    part's values carried by name (the others are locals: the second part reads their values). Symbolic powers, whose
+    exact evaluation here is slow, are covered by test_round5."""
     import contextlib
     import io
     import random
@@ -667,7 +764,7 @@ def test_random_guards(trials: int = 300) -> None:
             return rng.choice([G1, G2, A, B, sy.Integer(rng.randint(1, 3))] + temps)
         x, y = expr(depth - 1, temps), expr(depth - 1, temps)
         return [x + y, x - y, x * y, sy.Abs(x), sy.exp(x), sy.sin(x), sy.Max(x, y), Piecewise((x, c > 0), (y, True)),
-                x ** 2][rng.randrange(9)]
+                x ** 2, sy.Min(x, y)][rng.randrange(10)]
 
     def verdict(eqns: dict, split: int | None) -> str:
         try:
@@ -677,8 +774,12 @@ def test_random_guards(trials: int = 300) -> None:
                 else:
                     items = list(eqns.items())
                     first, second = dict(items[:split]), dict(items[split:])
-                    zf = check_guards(first, set(first), 'r0', carried=[str(k) for k in first])
-                    carried = {k: v for k, v in zf.items() if not (isinstance(v, sy.Symbol) and str(v) == k)}
+                    keep = {str(x) for x in first if rng.random() < 0.5}
+                    zf = check_guards(first, set(first), 'r0', carried=sorted(keep))
+                    carried = {n: v for n, v in zf.items() if n in keep and not (isinstance(v, sy.Symbol) and str(v) == n)}
+                    local = {x: v for x, v in first.items() if str(x) not in keep}
+                    for _ in range(len(first)):  # locals are not readable by name in the second part: their values
+                        second = {x: v.xreplace(local) for x, v in second.items()}
                     check_guards(second, set(second), 'r1', carried)
             return 'pass'
         except GeneratorException:
@@ -724,6 +825,8 @@ def main() -> None:
     test_guards_round1()
     test_round2()
     test_round3()
+    test_round5()
+    test_round5_reassigned()
     test_random_guards()
     test_golden_and_determinism()
     print('test_amrex_backend: OK')

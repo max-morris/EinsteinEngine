@@ -164,9 +164,12 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
         """The free identifiers of C++ text: not in string literals or comments, not member names after `.`, `->` or
         `::`, not parts of numbers (the `e` of `1.0e-3`)."""
         import re
-        # Strings and comments in one left-to-right pass, so a quote in a comment (or // in a string) hides nothing.
-        code = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
-        this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code))
+        # Strings, character literals and comments in one left-to-right pass, so a quote in a comment (or // in a
+        # string, or '"') hides nothing. A quote after a hex digit is a digit separator (1'000), unless after u8.
+        string, char = r'"(?:\\.|[^"\\])*"', r"(?:(?<![0-9A-Fa-f])|(?<=u8))'(?:\\.|[^'\\\n])+'"
+        code = re.sub(rf'{string}|{char}|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
+        this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code)) | set(
+            re.findall(r'\(\s*\*\s*this\s*\)\s*\.\s*([A-Za-z_]\w*)', code))
         code = re.sub(r'(?<![\w.])\d[\w.]*(?:[eE][+-]?\d+)?', ' ', code)
         return set(re.findall(r'(?<![\w.])(?<!->)(?<!::)[A-Za-z_]\w*', code)) | this_members
 
