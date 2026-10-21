@@ -20,6 +20,7 @@ import json
 import os
 import traceback
 import typing
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
@@ -105,6 +106,9 @@ class ProbeRecord:
     derived_orders: Mapping[str, tuple[int, ...]] = field(default_factory=dict)
     #  The tuner's describe_space(); None in a sidecar written before it was recorded (then it is not checked).
     space: Mapping[str, str] | None = None
+    #  A random id given to the study when its sidecar is first written, and kept when it is rewritten, so that two
+    #  studies with the same tuner and recipe (e.g. one per compiler) are told apart. None in an older sidecar.
+    study: str | None = None
 
     def to_json(self) -> str:
         obj: dict[str, Any] = {'counts': dict(self.counts), 'probe_params': dict(self.probe_params)}
@@ -112,7 +116,17 @@ class ProbeRecord:
             obj['derived_orders'] = {name: list(order) for name, order in sorted(self.derived_orders.items())}
         if self.space is not None:
             obj['space'] = dict(sorted(self.space.items()))
+        if self.study is not None:
+            obj['study'] = self.study
         return json.dumps(obj, indent=2) + '\n'
+
+    def identity(self) -> dict[str, Any]:
+        """What identifies the study this record belongs to, in a canonical form: the study id, the probe counts, the
+        probe params and the derived orders (not the search space, which is checked on resume instead, nor the file's
+        formatting)."""
+        return {'study': self.study, 'counts': dict(sorted(self.counts.items())),
+                'probe_params': dict(sorted(self.probe_params.items())),
+                'derived_orders': {name: list(order) for name, order in sorted(self.derived_orders.items())}}
 
     @staticmethod
     def from_json(text: str) -> 'ProbeRecord':
@@ -130,8 +144,11 @@ class ProbeRecord:
         space = obj.get('space')
         if space is not None and (not isinstance(space, dict) or not all(isinstance(v, str) for v in space.values())):
             raise ValueError(f'Expected "space" to map param names to descriptions, got {space!r}')
+        study = obj.get('study')
+        if study is not None and not isinstance(study, str):
+            raise ValueError(f'Expected "study" to be a string, got {study!r}')
         return ProbeRecord(ProbeResult.from_counts(obj.get('counts')), dict(obj['probe_params']),
-                           {name: tuple(order) for name, order in derived.items()}, space)
+                           {name: tuple(order) for name, order in derived.items()}, space, study)
 
     def differences(self, current: 'ProbeRecord') -> list[str]:
         """How `current` differs from this (recorded) record, one phrase per difference."""
@@ -194,7 +211,7 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     params = tuner.probe_params()
     space = dict(tuner.describe_space())
     ranked = {name: value for name, value in params.items() if isinstance(value, RankByPostPopulation)}
-    if not targets and not ranked and not space:
+    if not targets and not ranked and not space and not record_probe:
         return tuner.get_probed_experiment(EMPTY_PROBE)
     if bad := sorted(name for name in ranked if early_ordering_prefix(name) is None):
         raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn (with a split tuner's prefix), "
@@ -248,7 +265,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
         raise RuntimeError(
             f"The tuner probes the recipe for {targets or sorted(ranked)}, but there is no probe file {sidecar} and "
             f"no recipe was given to probe.")
-    current = ProbeRecord(counts, descriptions, dict(derived_orders), space)
+    #  The study id is kept from the recorded sidecar, or made when the sidecar is first written.
+    current = ProbeRecord(counts, descriptions, dict(derived_orders), space,
+                          recorded.study if recorded is not None and recorded.study is not None else uuid.uuid4().hex)
 
     if recorded is not None and (changes := recorded.differences(current)):
         message = (f"The probe recorded for checkpoint {checkpoint_file} (in {sidecar}) does not match the recipe and "
@@ -269,6 +288,12 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     if record_probe and recorded != current:
         from EinsteinEngine.tuning.checkpointed_optimizer import read_checkpoint  # see do_tuning
         read_checkpoint(experiment, checkpoint_file)  # raises if the checkpoint does not fit the experiment
+        if recorded is not None and _count_checkpoint_entries(checkpoint_file) > 0:
+            if recorded.space is None:
+                pprint(f"Warning: recording the search space in {sidecar}, whose checkpoint already has entries: "
+                       f"they are taken to have been recorded against this tuner's current space.")
+            if recorded.study is None:
+                pprint(f"Warning: giving the study of {sidecar} an id; batches asked before this cannot be told.")
         with open(sidecar, 'w') as fh:
             fh.write(current.to_json())
     return experiment
