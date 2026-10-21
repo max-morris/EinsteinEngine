@@ -45,6 +45,7 @@ from EinsteinEngine.tuning.generate_best import _FixedTrial, load_best_params
 from EinsteinEngine.tuning.remote_feedback import TrialFailed
 from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, describe_param, derive_add_eqn_order, probe_recipe, \
     rank_by_post_population
+from EinsteinEngine.tuning.tune_composite import CompositeTuner
 from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner, CutPositionSplitTuner
 from EinsteinEngine.tuning.tuning import ProbeRecord, Tuner, build_experiment, get_optional_tuning_param, \
     get_tuning_param, probe_sidecar_path
@@ -679,6 +680,106 @@ def test_cut_position_tuner() -> None:
     expect_error(ValueError, lambda: CutPositionSplitTuner(0, locus=SplitLocus.Early), 'n_cuts')
 
 
+def test_prefix() -> None:
+    """A prefix names every in-param and out-param of a split tuner, so one tuner per function fits in one study."""
+    tuner = CombinatorialSplitTuner(prefix='rhs_', ordering_fn=maximize_symbol_reuse)
+    assert list(tuner.probe_targets()) == ['rhs_' + HARD]
+    assert tuner.probe_params() == {'rhs_' + LOCUS: SplitLocus.Early, 'rhs_ordering_fn': maximize_symbol_reuse}
+    expect_error(RuntimeError, lambda: tuner.get_probed_experiment(ProbeResult({HARD: 2})), f"'rhs_{HARD}'")
+    e = tuner.get_probed_experiment(ProbeResult({'rhs_' + HARD: 2}))
+    assert list(e.in_params) == ['rhs_split_0', 'rhs_soft_retain_percentile_0', 'rhs_split_1',
+                                 'rhs_soft_retain_percentile_1']
+    assert list(e.out_params) == ['rhs_' + HARD, 'rhs_' + SOFT, 'rhs_' + LOCUS, 'rhs_ordering_fn']
+    args = realize(e, {'rhs_split_0': 1, 'rhs_soft_retain_percentile_0': 0.5, 'rhs_split_1': 2})
+    assert [args['rhs_' + HARD](i) for i in range(3)] == [False, True, False]
+    assert [args['rhs_' + SOFT](i) is False for i in range(3)] == [False, True, True]
+    assert args['rhs_' + LOCUS] is SplitLocus.Early and args['rhs_ordering_fn'] is maximize_symbol_reuse
+
+    cuts = CutPositionSplitTuner(1, locus=SplitLocus.PostPopulation, prefix='bnd_')
+    e = cuts.get_probed_experiment(ProbeResult({'bnd_' + HARD: 10}))
+    assert list(e.in_params) == ['bnd_cut_position_0', 'bnd_cut_kind_0', 'bnd_cut_retain_percentile_0']
+    assert list(e.out_params) == ['bnd_' + HARD, 'bnd_' + SOFT, 'bnd_' + LOCUS]
+    args = realize(e, {'bnd_cut_position_0': 7, 'bnd_cut_kind_0': 2})
+    assert [i for i in range(10) if args['bnd_' + HARD](i)] == [7]
+    #  Without a prefix, the names are as before.
+    assert list(CombinatorialSplitTuner(n_vars=1).get_experiment().in_params) == ['split_0', 'soft_retain_percentile_0']
+
+
+#  Two functions, each reading its own prefixed split params and ordering functions.
+TWO_FUNCTION_RECIPE = """\
+from EinsteinEngine import *
+from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.tuning.tuning import get_optional_tuning_param, get_tuning_param
+
+gf = ThornDef("TestProbe", "PROBETWOFUNCTIONS")
+v = gf.decl("v", [li])
+w = gf.decl("w", [li])
+a, b, c, d, e, src = (gf.decl(name, []) for name in ("a", "b", "c", "d", "e", "src"))
+options = {{}}
+for name in ("f1", "f2"):
+    gf.create_function(name, ScheduleBin.Evolve,
+                       auto_hard_split_predicate=get_tuning_param(f'{{name}}_auto_hard_split_predicate', None),
+                       auto_soft_split_predicate=get_tuning_param(f'{{name}}_auto_soft_split_predicate', None),
+                       auto_split_locus=get_optional_tuning_param(f'{{name}}_auto_split_locus', SplitLocus.Early))
+    options[name] = {{'ordering_fn': get_optional_tuning_param(f'{{name}}_ordering_fn', maximize_symbol_reuse),
+                     'early_ordering_fn': get_optional_tuning_param(f'{{name}}_early_ordering_fn', None)}}
+f1, f2 = gf.functions["f1"], gf.functions["f2"]
+f1.add_eqn(a, sin(src) * cos(src) + pull_out(src * src))
+f1.add_eqn(v[li], [a * sin(src), a * cos(src), sin(src) * cos(src)])
+f1.add_eqn(b, v[l0] + v[l1] * sin(src))
+f1.add_eqn(c, b + v[l2] * sin(src) * cos(src))
+f2.add_eqn(w[li], [sin(src), cos(src), sin(src) * cos(src)])
+f2.add_eqn(d, w[l0] * w[l1] + cos(src))
+f2.add_eqn(e, d + w[l2])
+gf.bake(do_cse=True, temporary_promotion_strategy=promote_all(), functions=options)
+open({marker!r}, 'w').close()
+"""
+
+
+def test_prefixed_study(r: Recipes) -> None:
+    """One study over two functions, one prefixed split tuner each: probed, with a prefixed rank_by_post_population
+    early ordering function derived for one of them, recorded in the sidecar, and replayed."""
+    path = r.write('two_functions', TWO_FUNCTION_RECIPE.format(marker=r.marker('two_functions')), prelude='')
+    checkpoint = r.path('two_functions.jsonl')
+    study = CompositeTuner(
+        CombinatorialSplitTuner(prefix='f1_', early_ordering_fn=rank_by_post_population(prioritize_rare_symbols)),
+        CombinatorialSplitTuner(prefix='f2_', locus=SplitLocus.PrePopulation))
+    e = build_experiment(study, path, checkpoint, record_probe=True)
+    assert_idle()
+    with open(probe_sidecar_path(checkpoint)) as fh:
+        recorded = json.load(fh)
+    #  f1 has its 4 add_eqn groups at the early locus; f2 has at least its 5 scalar equations at the pre-population one.
+    assert recorded['counts']['f1_' + HARD] == 4 and recorded['counts']['f2_' + HARD] >= 5, recorded
+    assert set(recorded['counts']) == {'f1_' + HARD, 'f2_' + HARD}
+    assert set(recorded['probe_params']) == {'f1_' + LOCUS, 'f1_early_ordering_fn', 'f2_' + LOCUS}
+    assert list(recorded['derived_orders']) == ['f1_early_ordering_fn']
+    assert sorted(recorded['derived_orders']['f1_early_ordering_fn']) == [0, 1, 2, 3]
+    n2 = recorded['counts']['f2_' + HARD]
+    assert [name for name in e.in_params if name.startswith('f1_split_')] == [f'f1_split_{i}' for i in range(4)]
+    assert [name for name in e.in_params if name.startswith('f2_split_')] == [f'f2_split_{i}' for i in range(n2)]
+    args = realize(e, {**{f'f1_split_{i}': 0 for i in range(4)}, **{f'f2_split_{i}': 0 for i in range(n2)}})
+    assert repr(args['f1_early_ordering_fn']) == f"add_eqn_order({recorded['derived_orders']['f1_early_ordering_fn']})"
+    assert args['f2_' + LOCUS] is SplitLocus.PrePopulation
+    #  Resumed from the sidecar alone.
+    assert list(build_experiment(study, None, checkpoint).in_params) == list(e.in_params)
+
+    #  Each function queries its own predicate, at as many positions as were probed for it.
+    calls: dict[str, list[int]] = {'f1': [], 'f2': []}
+
+    def recorder(name: str) -> Callable[[int], bool]:
+        def hard(i: int) -> bool:
+            calls[name].append(i)
+            return False
+        return hard
+    tuning._tuning_params = {**args, 'f1_' + HARD: recorder('f1'), 'f2_' + HARD: recorder('f2')}
+    try:
+        runpy.run_path(path, run_name='__main__')
+    finally:
+        tuning._tuning_params = None
+    assert calls == {'f1': list(range(4)), 'f2': list(range(n2))}, calls
+    assert os.path.exists(r.marker('two_functions'))
+
+
 def test_strict_checkpoint(r: Recipes) -> None:
     e = CombinatorialSplitTuner(n_vars=2).get_experiment()
     good = {'split_0': 1, 'soft_retain_percentile_0': 0.5, 'split_1': 2}
@@ -897,6 +998,8 @@ if __name__ == "__main__":
             test_probe_restores_name_counters(recipes)
             test_combinatorial_tuner()
             test_cut_position_tuner()
+            test_prefix()
+            test_prefixed_study(recipes)
             test_strict_checkpoint(recipes)
             test_shift_script(recipes)
             test_real_recipe_loci(recipes)
