@@ -233,23 +233,51 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
    - The generator raises on any surviving product of a guard with a non-constant factor. This is an unconditional
      hard error in both modes, so a bypassed fold cannot pass silently.
      - A guard is defined by its zero form. A value's value form is its expression with every value it reads
-       inlined, as long as the result stays under 400 tree nodes; a larger value stays an opaque symbol. Value forms
-       are carried through temporaries, copies and constants, and through outputs and tile temporaries to later
-       loops and functions. Symbols that a later loop cannot read by name get one shared placeholder each, and a
-       name that is reassigned turns into a fresh placeholder where older value forms refer to it. In point mode
-       nothing crosses functions. The zero form is the value form with every guard Piecewise replaced by 0.
-     - A value is a guard if its zero form is exactly 0 or is still a guard. The zero test is applied after
-       `0**n -> 0`, with Max and Min written as choices, after `piecewise_fold`, and after expansion for small
-       forms. "Still a guard" is recursive: a choice with a guarded branch is zero in some region. A guard nested
-       more than 16 deep is refused.
+       inlined, as long as the result stays under 400 tree nodes (`MAX_INLINE`).
+       - A larger value stays an opaque symbol, its name.
+       - A larger value that is a guard stays a guard. It becomes `Piecewise((name, c), (0, True))` with a fresh
+         condition c. A product with it raises; a sum with it does not, as for the inlined value.
+     - Value forms are carried through temporaries, copies and constants, and through outputs and tile temporaries to
+       later loops and functions.
+       - Symbols that a later loop cannot read by name get one shared placeholder each.
+       - A name that a loop reassigns gets one placeholder for its old value, shared by every form that refers to the
+         old value. That covers older carried forms, and the loop's own reads before the reassignment. So two forms
+         that name the same old value still cancel after an unrelated overwrite or across a function boundary.
+       - Tile temporaries get the same treatment at the end of their function.
+       - In point mode nothing crosses functions.
+     - The zero form is the value form with every guard Piecewise replaced by 0.
+     - A value is a guard if its zero form is exactly 0 or is still a guard. The zero test proceeds in steps:
+       - `0**n -> 0` before the choices are rewritten and again after the fold, which can move a 0 under a symbolic
+         power. The rewrite is tested on each rebuilt node: `Abs(0**k)**k` is 0.
+       - Max and Min become choices on opaque conditions. This is linear: `rewrite(Piecewise)` writes every pairwise
+         comparison.
+       - `piecewise_fold` runs on opaque conditions, equal conditions sharing one. The fold is then combinatorial.
+         sympy's fold would otherwise simplify the conditions it combines, which can run `trigsimp` without end.
+       - A fold estimated at more than 256 branches (`MAX_BRANCHES`) is refused, loudly.
+       - Expansion is used only while the expanded form, estimated on the DAG, stays under 2000 nodes
+         (`MAX_EXPANDED`).
+       - Every walk is over distinct nodes (the DAG), not the tree.
+     - "Still a guard" is recursive: a choice with a guarded branch is zero in some region. A guard nested more than
+       16 deep is refused.
      - So constant multiples, sums, powers, `Abs`, `Max`, `Min` and `sin` of guards count; so do choices with a
        guarded branch, and cancellations through temporaries such as `t = exp(P)`, then `(t - 1)*S`, or `t1 = t`,
-       then `(t + P - t1)*S`. A randomized unit test checks that every guard-caused `0*Inf` in random equation
-       systems raises, in one loop and after a split.
+       then `(t + P - t1)*S`.
+     - A randomized unit test checks that every guard-caused `0*Inf` in random equation systems raises, in one loop
+       and after a split at a random point, with a random half of the first part carried by name.
+       - What it covers: depth 2, at most 3 temporaries, sums, products, `Abs`, `exp`, `sin`, `Max`, `Min`,
+         choices and squares.
+       - What it does not cover: values over the inlining bound, overwrites, tiles, function ends and symbolic
+         powers. The unit tests of rounds 4 and 5 cover those cases one by one.
+       - Its hazard is "NaN with every guard false at two data points of opposite signs, and not with every guard
+         true". Mixed guard states (one guard false, another true) are seen by neither the test nor the check, which
+         replaces every guard by 0 at once.
      - Limits:
        - A zero of the other data is outside R10. `A + P` is A where P is false; if A itself is 0 (`|B| - B` with
          B > 0), the check does not see it, and need not: that zero is not caused by a guard.
-       - Identities through a value larger than the inlining bound are not seen.
+       - Identities through a value larger than the inlining bound are not seen. A large value that holds a guard
+         without being one (`t = A + G*big`, then `(t - A)*S`) loses that cancellation and passes.
+       - Identities that need expansion past the expanded-size bound, or a sympy canonical form other than the one
+         the zero test reaches, are not seen.
        - Complementary masks (`m_in*a + m_out*b`) are refused, though never zero. That is a loud false refusal.
        - `(1 - mask)*S`, with a mask whose branches are 1 and 0, is outside R10 by definition: the zero comes from a
          branch value, not from a guard.
