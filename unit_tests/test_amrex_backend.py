@@ -409,6 +409,20 @@ def test_guards_round1() -> None:
         text(cc)
     refuses(guard_across_split, "multiplies a guard")
 
+    # MHDuet's backend review A, finding 7 (mhduet/analysis/reviews/backend-A-work/guard_probe.py): a sum or a power
+    # of guards is zero when they all are false, so it must not multiply a non-constant factor; A + P is not a guard.
+    from EinsteinEngine.generators.amrex.guards import check_guards
+    a_, b_ = sy.symbols('a b')
+    g1 = Piecewise((f, f > 0), (0, True))
+    g2 = Piecewise((a_, a_ > 0), (0, True))
+    for label, e in (("(g1 + g2) * S", (g1 + g2) * S), ("2*(g1 + 3*g2) * S", 2 * (g1 + 3 * g2) * S)):
+        refuses(lambda: check_guards({sy.Symbol('o'): fold_guards(e)}, set(), label), "multiplies a guard")
+    assert fold_guards(g1 ** 2 * S) == Piecewise((S * f ** 2, f > 0), (0, True))  # sympy squares the branches: folded
+    gt = sy.Symbol('gt')
+    refuses(lambda: check_guards({gt: g1, sy.Symbol('o'): gt ** 2 * S}, {gt}, "gt**2 * S"), "multiplies a guard")
+    check_guards({sy.Symbol('o'): fold_guards((a_ + g1) * S)}, set(), "A + P")  # safe: A where P is false
+    check_guards({sy.Symbol('o'): fold_guards(g1 * S)}, set(), "P * S")  # folded
+
     cc = point_module()
     u = cc.decl("u", [])
     eps = cc.add_param("eps")

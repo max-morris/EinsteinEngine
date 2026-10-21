@@ -97,9 +97,10 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
                  external: Collection[str] = ()) -> set[str]:
     """
     `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the names of
-    values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard (a
-    Piecewise with a zero branch, a constant multiple of one, or a value holding either) multiplies a non-constant
-    factor. Warns about arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the
+    values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard
+    multiplies a non-constant factor. A guard is a Piecewise with a zero branch, a constant multiple, a sum or a
+    positive power of guards (all zero when their guards are false), or a value holding one. A sum with any other term
+    (A + P) is not a guard: it is A where P is false. Warns about arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the
     values this loop sets to a guard, for the loops that read them.
     """
     guard_temps: set[Symbol] = set()
@@ -110,6 +111,10 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
         if isinstance(e, Mul):
             g = [f for f in e.args if guard_like(f)]
             return len(g) == 1 and all(f.is_number for f in e.args if f is not g[0])
+        if isinstance(e, sy.Add):  # a sum of guards is zero when they all are false: (P1 + P2)*S is 0*S
+            return all(guard_like(a) for a in e.args)
+        if isinstance(e, sy.Pow):  # a positive power of a guard is zero with it: P**2*S is 0*S
+            return guard_like(e.base) and e.exp.is_positive is True
         return False
 
     # Every value first, in definition order, so that a guard held in a temporary or an output is known where it is
