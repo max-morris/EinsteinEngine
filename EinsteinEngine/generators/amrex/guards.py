@@ -170,16 +170,31 @@ def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None 
 
 
 def _branches(e: sy.Basic) -> int:
-    """An upper bound on the number of branches of the fold of e on opaque conditions: the product of the piece counts
-    of its distinct choices (a choice shared by several terms is counted once; round 6, B B1), and at most 2**k for k
-    distinct conditions, since the opaque fold drops contradictory combinations (round 6, A N36). Capped at 10**9."""
-    r = 1
+    """An upper bound on the number of branches of the fold of e on opaque conditions, the least of three: the
+    structural count (a choice's branches summed, a product's multiplied, on the DAG: linear in a nested chain of
+    choices), the product of the piece counts of the distinct choices (a choice shared by several terms counted once;
+    round 6, B B1), and 2**k for k distinct conditions, since the opaque fold drops contradictory combinations (round 6,
+    A N36). Capped at 10**9. (Round 7, A N39: each alone over-counts some legal forms.)"""
+    memo: dict[sy.Basic, int] = {}
+
+    def structural(x: sy.Basic) -> int:
+        if x not in memo:
+            if isinstance(x, Piecewise):
+                r = sum(structural(b) for b, _ in _pieces(x))
+            else:
+                r = 1
+                for a in x.args:
+                    r = min(r * structural(a), 10 ** 9)
+            memo[x] = min(r, 10 ** 9)
+        return memo[x]
+
+    product = 1
     conds: set[sy.Basic] = set()
     for x in unique_nodes(e):
         if isinstance(x, Piecewise):
-            r = min(r * len(x.args), 10 ** 9)
+            product = min(product * len(x.args), 10 ** 9)
             conds |= {c for _, c in _pieces(x) if c is not sy.true and c is not sy.false}
-    return int(min(r, 2 ** min(len(conds), 30)))
+    return int(min(structural(e), product, 2 ** min(len(conds), 30)))
 
 
 def _minmax_choices(z: sy.Basic) -> sy.Basic:

@@ -712,6 +712,14 @@ def test_round5() -> None:
     check_guards({o: ((A + G) / s12 ** 12 + B) * S}, set(), 'negpow')
     check_guards({o: ((A + G) * s12 ** Rational(25, 2) + B) * S}, set(), 'fracpow')
     assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
+    # Round 7 (A N39): a chain of 20 Max/Min around a guard folds to 21 branches, not 2**20, and passes with + 2.
+    chain2 = {sy.Symbol('t0'): G}
+    for i in range(1, 21):
+        chain2[sy.Symbol(f't{i}')] = (sy.Min if i % 2 else sy.Max)(sy.Symbol(f't{i - 1}'), sy.Symbol(f'x{i}'))
+    chain2[o] = (sy.Symbol('t20') + 2) * S
+    t0 = time.time()
+    check_guards(chain2, set(chain2) - {o}, 'maxchain')
+    assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
     # Identifier scan (round 6, B): a character literal after a keyword, and a raw string.
     ids = AMReXModule.cpp_identifiers("switch (k) { case'a': w = R\"(gamma)\"; } h = 0x1F'FF;")
     assert 'a' not in ids and 'gamma' not in ids and 'R' not in ids and 'FF' not in ids, ids
