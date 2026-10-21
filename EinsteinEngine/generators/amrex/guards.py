@@ -43,14 +43,19 @@ def _is_zero(e: sy.Basic) -> bool:
     return e.is_Number is True and e.is_zero is True
 
 
+def _is_zero_like(e: sy.Basic) -> bool:
+    """Zero, or 0**n with n symbolic (zero for n > 0; sympy writes a guard raised to a symbol that way)."""
+    return _is_zero(e) or (isinstance(e, sy.Pow) and e.base.is_zero is True and not e.exp.is_number)
+
+
 def is_guard(expr: sy.Basic) -> bool:
-    """A Piecewise with a branch that is exactly zero."""
-    return isinstance(expr, Piecewise) and any(_is_zero(e) for e, _ in _pieces(expr))
+    """A Piecewise with a branch that is zero (or 0**n, conservatively)."""
+    return isinstance(expr, Piecewise) and any(_is_zero_like(e) for e, _ in _pieces(expr))
 
 
 def _foldable(expr: sy.Basic) -> bool:
-    """A two-piece guard: one zero branch, one other. Guards with more pieces are checked, not folded."""
-    return is_guard(expr) and len(expr.args) == 2
+    """A two-piece guard with a literal zero branch. Other guards are checked, not folded."""
+    return isinstance(expr, Piecewise) and len(expr.args) == 2 and any(_is_zero(e) for e, _ in _pieces(expr))
 
 
 def _product(a: Expr, b: Expr) -> Expr:
@@ -75,7 +80,10 @@ def fold_guards(expr: Expr) -> Expr:
         factors = list(node.args)
         if (pos := next((n for n, f in enumerate(factors) if _foldable(f)), None)) is not None:
             guard = factors[pos]
-            rest = Mul(*(factors[:pos] + factors[pos + 1:]))
+            others = factors[:pos] + factors[pos + 1:]
+            # Without sympy's distribution of a number over a sum (Rational(1, 3)*(a + b) -> a/3 + b/3).
+            distributes = any(f.is_Number for f in others) and any(isinstance(f, sy.Add) for f in others)
+            rest = Mul(*others, evaluate=False) if distributes else Mul(*others)
             pieces = tuple((e if _is_zero(e) else fold_guards(_product(cast(Expr, e), rest)), c)
                            for e, c in _pieces(guard))
             return Piecewise(*pieces)  # type: ignore[no-untyped-call]
@@ -94,28 +102,34 @@ def _is_load(expr: sy.Basic, temps: Collection[Symbol]) -> bool:
 
 
 def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
-                 external: Collection[str] = ()) -> set[str]:
+                 external: Collection[str] = ()) -> tuple[set[str], set[str]]:
     """
     `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the names of
     values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard
-    multiplies a non-constant factor. A guard is a Piecewise with a zero branch, a constant multiple, a sum or a
-    positive power of guards (all zero when their guards are false), or a value holding one. A sum with any other term
-    (A + P) is not a guard: it is A where P is false. Warns about arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the
-    values this loop sets to a guard, for the loops that read them.
+    multiplies a non-constant factor. A guard is any expression that contains a guarded value (a Piecewise with a zero
+    branch, or a value holding a guard) and is exactly zero once every guarded value is replaced by 0: a constant
+    multiple, a sum or power of guards, Abs, Max, sin of one, a choice between guards. A power with a symbolic exponent
+    (0**n) counts as a guard. A sum with any other term (A + P) is not a guard: it is A where P is false. Warns about
+    arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the values this loop sets
+    to a guard and of those it sets to anything else, for the loops that read them.
     """
     guard_temps: set[Symbol] = set()
 
+    def held(e: sy.Basic) -> bool:
+        return isinstance(e, Symbol) and (e in guard_temps or str(e).replace("'", "") in external)
+
     def guard_like(e: sy.Basic) -> bool:
-        if is_guard(e) or (isinstance(e, Symbol) and (e in guard_temps or str(e).replace("'", "") in external)):
+        if held(e) or is_guard(e):
             return True
-        if isinstance(e, Mul):
-            g = [f for f in e.args if guard_like(f)]
-            return len(g) == 1 and all(f.is_number for f in e.args if f is not g[0])
-        if isinstance(e, sy.Add):  # a sum of guards is zero when they all are false: (P1 + P2)*S is 0*S
-            return all(guard_like(a) for a in e.args)
-        if isinstance(e, sy.Pow):  # a positive power of a guard is zero with it: P**2*S is 0*S
-            return guard_like(e.base) and e.exp.is_positive is True
-        return False
+        guarded = [x for x in sy.preorder_traversal(e) if is_guard(x) or held(x)]  # type: ignore[no-untyped-call]
+        if not guarded:
+            return False
+        zero = e.xreplace({x: sy.Integer(0) for x in guarded})  # type: ignore[no-untyped-call]
+        if zero.is_zero is True:
+            return True
+        # 0**n with n symbolic is 0 for n > 0: a guard, conservatively.
+        return any(isinstance(x, sy.Pow) and x.base.is_zero is True and not x.exp.is_number
+                   for x in sy.preorder_traversal(zero))  # type: ignore[no-untyped-call]
 
     # Every value first, in definition order, so that a guard held in a temporary or an output is known where it is
     # used.
@@ -165,4 +179,5 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
         wprint(f"{where}: {len(hoisted)} temporaries computed unconditionally but used only inside guarded branches "
                f"(work a false guard does not skip): {', '.join(map(str, hoisted[:10]))}"
                f"{', ...' if len(hoisted) > 10 else ''}")
-    return {str(lhs).replace("'", "") for lhs in guard_temps}
+    return ({str(lhs).replace("'", "") for lhs in guard_temps},
+            {str(lhs).replace("'", "") for lhs in eqns if lhs not in guard_temps})

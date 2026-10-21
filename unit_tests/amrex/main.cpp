@@ -42,22 +42,40 @@ int main(int argc, char *argv[])
     {
         const amrex::MFInfo info = amrex::MFInfo().SetArena(amrex::The_Managed_Arena());
 #ifndef GATE_POINT_ONLY
-        // Kernel toy: 2 components (c_u, c_w), 8 boxes from (5, -3, 7) to (12, 4, 14), 3 ghost cells.
+        // Kernel toy: 3 components (c_u, c_w, c_q), 8 boxes from (5, -3, 7) to (12, 4, 14), 3 ghost cells.
         const amrex::Box domain(amrex::IntVect(5, -3, 7), amrex::IntVect(12, 4, 14));
         amrex::BoxArray ba(domain);
         ba.maxSize(4);
         const amrex::DistributionMapping dm(ba);
-        amrex::MultiFab state(ba, dm, 2, 3, info), rhs(ba, dm, 2, 0, info);
+        amrex::MultiFab state(ba, dm, 3, 3, info), rhs(ba, dm, 3, 0, info);
         for (amrex::MFIter mfi(state); mfi.isValid(); ++mfi)
         {
             const auto a = state.array(mfi);
-            amrex::LoopOnCpu(mfi.fabbox(), 2, [&](int i, int j, int k, int c) { a(i, j, k, c) = input(i, j, k, c); });
+            amrex::LoopOnCpu(mfi.fabbox(), 3, [&](int i, int j, int k, int c) { a(i, j, k, c) = input(i, j, k, c); });
         }
         rhs.setVal(std::nan(""));
         EE::KernelToy(0.1, 1.3).compute(rhs, state);
         amrex::Gpu::streamSynchronize();
         dump(state, 3, out + "/kernel_inputs.txt");
         dump(rhs, 0, out + "/kernel_outputs.txt");
+
+        // R10 for the kernel toy: kappa = 0.5 makes q_rhs's guard false; a NaN in q at one cell (in every box that
+        // holds it, ghost cells included) must leave every q_rhs exactly +0 (kernel_q_false.txt).
+        const amrex::IntVect nan_cell(8, 0, 10);
+        for (amrex::MFIter mfi(state); mfi.isValid(); ++mfi)
+        {
+            if (mfi.fabbox().contains(nan_cell))
+            {
+                state.array(mfi)(nan_cell, 2) = std::nan("");
+            }
+        }
+        amrex::MultiFab rhs_false(ba, dm, 3, 0, info);
+        rhs_false.setVal(std::nan(""));
+        EE::KernelToy(0.1, 0.5).compute(rhs_false, state);
+        amrex::Gpu::streamSynchronize();
+        amrex::MultiFab q_false(ba, dm, 1, 0, info);
+        amrex::MultiFab::Copy(q_false, rhs_false, 2, 0, 1, 0);
+        dump(q_false, 0, out + "/kernel_q_false.txt");
 #endif
 
         // Point toy: un (u, trK) and prim (Df) on one box from (-2, 3, 1), anisotropic dx and prob_lo.
