@@ -78,6 +78,15 @@ class Tuner(ABC):
         them."""
         return self.get_experiment()
 
+    def describe_space(self) -> Mapping[str, str]:
+        """
+        What a checkpoint's coordinates mean, beyond their names and the probe: for example the choices an index
+        param picks from, in order. Keyed by in-param name (or a name pattern), with stable descriptions
+        (`describe_param`). It is recorded in the probe sidecar, and a checkpoint with entries refuses a tuner whose
+        description differs. Default: nothing.
+        """
+        return {}
+
 
 def probe_sidecar_path(checkpoint_file: str) -> str:
     """The file next to a checkpoint that records the probe its coordinates were recorded against."""
@@ -94,11 +103,15 @@ class ProbeRecord:
     counts: ProbeResult
     probe_params: Mapping[str, str]
     derived_orders: Mapping[str, tuple[int, ...]] = field(default_factory=dict)
+    #  The tuner's describe_space(); None in a sidecar written before it was recorded (then it is not checked).
+    space: Mapping[str, str] | None = None
 
     def to_json(self) -> str:
         obj: dict[str, Any] = {'counts': dict(self.counts), 'probe_params': dict(self.probe_params)}
         if self.derived_orders:
             obj['derived_orders'] = {name: list(order) for name, order in sorted(self.derived_orders.items())}
+        if self.space is not None:
+            obj['space'] = dict(sorted(self.space.items()))
         return json.dumps(obj, indent=2) + '\n'
 
     @staticmethod
@@ -114,18 +127,23 @@ class ProbeRecord:
                 for order in derived.values()):
             raise ValueError(f'Expected "derived_orders" to map probe params to lists of add_eqn indices, got '
                              f'{derived!r}')
+        space = obj.get('space')
+        if space is not None and (not isinstance(space, dict) or not all(isinstance(v, str) for v in space.values())):
+            raise ValueError(f'Expected "space" to map param names to descriptions, got {space!r}')
         return ProbeRecord(ProbeResult.from_counts(obj.get('counts')), dict(obj['probe_params']),
-                           {name: tuple(order) for name, order in derived.items()})
+                           {name: tuple(order) for name, order in derived.items()}, space)
 
     def differences(self, current: 'ProbeRecord') -> list[str]:
         """How `current` differs from this (recorded) record, one phrase per difference."""
         changes: list[str] = []
         derived_was = {name: list(order) for name, order in self.derived_orders.items()}
         derived_now = {name: list(order) for name, order in current.derived_orders.items()}
+        spaces = [] if self.space is None or current.space is None else [
+            ('the search space of', self.space, current.space)]
         for kind, was, now in (('the number of split positions for', self.counts, current.counts),
                                ('the probe param', self.probe_params, current.probe_params),
                                ('the add_eqn order derived for',
-                                derived_was, derived_now)):
+                                derived_was, derived_now), *spaces):
             for name in sorted(set(was) | set(now)):
                 if was.get(name) != now.get(name):
                     changes.append(f"{kind} {name!r} was {_or_absent(was.get(name))} and is now "
@@ -141,6 +159,16 @@ def _or_absent(value: object) -> str:
 EARLY_ORDERING_FN = 'early_ordering_fn'
 
 
+def early_ordering_prefix(name: str) -> str | None:
+    """The split tuner prefix of an early ordering function out-param (`early_ordering_fn` or
+    `<prefix>_early_ordering_fn`), or None if `name` is not one."""
+    if name == EARLY_ORDERING_FN:
+        return ''
+    if name.endswith('_' + EARLY_ORDERING_FN):
+        return name.removesuffix(EARLY_ORDERING_FN)
+    return None
+
+
 def _count_checkpoint_entries(checkpoint_file: str) -> int:
     if not os.path.exists(checkpoint_file):
         return 0
@@ -152,22 +180,25 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
                      record_probe: bool = False) -> Experiment:
     """
     Build `tuner`'s Experiment, probing `recipe` if the tuner has probe targets. A checkpoint's coordinates are only
-    meaningful against the probe they were recorded with, so the probe is recorded in a sidecar next to the checkpoint.
-    A `rank_by_post_population(fn)` probe param is resolved to `add_eqn_order(<order>)`, derived from the recipe unless
+    meaningful against the probe they were recorded with, and the search space the tuner describes
+    (`Tuner.describe_space`), so both are recorded in a sidecar next to the checkpoint. A
+    `rank_by_post_population(fn)` probe param is resolved to `add_eqn_order(<order>)`, derived from the recipe unless
     the sidecar records one for that param.
 
-    - Without `recipe`, the sidecar's counts and derived orders are used, so it must exist.
+    - Without `recipe`, the sidecar's counts and derived orders are used, so it must exist if the tuner probes.
     - If the sidecar does not match, this raises unless the checkpoint has no entries yet.
     - `record_probe=True` writes the sidecar when it is missing or stale, after checking that every checkpoint entry
       loads against the new Experiment.
     """
     targets = list(tuner.probe_targets())
     params = tuner.probe_params()
+    space = dict(tuner.describe_space())
     ranked = {name: value for name, value in params.items() if isinstance(value, RankByPostPopulation)}
-    if not targets and not ranked:
+    if not targets and not ranked and not space:
         return tuner.get_probed_experiment(EMPTY_PROBE)
-    if bad := sorted(name for name in ranked if not name.endswith(EARLY_ORDERING_FN)):
-        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn (with any prefix), not {bad}.")
+    if bad := sorted(name for name in ranked if early_ordering_prefix(name) is None):
+        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn (with a split tuner's prefix), "
+                           f"not {bad}.")
 
     sidecar = probe_sidecar_path(checkpoint_file)
     recorded: ProbeRecord | None = None
@@ -181,7 +212,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
 
     descriptions = {name: describe_param(value) for name, value in sorted(params.items())}
     derived_orders: Mapping[str, tuple[int, ...]]
-    if recipe is not None:
+    if not targets and not ranked:
+        counts, derived_orders = EMPTY_PROBE, {}
+    elif recipe is not None:
         orders: dict[str, tuple[int, ...]] = dict()
         for name, rule in ranked.items():
             if recorded is not None and name in recorded.derived_orders and \
@@ -191,8 +224,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             else:
                 pprint(f"Deriving the add_eqn order for {rule!r} from {recipe}...")
                 others = {k: v for k, v in params.items() if k not in ranked}
-                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others,
-                                                                   prefix=name.removesuffix(EARLY_ORDERING_FN))
+                prefix = early_ordering_prefix(name)
+                assert prefix is not None
+                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others, prefix=prefix)
                 pprint(f"{function_name}: {rule!r} derived the add_eqn order {list(orders[name])}.")
         derived_orders = orders
         resolved = {**params, **{name: add_eqn_order(order) for name, order in derived_orders.items()}}
@@ -214,7 +248,7 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
         raise RuntimeError(
             f"The tuner probes the recipe for {targets or sorted(ranked)}, but there is no probe file {sidecar} and "
             f"no recipe was given to probe.")
-    current = ProbeRecord(counts, descriptions, dict(derived_orders))
+    current = ProbeRecord(counts, descriptions, dict(derived_orders), space)
 
     if recorded is not None and (changes := recorded.differences(current)):
         message = (f"The probe recorded for checkpoint {checkpoint_file} (in {sidecar}) does not match the recipe and "

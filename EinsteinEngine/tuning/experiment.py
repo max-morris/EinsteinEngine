@@ -52,8 +52,8 @@ class InfeasibleParamError(Exception):
         self.param_name = param_name
         self.value = value
 
-# Split tuner params, whose indices are split positions (see tune_splitting.py).
-_SPLIT_PARAM_RE = re.compile(r'(split|soft_retain_percentile)_\d+')
+# Split tuner params, whose indices are split positions (see tune_splitting.py), after any prefix.
+_SPLIT_PARAM_RE = re.compile(r'(?:\w*_)?(split|soft_retain_percentile)_\d+')
 
 class UndeclaredParamError(ValueError):
     """A stored trial (e.g. a checkpoint entry) names params the Experiment does not declare.
@@ -79,7 +79,7 @@ class MissingParamError(ValueError):
     def __init__(self, source: str, names: Sequence[str]):
         message = (f"{source} is missing params that the experiment declares (and whose conditions hold): "
                    f"{', '.join(names)}. It was probably recorded against a different tuner or recipe.")
-        if any(re.fullmatch(r'soft_retain_percentile_\d+', name) for name in names):
+        if any(re.fullmatch(r'(?:\w*_)?soft_retain_percentile_\d+', name) for name in names):
             message += (" A split checkpoint without soft_retain_percentile params predates them, and cannot be "
                         "replayed by the current split tuners.")
         elif any(_SPLIT_PARAM_RE.fullmatch(name) for name in names):
@@ -423,6 +423,15 @@ class Experiment:
 
         _, coords, specs = self._walk_in_params(get_coord, present=lambda name: name in stored)
         return coords, specs
+
+    def recipe_facing_args(self, stored: dict[str, ParamType], source: str = 'The stored trial') -> dict[str, Any]:
+        """The recipe-facing args of a stored trial (a checkpoint entry's or a batch's params), as a live trial with
+        those coordinates would have produced them. Raises (see `check_declared`, naming `source`) unless the params
+        fit this Experiment exactly."""
+        self.check_declared(stored, source)
+        values = dict(self.reconstruct_values(stored))
+        return {name: val for name, out_param in self.out_params.items()
+                if (val := out_param.mapping(values)) is not None}
 
     def reconstruct_values(self, stored: dict[str, ParamType]) -> OrderedDict[str, Value]:
         """Map a stored trial's raw coordinates back to their domain values.

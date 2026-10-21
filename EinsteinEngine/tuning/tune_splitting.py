@@ -26,9 +26,10 @@ prefix `rhs_`, the recipe passes `rhs_auto_hard_split_predicate` and the other `
 """
 
 import os
+import re
 import warnings
 from abc import abstractmethod
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import Any, Callable
 
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn
@@ -58,6 +59,9 @@ class _SplitTuner(Tuner):
     def __init__(self, *, locus: SplitLocus, early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None,
                  pre_population_ordering_fn: EqnOrderingFn | None, ordering_fn: EqnOrderingFn | None,
                  prefix: str) -> None:
+        if prefix and not re.fullmatch(r'[A-Za-z_]\w*_', prefix):
+            raise ValueError(f"A split tuner's prefix must be empty or an identifier ending in '_' (e.g. 'rhs_'), "
+                             f"got {prefix!r}")
         self.locus = locus
         self.early_ordering_fn = early_ordering_fn
         self.pre_population_ordering_fn = pre_population_ordering_fn
@@ -67,6 +71,9 @@ class _SplitTuner(Tuner):
     def param_name(self, base: str) -> str:
         """The name of one of this tuner's params, with its prefix."""
         return self.prefix + base
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(prefix={self.prefix!r})" if self.prefix else f"{type(self).__name__}()"
 
     def probe_targets(self) -> Collection[str]:
         return (self.param_name(PROBED_PREDICATE),)
@@ -110,8 +117,8 @@ class CombinatorialSplitTuner(_SplitTuner):
     """
     Search every position independently: no split, soft split (with a retainment percentile), or hard split.
     Params: `split_i` in {0: none, 1: soft, 2: hard} and `soft_retain_percentile_i` (only when `split_i` is 1), for i
-    below `n_vars` if given, otherwise the probed number of positions; each name starts with `prefix`. With two params per position, this is only
-    practical at the early locus; use CutPositionSplitTuner elsewhere.
+    below `n_vars` if given, otherwise the probed number of positions; each name starts with `prefix`. With two params
+    per position, this is only practical at the early locus; use CutPositionSplitTuner elsewhere.
     """
 
     def __init__(self, n_vars: int | None = None, *, locus: SplitLocus = SplitLocus.Early,
@@ -125,6 +132,10 @@ class CombinatorialSplitTuner(_SplitTuner):
 
     def probe_targets(self) -> Collection[str]:
         return super().probe_targets() if self.n_vars is None else ()
+
+    def describe_space(self) -> Mapping[str, str]:
+        n = 'probed' if self.n_vars is None else str(self.n_vars)
+        return {self.param_name('split_*'): f'CombinatorialSplitTuner(positions={n})'}
 
     def get_experiment(self) -> Experiment:
         return super().get_experiment() if self.n_vars is None else self._build(self.n_vars)
@@ -166,8 +177,7 @@ class CutPositionSplitTuner(_SplitTuner):
     Search the positions of `n_cuts` cuts, and the kind of each, among the probed positions. Params, for j below
     `n_cuts`: `cut_position_j` (strictly increasing), `cut_kind_j` in {0: unused, 1: soft, 2: hard}, where 0 is only
     searched with `allow_unused_cuts`, and `cut_retain_percentile_j` (only when `cut_kind_j` is 1); each name starts
-    with `prefix`. The number of
-    params does not grow with the number of positions, so this suits the later loci.
+    with `prefix`. The number of params does not grow with the number of positions, so this suits the later loci.
     """
 
     def __init__(self, n_cuts: int, *, locus: SplitLocus,
@@ -182,6 +192,10 @@ class CutPositionSplitTuner(_SplitTuner):
                          prefix=prefix)
         self.n_cuts = n_cuts
         self.allow_unused_cuts = allow_unused_cuts
+
+    def describe_space(self) -> Mapping[str, str]:
+        return {self.param_name('cut_*'): f'CutPositionSplitTuner(n_cuts={self.n_cuts}, '
+                                          f'allow_unused_cuts={self.allow_unused_cuts})'}
 
     def _build(self, n_positions: int) -> Experiment:
         if n_positions < self.n_cuts:

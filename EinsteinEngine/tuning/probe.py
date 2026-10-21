@@ -267,12 +267,13 @@ def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
                          prefix: str = '') -> tuple[str, tuple[int, ...]]:
     """
     Run `recipe_path` without auto splits or an early ordering function (nor a pre-population one, if `extra_params`
-    provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
-    of their equations. Returns the function's name and its 0-based add_eqn order. The three ordering out-params are
-    named with `prefix`, as a split tuner with that prefix names them.
+    provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked
+    with it by the median post-CSE position of their equations. Returns the function's name and its 0-based add_eqn
+    order. The ordering out-params and the locus are named with `prefix`, as a split tuner with that prefix names them.
 
-    Raises RuntimeError if the recipe fails, never reads a provided name, or does not bake exactly one function with
-    `ordering_fn`.
+    Raises RuntimeError if the recipe fails, does not bake exactly one function with `ordering_fn`, or never reads
+    one of the provided names with this prefix (the locus and ordering functions of that function's split tuner). The
+    run stops after that function's bake, so the names of other split tuners (other prefixes) need not be read.
     """
     # A distinct object, so the hooks can tell the ranked function by its ordering function; pre_cse_stand_in and
     # respects_dependency_order look through the partial, so it bakes exactly as ordering_fn would.
@@ -282,7 +283,7 @@ def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
         params[f'{prefix}pre_population_ordering_fn'] = None
     state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn)
     _run(state, 'while deriving an add_eqn order')
-    _check_read(state)
+    _check_read(state, [prefix + name for name in _SPLIT_TUNER_PARAMS if prefix + name in params])
     if len(state.derived) != 1:
         raise RuntimeError(f'Recipe {recipe_path} must bake exactly one function with the ordering_fn out-param to '
                            f'derive its add_eqn order, but baked {sorted(state.derived) or "none"}.')
@@ -315,8 +316,13 @@ def _run(state: _ProbeState, doing: str) -> None:
         clear_caches()
 
 
-def _check_read(state: _ProbeState) -> None:
-    if unread := [name for name in state.params if name not in state.read]:
+#  The fixed out-params of a split tuner (tune_splitting.py), each after the tuner's prefix.
+_SPLIT_TUNER_PARAMS = ('auto_split_locus', 'early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
+
+
+def _check_read(state: _ProbeState, names: Collection[str] | None = None) -> None:
+    """Raise unless the recipe read each of `names` (default: every provided param)."""
+    if unread := [name for name in (state.params if names is None else names) if name not in state.read]:
         raise RuntimeError(
             f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} before the probe stopped it, so '
             f'the probe would count the wrong positions. Read each with get_optional_tuning_param(name, default) and '
