@@ -24,8 +24,8 @@ Besides `maximize`, which runs one trial at a time, a study can be driven in bat
 `Batch`, which the caller runs however it likes (for example baked on one machine, built and timed on others), and
 `tell(batch, targets)` appends the results to the checkpoint. Each call rebuilds the study from the checkpoint, so the
 two may run in different processes; the batch, saved with `Batch.to_json`, carries what links them. Told entries also
-record the batch id and trial index; `record_external` records externally chosen trials (with their source). The readers,
-`read_checkpoint`, `generate_best` and `plot_tuning`, ignore these extra keys.
+record the batch id and trial index; `record_external` records externally chosen trials (with their source). The
+readers, `read_checkpoint`, `generate_best` and `plot_tuning`, ignore these extra keys.
 """
 
 import contextlib
@@ -175,9 +175,9 @@ class Batch:
     stores them (raw coordinates); `Experiment.recipe_facing_args` gives a trial's recipe-facing args.
 
     `study` identifies the study it was asked for (see study_digest: the probe file's identity and the in-param
-    names), and `n_history` and `history` the checkpoint entries it was asked against (their number and SHA-256). Asking again with the same
-    `seed`, from a checkpoint holding exactly those entries and with the same `pending` batches, gives the same params
-    (with the same `n_startup_trials` and optuna version, also recorded).
+    names), and `n_history` and `history` the checkpoint entries it was asked against (their number and SHA-256).
+    Asking again with the same `seed`, from a checkpoint holding exactly those entries and with the same `pending`
+    batches, gives the same params (with the same `n_startup_trials` and optuna version, also recorded).
     """
     seed: int
     n_history: int
@@ -225,7 +225,8 @@ class Batch:
         batch = Batch(obj['seed'], obj['n_history'], obj['history'], obj['study'], obj['n_startup_trials'],
                       obj['optuna_version'], tuple(obj['pending']), tuple(obj['params']), obj['rejected'])
         if batch.id != obj['id']:
-            raise ValueError(f"The batch file's id {obj['id']} does not match its contents ({batch.id}); was it edited?")
+            raise ValueError(f"The batch file's id {obj['id']} does not match its contents ({batch.id}); was it "
+                             f"edited?")
         return batch
 
 
