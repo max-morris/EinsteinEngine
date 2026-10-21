@@ -24,7 +24,7 @@ Besides `maximize`, which runs one trial at a time, a study can be driven in bat
 `Batch`, which the caller runs however it likes (for example baked on one machine, built and timed on others), and
 `tell(batch, targets)` appends the results to the checkpoint. Each call rebuilds the study from the checkpoint, so the
 two may run in different processes; the batch, saved with `Batch.to_json`, carries what links them. Told entries also
-record the batch id and trial index; `seed` records externally chosen trials (with their source). The readers,
+record the batch id and trial index; `record_external` records externally chosen trials (with their source). The readers,
 `read_checkpoint`, `generate_best` and `plot_tuning`, ignore these extra keys.
 """
 
@@ -48,7 +48,7 @@ from optuna.samplers import TPESampler
 from optuna.study import MaxTrialsCallback
 from optuna.trial import TrialState
 
-from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, InfeasibleParamError
+from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, FixedTrial, InfeasibleParamError
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -136,9 +136,11 @@ def _history_digest(checkpoint_file: str, n_entries: int) -> str:
 
 def study_digest(experiment: Experiment, checkpoint_file: str) -> str:
     """
-    What identifies a study apart from its entries: its probe sidecar's study id, probe counts, probe params and
-    derived orders (`ProbeRecord.identity`), and the Experiment's in-param names. The sidecar must exist and have a
-    study id: `build_experiment(..., record_probe=True)` writes one. A new study must not copy another's sidecar.
+    What identifies a study apart from its entries: its probe sidecar's identity (`ProbeRecord.identity`: study id,
+    probe counts, probe params, derived orders, search space, recipe arguments) and the Experiment's in-param names.
+    The sidecar must exist and have a study id (`build_experiment(..., record_probe=True)` writes one), and the
+    Experiment's search space, if `build_experiment` attached one, must be the recorded one. To start a study from
+    another's sidecar, use `tuning.fork_probe_file`.
     """
     from EinsteinEngine.tuning.tuning import ProbeRecord, probe_sidecar_path  # imported here: tuning imports the engine
     sidecar = probe_sidecar_path(checkpoint_file)
@@ -150,6 +152,10 @@ def study_digest(experiment: Experiment, checkpoint_file: str) -> str:
     if record.study is None:
         raise RuntimeError(f"The probe file {sidecar} has no study id (it predates them); build the Experiment with "
                            f"build_experiment(..., record_probe=True) once to add one.")
+    if experiment.described_space is not None and record.space is not None and \
+            dict(experiment.described_space) != dict(record.space):
+        raise RuntimeError(f"The tuner's search space differs from the one recorded in {sidecar}: a batch's indices "
+                           f"would be misread. Restore the tuner, or start a new study.")
     blob = json.dumps({'record': record.identity(), 'in_params': sorted(experiment.in_params)}, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()
 
@@ -235,19 +241,6 @@ def _append(checkpoint_file: str, lines: Sequence[str]) -> None:
         os.close(fd)
 
 
-class _StoredTrial:
-    """A TrialObj that replays stored coordinates (to check a seeded trial's constraints)."""
-
-    def __init__(self, params: Mapping[str, Coord]) -> None:
-        self._params = params
-
-    def suggest_int(self, name: str, _lo: int, _hi: int, /) -> int:
-        return int(self._params[name])
-
-    def suggest_float(self, name: str, _lo: float, _hi: float, /) -> float:
-        return float(self._params[name])
-
-
 @contextlib.contextmanager
 def _locked(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
     """Hold a lock on `<checkpoint>.lock`: exclusive for tell's check-then-append, shared for ask's reads."""
@@ -325,6 +318,13 @@ class CheckpointedOptimizer:
                         told.add((entry['batch'], entry.get('trial', -1)))
         return told
 
+    def _count_external(self) -> int:
+        """The number of external entries (record_external) in the checkpoint."""
+        if not os.path.exists(self._checkpoint_file):
+            return 0
+        with open(self._checkpoint_file) as fh:
+            return sum(1 for line in fh if line.strip() and 'external' in json.loads(line))
+
     def ask(self, n: int, *, seed: int | None = None, pending: Sequence[Batch] = ()) -> Batch:
         """
         Propose `n` trials at once, from a study rebuilt from the checkpoint as it is now.
@@ -333,7 +333,7 @@ class CheckpointedOptimizer:
           and the not yet told trials of the `pending` batches (asked earlier for this study), are running. Pass the
           batches still out, or a second batch can repeat their configurations.
         - It is seeded with `seed` (by default the optimizer's `random_state`, or a random seed), which the batch
-          records. Below `n_startup_trials` told entries, TPE samples at random.
+          records. Below `n_startup_trials` told entries (external ones not counted), TPE samples at random.
         - A draw that violates a parameter constraint, or repeats a trial of the checkpoint, of a pending batch or of
           this batch, is redrawn. It stays running in the rebuilt study (which is discarded), so the liar steers the
           later draws away from it; it is not recorded anywhere.
@@ -349,9 +349,11 @@ class CheckpointedOptimizer:
             history = read_checkpoint(self._experiment, self._checkpoint_file)
             digest = _history_digest(self._checkpoint_file, len(history))
             told = self._told()
+            n_external = self._count_external()
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
-            sampler = TPESampler(n_startup_trials=self._n_startup_trials, seed=seed, constant_liar=True)
+            #  External entries do not count toward the random startup trials.
+            sampler = TPESampler(n_startup_trials=self._n_startup_trials + n_external, seed=seed, constant_liar=True)
         study = optuna.create_study(direction='maximize', sampler=sampler)
         _add_trials(study, history)
         seen = [coords for _, coords, _ in history]
@@ -432,36 +434,41 @@ class CheckpointedOptimizer:
                 _append(self._checkpoint_file, lines)
         _add_trials(self._study, [(value, dict(coords), dict(specs)) for value, coords, specs in entries])
 
-    def seed(self, params: Mapping[str, Coord], value: float, *, source: str) -> None:
+    def record_external(self, params: Mapping[str, Coord], value: float, *, source: str) -> None:
         """
-        Record an externally chosen trial, for example a hand-picked configuration measured outside the study, so
-        that TPE starts from it. `params` are in-params as the checkpoint stores them (raw coordinates), and `value`
-        is its target (maximized, so `-time`; non-finite records a failed run). It is checked against the study's
-        Experiment like any trial (names, domains, conditions and constraints, which the probe shaped), then
-        appended under the lock as `{"target", "params", "seeded": source}` and replayed on resume like any entry.
-        Refuses an empty `source`, and the same params from the same source twice.
+        Record an externally chosen trial, for example a hand-picked configuration, so that TPE starts from it.
+        `params` are in-params as the checkpoint stores them (raw coordinates), and `value` is its target (maximized,
+        so `-time`; non-finite records a failed run). Its value must have been measured as the study's trials are
+        (same host, build and timing protocol), or TPE compares incomparable numbers.
+
+        It is checked against the study's Experiment like any trial (names, domains, conditions and constraints,
+        which the probe shaped), then appended under the lock as `{"target", "params", "external": source}`, with
+        the realized coordinates, and replayed on resume like any entry. External entries do not count toward
+        `ask`'s random startup trials. As good trials often are, they can fill TPE's "good" set and concentrate the
+        search around them. Refuses an empty `source`, and the same params from the same source twice.
         """
         if not source:
-            raise ValueError("A seeded trial needs a source (where it comes from, e.g. 'round 0: v8')")
-        stored = dict(params)
-        what = f"The seeded trial from {source!r}"
+            raise ValueError("An external trial needs a source (where it comes from, e.g. 'round 0: v8')")
+        given = dict(params)
+        what = f"The external trial from {source!r}"
         try:
-            self._experiment.check_declared(stored, what)
-            realized, _ = self._experiment.suggest_params(_StoredTrial(stored))
+            self._experiment.check_declared(given, what)
+            realized, _ = self._experiment.suggest_params(FixedTrial(given))
         except InfeasibleParamError as e:
             raise ValueError(f"{what} violates a constraint: {e}") from e
-        if extra := sorted(set(stored) - set(realized)):
+        if extra := sorted(set(given) - set(realized)):
             raise ValueError(f"{what} has params whose conditions do not hold for its other values: {extra}")
+        stored = dict(realized)  # canonical: ints as ints
         coords, specs = self._experiment.reconstruct_coords(stored)
         target = float(value) if np.isfinite(value) else FAILED_VALUE
         with _locked(self._checkpoint_file):
             if os.path.exists(self._checkpoint_file):
                 with open(self._checkpoint_file) as fh:
                     for line in fh:
-                        if line.strip() and (entry := json.loads(line)).get('seeded') == source \
+                        if line.strip() and (entry := json.loads(line)).get('external') == source \
                                 and entry['params'] == stored:
                             raise RuntimeError(f"{what} is already in {self._checkpoint_file}.")
-            _append(self._checkpoint_file, [json.dumps({'target': target, 'params': stored, 'seeded': source})])
+            _append(self._checkpoint_file, [json.dumps({'target': target, 'params': stored, 'external': source})])
         _add_trials(self._study, [(target, dict(coords), dict(specs))])
 
     def _objective(self, trial: optuna.Trial) -> float:

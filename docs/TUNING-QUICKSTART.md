@@ -373,7 +373,14 @@ because the checkpoint's coordinates only mean something against it:
 - `study`: a random id, made when the probe file is first written and kept
   when it is rewritten, which tells apart studies with the same tuner and
   recipe (one per compiler, say). `record_probe=True` always writes the probe
-  file. A new study must not copy another study's probe file.
+  file. To start a study from another's probe file (to reuse a slow derived
+  order), use `tuning.fork_probe_file(from_checkpoint, to_checkpoint)`, which
+  gives it a new id; a copied file would share the id, and `record_probe`
+  warns when the file was made for another checkpoint (`origin`).
+- `recipe_args`: the recipe's own arguments (its `sys.argv[1:]`) the probe ran
+  it with (`build_experiment(..., recipe_args=...)`; none by default), since
+  they can change the equations. Without a recipe to probe, they must be the
+  recorded ones; `generate_best` takes them after `--`.
 
 `probe_params` describes each `probe_params()` value in a form that is stable
 across runs (see `probe.describe_param`): an enum by name; a function by its
@@ -621,8 +628,10 @@ optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximiz
   it was asked against, the pending batches, `n_startup_trials` and the optuna
   version: asking again with those, from a checkpoint holding exactly those
   entries, gives the same trials. It also records its study: a digest of the
-  probe file's study id, counts, probe params and derived orders, and of the
-  in-param names (sorted, so reordering the sub-tuners keeps the study).
+  probe file's study id, counts, probe params, derived orders, search space and
+  recipe arguments, and of the in-param names (sorted, so reordering the
+  sub-tuners keeps the study). A batch is refused if the tuner's search space
+  has changed since, whether or not the probe file was rewritten.
 - `tell(batch, targets)` appends to the same checkpoint, under a lock
   (`<checkpoint>.lock`, which can be ignored by git) and in one write, each
   entry with the batch id and trial index. It refuses a batch
@@ -630,15 +639,23 @@ optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximiz
   params that do not fit. A None target is not written, so a trial that did
   not run can be told later; a non-finite one is a failed run (a bad
   configuration).
-- `seed(params, value, source=...)` records an externally chosen trial (a
-  hand-picked configuration measured outside the study, say) so that TPE
-  starts from it. It is checked like any trial (names, domains, conditions,
-  constraints), appended with its source (`"seeded"`), and replayed on resume;
-  the same params from the same source are refused twice.
+- `record_external(params, value, source=...)` records an externally chosen
+  trial (a hand-picked configuration, say) so that TPE starts from it. Its
+  value must be measured as the study's trials are (same host, build and timing
+  protocol). It is checked like any trial (names, domains, conditions,
+  constraints), appended with its realized coordinates and its source
+  (`"external"`), and replayed on resume; the same params from the same source
+  are refused twice. External entries do not count toward the random startup
+  trials, and, being good trials as a rule, they can fill TPE's "good" set and
+  concentrate the search around them.
 - `Experiment.recipe_facing_args(params)` gives a trial's recipe-facing args;
   `generate_best --batch FILE --trial I` runs the recipe with them, from the
   probe file, without probing; so it does not notice a recipe edited since the
-  probe. Keep the recipe the same for the whole study.
+  probe. Keep the recipe the same for the whole study. Its arguments after
+  `--` must be the probe file's `recipe_args`; to choose where the recipe
+  writes, run it in that directory.
+- `maximize` appends without the lock: do not run it on a checkpoint that
+  batches are told to at the same time.
 
 ---
 
@@ -799,7 +816,8 @@ the far side of a `Union` gap).
   (`EinsteinEngine.tuning.tune_composite`).
 - `CombinatorialSplitTuner(..., prefix='')`, `CutPositionSplitTuner(..., prefix='')`.
 - `CheckpointedOptimizer.for_batches(experiment, checkpoint_file, n_startup_trials=10, random_state=None)`,
-  `.ask(n, *, seed=None, pending=())` → `Batch`, `.tell(batch, targets)`, `.seed(params, value, *, source)`;
+  `.ask(n, *, seed=None, pending=())` → `Batch`, `.tell(batch, targets)`,
+  `.record_external(params, value, *, source)`;
   `Batch.to_json()` / `Batch.from_json(text)`.
 - `Experiment.recipe_facing_args(params, source=...)`.
 - `generate_best RECIPE TUNER --checkpoint-file C --batch FILE --trial I`.
