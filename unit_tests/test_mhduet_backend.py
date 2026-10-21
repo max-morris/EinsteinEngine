@@ -18,7 +18,7 @@
 """
 Tests of MHDuet's subclass of the shared AMReX backend (MHDuetPointFunction, docs/AMREX-BACKEND-DESIGN.md section 10,
 step 4) on a toy module: Simflowny's component names, the two Array4Call arrays and their binding by declaration,
-rhs= fields in `un`, node coordinates, `parameters.<name>`, `amrex::Real &` outputs in the fixed signature order, and
+rhs= fields in `state`, node coordinates, `parameters.<name>`, `amrex::Real &` outputs in the fixed signature order, and
 the refusals. The MHDuet header itself is checked against MHDuet's code by mhduet/validation/exact/check_emitted.py.
 Run as a plain script.
 """
@@ -35,7 +35,7 @@ def text(cc: AMReXModule) -> str:
 
 
 def toy() -> MHDuetPointFunction:
-    return MHDuetPointFunction("Toy", fields={"Df": "un", "vfd": "aux", "pf": "aux"}, namespace="ee_toy",
+    return MHDuetPointFunction("Toy", fields={"Df": "state", "vfd": "aux", "pf": "aux"}, namespace="ee_toy",
                                includes=["AmrCoreProblem.H"])
 
 
@@ -70,24 +70,24 @@ def test_toy() -> None:
     cc.bake()
     code = text(cc)
     expect(code, 'namespace ee_toy', '#include "AmrCoreProblem.H"',
-           'un(i, j + 1, k, simflowny_vars::gtd_xy)', 'un(i, j, k, simflowny_vars::Betau_z)',
-           'un(i, j, k, simflowny_vars::Df)', 'aux(i, j, k, simflowny_vars::vfd_z)', 'aux(i, j, k, simflowny_vars::pf)',
+           'state(i, j + 1, k, simflowny_vars::gtd_xy)', 'state(i, j, k, simflowny_vars::Betau_z)',
+           'state(i, j, k, simflowny_vars::Df)', 'aux(i, j, k, simflowny_vars::vfd_z)', 'aux(i, j, k, simflowny_vars::pf)',
            'const amrex::Real ee_x = prob_lo[0] + i * dx[0];', 'const amrex::Real ee_z = prob_lo[2] + k * dx[2];',
            'parameters.trK0', 'Simflowny_par const & parameters', 'amrex::Real & RHS_gtd_xz', 'amrex::Real & ko_gtd_yz',
            '((parameters.dissipation_factor_gtd_xy > 0) ? amrex::Real(')
     assert 'simflowny_vars::Ct' not in code, code
     assert 'gtd_yx' not in code and 'vfd_y)' not in code.split('void ccz4_ko(')[1], code
-    # The fixed signature order (design 5.4): i, j, k; un, aux; prob_lo, dx; parameters; the outputs in
+    # The fixed signature order (design 5.4): i, j, k; state, aux; prob_lo, dx; parameters; the outputs in
     # declaration order (a symmetric tensor's components in EE's order 00, 01, 11, 02, 12, 22).
     sig = code[code.index('void ccz4_rhs(') + len('void ccz4_rhs('):code.index(')\n{')]
     names = [p.split()[-1] for p in sig.split(',\n')]
-    assert names == ['i', 'j', 'k', 'un', 'aux', 'prob_lo', 'dx', 'parameters',
+    assert names == ['i', 'j', 'k', 'state', 'aux', 'prob_lo', 'dx', 'parameters',
                      'RHS_gtd_xx', 'RHS_gtd_xy', 'RHS_gtd_yy', 'RHS_gtd_xz', 'RHS_gtd_yz', 'RHS_gtd_zz',
                      'RHS_Betau_x', 'RHS_Betau_y', 'RHS_Betau_z', 'RHS_trK'], names
     ko_fn = code[code.index('void ccz4_ko('):]
     expect(ko_fn, '[[maybe_unused]] amrex::Array4<amrex::Real const> const & aux',
            '[[maybe_unused]] amrex::GpuArray<amrex::Real, 3> const & prob_lo')
-    assert cc.field_binding('gtd_xy') == FieldBinding('un', 'simflowny_vars::gtd_xy')
+    assert cc.field_binding('gtd_xy') == FieldBinding('state', 'simflowny_vars::gtd_xy')
     assert cc.field_binding('vfd_x') == FieldBinding('aux', 'simflowny_vars::vfd_x')
     assert cc.field_binding('Ct_xy') is None and cc.field_binding('RHS_trK') is None
 

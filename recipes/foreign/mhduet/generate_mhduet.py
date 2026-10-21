@@ -19,9 +19,9 @@
 Generate MHDuet's slot-in header CCZ4_EE.H: two inline device functions in namespace ee_mhduet, called inside
 MHDuet's four fused RHS kernels (AdvanceLevel.cpp), on the shared AMReX backend's MHDuetPointFunction.
 
-- ccz4_rhs(i, j, k, un, aux, prob_lo, dx, parameters, RHS_<component>...): the interior CCZ4 right-hand side of the
+- ccz4_rhs(i, j, k, state, aux, prob_lo, dx, parameters, RHS_<component>...): the interior CCZ4 right-hand side of the
   22 spacetime components (add_ccz4_mhduet, ko=False), which MHDuet then passes through its outer-boundary override;
-- ccz4_ko(i, j, k, un, aux, prob_lo, dx, parameters, ko_<component>...): their Kreiss-Oliger increments
+- ccz4_ko(i, j, k, state, aux, prob_lo, dx, parameters, ko_<component>...): their Kreiss-Oliger increments
   (add_ccz4_mhduet_ko), which the host adds after the override, as MHDuet does.
 
 The host binds every output by its name in the emitted signature (mhduet/patch/BINDING-PLAN.md), never by position.

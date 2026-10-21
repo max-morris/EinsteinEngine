@@ -46,20 +46,21 @@ def mhduet_component_names(sym: Indexed, *_idxs: int) -> Symbol:
 
 class MHDuetPointFunction(AMReXModule):
     """
-    A header of inline device functions `namespace::<function>(i, j, k, un, aux, prob_lo, dx, parameters, outputs...)`
+    A header of inline device functions `namespace::<function>(i, j, k, state, aux, prob_lo, dx, parameters, outputs...)`
     for MHDuet's Simflowny-generated fused kernels (`PointFunctionMode(outputs='refs')`). Fields are read with
-    Array4's own indexing (`Array4Call`) from two arrays: `un`, the stage's evolved state (un, rk1, rk2 or rk3), and
+    Array4's own indexing (`Array4Call`) from two arrays: `state`, the stage's evolved state (MHDuet's un, rk1, rk2 or rk3: not named `un`,
+    since a host `un` is in scope in every stage and is the wrong array in stages 2-4), and
     `aux`, MHDuet's unSyncAuxFieldGroup. A field's component `c` is `simflowny_vars::c` in its array. Coordinates are
     grid nodes, `prob_lo[a] + i * dx[a]` (MHDuet's xcoord). Parameters are members of `Simflowny_par const &
     parameters` under the recipe's names. Outputs are `amrex::Real &` out-parameters named as the host's locals.
 
-    `fields` maps each declared field base name to its array ("un" or "aux"); the bases declared with
-    `decl(..., rhs=R)` live in `un` and need no entry. Any other declaration without `rhs=` is a temporary.
+    `fields` maps each declared field base name to its array ("state" or "aux"); the bases declared with
+    `decl(..., rhs=R)` live in `state` and need no entry. Any other declaration without `rhs=` is a temporary.
     """
 
     def __init__(self, name: str, *, fields: Mapping[str, str], namespace: str, includes: Sequence[str] = (),
                  derivative_stencil_width: int = 5) -> None:
-        arrays = [ArrayParam("un", MHDUET_ARRAY_TYPE, Array4Call()), ArrayParam("aux", MHDUET_ARRAY_TYPE, Array4Call())]
+        arrays = [ArrayParam("state", MHDUET_ARRAY_TYPE, Array4Call()), ArrayParam("aux", MHDUET_ARRAY_TYPE, Array4Call())]
         names = {a.name for a in arrays}
         if bad := sorted(b for b, a in fields.items() if a not in names):
             raise DslException(f"Fields {bad} name an unknown array (arrays: {sorted(names)}).")
@@ -67,7 +68,7 @@ class MHDuetPointFunction(AMReXModule):
         table = dict(fields)
         super().__init__(name, namespace=namespace, arrays=arrays,
                          binder=lambda base: binders[table[base]] if base in table else None,
-                         rhs_binder=binders["un"], coordinates=NodeCentered(), mode=PointFunctionMode(outputs='refs'),
+                         rhs_binder=binders["state"], coordinates=NodeCentered(), mode=PointFunctionMode(outputs='refs'),
                          params=StructParams(arg="parameters", cpp_type="Simflowny_par const &"),
                          naming=mhduet_component_names, includes=includes,
                          derivative_stencil_width=derivative_stencil_width, max_stencil_offset=3)

@@ -21,7 +21,7 @@ MHDuet subclass of the shared AMReX backend (docs/AMREX-BACKEND-DESIGN.md, secti
 installs. Pure data and small functions, independent of the backend classes.
 
 In MHDuet's fused RHS kernel (AdvanceLevel.cpp), at a point (i, j, k):
-- the evolved fields are `un(i, j, k, simflowny_vars::<name>)`, where `un` is the stage's input Array4 (un, rk1,
+- the evolved fields are `A(i, j, k, simflowny_vars::<name>)`, where A is the stage's input Array4 (un, rk1,
   rk2 or rk3), so it is a function argument;
 - the primitives are `unSyncAuxFieldGroup(i, j, k, simflowny_vars::<name>)` (a second enum in the same namespace);
 - the parameters are members of the captured `Simflowny_par parameters`, under the recipe's names;
@@ -38,7 +38,8 @@ FUNCTIONS = {"rhs": "ccz4_rhs", "ko": "ccz4_ko"}  # DSL function name -> C++ fun
 
 # Point-function arguments, in signature order (design 5.4): arrays, coordinates and spacing, parameter struct.
 ARRAY_TYPE = "amrex::Array4<amrex::Real const> const&"
-ARRAYS = [("un", ARRAY_TYPE), ("aux", ARRAY_TYPE)]  # host passes the stage array and unSyncAuxFieldGroup
+ARRAYS = [("state", ARRAY_TYPE), ("aux", ARRAY_TYPE)]  # host passes the stage array A and unSyncAuxFieldGroup
+# (the array argument is `state`, not `un`: the host's `un` is in scope in every stage, the wrong array in 2-4)
 COORD_ARGS = [("prob_lo", "amrex::GpuArray<amrex::Real, 3> const&"), ("dx", "amrex::GpuArray<amrex::Real, 3> const&")]
 PARAM_STRUCT = ("parameters", "Simflowny_par const&")  # StructParams: member name = recipe parameter name
 
@@ -49,10 +50,10 @@ ENUM_NAMESPACE = "simflowny_vars"
 # Declared base name -> (array, kind). kind: scalar, vector (x, y, z), symmetric (xx, xy, xz, yy, yz, zz).
 FIELDS = {
     # evolved spacetime (state) fields
-    "chi": ("un", "scalar"), "gtd": ("un", "symmetric"), "Atd": ("un", "symmetric"), "trK": ("un", "scalar"),
-    "theta": ("un", "scalar"), "Gamh": ("un", "vector"), "Alpha": ("un", "scalar"), "Betau": ("un", "vector"),
+    "chi": ("state", "scalar"), "gtd": ("state", "symmetric"), "Atd": ("state", "symmetric"), "trK": ("state", "scalar"),
+    "theta": ("state", "scalar"), "Gamh": ("state", "vector"), "Alpha": ("state", "scalar"), "Betau": ("state", "vector"),
     # evolved matter fields the CCZ4 RHS reads
-    "Df": ("un", "scalar"), "tauf": ("un", "scalar"), "Sfd": ("un", "vector"), "Bfu": ("un", "vector"),
+    "Df": ("state", "scalar"), "tauf": ("state", "scalar"), "Sfd": ("state", "vector"), "Bfu": ("state", "vector"),
     # primitives
     "vfd": ("aux", "vector"), "pf": ("aux", "scalar"),
 }
