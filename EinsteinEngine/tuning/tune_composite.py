@@ -74,7 +74,8 @@ class CompositeTuner(Tuner):
 
     The probe counts split positions with every other out-param at the recipe's default. That is exact at the early
     locus, whose positions are the add_eqn calls; at a later locus, another sub-tuner's out-params (CSE options, for
-    example) can change the number of positions, so a CompositeTuner warns when it combines one with other tuners.
+    example) can change the number of positions, so a CompositeTuner warns when it combines one with a tuner that
+    does not probe (whose out-params the probe leaves at their defaults).
     """
 
     def __init__(self, *tuners: Tuner) -> None:
@@ -117,9 +118,10 @@ class CompositeTuner(Tuner):
                                      f"describe the search space of {name!r}; give each its own names")
                 space[name], space_owner[name] = description, i
         self._space = space
-        if len(self.tuners) > 1 and any(isinstance(v, SplitLocus) and v is not SplitLocus.Early
-                                        for v in params.values()):
-            warnings.warn("CompositeTuner: a split tuner at a locus after the early one is combined with other tuners. "
+        if any(isinstance(v, SplitLocus) and v is not SplitLocus.Early for v in params.values()) and \
+                any(not tuner.probe_targets() for tuner in self.tuners):
+            warnings.warn("CompositeTuner: a split tuner at a locus after the early one is combined with a tuner that "
+                          "does not probe. "
                           "Its positions are probed with the other tuners' out-params at the recipe's defaults; if "
                           "those change the equations (e.g. CSE options), trials can see a different number of "
                           "positions than was probed.", skip_file_prefixes=(_TUNING_DIR,))
@@ -175,7 +177,9 @@ class DiscreteKnobTuner(Tuner):
     """
     One discrete knob: the in-param `name` picks an index into `choices`, and the out-param `out_param` (default
     `name`) gives the recipe the chosen value. For code-specific choices such as a loop layout or launch bounds, read
-    in the recipe with `get_tuning_param(out_param)` (or `get_optional_tuning_param`, to run without the tuner).
+    in the recipe with `get_tuning_param(out_param, default)` (or `get_optional_tuning_param`, to run without the
+    tuner). Choices need a meaningful repr: `describe_space` describes them by it, so two choices with the default
+    object repr would be indistinguishable.
     A checkpoint records the index; the choices are recorded in the probe sidecar (`describe_space`), so a study
     whose choices have changed (reordered, inserted, removed) is refused rather than misread. A choice cannot be None,
     which would drop the out-param; use an explicit value (e.g. 'default') and map it in the recipe.

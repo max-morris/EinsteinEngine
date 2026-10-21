@@ -52,8 +52,10 @@ class InfeasibleParamError(Exception):
         self.param_name = param_name
         self.value = value
 
-# Split tuner params, whose indices are split positions (see tune_splitting.py), after any prefix.
-_SPLIT_PARAM_RE = re.compile(r'(?:\w*_)?(split|soft_retain_percentile)_\d+')
+# Split tuner params, whose indices are split positions (see tune_splitting.py): unprefixed (the only kind older
+# checkpoints have), and after any prefix.
+_SPLIT_PARAM_RE = re.compile(r'(split|soft_retain_percentile)_\d+')
+_PREFIXED_SPLIT_PARAM_RE = re.compile(r'\w*_(split|soft_retain_percentile)_\d+')
 
 class UndeclaredParamError(ValueError):
     """A stored trial (e.g. a checkpoint entry) names params the Experiment does not declare.
@@ -70,6 +72,9 @@ class UndeclaredParamError(ValueError):
                         "the old 15-position Z4c tuner, where the recipe has 13 add_eqn calls). Convert it into a "
                         "new file with scripts/shift_checkpoint_indices.py IN OUT, adding --n-positions N to drop "
                         "the positions >= N.")
+        elif any(_PREFIXED_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+            message += (" For prefixed split params, it was probably recorded with more split positions than the "
+                        "recipe has now.")
         super().__init__(message)
         self.source = source
         self.names = list(names)
@@ -79,10 +84,10 @@ class MissingParamError(ValueError):
     def __init__(self, source: str, names: Sequence[str]):
         message = (f"{source} is missing params that the experiment declares (and whose conditions hold): "
                    f"{', '.join(names)}. It was probably recorded against a different tuner or recipe.")
-        if any(re.fullmatch(r'(?:\w*_)?soft_retain_percentile_\d+', name) for name in names):
+        if any(re.fullmatch(r'soft_retain_percentile_\d+', name) for name in names):
             message += (" A split checkpoint without soft_retain_percentile params predates them, and cannot be "
                         "replayed by the current split tuners.")
-        elif any(_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+        elif any(_SPLIT_PARAM_RE.fullmatch(name) or _PREFIXED_SPLIT_PARAM_RE.fullmatch(name) for name in names):
             message += " For split params, it may have been recorded with fewer split positions than the recipe has."
         super().__init__(message)
         self.source = source

@@ -415,8 +415,10 @@ def test_sidecar(r: Recipes) -> None:
     tuner = CombinatorialSplitTuner()
 
     def recorded() -> dict[str, Any]:
+        """The sidecar, without its (random) study id, which must be there."""
         with open(sidecar) as fh:
             loaded: dict[str, Any] = json.load(fh)
+            assert len(loaded.pop('study')) == 32
             return loaded
 
     set_count(3)
@@ -434,12 +436,16 @@ def test_sidecar(r: Recipes) -> None:
     build_experiment(tuner, path, checkpoint, record_probe=True)
     #  A sidecar written before the search space was recorded is accepted (the space is not checked), and
     #  record_probe adds the space.
+    with open(sidecar) as fh:
+        study = json.load(fh)['study']
     old = {k: v for k, v in recorded().items() if k != 'space'}
     with open(sidecar, 'w') as fh:
-        json.dump(old, fh)
+        json.dump({**old, 'study': study}, fh)
     build_experiment(tuner, None, checkpoint)
     build_experiment(tuner, path, checkpoint, record_probe=True)
     assert 'space' in recorded()
+    with open(sidecar) as fh:
+        assert json.load(fh)['study'] == study  # kept when the sidecar is rewritten
 
     #  While the checkpoint is empty, a changed probe is not an error, and record_probe replaces the sidecar.
     set_count(4)
@@ -494,13 +500,15 @@ def test_sidecar(r: Recipes) -> None:
         fh.write('{not json')
     expect_error(RuntimeError, lambda: build_experiment(tuner, path, checkpoint), f'probe file {sidecar}', 'not valid')
 
-    #  A tuner without probe targets never touches the sidecar.
+    #  A tuner without probe targets needs no sidecar, but record_probe writes one (with the study id batches need).
     os.remove(sidecar)
     os.remove(checkpoint)
-    assert list(build_experiment(PlainTuner(), None, checkpoint, record_probe=True).in_params) == ['a']
     assert list(build_experiment(CombinatorialSplitTuner(n_vars=2), None, checkpoint).in_params) == \
         ['split_0', 'soft_retain_percentile_0', 'split_1', 'soft_retain_percentile_1']
+    assert list(build_experiment(PlainTuner(), None, checkpoint).in_params) == ['a']
     assert not os.path.exists(sidecar)
+    assert list(build_experiment(PlainTuner(), None, checkpoint, record_probe=True).in_params) == ['a']
+    assert recorded() == {'counts': {}, 'probe_params': {}, 'space': {}}
 
 
 class LocusTuner(Tuner):
@@ -539,8 +547,10 @@ def test_derived_order_sidecar(r: Recipes) -> None:
     assert_idle()
 
     def recorded() -> dict[str, Any]:
+        """The sidecar, without its (random) study id."""
         with open(sidecar) as fh:
             loaded: dict[str, Any] = json.load(fh)
+            loaded.pop('study', None)
             return loaded
 
     def trial_early_ordering_fn(e: Experiment) -> str:
@@ -818,6 +828,16 @@ thorn("PROBETWOTHORNSB", "f2")
 """
 
 
+def test_split_tuner_param_names() -> None:
+    """probe._SPLIT_TUNER_PARAMS names every fixed out-param a split tuner can provide."""
+    order = add_eqn_order([0])
+    for tuner in (CombinatorialSplitTuner(prefix='p_', early_ordering_fn=order, pre_population_ordering_fn=order,
+                                          ordering_fn=order),
+                  CutPositionSplitTuner(1, locus=SplitLocus.Early, prefix='p_', early_ordering_fn=order,
+                                        pre_population_ordering_fn=order, ordering_fn=order)):
+        assert set(tuner.probe_params()) == {'p_' + name for name in probe._SPLIT_TUNER_PARAMS}
+
+
 def test_prefixed_separate_bakes(r: Recipes) -> None:
     """Prefixed split tuners for functions baked separately: a ranked early ordering function for the function baked
     first or second, or for both, derives the same order as the same function alone without a prefix; and a prefixed
@@ -848,7 +868,7 @@ def test_prefixed_separate_bakes(r: Recipes) -> None:
         expect_error(ValueError, lambda: CombinatorialSplitTuner(prefix=bad), "ending in '_'")
     e = CombinatorialSplitTuner(n_vars=1, prefix='rhs_').get_experiment()
     expect_error(UndeclaredParamError, lambda: e.check_declared({'rhs_split_0': 0, 'rhs_split_1': 0}, 'x'),
-                 'For split params')
+                 'For prefixed split params', 'more split positions')
 
 
 def test_strict_checkpoint(r: Recipes) -> None:
@@ -1072,6 +1092,7 @@ if __name__ == "__main__":
             test_prefix()
             test_prefixed_study(recipes)
             test_prefixed_separate_bakes(recipes)
+            test_split_tuner_param_names()
             test_strict_checkpoint(recipes)
             test_shift_script(recipes)
             test_real_recipe_loci(recipes)
