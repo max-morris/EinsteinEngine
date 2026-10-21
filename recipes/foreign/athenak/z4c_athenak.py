@@ -81,6 +81,18 @@ width = 2 * ng - 1  # centered stencil width: order 2 * (ng - 1)
 # The function name does not depend on --diss (the dispatch header calls Z4cRHS<ng>[SSL]); the par_for labels and
 # the banner record the variant.
 name = f"Z4cRHS{ng}{'SSL' if args.ssl else ''}"
+# Tuning parameters (EinsteinEngine/tuning; athenak/bench/tune/): each overrides the matching command-line option
+# when a tuner provides it, and is absent otherwise, so the default output does not change.
+_tuned: dict[str, Any] = {}
+for _k in ('diss_layout', 'launch_bounds', 'cse_optimizations', 'ordering_fn', 'early_ordering_fn',
+           'pre_population_ordering_fn', 'auto_hard_split_predicate', 'auto_soft_split_predicate', 'auto_split_locus'):
+    _v = get_optional_tuning_param(_k, None)
+    if _v is not None:
+        _tuned[_k] = _v
+if 'diss_layout' in _tuned:
+    args.diss = str(_tuned['diss_layout'])
+if 'launch_bounds' in _tuned:
+    args.launch_bounds = None if _tuned['launch_bounds'] in ('none', '') else str(_tuned['launch_bounds'])
 variant = {'separate': '', 'fused': ' fused-diss', 'per-component': ' diss-per-component'}[args.diss]
 
 kk = AthenaKKernel(
@@ -252,8 +264,12 @@ if _lb is not None:
     variant += f' lb{_lb[0]}x{_lb[1]}'
 if args.split != 'none':
     variant += f' split-{args.split}'
+_auto = {k: _tuned[k] for k in ('auto_hard_split_predicate', 'auto_soft_split_predicate', 'auto_split_locus')
+         if k in _tuned}
+if _auto:
+    variant += ' tuned-splits'
 fn = kk.create_function("rhs", label=f"EE z4c rhs {name}{variant}",
-                        launch_bounds=cast(Optional[tuple[int, int]], _lb))
+                        launch_bounds=cast(Optional[tuple[int, int]], _lb), **_auto)
 
 
 def define(lhs: Any, rhs_: Any) -> None:
@@ -481,6 +497,11 @@ if args.cse_preset is not None:
 if args.ordering != 'reuse':
     _bake['ordering_fn'] = {'rare': prioritize_rare_symbols, 'lexicographical': lexicographical_order,
                             'recipe': recipe_order}[args.ordering]
+if 'cse_optimizations' in _tuned:
+    _bake['cse_optimizations'] = _tuned['cse_optimizations']
+_fn_opts = {k: _tuned[k] for k in ('ordering_fn', 'early_ordering_fn', 'pre_population_ordering_fn') if k in _tuned}
+if _fn_opts:  # per function: an add_eqn_order refers to the rhs function's add_eqn calls
+    _bake.setdefault('functions', {}).setdefault('rhs', {}).update(_fn_opts)
 kk.bake(**_bake)
 
 AthenaKWizard(kk, out_dir=args.out_dir).generate_header(
@@ -490,6 +511,7 @@ AthenaKWizard(kk, out_dir=args.out_dir).generate_header(
            f"{'' if args.split == 'none' else ' --split ' + args.split}"
            f"{'' if _lb is None else ' --launch-bounds ' + args.launch_bounds}"
            f"{'' if args.cse_preset is None else ' --cse-preset ' + args.cse_preset}"
-           f"{'' if args.ordering == 'reuse' else ' --ordering ' + args.ordering}.\n"
+           f"{'' if args.ordering == 'reuse' else ' --ordering ' + args.ordering}"
+           f"{'' if not _tuned else ' (tuned: ' + ', '.join(sorted(_tuned)) + ')'}.\n"
            f"// Drop-in replacement for the loops of z4c::Z4c::CalcRHS<{ng}> (vacuum, no drift control)."
 )
