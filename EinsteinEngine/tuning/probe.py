@@ -316,7 +316,8 @@ def _run(state: _ProbeState, doing: str) -> None:
         clear_caches()
 
 
-#  The fixed out-params of a split tuner (tune_splitting.py), each after the tuner's prefix.
+#  The fixed out-params of a split tuner (tune_splitting._SplitTuner.probe_params), each after the tuner's prefix;
+#  test_tuning_probe checks that the two agree.
 _SPLIT_TUNER_PARAMS = ('auto_split_locus', 'early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
 
 

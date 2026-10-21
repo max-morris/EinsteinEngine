@@ -350,7 +350,8 @@ because the checkpoint's coordinates only mean something against it:
   "probe_params": {"auto_split_locus": "SplitLocus.Early",
                    "early_ordering_fn": "rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)"},
   "derived_orders": {"early_ordering_fn": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]},
-  "space": {"split_*": "CombinatorialSplitTuner(positions=probed)"}
+  "space": {"split_*": "CombinatorialSplitTuner(positions=probed)"},
+  "study": "3f2c9e0d5b7a4c1e8d6f0a2b4c6e8f10"
 }
 ```
 
@@ -369,6 +370,10 @@ because the checkpoint's coordinates only mean something against it:
   in order, or the CSE tuner's presets and budgets. A tuner that describes its
   space gets a probe file even if it does not probe. A probe file written
   before `space` was recorded is accepted without checking it.
+- `study`: a random id, made when the probe file is first written and kept
+  when it is rewritten, which tells apart studies with the same tuner and
+  recipe (one per compiler, say). `record_probe=True` always writes the probe
+  file. A new study must not copy another study's probe file.
 
 `probe_params` describes each `probe_params()` value in a form that is stable
 across runs (see `probe.describe_param`): an enum by name; a function by its
@@ -545,7 +550,8 @@ kept once; the split tuners never share one, since their names carry their
 prefixes.) `DiscreteKnobTuner(name, choices, out_param=None)` is one discrete
 knob for code-specific choices: the in-param `name` is an index into `choices`,
 and the out-param (`out_param`, default `name`) is the chosen value. A choice
-cannot be None; use an explicit value such as `'default'`.
+cannot be None; use an explicit value such as `'default'`. Choices are recorded
+by their repr, so give them a meaningful one.
 
 To tune the splits of several functions in one study, give each split tuner a
 `prefix`, an identifier ending in `_`. It is prepended to every name the tuner
@@ -575,7 +581,8 @@ in the probe file (`space`), so a study whose choices have changed is refused
 rather than misread. The probe counts split positions with the other
 sub-tuners' out-params at the recipe's defaults: exact at the early locus,
 whose positions are the `add_eqn` calls, but at a later locus a CSE option can
-change the number of positions, and a CompositeTuner warns.
+change the number of positions, so a CompositeTuner warns when a split tuner at
+a later locus is combined with a tuner that does not probe.
 
 ### Batches
 
@@ -603,24 +610,30 @@ optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximiz
 - `ask(n, seed=None, pending=())` rebuilds the study from the checkpoint and
   proposes `n` new trials with TPE and `constant_liar`, so each is proposed
   knowing the earlier ones are running. Pass the batches still out as
-  `pending`, or the new batch can repeat their trials. Trials that repeat one
-  already proposed or told are redrawn. Below `n_startup_trials` told
-  entries, TPE samples at random; a large batch asked from little history is
-  mostly spread by the liar.
+  `pending`, or the new batch can repeat their trials. Draws that are
+  infeasible or repeat a trial already proposed or told are redrawn; they stay
+  running in the throwaway study, so they act as extra liars, and the batch
+  records how many there were (`rejected`; `ask` warns when they outnumber the
+  batch). Below `n_startup_trials` told entries every draw is random, so only
+  the repeat check spreads the batch; past them, a batch large relative to the
+  history is spread mostly by the liar.
 - The batch records its seed, the number and digest of the checkpoint entries
   it was asked against, the pending batches, `n_startup_trials` and the optuna
   version: asking again with those, from a checkpoint holding exactly those
-  entries, gives the same trials. It also records its study (the checkpoint's
-  name, its probe file and the in-param names).
-- `tell(batch, targets)` appends to the same checkpoint, under a lock and in
-  one write, each entry with the batch id and trial index. It refuses a batch
+  entries, gives the same trials. It also records its study: a digest of the
+  probe file's study id, counts, probe params and derived orders, and of the
+  in-param names (sorted, so reordering the sub-tuners keeps the study).
+- `tell(batch, targets)` appends to the same checkpoint, under a lock
+  (`<checkpoint>.lock`, which can be ignored by git) and in one write, each
+  entry with the batch id and trial index. It refuses a batch
   of another study or asked against other entries, a trial already told, and
   params that do not fit. A None target is not written, so a trial that did
   not run can be told later; a non-finite one is a failed run (a bad
   configuration).
 - `Experiment.recipe_facing_args(params)` gives a trial's recipe-facing args;
   `generate_best --batch FILE --trial I` runs the recipe with them, from the
-  probe file, without probing.
+  probe file, without probing; so it does not notice a recipe edited since the
+  probe. Keep the recipe the same for the whole study.
 
 ---
 

@@ -134,16 +134,22 @@ def _history_digest(checkpoint_file: str, n_entries: int) -> str:
 
 
 def study_digest(experiment: Experiment, checkpoint_file: str) -> str:
-    """What identifies a study apart from its entries: the checkpoint's file name, its probe sidecar (the probe counts,
-    probe params, derived orders and search space it was recorded against), and the Experiment's in-param names."""
-    from EinsteinEngine.tuning.tuning import probe_sidecar_path  # imported here: tuning imports the engine
+    """
+    What identifies a study apart from its entries: its probe sidecar's study id, probe counts, probe params and
+    derived orders (`ProbeRecord.identity`), and the Experiment's in-param names. The sidecar must exist and have a
+    study id: `build_experiment(..., record_probe=True)` writes one. A new study must not copy another's sidecar.
+    """
+    from EinsteinEngine.tuning.tuning import ProbeRecord, probe_sidecar_path  # imported here: tuning imports the engine
     sidecar = probe_sidecar_path(checkpoint_file)
-    record = ''
-    if os.path.exists(sidecar):
-        with open(sidecar) as fh:
-            record = fh.read()
-    blob = json.dumps({'checkpoint': os.path.basename(checkpoint_file), 'sidecar': record,
-                       'in_params': list(experiment.in_params)}, sort_keys=True)
+    if not os.path.exists(sidecar):
+        raise RuntimeError(f"Batches need the study's probe file {sidecar}; build the Experiment with "
+                           f"build_experiment(..., record_probe=True) first.")
+    with open(sidecar) as fh:
+        record = ProbeRecord.from_json(fh.read())
+    if record.study is None:
+        raise RuntimeError(f"The probe file {sidecar} has no study id (it predates them); build the Experiment with "
+                           f"build_experiment(..., record_probe=True) once to add one.")
+    blob = json.dumps({'record': record.identity(), 'in_params': sorted(experiment.in_params)}, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()
 
 
@@ -174,11 +180,14 @@ class Batch:
     optuna_version: str
     pending: tuple[str, ...]
     params: tuple[dict[str, Coord], ...]
+    #  Draws discarded while asking (infeasible, or repeating a trial); they acted as extra liars.
+    rejected: int = 0
 
     @property
     def id(self) -> str:
         """Unique to these trials. Written with each told entry, so a trial cannot be told twice."""
-        blob = json.dumps([self.seed, self.n_history, self.history, self.study, list(self.params)], sort_keys=True)
+        blob = json.dumps([self.seed, self.n_history, self.history, self.study, self.n_startup_trials,
+                           self.optuna_version, list(self.pending), list(self.params), self.rejected], sort_keys=True)
         return f'{self.n_history}-{self.seed}-{hashlib.sha256(blob.encode()).hexdigest()[:16]}'
 
     def __hash__(self) -> int:
@@ -188,17 +197,17 @@ class Batch:
         return json.dumps({'id': self.id, 'seed': self.seed, 'n_history': self.n_history, 'history': self.history,
                            'study': self.study, 'n_startup_trials': self.n_startup_trials,
                            'optuna_version': self.optuna_version, 'pending': list(self.pending),
-                           'params': list(self.params)}, indent=1) + '\n'
+                           'rejected': self.rejected, 'params': list(self.params)}, indent=1) + '\n'
 
     @staticmethod
     def from_json(text: str) -> 'Batch':
         obj = json.loads(text)
         keys = {'id', 'seed', 'n_history', 'history', 'study', 'n_startup_trials', 'optuna_version', 'pending',
-                'params'}
+                'rejected', 'params'}
         if not isinstance(obj, dict) or set(obj) != keys:
             raise ValueError(f'Expected a JSON object with the keys {sorted(keys)}, as Batch.to_json writes it')
         ok = (_is_int(obj['seed']) and _is_int(obj['n_history']) and obj['n_history'] >= 0
-              and _is_int(obj['n_startup_trials']) and all(isinstance(obj[k], str) for k in
+              and _is_int(obj['n_startup_trials']) and _is_int(obj['rejected']) and all(isinstance(obj[k], str) for k in
                                                             ('id', 'history', 'study', 'optuna_version'))
               and isinstance(obj['pending'], list) and all(isinstance(x, str) for x in obj['pending'])
               and isinstance(obj['params'], list) and obj['params']
@@ -207,17 +216,17 @@ class Batch:
         if not ok:
             raise ValueError('A batch file has a field of the wrong type (see Batch.to_json)')
         batch = Batch(obj['seed'], obj['n_history'], obj['history'], obj['study'], obj['n_startup_trials'],
-                      obj['optuna_version'], tuple(obj['pending']), tuple(obj['params']))
+                      obj['optuna_version'], tuple(obj['pending']), tuple(obj['params']), obj['rejected'])
         if batch.id != obj['id']:
             raise ValueError(f"The batch file's id {obj['id']} does not match its contents ({batch.id}); was it edited?")
         return batch
 
 
 @contextlib.contextmanager
-def _locked(checkpoint_file: str) -> Iterator[None]:
-    """Hold an exclusive lock on `<checkpoint>.lock` (tell's check-then-append must not interleave)."""
+def _locked(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
+    """Hold a lock on `<checkpoint>.lock`: exclusive for tell's check-then-append, shared for ask's reads."""
     with open(f'{checkpoint_file}.lock', 'a') as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
+        fcntl.flock(fh, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
         try:
             yield
         finally:
@@ -309,15 +318,17 @@ class CheckpointedOptimizer:
             raise ValueError(f"A batch needs at least one trial, got {n}")
         if seed is None:
             seed = self._random_state if self._random_state is not None else secrets.randbelow(2**31)
-        history = read_checkpoint(self._experiment, self._checkpoint_file)
         study_id = study_digest(self._experiment, self._checkpoint_file)
+        with _locked(self._checkpoint_file, exclusive=False):
+            history = read_checkpoint(self._experiment, self._checkpoint_file)
+            digest = _history_digest(self._checkpoint_file, len(history))
+            told = self._told()
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
             sampler = TPESampler(n_startup_trials=self._n_startup_trials, seed=seed, constant_liar=True)
         study = optuna.create_study(direction='maximize', sampler=sampler)
         _add_trials(study, history)
         seen = [coords for _, coords, _ in history]
-        told = self._told()
         for other in pending:
             if other.study != study_id:
                 raise RuntimeError(f"Pending batch {other.id} belongs to another study than {self._checkpoint_file}.")
@@ -330,6 +341,7 @@ class CheckpointedOptimizer:
                 self._experiment.suggest_params(study.ask())  # left RUNNING with those params
                 seen.append(dict(coords))
         proposed: list[dict[str, Coord]] = []
+        rejected = 0
         for _ in range(_MAX_ATTEMPT_FACTOR * n):
             if len(proposed) == n:
                 break
@@ -337,16 +349,21 @@ class CheckpointedOptimizer:
             try:
                 params, _ = self._experiment.suggest_params(trial)
             except InfeasibleParamError:
+                rejected += 1
                 continue  # left RUNNING (with the params it drew), so the liar steers the next draws away from it
             if dict(params) in seen or dict(params) in proposed:
+                rejected += 1
                 continue  # likewise
             proposed.append(dict(params))  # left RUNNING: the constant liar counts it as pending
         if len(proposed) < n:
             raise RuntimeError(f"Proposed only {len(proposed)} of {n} new trials in {_MAX_ATTEMPT_FACTOR * n} "
                                f"attempts; parameter constraints may reject too much of the search space, or too "
                                f"little of it is left.")
-        return Batch(seed, len(history), _history_digest(self._checkpoint_file, len(history)), study_id,
-                     self._n_startup_trials, optuna.__version__, tuple(b.id for b in pending), tuple(proposed))
+        if rejected > n:
+            warnings.warn(f"ask rejected {rejected} draws for a batch of {n} (infeasible, or repeating a trial); each "
+                          f"acted as an extra liar, which can push the batch away from the best trials so far.")
+        return Batch(seed, len(history), digest, study_id, self._n_startup_trials, optuna.__version__,
+                     tuple(b.id for b in pending), tuple(proposed), rejected)
 
     def tell(self, batch: Batch, targets: Sequence[float | None]) -> None:
         """
@@ -373,7 +390,8 @@ class CheckpointedOptimizer:
                 raise RuntimeError(f"Batch {batch.id} was not asked against this checkpoint: the first "
                                    f"{batch.n_history} entries of {self._checkpoint_file} differ from the ones it "
                                    f"was asked against.")
-            if again := sorted(i for i in todo if (batch.id, i) in self._told()):
+            told = self._told()
+            if again := sorted(i for i in todo if (batch.id, i) in told):
                 raise RuntimeError(f"Trials {again} of batch {batch.id} have already been told to "
                                    f"{self._checkpoint_file}.")
             entries = []
@@ -387,7 +405,9 @@ class CheckpointedOptimizer:
             if lines:
                 fd = os.open(self._checkpoint_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
                 try:
-                    os.write(fd, ('\n'.join(lines) + '\n').encode())
+                    data = ('\n'.join(lines) + '\n').encode()
+                    while data:
+                        data = data[os.write(fd, data):]
                     os.fsync(fd)
                 finally:
                     os.close(fd)

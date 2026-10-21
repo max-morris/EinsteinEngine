@@ -35,7 +35,7 @@ from EinsteinEngine.tuning.generate_best import load_best_params
 from EinsteinEngine.tuning.generate_best import main as generate_best_main
 from EinsteinEngine.tuning.plot_tuning import load_jsonl, map_coords_to_values, plot
 from EinsteinEngine.tuning.tune_composite import DiscreteKnobTuner
-from EinsteinEngine.tuning.tuning import build_experiment
+from EinsteinEngine.tuning.tuning import Tuner, build_experiment, probe_sidecar_path
 
 
 def expect_error[E: BaseException](kind: type[E], fn: Callable[[], Any], *fragments: str) -> E:
@@ -67,8 +67,19 @@ def lines(path: str) -> list[dict[str, Any]]:
         return [json.loads(line) for line in fh if line.strip()]
 
 
-def opt(checkpoint: str, **kwargs: Any) -> CheckpointedOptimizer:
-    return CheckpointedOptimizer.for_batches(experiment(), checkpoint, **kwargs)
+class ExperimentTuner(Tuner):
+    def __init__(self, make: Callable[[], Experiment] = experiment) -> None:
+        self.make = make
+
+    def get_experiment(self) -> Experiment:
+        return self.make()
+
+
+def opt(checkpoint: str, make: Callable[[], Experiment] = experiment, **kwargs: Any) -> CheckpointedOptimizer:
+    """An optimizer for batches of the study at `checkpoint`, whose probe file (with its study id) is written first,
+    as remote_tuner does."""
+    return CheckpointedOptimizer.for_batches(build_experiment(ExperimentTuner(make), None, checkpoint,
+                                                              record_probe=True), checkpoint, **kwargs)
 
 
 def test_ask_is_reproducible(directory: str) -> None:
@@ -96,11 +107,18 @@ def test_ask_is_reproducible(directory: str) -> None:
     assert longer.params[:5] == first.params and longer.id != first.id
     expect_error(ValueError, lambda: opt(checkpoint).maximize(), 'ask and tell only')
     #  More new trials than the space holds: an error, not repeats.
-    tiny = Experiment()
-    tiny.add_in_param('k', Discrete(range(3)))
-    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(tiny, os.path.join(directory, 'tiny.jsonl'))
-                 .ask(4, seed=1), 'Proposed only 3 of 4')
-    assert not os.path.exists(checkpoint)  # asking writes nothing
+    def tiny() -> Experiment:
+        e = Experiment()
+        e.add_in_param('k', Discrete(range(3)))
+        return e
+    expect_error(RuntimeError, lambda: opt(os.path.join(directory, 'tiny.jsonl'), tiny).ask(4, seed=1),
+                 'Proposed only 3 of 4')
+    #  Batches need the study's probe file, with its study id.
+    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(experiment(), os.path.join(
+        directory, 'no-sidecar.jsonl')).ask(1), 'record_probe=True')
+    assert not os.path.exists(checkpoint)  # asking writes nothing (but the probe file, written by build_experiment)
+    with open(probe_sidecar_path(checkpoint)) as fh:
+        assert len(json.load(fh)['study']) == 32
 
 
 def test_rounds(directory: str) -> None:
@@ -155,14 +173,15 @@ def test_tell_refusals_and_partial_tells(directory: str) -> None:
     other = os.path.join(directory, 'other.jsonl')
     first_of_other = opt(other).ask(2, seed=6)
     expect_error(RuntimeError, lambda: optimizer.tell(first_of_other, [0.0, 0.0]), 'another study')
-    #  Nor one whose study has the same file name but another probe sidecar (another probe or search space).
+    #  Nor one of a study with the same tuner and file name elsewhere (e.g. one study per compiler): its probe file
+    #  is the same but for the study id.
     elsewhere = os.path.join(directory, 'elsewhere')
     os.mkdir(elsewhere)
     twin = os.path.join(elsewhere, 'refusals.jsonl')
     asked = opt(twin).ask(1, seed=7)
-    with open(twin + '.probe.json', 'w') as fh:
-        fh.write('{"counts": {}, "probe_params": {}}\n')
-    expect_error(RuntimeError, lambda: opt(twin).tell(asked, [0.0]), 'another study')
+    expect_error(RuntimeError, lambda: optimizer.tell(asked, [0.0]), 'another study')
+    #  A rewritten probe file keeps its study id, so the batch can still be told there.
+    opt(twin).tell(asked, [0.0])
     #  A batch asked against entries that have since changed.
     stale = optimizer.ask(1, seed=8)
     stale = dataclasses.replace(stale, history='0' * 64)
@@ -254,7 +273,9 @@ def test_generate_best_batch_trial(directory: str) -> None:
             generate_best_main()
             assert json.loads(out.read_text()) == {'layout': tuner.choices[int(params['layout'])]}
         #  A batch of another study is refused.
-        other = CheckpointedOptimizer.for_batches(e, str(d / 'other.jsonl')).ask(1, seed=2)
+        other_checkpoint = str(d / 'other.jsonl')
+        other = CheckpointedOptimizer.for_batches(build_experiment(tuner, None, other_checkpoint, record_probe=True),
+                                                  other_checkpoint).ask(1, seed=2)
         batch_file.write_text(other.to_json())
         sys.argv = ['generate_best', str(recipe), str(tuner_file), '--checkpoint-file', checkpoint,
                     '--batch', str(batch_file), '--trial', '0']
