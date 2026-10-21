@@ -232,13 +232,27 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
    survives into the emitted code. With it, a false guard yields exactly 0 whatever any other temporary holds.
    - The generator raises on any surviving product of a guard with a non-constant factor. This is an unconditional
      hard error in both modes, so a bypassed fold cannot pass silently.
-     - A guard is defined by its zero form: the value with every guard Piecewise replaced by 0 and every value it
-       reads replaced by that value's zero form. The zero forms are carried through temporaries, and through outputs
-       and tile temporaries to later loops; in point mode nothing crosses functions.
-     - A value is a guard if its zero form is exactly 0, is itself still a guard (recursively: a choice with a guarded
-       branch is zero in some region), or is `0**n` with n symbolic (conservatively).
-     - So constant multiples, sums, powers, `Abs`, `Max` and `sin` of guards count; so do choices between a guard and
-       anything else, and cancellations through temporaries such as `t = exp(P)`, then `(t - 1)*S`.
+     - A guard is defined by its zero form. A value's value form is its expression with every value it reads
+       inlined, as long as the result stays under 400 tree nodes; a larger value stays an opaque symbol. Value forms
+       are carried through temporaries, copies and constants, and through outputs and tile temporaries to later
+       loops and functions. Symbols that a later loop cannot read by name get one shared placeholder each, and a
+       name that is reassigned turns into a fresh placeholder where older value forms refer to it. In point mode
+       nothing crosses functions. The zero form is the value form with every guard Piecewise replaced by 0.
+     - A value is a guard if its zero form is exactly 0 or is still a guard. The zero test is applied after
+       `0**n -> 0`, with Max and Min written as choices, after `piecewise_fold`, and after expansion for small
+       forms. "Still a guard" is recursive: a choice with a guarded branch is zero in some region. A guard nested
+       more than 16 deep is refused.
+     - So constant multiples, sums, powers, `Abs`, `Max`, `Min` and `sin` of guards count; so do choices with a
+       guarded branch, and cancellations through temporaries such as `t = exp(P)`, then `(t - 1)*S`, or `t1 = t`,
+       then `(t + P - t1)*S`. A randomized unit test checks that every guard-caused `0*Inf` in random equation
+       systems raises, in one loop and after a split.
+     - Limits:
+       - A zero of the other data is outside R10. `A + P` is A where P is false; if A itself is 0 (`|B| - B` with
+         B > 0), the check does not see it, and need not: that zero is not caused by a guard.
+       - Identities through a value larger than the inlining bound are not seen.
+       - Complementary masks (`m_in*a + m_out*b`) are refused, though never zero. That is a loud false refusal.
+       - `(1 - mask)*S`, with a mask whose branches are 1 and 0, is outside R10 by definition: the zero comes from a
+         branch value, not from a guard.
      - A sum with any other term is not a guard: `A + P` is A where P is false. `DXI*(A + P)`, which the default
        `BasicCollectAfter` preset can produce, is therefore safe, and is tested. Nor are `P + 1`, `exp(P)` and
        `cos(P)` guards.
