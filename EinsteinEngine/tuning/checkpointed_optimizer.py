@@ -174,8 +174,8 @@ class Batch:
     Trials proposed together by `CheckpointedOptimizer.ask`. `params` holds each trial's in-params as the checkpoint
     stores them (raw coordinates); `Experiment.recipe_facing_args` gives a trial's recipe-facing args.
 
-    `study` identifies the study it was asked for (see study_digest: the probe file's identity and the in-param names), and `n_history`
-    and `history` the checkpoint entries it was asked against (their number and SHA-256). Asking again with the same
+    `study` identifies the study it was asked for (see study_digest: the probe file's identity and the in-param
+    names), and `n_history` and `history` the checkpoint entries it was asked against (their number and SHA-256). Asking again with the same
     `seed`, from a checkpoint holding exactly those entries and with the same `pending` batches, gives the same params
     (with the same `n_startup_trials` and optuna version, also recorded).
     """
