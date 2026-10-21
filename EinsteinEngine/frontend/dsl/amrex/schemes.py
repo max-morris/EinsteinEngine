@@ -72,7 +72,8 @@ class ParamScheme(ABC):
 class MemberParams(ParamScheme):
     """
     Kernel mode (GRTeclyn): parameters are class members, assigned in the constructor body after a C++ prelude; the
-    spacing is the members DX, DXI, DYI, DZI, from the expression `dx` (in the constructor arguments).
+    spacing is the members DX, DXI, DYI, DZI, from the expression `dx` (in the constructor arguments): one spacing on
+    all three axes (GRTeclyn's grids are isotropic). Point mode takes anisotropic spacing.
     """
     ctor_args: Sequence[CtorArg]
     dx: str
@@ -86,8 +87,8 @@ class StructParams(ParamScheme):
     Point mode (MHDuet): parameters are members of one struct argument, `<arg>.<member(name)>` (the name unchanged
     by default); the spacing comes from a host GpuArray<Real, 3> argument `dx`, inverted once into locals.
     """
+    cpp_type: str  # the struct argument's C++ type, e.g. 'const Simflowny_par &' (no default: the subclass states it)
     arg: str = 'parameters'
-    cpp_type: str = 'const Simflowny_par &'
     member: Callable[[str], str] = field(default=lambda p: p)
     dx: str = 'dx'
 

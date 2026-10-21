@@ -28,16 +28,16 @@ Classification is by declaration, never by name:
 """
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Optional, Sequence, Unpack, cast
+from typing import Any, Callable, Iterable, Optional, Sequence, Unpack, cast
 
 from sympy import Idx, Indexed, IndexedBase, Symbol
 
 from EinsteinEngine.common.intent_override import IntentOverride
 from EinsteinEngine.common.sympywrap import mk_symbol
-from EinsteinEngine.frontend.dsl.amrex.layout import ArrayParam, FieldBinder, FieldBinding
+from EinsteinEngine.frontend.dsl.amrex.layout import ArrayParam, FieldBinder, FieldBinding, StridedPointer
 from EinsteinEngine.frontend.dsl.amrex.naming import digit_component_names
-from EinsteinEngine.frontend.dsl.amrex.schemes import CoordinateScheme, EmissionMode, KernelLaunchMode, \
-    MemberParams, ParamScheme, PointFunctionMode, StructParams
+from EinsteinEngine.frontend.dsl.amrex.schemes import CellCentered, CoordinateScheme, EmissionMode, \
+    KernelLaunchMode, MemberParams, NodeCentered, ParamScheme, PointFunctionMode, StructParams
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 from EinsteinEngine.frontend.dsl.dsl_frontend import DslFrontend, DslFrontendBakeOptions, SymbolDeclarationKwargs
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend, DslFunctionFrontendBakeOptions
@@ -97,10 +97,16 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                  rhs_binder: Optional[FieldBinder] = None, naming: Callable[..., Symbol] = digit_component_names,
                  includes: Sequence[str] = (), derivative_stencil_width: int = 5, max_stencil_offset: int = 3) -> None:
         super().__init__(dimensionality=3, derivative_stencil_width=derivative_stencil_width)
-        supported = {KernelLaunchMode: (MemberParams,), PointFunctionMode: (StructParams,)}
-        if type(params) not in supported.get(type(mode), ()):
-            raise DslException(f"Unsupported combination: {type(mode).__name__} with {type(params).__name__} "
-                               f"(supported: {', '.join(f'{m.__name__} with {p[0].__name__}' for m, p in supported.items())}).")
+        supported = ((KernelLaunchMode, MemberParams, CellCentered), (PointFunctionMode, StructParams, NodeCentered))
+        if not any(isinstance(mode, m) and isinstance(params, p) and isinstance(coordinates, c) for m, p, c in supported):
+            raise DslException(
+                f"Unsupported combination: {type(mode).__name__} with {type(params).__name__} and "
+                f"{type(coordinates).__name__} (supported: "
+                f"{'; '.join(f'{m.__name__} with {p.__name__} and {c.__name__}' for m, p, c in supported)}). The "
+                f"coordinate scheme must spell the spacing its mode declares (DX in kernel mode, dx in point mode).")
+        if isinstance(mode, PointFunctionMode) and any(isinstance(a.access, StridedPointer) for a in arrays):
+            raise DslException("Point mode reads arrays through Array4Call; StridedPointer's per-function preamble is "
+                               "a kernel-mode access scheme.")
         array_names = [a.name for a in arrays]
         if len(set(array_names)) != len(array_names):
             raise DslException(f"Array names must be unique: {array_names}")
@@ -123,6 +129,36 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
 
     # Declarations
 
+    def reserved_names(self) -> set[str]:
+        """Names the generated code uses itself, which no parameter, field, output or temporary may take: the cell
+        indices, the spacing, the coordinates (from the coordinate scheme), the array arguments, and each mode's and
+        access scheme's own locals."""
+        names = {'i', 'j', 'k', 'DX', 'DXI', 'DYI', 'DZI'} | {a.name for a in self.arrays}
+        if isinstance(self.mode, KernelLaunchMode):
+            names |= {'rhs_ptr', 'rn', 'tile_ptr', 'tn', 'tile', 'self', 'compute', 'box_no', self.mode.rhs_array}
+            for a in self.arrays:
+                if isinstance(a.access, StridedPointer):
+                    names |= {a.access.ptr, a.access.sy, a.access.sz, a.access.sn}
+        if isinstance(self.mode, PointFunctionMode):
+            names.add('out')
+        if isinstance(self.coordinate_scheme, NodeCentered):
+            names |= {self.coordinate_scheme.prob_lo, self.coordinate_scheme.dx}
+        if isinstance(self.param_scheme, StructParams):
+            names |= {self.param_scheme.arg, self.param_scheme.dx}
+        return names
+
+    def _check_name(self, name: str, what: str) -> None:
+        if name in self.reserved_names():
+            raise DslException(f"{what} {name}: the name is reserved by the generated code "
+                               f"({', '.join(sorted(self.reserved_names()))}).")
+        if name in self.params:
+            raise DslException(f"{what} {name}: already declared as a parameter.")
+        if isinstance(self.mode, KernelLaunchMode):
+            for a in self.arrays:
+                if isinstance(a.access, StridedPointer) and name.startswith(a.access.var_prefix):
+                    raise DslException(f"{what} {name}: names starting with {a.access.var_prefix} are the component "
+                                       f"pointers of the generated code.")
+
     def _record_components(self, base: IndexedBase | Symbol, basename: str, indices: tuple[Idx, ...]) -> None:
         """Scalars are their own component; tensor components are recorded as the substitution rule names them."""
         if len(indices) == 0:
@@ -132,28 +168,34 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
     def _on_substitution_symbol_created(self, indexed: Indexed, sub_symbol: Symbol) -> None:
         from EinsteinEngine.frontend.dsl.use_indices import idx_to_int
         base = str(indexed.base)
+        self._check_name(str(sub_symbol), f"Component of {base}")
         key = (base, tuple(idx_to_int(cast(Idx, ind)) for ind in indexed.indices))
         self.component_of[key] = str(sub_symbol)
         self.indices_of[str(sub_symbol)] = key
 
     def decl(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[AMReXDeclKwargs]) -> IndexedBase:
         """
-        Declares a variable, named by the module's naming rule. With `rhs=R` (R declared first), it is a field bound by
-        the module's `rhs_binder`, whose time derivative is the output R. Otherwise the module's `binder` decides: a
-        FieldBinder makes it a field, None a temporary.
+        Declares a variable, named by the module's naming rule. The module's `binder` is consulted first: a
+        FieldBinder makes it a field, None a temporary. With `rhs=R` (R declared first as an output), it is a field
+        whose time derivative is the output R; the binder binds it, or else the module's `rhs_binder`.
         """
         rhs = kwargs.pop('rhs', None)
         kwargs.setdefault('substitution_rule', self.naming)
         indices = tuple(indices)
+        self._check_name(basename, "Variable")
+        binder = self.binder(basename)
         if rhs is not None:
             rhs_name = str(rhs.args[0])
             if rhs_name not in self.output_bases:
                 raise DslException(f"rhs variable {rhs_name} of {basename} must be declared (as an output) first.")
-            if self.rhs_binder is None:
-                raise DslException(f"{basename}: rhs= needs the module's rhs_binder (the array the fields live in).")
+            if self.output_bases[rhs_name] is not None:
+                raise DslException(f"{rhs_name} is already the rhs of {self.output_bases[rhs_name]}; it cannot also be "
+                                   f"the rhs of {basename}.")
+            if binder is None and self.rhs_binder is None:
+                raise DslException(f"{basename}: rhs= needs a field binding (the module's binder or its rhs_binder).")
             self.output_bases[rhs_name] = basename
-            self.field_binders[basename] = self.rhs_binder
-        elif (binder := self.binder(basename)) is not None:
+            self.field_binders[basename] = binder if binder is not None else cast(FieldBinder, self.rhs_binder)
+        elif binder is not None:
             self.field_binders[basename] = binder
         result = super().decl(basename, indices, **cast(SymbolDeclarationKwargs, kwargs))
         self._record_components(result, basename, indices)
@@ -163,6 +205,7 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
               **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
         """Declares a field explicitly: every component is read from `array` with component expression
         `component(name)`."""
+        self._check_name(basename, "Field")
         if self.binder(basename) is not None:
             raise DslException(f"{basename} is declared as a field both by the binder and by field().")
         if array not in {a.name for a in self.arrays}:
@@ -177,6 +220,7 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
     def output(self, basename: str, indices: Iterable[Idx], **kwargs: Unpack[SymbolDeclarationKwargs]) -> IndexedBase:
         """Declares an output: in point mode a register output of the functions that assign it; also the R that a
         later `decl(X, rhs=R)` attaches to field X."""
+        self._check_name(basename, "Output")
         if self.binder(basename) is not None:
             raise DslException(f"{basename} is bound as a field and cannot be an output.")
         kwargs.setdefault('substitution_rule', self.naming)
@@ -192,6 +236,11 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
             raise DslException(f"Unsupported parameter type {cpp_type} for {name}")
         if name in self.params:
             raise DslException(f"Parameter {name} already declared.")
+        if name in self.reserved_names():
+            raise DslException(f"Parameter {name}: the name is reserved by the generated code "
+                               f"({', '.join(sorted(self.reserved_names()))}).")
+        if name in self.declarations or name in self.indices_of:
+            raise DslException(f"Parameter {name}: already declared as a variable (field, output or temporary).")
         if isinstance(self.param_scheme, MemberParams) and init is None:
             raise DslException(f"Parameter {name}: MemberParams needs an init expression.")
         self.params[name] = AMReXParam(name, cpp_type, init)
@@ -233,11 +282,22 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
 
     # Bake: the guard fold always comes first (docs, section 7).
 
+    def default_cse_optimizations(self) -> list[Any]:
+        """The CSE optimizations when the bake options name none (subclass hook); the guard fold is always added
+        first."""
+        from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
+        return list(default_cse_optimizations())
+
+    def sympy_visitor(self, **kwargs: Any) -> Any:
+        """The sympy-to-code-tree visitor of the generated functions (subclass hook, e.g. for other printing of
+        functions or constants)."""
+        from EinsteinEngine.emit.code.amrex.amrex_sympy_visitor import AMReXSympyVisitor
+        return AMReXSympyVisitor(**kwargs)
+
     def bake(self, **opts: Unpack[DslFrontendBakeOptions[DslFunctionFrontendBakeOptions]]) -> None:
         from EinsteinEngine.generators.amrex.guards import fold_guards, fold_guards_optimization
-        from EinsteinEngine.common.cse_optimizations import default_cse_optimizations
         if opts.get('do_cse', True):
-            optimizations = list(opts.get('cse_optimizations', default_cse_optimizations()))
+            optimizations = list(opts.get('cse_optimizations', self.default_cse_optimizations()))
             opts['cse_optimizations'] = [fold_guards_optimization(), *optimizations]
         else:
             for fn in self.functions.values():

@@ -249,6 +249,197 @@ def test_printing() -> None:
     assert '&&' in p(sy.And(x > 0, x < 1)) and '(!(' in p(sy.Not(x > 0, evaluate=False)), p(sy.And(x > 0, x < 1))
 
 
+def test_outputs_read_back() -> None:
+    """An output that its own loop, or a later loop, reads is still written (review round 1, B: B1)."""
+    cc = kernel_module()
+    u_rhs = cc.output("u_rhs", [])
+    u = cc.decl("u", [], rhs=u_rhs)
+    w_rhs = cc.output("w_rhs", [])
+    w = cc.decl("w", [], rhs=w_rhs)
+    f = cc.create_function("f")
+    f.add_eqn(u_rhs, D(u, l0) + w)
+    f.add_eqn(w_rhs, 2 * u_rhs - w)  # the Gamma-driver shape: B_rhs = G_rhs - eta*B
+    cc.bake()
+    code = text(cc)
+    expect(code, 'rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] = u_rhs;', 'rhs_ptr[static_cast<std::ptrdiff_t>(c_w) * rn] =')
+
+    cc = kernel_module()
+    u_rhs = cc.output("u_rhs", [])
+    u = cc.decl("u", [], rhs=u_rhs)
+    w_rhs = cc.output("w_rhs", [])
+    w = cc.decl("w", [], rhs=w_rhs)
+    f = cc.create_function("f")
+    f.add_eqn(u_rhs, D(u, l0) + w)
+    f.split_loop()
+    f.add_eqn(w_rhs, 2 * u_rhs - w)  # written in loop 0, read in loop 1
+    cc.bake()
+    code = text(cc)
+    assert code.count('rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] =') == 1, code
+    expect(code, 'rhs_ptr[static_cast<std::ptrdiff_t>(c_w) * rn] =')
+
+    for outputs in ('refs', 'struct'):
+        cc = point_module(outputs=outputs)
+        u = cc.decl("u", [])
+        a = cc.output("a", [])
+        b = cc.output("b", [])
+        f = cc.create_function("f")
+        f.add_eqn(a, D(u, l0))
+        f.add_eqn(b, 2 * a + u)
+        cc.bake()
+        code = text(cc)
+        target = 'out.a' if outputs == 'struct' else 'a'
+        expect(code, f'{target} = ee_a;')
+        if outputs == 'refs':
+            expect(code, 'amrex::Real & a', 'amrex::Real & b')
+
+    def unwritten() -> None:
+        cc = point_module()
+        u = cc.decl("u", [])
+        a = cc.output("a", [])
+        cc.output("never", [])
+        f = cc.create_function("f")
+        f.add_eqn(a, u)
+        cc.bake()
+        text(cc)
+    refuses(unwritten, "declared but no function writes them")
+
+
+def test_declarations() -> None:
+    """Classification by declaration is unique, and the generated code's own names are reserved (review round 1)."""
+    def assign_field() -> None:
+        cc = point_module()
+        u = cc.decl("u", [])
+        o = cc.output("o", [])
+        f = cc.create_function("f")
+        f.add_eqn(u, sy.Integer(3))
+        f.add_eqn(o, u * u)
+        cc.bake()
+        text(cc)
+    refuses(assign_field, "is a field", (Exception,))
+
+    def param_then_field() -> None:
+        cc = point_module()
+        cc.add_param("u")
+        cc.decl("u", [])
+    refuses(param_then_field, "already declared as a parameter")
+
+    def field_then_param() -> None:
+        cc = point_module()
+        cc.decl("trK", [])
+        cc.add_param("trK")
+    refuses(field_then_param, "already declared as a variable")
+
+    refuses(lambda: point_module().add_param("DXI"), "reserved")
+    refuses(lambda: point_module().add_param("dx"), "reserved")
+    refuses(lambda: kernel_module().add_param("sy", init="1.0"), "reserved")
+    refuses(lambda: kernel_module().decl("rn", []), "reserved")
+    refuses(lambda: kernel_module().decl("in_u", []), "component pointers")
+    refuses(lambda: point_module(outputs='struct').output("out", []), "reserved")
+
+    def rhs_twice() -> None:
+        cc = kernel_module()
+        r = cc.output("u_rhs", [])
+        cc.decl("u", [], rhs=r)
+        cc.decl("w", [], rhs=r)
+    refuses(rhs_twice, "is already the rhs of u")
+
+    refuses(lambda: AMReXModule("P", arrays=[ArrayParam("s", "amrex::Array4<amrex::Real const> const &",
+                                                        StridedPointer())],
+                                binder=lambda b: None, coordinates=NodeCentered(), mode=PointFunctionMode(),
+                                params=StructParams(arg="parameters", cpp_type="const Par &")), "Array4Call")
+    refuses(lambda: AMReXModule("P", arrays=[], binder=lambda b: None, coordinates=CellCentered(),
+                                mode=PointFunctionMode(), params=StructParams(arg="parameters", cpp_type="const Par &")),
+            "Unsupported combination")
+
+
+def test_numbers() -> None:
+    """Section 6's number and function rules (review round 1)."""
+    v = AMReXVisitor()
+    from EinsteinEngine.emit.code.amrex.amrex_sympy_visitor import AMReXSympyVisitor
+    sv = AMReXSympyVisitor(is_field=lambda n: False)
+    x = sy.Symbol('x')
+    p = lambda e: v.visit(sv.visit(e))  # noqa: E731
+    assert p(sy.E) == '2.718281828459045', p(sy.E)
+    assert p(sy.exp(1) * x) in ('(2.718281828459045 * x)', '(x * 2.718281828459045)'), p(sy.exp(1) * x)
+    assert p(Rational(1, 3)) == '(1.0 / 3.0)', p(Rational(1, 3))
+    big = Rational(2 ** 60 + 1, 3)
+    assert p(big) == repr(float(2 ** 60 + 1) / 3.0) or p(big) == repr((2 ** 60 + 1) / 3), p(big)
+    from fractions import Fraction
+    assert p(big) == repr(float(Fraction(2 ** 60 + 1, 3))), p(big)
+    assert p(x ** Rational(2 ** 60 + 1, 2 ** 59)) == f'pow(x, {float(Fraction(2 ** 60 + 1, 2 ** 59))!r})', \
+        p(x ** Rational(2 ** 60 + 1, 2 ** 59))
+    refuses(lambda: p(sy.Float('0.1', 3)), "bits of precision")
+    refuses(lambda: p(sy.GoldenRatio * x), "not supported")
+    refuses(lambda: p(sy.Function('foo')(x)), "undefined function foo")
+
+
+def test_guards_round1() -> None:
+    """A Float zero branch is a guard; a guard carried across a hard split is checked; the hoisting warning is
+    transitive (review round 1)."""
+    import contextlib
+    import io
+    zero = sy.Float(0.0)
+    f, S = sy.symbols('f S')
+    assert fold_guards(Piecewise((f, f > 0), (zero, True)) * S) == Piecewise((f * S, f > 0), (zero, True))
+
+    def float_zero_guard() -> None:
+        cc = point_module()
+        u = cc.decl("u", [])
+        eps = cc.add_param("eps")
+        gt = cc.decl("gt", [])
+        o = cc.output("o", [])
+        fn = cc.create_function("f")
+        fn.add_eqn(gt, Piecewise((eps, eps > 0), (zero, True)))
+        fn.add_eqn(o, gt * D(u, l0, l0))
+        cc.bake()
+        text(cc)
+    refuses(float_zero_guard, "multiplies a guard")
+
+    def guard_across_split() -> None:
+        cc = kernel_module()
+        kappa = cc.add_param("kappa", init="1.5")
+        r = cc.output("u_rhs", [])
+        u = cc.decl("u", [], rhs=r)
+        gt = cc.decl("gt", [])
+        fn = cc.create_function("f")
+        fn.add_eqn(gt, Piecewise((kappa, kappa > 1), (0, True)))
+        fn.split_loop()
+        fn.add_eqn(r, gt * D(u, l0, l0))
+        cc.bake()
+        text(cc)
+    refuses(guard_across_split, "multiplies a guard")
+
+    cc = point_module()
+    u = cc.decl("u", [])
+    eps = cc.add_param("eps")
+    o = cc.output("o", [])
+    fn = cc.create_function("f")
+    fn.add_eqn(o, Piecewise((eps, eps > 0), (0, True)) * (D(u, l0, l0) + D(u, l1, l1)) + u)
+    cc.bake()
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        text(cc)
+    assert 'used only inside guarded branches' in buf.getvalue(), buf.getvalue()
+
+
+def test_golden_and_determinism() -> None:
+    """The gate toys' headers match the golden copies, byte for byte, under PYTHONHASHSEED 0, 1 and 7 (section 9,
+    tests 2 and 5; GRTeclyn's header is checked by the regression of section 10)."""
+    import os
+    import subprocess
+    import tempfile
+    here = os.path.dirname(os.path.abspath(__file__))
+    root = os.path.dirname(here)
+    for seed in ('0', '1', '7'):
+        with tempfile.TemporaryDirectory() as out:
+            env = {**os.environ, 'PYTHONHASHSEED': seed, 'PYTHONPATH': root}
+            subprocess.run([os.sys.executable, os.path.join(here, 'amrex', 'gate.py'), 'generate', out], env=env,
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for name in ('KernelToy.hpp', 'PointToy.H'):
+                with open(os.path.join(out, name)) as a, open(os.path.join(here, 'amrex', 'golden', name)) as b:
+                    assert a.read() == b.read(), f'{name} differs from golden/{name} under PYTHONHASHSEED={seed}'
+
+
 def main() -> None:
     test_kernel_mode()
     test_point_mode('refs')
@@ -256,6 +447,11 @@ def main() -> None:
     test_refusals()
     test_guards()
     test_printing()
+    test_outputs_read_back()
+    test_declarations()
+    test_numbers()
+    test_guards_round1()
+    test_golden_and_determinism()
     print('test_amrex_backend: OK')
 
 

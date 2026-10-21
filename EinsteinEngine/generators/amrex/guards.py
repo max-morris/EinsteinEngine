@@ -38,14 +38,27 @@ def _pieces(expr: sy.Basic) -> list[tuple[sy.Basic, sy.Basic]]:
     return [(piece.args[0], piece.args[1]) for piece in expr.args]
 
 
+def _is_zero(e: sy.Basic) -> bool:
+    """Exactly zero, as an Integer or a Float (sympy's Float(0.0) == 0 is False)."""
+    return e.is_Number is True and e.is_zero is True
+
+
 def is_guard(expr: sy.Basic) -> bool:
     """A Piecewise with a branch that is exactly zero."""
-    return isinstance(expr, Piecewise) and any(e == 0 for e, _ in _pieces(expr))
+    return isinstance(expr, Piecewise) and any(_is_zero(e) for e, _ in _pieces(expr))
 
 
 def _foldable(expr: sy.Basic) -> bool:
     """A two-piece guard: one zero branch, one other. Guards with more pieces are checked, not folded."""
     return is_guard(expr) and len(expr.args) == 2
+
+
+def _product(a: Expr, b: Expr) -> Expr:
+    """a*b, without sympy's distribution of a number over a sum (2*(x + y) would become 2*x + 2*y, another roundoff
+    than the recipe's)."""
+    if (a.is_Number and isinstance(b, sy.Add)) or (b.is_Number and isinstance(a, sy.Add)):
+        return Mul(a, b, evaluate=False)
+    return cast(Expr, a * b)
 
 
 def fold_guards(expr: Expr) -> Expr:
@@ -63,7 +76,8 @@ def fold_guards(expr: Expr) -> Expr:
         if (pos := next((n for n, f in enumerate(factors) if _foldable(f)), None)) is not None:
             guard = factors[pos]
             rest = Mul(*(factors[:pos] + factors[pos + 1:]))
-            pieces = tuple((e if e == 0 else fold_guards(cast(Expr, e) * rest), c) for e, c in _pieces(guard))
+            pieces = tuple((e if _is_zero(e) else fold_guards(_product(cast(Expr, e), rest)), c)
+                           for e, c in _pieces(guard))
             return Piecewise(*pieces)  # type: ignore[no-untyped-call]
     return node
 
@@ -79,25 +93,29 @@ def _is_load(expr: sy.Basic, temps: Collection[Symbol]) -> bool:
                                                                  getattr(expr.func, 'name', '') == 'stencil')
 
 
-def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str) -> None:
+def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
+                 external: Collection[str] = ()) -> set[str]:
     """
-    `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries. Raises if a guard (a
-    Piecewise with a zero branch, a constant multiple of one, or a temporary holding either) multiplies a non-constant
-    factor. Warns about arithmetic temporaries used only inside guarded branches.
+    `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the names of
+    values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard (a
+    Piecewise with a zero branch, a constant multiple of one, or a value holding either) multiplies a non-constant
+    factor. Warns about arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the
+    values this loop sets to a guard, for the loops that read them.
     """
     guard_temps: set[Symbol] = set()
 
     def guard_like(e: sy.Basic) -> bool:
-        if is_guard(e) or (isinstance(e, Symbol) and e in guard_temps):
+        if is_guard(e) or (isinstance(e, Symbol) and (e in guard_temps or str(e).replace("'", "") in external)):
             return True
         if isinstance(e, Mul):
             g = [f for f in e.args if guard_like(f)]
             return len(g) == 1 and all(f.is_number for f in e.args if f is not g[0])
         return False
 
-    # Temporaries first, in definition order, so that a guard held in a temporary is known where it is used.
+    # Every value first, in definition order, so that a guard held in a temporary or an output is known where it is
+    # used.
     for lhs, rhs in eqns.items():
-        if lhs in temps and guard_like(rhs):
+        if guard_like(rhs):
             guard_temps.add(lhs)
     for lhs, rhs in eqns.items():
         for node in sy.preorder_traversal(rhs):  # type: ignore[no-untyped-call]
@@ -110,26 +128,36 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str) ->
                         f"0 * Inf would be NaN. Write the guarded product directly, Piecewise((f*S, c), (0, True)), "
                         f"or Piecewise((f, c), (0, True))*S, which the backend folds (docs, section 7).")
 
-    # Hoisted work: arithmetic temporaries read inside some guarded branch and nowhere else.
-    inside: set[Symbol] = set()
-    outside: set[Symbol] = set()
+    # Hoisted work: arithmetic temporaries read only inside guarded branches, directly or through other such
+    # temporaries (transitively).
+    uses: dict[Symbol, list[tuple[Symbol, bool]]] = {}  # symbol -> (the equation reading it, inside a guarded branch)
 
-    def collect(e: sy.Basic, guarded: bool) -> None:
+    def collect(e: sy.Basic, lhs: Symbol, guarded: bool) -> None:
         if isinstance(e, Symbol):
-            (inside if guarded else outside).add(e)
+            uses.setdefault(e, []).append((lhs, guarded))
             return
         if is_guard(e):
             for pe, pc in _pieces(e):
-                collect(pe, guarded or pe != 0)
-                collect(pc, guarded)
+                collect(pe, lhs, guarded or not _is_zero(pe))
+                collect(pc, lhs, guarded)
             return
         for a in e.args:
-            collect(a, guarded)
+            collect(a, lhs, guarded)
 
-    for rhs in eqns.values():
-        collect(rhs, False)
-    hoisted = sorted((t for t in inside - outside if t in temps and not _is_load(eqns[t], temps)), key=str)
+    for lhs, rhs in eqns.items():
+        collect(rhs, lhs, False)
+    arithmetic = {t for t in temps if t in eqns and not _is_load(eqns[t], temps)}
+    only_guarded: set[Symbol] = set()
+    changed = True
+    while changed:
+        changed = False
+        for t in arithmetic - only_guarded:
+            if t in uses and all(g or reader in only_guarded for reader, g in uses[t]):
+                only_guarded.add(t)
+                changed = True
+    hoisted = sorted(only_guarded, key=str)
     if hoisted:
         wprint(f"{where}: {len(hoisted)} temporaries computed unconditionally but used only inside guarded branches "
                f"(work a false guard does not skip): {', '.join(map(str, hoisted[:10]))}"
                f"{', ...' if len(hoisted) > 10 else ''}")
+    return {str(lhs).replace("'", "") for lhs in guard_temps}
