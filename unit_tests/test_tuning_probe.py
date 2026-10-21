@@ -418,7 +418,7 @@ def test_sidecar(r: Recipes) -> None:
         """The sidecar, without its (random) study id, which must be there."""
         with open(sidecar) as fh:
             loaded: dict[str, Any] = json.load(fh)
-            assert len(loaded.pop('study')) == 32
+            assert len(loaded.pop('study')) == 32 and loaded.pop('origin') == os.path.abspath(checkpoint)
             return loaded
 
     set_count(3)
@@ -432,7 +432,7 @@ def test_sidecar(r: Recipes) -> None:
     e = build_experiment(tuner, path, checkpoint, record_probe=True)
     assert list(e.in_params)[:2] == ['split_0', 'soft_retain_percentile_0'] and len(e.in_params) == 6
     assert recorded() == {'counts': {HARD: 3}, 'probe_params': {LOCUS: 'SplitLocus.Early'},
-                          'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}}
+                          'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}, 'recipe_args': []}
     build_experiment(tuner, path, checkpoint, record_probe=True)
     #  A sidecar written before the search space was recorded is accepted (the space is not checked), and
     #  record_probe adds the space.
@@ -508,7 +508,7 @@ def test_sidecar(r: Recipes) -> None:
     assert list(build_experiment(PlainTuner(), None, checkpoint).in_params) == ['a']
     assert not os.path.exists(sidecar)
     assert list(build_experiment(PlainTuner(), None, checkpoint, record_probe=True).in_params) == ['a']
-    assert recorded() == {'counts': {}, 'probe_params': {}, 'space': {}}
+    assert recorded() == {'counts': {}, 'probe_params': {}, 'space': {}, 'recipe_args': []}
 
 
 class LocusTuner(Tuner):
@@ -551,6 +551,7 @@ def test_derived_order_sidecar(r: Recipes) -> None:
         with open(sidecar) as fh:
             loaded: dict[str, Any] = json.load(fh)
             loaded.pop('study', None)
+            loaded.pop('origin', None)
             return loaded
 
     def trial_early_ordering_fn(e: Experiment) -> str:
@@ -564,7 +565,7 @@ def test_derived_order_sidecar(r: Recipes) -> None:
                          'early_ordering_fn': 'rank_by_post_population('
                                               'EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)'},
         'derived_orders': {'early_ordering_fn': list(derived)},
-        'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}}
+        'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}, 'recipe_args': []}
 
     #  A recorded order is reused, not derived again, with or without the recipe.
     frozen = [3, 2, 1, 0]
@@ -826,6 +827,28 @@ def thorn(thorn_name, name):
 thorn("PROBETWOTHORNSA", "f1")
 thorn("PROBETWOTHORNSB", "f2")
 """
+
+
+def test_recipe_args(r: Recipes) -> None:
+    """The recipe's own arguments reach the probe, are recorded in the probe file, and must match without a recipe."""
+    path = r.write('args', f"""\
+        import sys
+        get_tuning_param('{LOCUS}', None)
+        report_split_positions(get_tuning_param('{HARD}', None), 'rhs', 7 if sys.argv[1:] == ['--wide'] else 3)
+        bake_finished()
+        """)
+    checkpoint = r.path('args.jsonl')
+    tuner = CombinatorialSplitTuner()
+    assert len(build_experiment(tuner, path, checkpoint, record_probe=True, recipe_args=['--wide']).in_params) == 14
+    with open(probe_sidecar_path(checkpoint)) as fh:
+        assert json.load(fh)['recipe_args'] == ['--wide']
+    assert len(build_experiment(tuner, None, checkpoint, recipe_args=['--wide']).in_params) == 14
+    expect_error(RuntimeError, lambda: build_experiment(tuner, None, checkpoint), 'recipe arguments', "['--wide']")
+    #  With a recipe, other arguments are a changed probe: an error once the checkpoint has entries.
+    write_jsonl(checkpoint, [{'target': -1.0, 'params': {f'split_{i}': 0 for i in range(7)}}])
+    expect_error(RuntimeError, lambda: build_experiment(tuner, path, checkpoint), 'recipe arguments were',
+                 'misinterpreted')
+    assert_idle()
 
 
 def test_split_tuner_param_names() -> None:
@@ -1093,6 +1116,7 @@ if __name__ == "__main__":
             test_prefixed_study(recipes)
             test_prefixed_separate_bakes(recipes)
             test_split_tuner_param_names()
+            test_recipe_args(recipes)
             test_strict_checkpoint(recipes)
             test_shift_script(recipes)
             test_real_recipe_loci(recipes)

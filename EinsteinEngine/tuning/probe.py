@@ -28,7 +28,7 @@ module import time.
 import functools
 import runpy
 import sys
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -75,6 +75,8 @@ class _ProbeState:
     ranking_fn: Any = None
     origins: dict[str, list[dict[Symbol, int]]] = field(default_factory=dict)
     derived: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    # The recipe's own arguments (its sys.argv[1:]).
+    argv: tuple[str, ...] = ()
 
     def name_of(self, predicate: object) -> str | None:
         for name, placeholder in self.placeholders.items():
@@ -199,11 +201,11 @@ EMPTY_PROBE = ProbeResult()
 
 
 def probe_recipe(recipe_path: str, predicate_names: Collection[str],
-                 extra_params: Mapping[str, Any] | None = None) -> ProbeResult:
+                 extra_params: Mapping[str, Any] | None = None, *, argv: Sequence[str] = ()) -> ProbeResult:
     """
     Run `recipe_path` and count the split positions seen by each out-param in `predicate_names`. `extra_params`
     supplies fixed recipe-facing params that change the count (e.g. the locus or an ordering function). The recipe
-    runs as remote_feedback runs it (as `__main__`, with `sys.argv` reset).
+    runs as remote_feedback runs it (as `__main__`, with `sys.argv` reset to the recipe and `argv`, its own arguments).
 
     Raises RuntimeError if the recipe fails, never reads a provided name, never evaluates a placeholder, or evaluates
     one placeholder with different counts in different functions.
@@ -216,7 +218,7 @@ def probe_recipe(recipe_path: str, predicate_names: Collection[str],
         raise ValueError(f'Out-params {overlap} are both probed and passed as extra_params.')
 
     placeholders = {name: _PlaceholderPredicate(name) for name in names}
-    state = _ProbeState(recipe_path, placeholders, {**extra, **placeholders})
+    state = _ProbeState(recipe_path, placeholders, {**extra, **placeholders}, argv=tuple(argv))
     _run(state, f'while being probed for {names}')
     _check_read(state)
 
@@ -264,7 +266,7 @@ def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulatio
 
 def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
                          extra_params: Mapping[str, Any] | None = None, *,
-                         prefix: str = '') -> tuple[str, tuple[int, ...]]:
+                         prefix: str = '', argv: Sequence[str] = ()) -> tuple[str, tuple[int, ...]]:
     """
     Run `recipe_path` without auto splits or an early ordering function (nor a pre-population one, if `extra_params`
     provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked
@@ -281,7 +283,7 @@ def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
     params = {**(extra_params or {}), f'{prefix}early_ordering_fn': None, f'{prefix}ordering_fn': ranking_fn}
     if f'{prefix}pre_population_ordering_fn' in params:
         params[f'{prefix}pre_population_ordering_fn'] = None
-    state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn)
+    state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn, argv=tuple(argv))
     _run(state, 'while deriving an add_eqn order')
     _check_read(state, [prefix + name for name in _SPLIT_TUNER_PARAMS if prefix + name in params])
     if len(state.derived) != 1:
@@ -302,7 +304,7 @@ def _run(state: _ProbeState, doing: str) -> None:
     saved_argv = sys.argv
     _state = state
     try:
-        sys.argv = [state.recipe_path]
+        sys.argv = [state.recipe_path, *state.argv]
         try:
             runpy.run_path(state.recipe_path, run_name='__main__')
         except _ProbeComplete:

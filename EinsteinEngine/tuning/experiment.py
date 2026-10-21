@@ -21,6 +21,8 @@ import re
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable, OrderedDict, NamedTuple, Optional, Sequence, runtime_checkable
 
+from collections.abc import Mapping
+
 from multimethod import multimethod
 
 ParamType = int|float
@@ -262,6 +264,23 @@ class OutParam[T]:
     name: str
     mapping: ParamMapping[T]
 
+class FixedTrial:
+    """A TrialObj whose suggest_* methods return stored coordinates (a checkpoint entry's or a batch's params).
+
+    Passing it to Experiment.suggest_params replays the stored coordinates through the experiment's conditions,
+    constraints and out-param mappings, as a live trial with those values would have gone.
+    """
+
+    def __init__(self, params: Mapping[str, ParamType]) -> None:
+        self._params = params
+
+    def suggest_int(self, name: str, _lo: int, _hi: int, /) -> int:
+        return int(self._params[name])
+
+    def suggest_float(self, name: str, _lo: float, _hi: float, /) -> float:
+        return float(self._params[name])
+
+
 class SuggestParamsResult(NamedTuple):
     realized_params: dict[str, ParamType]
     recipe_facing_args: dict[str, Any]
@@ -273,6 +292,8 @@ class Experiment:
     def __init__(self) -> None:
         self.in_params = OrderedDict()
         self.out_params = OrderedDict()
+        #  The search space its tuner described (Tuner.describe_space), set by tuning.build_experiment.
+        self.described_space: dict[str, str] | None = None
 
     @multimethod
     def add_in_param(self, param: InParam[Any]) -> None:
