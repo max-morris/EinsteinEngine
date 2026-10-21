@@ -171,7 +171,21 @@ cc.add_substitution_rule(divshift, D(shift[ui], li))  # CCZ4Geometry::compute_di
 ###
 # Kernel 1: CCZ4RHS::compute_chi_and_h_ij.
 ###
-fn_chi_h = cc.create_function("compute_chi_and_h_ij")
+
+
+def split_args(prefix: str, fallback: bool = False) -> dict[str, Any]:
+    """The split out-params of a tuner with this prefix (EinsteinEngine.tuning.tune_splitting; `k1_`, `k2_`, `k3_` for
+    the three kernels). With `fallback`, the unprefixed names too (kernel 2's names before per-kernel tuning, which
+    bench/explore/gen.py uses). Without a tuner: None and Early, which never split."""
+    def get(name: str, default: Any) -> Any:
+        v = get_optional_tuning_param(prefix + name, None)
+        return v if v is not None or not fallback else get_optional_tuning_param(name, default)
+    return dict(auto_hard_split_predicate=get('auto_hard_split_predicate', None),
+                auto_soft_split_predicate=get('auto_soft_split_predicate', None),
+                auto_split_locus=get('auto_split_locus', SplitLocus.Early) or SplitLocus.Early)
+
+
+fn_chi_h = cc.create_function("compute_chi_and_h_ij", **split_args('k1_'))
 
 # rhs.chi = advec.chi + (2/d) chi (lapse K - divshift)
 fn_chi_h.add_eqn(chi_rhs, advec(chi) + Rational(2, d) * chi * (lapse * K - divshift))
@@ -187,15 +201,9 @@ fn_chi_h.add_eqn(
 # Kernel 2: CCZ4RHS::compute_A_ij_and_Theta_and_Gamma, with CCZ4Geometry::compute_inverse_metric,
 # compute_christoffel and compute_ricci_Z.
 ###
-# Kernel 2 is three quarters of the RHS time (grteclyn/analysis/hotloops.md), so it is the one whose splits and order
-# are tuned: it reads the out-params of EE's split tuners (EinsteinEngine.tuning.tune_splitting). Without a tuner
-# they are None and Early, which never split, and the kernel is GRTeclyn's.
-fn_A = cc.create_function(
-    "compute_A_ij_and_Theta_and_Gamma",
-    auto_hard_split_predicate=get_optional_tuning_param('auto_hard_split_predicate', None),
-    auto_soft_split_predicate=get_optional_tuning_param('auto_soft_split_predicate', None),
-    auto_split_locus=get_optional_tuning_param('auto_split_locus', SplitLocus.Early),
-)
+# Kernel 2 is three quarters of the RHS time (grteclyn/analysis/hotloops.md). Each kernel reads the out-params of a
+# split tuner with its own prefix (k1_, k2_, k3_); kernel 2 also reads the unprefixed names.
+fn_A = cc.create_function("compute_A_ij_and_Theta_and_Gamma", **split_args('k2_', fallback=True))
 
 # h^{ij}: the inverse of the evolved h_ij (compute_inverse_metric), not assuming det h = 1.
 h_mat = cc.get_matrix(h[li, lj])
@@ -373,7 +381,7 @@ fn_A.add_eqn(
 # Kernel 3: MovingPunctureGauge::calculate_rhs, then CCZ4RHS::apply_dissipation (add_dissipation over all
 # NUM_CCZ4_VARS = 25 variables). The B equation reads rhs.Gamma as kernel 2 wrote it, before dissipation.
 ###
-fn_gauge = cc.create_function("gauge_and_dissipation")
+fn_gauge = cc.create_function("gauge_and_dissipation", **split_args('k3_'))
 
 # MovingPunctureGauge::compute_eta with Coordinates(IntVect(i, j, k), dx, center):
 # x_a = (i_a + 1/2) dx - center_a, r = max(|x|, 1e-6) (Coordinates::get_radius),
@@ -413,14 +421,20 @@ for var, var_rhs, idx in ((chi, chi_rhs, []), (h, h_rhs, [li, lj]), (K, K_rhs, [
     else:
         fn_gauge.add_eqn(var_rhs_diss, var_rhs + dissipation(var))
 
-# Bake options (e.g. CSE settings, a global ordering_fn) may come from a tuner; kernel 2's ordering functions are the
-# split tuners' out-params, passed for that function only (an add_eqn_order refers to its add_eqn calls).
+# Bake options (e.g. CSE settings, a global ordering_fn) may come from a tuner. Each kernel's ordering functions are
+# its split tuner's out-params (prefixed; kernel 2 also unprefixed), passed for that function only (an add_eqn_order
+# refers to its add_eqn calls). CseOptimizationTuner's out-param goes to the bake.
 bake_options: dict[str, Any] = dict(get_optional_tuning_param('bake_options', dict()))
-kernel2_orders: dict[str, Any] = {k: v for k in ('early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
-                  if (v := get_optional_tuning_param(k, None)) is not None}
-if kernel2_orders:
-    bake_options['functions'] = {**bake_options.get('functions', dict()),
-                                 "compute_A_ij_and_Theta_and_Gamma": kernel2_orders}
+if (cse := get_optional_tuning_param('cse_optimizations', None)) is not None:
+    bake_options['cse_optimizations'] = cse
+orders = ('early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
+for prefix, fn_name, fallback in (('k1_', "compute_chi_and_h_ij", False),
+                                  ('k2_', "compute_A_ij_and_Theta_and_Gamma", True),
+                                  ('k3_', "gauge_and_dissipation", False)):
+    fn_orders = {k: v for k in orders if (v := get_optional_tuning_param(prefix + k, None)) is not None
+                 or (fallback and (v := get_optional_tuning_param(k, None)) is not None)}
+    if fn_orders:
+        bake_options['functions'] = {**bake_options.get('functions', dict()), fn_name: fn_orders}
 cc.bake(**bake_options)
 
 AMReXWizard(cc, out_dir=args.out_dir).generate_header(
