@@ -272,9 +272,10 @@ def test_seed(directory: str) -> None:
 
 GENERATE_RECIPE = """\
 import json
+import sys
 from EinsteinEngine.tuning.tuning import get_tuning_param
 with open({out!r}, 'w') as fh:
-    json.dump({{'layout': get_tuning_param('layout', None)}}, fh)
+    json.dump({{'layout': get_tuning_param('layout', None), 'argv': sys.argv[1:]}}, fh)
 """
 
 
@@ -300,9 +301,10 @@ def test_generate_best_batch_trial(directory: str) -> None:
     try:
         for i, params in enumerate(batch.params):
             sys.argv = ['generate_best', str(recipe), str(tuner_file), '--checkpoint-file', checkpoint,
-                        '--batch', str(batch_file), '--trial', str(i)]
+                        '--batch', str(batch_file), '--trial', str(i), '--', '--out-dir', f'trial{i}']
             generate_best_main()
-            assert json.loads(out.read_text()) == {'layout': tuner.choices[int(params['layout'])]}
+            assert json.loads(out.read_text()) == {'layout': tuner.choices[int(params['layout'])],
+                                                   'argv': ['--out-dir', f'trial{i}']}
         #  A batch of another study is refused.
         other_checkpoint = str(d / 'other.jsonl')
         other = CheckpointedOptimizer.for_batches(build_experiment(tuner, None, other_checkpoint, record_probe=True),

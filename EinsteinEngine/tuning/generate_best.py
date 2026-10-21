@@ -95,14 +95,19 @@ def load_best_params(checkpoint_file: str) -> tuple[float, dict[str, Any]]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run a recipe with its tuning in_params fixed to the best (max-target) values from a checkpoint "
-                    "file, or to one trial of a batch (CheckpointedOptimizer.ask).")
+                    "file, or to one trial of a batch (CheckpointedOptimizer.ask).",
+        epilog="Arguments after -- are passed to the recipe (its sys.argv[1:]).")
     parser.add_argument("recipe", help="Path to the Einstein Engine recipe.")
     parser.add_argument("tuner", help="Path to the Python file providing the Tuner instance (the same file used with remote_tuner).")
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="Checkpoint file to read the best parameters from.")
     parser.add_argument("--batch", type=str, help="A batch file (Batch.to_json) to take the in_params from, instead of the best entry. The checkpoint's probe file is used and the recipe is not probed, so the probe file must be present.")
     parser.add_argument("--trial", type=int, help="With --batch: the index of the trial to run.")
 
-    args = parser.parse_args()
+    #  Arguments after -- are the recipe's own (its sys.argv[1:]), e.g. its output directory.
+    argv = sys.argv[1:]
+    split = argv.index('--') if '--' in argv else len(argv)
+    recipe_args = argv[split + 1:]
+    args = parser.parse_args(argv[:split])
     if (args.batch is None) != (args.trial is None):
         parser.error("--batch and --trial go together")
 
@@ -134,7 +139,7 @@ def main() -> None:
     #  does: the recipe reads these via get_tuning_param, which resolves the
     #  module-global _tuning_params.
     tuning._tuning_params = recipe_facing_args
-    sys.argv = [args.recipe]
+    sys.argv = [args.recipe, *recipe_args]
     runpy.run_path(args.recipe, run_name="__main__")
 
 
