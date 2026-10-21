@@ -65,6 +65,8 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
             if expr._prec < 53:
                 raise GeneratorException(f"AMReX backend: the Float {expr} has {expr._prec} bits of precision (< 53); "
                                          f"use a full-precision Float or a Rational.")
+            if float(expr) == 0.0 and not expr.is_zero:
+                raise GeneratorException(f"AMReX backend: the Float {expr} underflows to zero as a double.")
         elif isinstance(expr, sy.Integer):
             if abs(expr.p) > self.MAX_EXACT:  # an integer literal past 2^63 would wrap; past 2^53 it rounds anyway
                 return FloatLiteralExpr(self._rounded(int(expr.p), 1, expr))

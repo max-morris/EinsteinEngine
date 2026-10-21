@@ -101,51 +101,261 @@ def _is_load(expr: sy.Basic, temps: Collection[Symbol]) -> bool:
                                                                  getattr(expr.func, 'name', '') == 'stencil')
 
 
+MAX_INLINE = 400  # tree nodes; a larger value stays a symbol (an opaque value; review round 4, A B7)
+MAX_EXPANDED = 2000  # nodes of the expanded form, estimated; a larger zero form is not expanded (round 5, A B10)
+MAX_BRANCHES = 256  # branches of a folded zero form, estimated; more is refused, loudly (round 5, B B3)
+MAX_DEPTH = 16
+
+
+def unique_nodes(e: sy.Basic) -> list[sy.Basic]:
+    """Every distinct subexpression of e, once each (a DAG walk: linear in the shared size, not the tree size)."""
+    seen: set[sy.Basic] = set()
+    out: list[sy.Basic] = []
+    stack = [e]
+    while stack:
+        x = stack.pop()
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+        stack.extend(x.args)
+    return out
+
+
+def _zero_power_free(z: sy.Basic) -> sy.Basic:
+    """0**n with n symbolic is 0 for n > 0: replaced by 0 (conservatively) before testing for zero. On the DAG (once
+    per distinct node), not the tree."""
+    memo: dict[sy.Basic, sy.Basic] = {}
+
+    def go(x: sy.Basic) -> sy.Basic:
+        if x not in memo:
+            args = [go(a) for a in x.args]
+            y = x if all(a is b for a, b in zip(args, x.args)) else x.func(*args)
+            # Tested after the rebuild: a base can become zero below (Abs(0**k)**k).
+            memo[x] = sy.Integer(0) if isinstance(y, sy.Pow) and y.base.is_zero is True and not y.exp.is_number else y
+        return memo[x]
+    return go(z)
+
+
+def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None = None) -> float:
+    """An estimate of the tree size of sy.expand(e), on the DAG (linear in the shared size): (terms, nodes) per
+    subexpression, where a sum adds them, a product multiplies the terms, and a positive integer power raises them.
+    Capped at 10 MAX_EXPANDED."""
+    memo = {} if memo is None else memo
+    cap = 10.0 * MAX_EXPANDED
+
+    def size(x: sy.Basic) -> tuple[float, float]:
+        if x in memo:
+            return memo[x]
+        parts = [size(a) for a in x.args]
+        if isinstance(x, sy.Add):
+            r = (min(cap, sum(p[0] for p in parts)), min(cap, sum(p[1] for p in parts)))
+        elif isinstance(x, Mul):
+            terms = 1.0
+            for p in parts:
+                terms = min(cap, terms * p[0])
+            r = (terms, min(cap, terms * sum(p[1] / p[0] for p in parts)))
+        elif isinstance(x, sy.Pow) and x.exp.is_Integer and x.exp > 0:
+            bt, bs = parts[0]
+            n = int(x.exp)
+            terms = min(cap, bt ** min(n, 64))
+            r = (terms, min(cap, terms * n * bs / bt))
+        else:
+            r = (1.0, min(cap, 1.0 + sum(p[1] for p in parts)))
+        memo[x] = r
+        return r
+    return size(e)[1]
+
+
+def _branches(e: sy.Basic, memo: dict[sy.Basic, int] | None = None) -> int:
+    """An upper bound on the number of branches piecewise_fold(e) makes, on the DAG (capped at 10**9)."""
+    memo = {} if memo is None else memo
+    if e not in memo:
+        if isinstance(e, Piecewise):
+            r = sum(_branches(x, memo) for x, _ in _pieces(e))
+        else:
+            r = 1
+            for a in e.args:
+                r = min(r * _branches(a, memo), 10 ** 9)
+        memo[e] = min(r, 10 ** 9)
+    return memo[e]
+
+
+def _minmax_choices(z: sy.Basic) -> sy.Basic:
+    """Every Max and Min as a choice between its arguments, on opaque conditions (bottom up, once per distinct node):
+    linear, where rewrite(Piecewise) writes every pairwise comparison (round 5, B B3)."""
+    memo: dict[sy.Basic, sy.Basic] = {}
+
+    def go(x: sy.Basic) -> sy.Basic:
+        if x not in memo:
+            if not x.args:
+                memo[x] = x
+            else:
+                args = [go(a) for a in x.args]
+                if isinstance(x, (sy.Max, sy.Min)):
+                    pieces = [(a, sy.Dummy('mm')) for a in args[:-1]]  # type: ignore[no-untyped-call]
+                    memo[x] = Piecewise(*pieces, (args[-1], True))  # type: ignore[no-untyped-call]
+                else:
+                    memo[x] = x if all(a is b for a, b in zip(args, x.args)) else x.func(*args)
+        return memo[x]
+    return go(z)
+
+
+def _fold_opaque(z: sy.Basic) -> sy.Basic:
+    """piecewise_fold with every condition replaced by an opaque boolean first (equal conditions by the same one) and
+    restored after: the fold is then combinatorial. piecewise_fold otherwise simplifies the conditions it combines,
+    which can run trigsimp without end (round 5, B B3)."""
+    conds: dict[sy.Basic, sy.Basic] = {}
+    memo: dict[sy.Basic, sy.Basic] = {}
+
+    def opaque(x: sy.Basic) -> sy.Basic:
+        if x not in memo:
+            if isinstance(x, Piecewise):
+                pieces = []
+                for e, c in _pieces(x):
+                    if c is not sy.true and c is not sy.false and c not in conds:
+                        conds[c] = sy.Dummy('cond')  # type: ignore[no-untyped-call]
+                    pieces.append((opaque(e), conds.get(c, c)))
+                memo[x] = Piecewise(*pieces)  # type: ignore[no-untyped-call]
+            elif not x.args:
+                memo[x] = x
+            else:
+                args = [opaque(a) for a in x.args]
+                memo[x] = x if all(a is b for a, b in zip(args, x.args)) else x.func(*args)
+        return memo[x]
+
+    folded = sy.piecewise_fold(opaque(z))  # type: ignore[no-untyped-call]
+    return cast(sy.Basic, folded.xreplace({d: c for c, d in conds.items()}))
+
+
+def tree_size(e: sy.Basic, memo: dict[sy.Basic, int] | None = None) -> int:
+    """The size of e as a tree (what xreplace and printing walk), computed on the DAG."""
+    memo = {} if memo is None else memo
+    if e not in memo:
+        memo[e] = 1 + sum(tree_size(a, memo) for a in e.args)
+    return memo[e]
+
+
 def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
-                 external: Collection[str] = ()) -> tuple[set[str], set[str]]:
+                 external: Mapping[str, Expr] | None = None, carried: Collection[str] = (),
+                 old: Mapping[str, sy.Basic] | None = None) -> dict[str, Expr]:
     """
-    `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the names of
-    values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard
-    multiplies a non-constant factor. A guard is any expression that contains a guarded value (a Piecewise with a zero
-    branch, or a value holding a guard) and is exactly zero once every guarded value is replaced by 0: a constant
-    multiple, a sum or power of guards, Abs, Max, sin of one, a choice between guards. A power with a symbolic exponent
-    (0**n) counts as a guard. A sum with any other term (A + P) is not a guard: it is A where P is false. Warns about
-    arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the values this loop sets
-    to a guard and of those it sets to anything else, for the loops that read them.
+    `eqns`: one loop's equations after CSE (temporaries included), in order; `temps`: its temporaries; `external`: the
+    value forms (below) of values earlier loops or functions computed (outputs, tile temporaries), by name; `carried`:
+    the names (unprimed) of this loop's values that later loops read by name; `old`: for each name this loop assigns
+    (unprimed), the placeholder that stands for its value before the loop (analysis.py), shared by every form.
+
+    A value's value form is its expression with every value it reads replaced by that value's own value form
+    (inlined), as long as the result stays small (MAX_INLINE tree nodes; a larger value stays a symbol, and a larger
+    guard stays a guard: Piecewise((name, c), (0, True)) with a fresh condition c). Its zero
+    form is its value form with every guard (a Piecewise with a zero branch) replaced by 0. A guard is anything whose
+    zero form is exactly 0 (after 0**n -> 0, Max/Min written as choices, piecewise_fold, and expansion while the
+    expanded form stays under MAX_EXPANDED nodes), or is still a
+    guard (recursively: a choice with a guarded branch is zero in some region). So constant multiples, sums, powers,
+    Abs, Max, Min, sin of guards, choices with a guarded branch, and cancellations through temporaries, copies and
+    constants ((exp(P) - 1)*S, (t + P - t1)*S with t1 = t) are guards. A sum with any other term (A + P) is not: it is A
+    where P is false, and a zero of A itself (data) is outside R10 (docs, section 7). Raises if a guard multiplies a
+    non-constant factor (0 * Inf would be NaN), and at nesting depth MAX_DEPTH (refused, not passed). Warns about
+    arithmetic temporaries used only inside guarded branches.
+
+    Returns, by unprimed name, the value form of every value of this loop, ready to carry: symbols of this loop that
+    stayed symbols are replaced by one placeholder each (shared within the loop, so that identities survive a split),
+    except carried names, which stay names; a name the loop assigns, read for its value before the loop, becomes
+    `old[name]`. A value that stayed a symbol is returned as its own name.
     """
-    guard_temps: set[Symbol] = set()
+    ext = dict(external or {})
+    value: dict[sy.Basic, sy.Basic] = {}
+    memo: dict[sy.Basic, int] = {}
+    expanded: dict[sy.Basic, tuple[float, float]] = {}
 
-    def held(e: sy.Basic) -> bool:
-        return isinstance(e, Symbol) and (e in guard_temps or str(e).replace("'", "") in external)
+    def inline(e: sy.Basic) -> sy.Basic:
+        repl: dict[sy.Basic, sy.Basic] = {}
+        for x in e.free_symbols:
+            if x in value:
+                if value[x] != x:
+                    repl[x] = value[x]
+            elif (v := ext.get(str(x).replace("'", ""))) is not None and v != x:
+                repl[x] = v
+        return e.xreplace(repl) if repl else e  # type: ignore[no-untyped-call]
 
-    def guard_like(e: sy.Basic) -> bool:
-        if held(e) or is_guard(e):
+    def subst(e: sy.Basic) -> sy.Basic | None:
+        """The zero form of e (piecewise-folded), or None if e involves no guard."""
+        v = inline(e)
+        guards = [x for x in unique_nodes(v) if is_guard(x)]
+        if not guards:
+            return None
+        # 0**n -> 0 before Max/Min are rewritten and the fold, and again after the fold, which can move a 0 under a
+        # symbolic power (round 5, B B2).
+        z: sy.Basic = _zero_power_free(v.xreplace({g: sy.Integer(0) for g in guards}))  # type: ignore[no-untyped-call]
+        # Max and Min of a zero are choices too (Max(0, b) is 0 where b <= 0); a choice whose branches became equal or
+        # zero (Piecewise((1, c), (b, True)) - 1) is a guard again once folded.
+        if any(isinstance(x, (sy.Max, sy.Min)) for x in unique_nodes(z)):
+            z = _minmax_choices(z)
+        if any(isinstance(x, Piecewise) for x in unique_nodes(z)):
+            if _branches(z) > MAX_BRANCHES:
+                raise GeneratorException(f"{where}: more than {MAX_BRANCHES} combinations of choices around a guard; "
+                                         f"the guard check cannot decide whether it multiplies a value by 0 (docs, "
+                                         f"section 7).")
+            z = _zero_power_free(_fold_opaque(z))
+        return z
+
+    def is_zero(z: sy.Basic) -> bool:
+        """z is a zero form from subst (folded, without 0**n)."""
+        if z.is_zero is True:
             return True
-        guarded = [x for x in sy.preorder_traversal(e) if is_guard(x) or held(x)]  # type: ignore[no-untyped-call]
-        if not guarded:
+        # Cancellation after expansion (u*(w + 1) - u*w - u), for zero forms small enough to expand.
+        return (tree_size(z, memo) <= MAX_INLINE and expanded_size(z, expanded) <= MAX_EXPANDED and
+                sy.expand(z).is_zero is True)  # type: ignore[no-untyped-call]
+
+    def guard_like(e: sy.Basic, depth: int = 0) -> bool:
+        z = subst(e)
+        if z is None:
             return False
-        zero = e.xreplace({x: sy.Integer(0) for x in guarded})  # type: ignore[no-untyped-call]
-        if zero.is_zero is True:
+        if is_zero(z):
             return True
-        # 0**n with n symbolic is 0 for n > 0: a guard, conservatively.
-        return any(isinstance(x, sy.Pow) and x.base.is_zero is True and not x.exp.is_number
-                   for x in sy.preorder_traversal(zero))  # type: ignore[no-untyped-call]
+        if any(is_guard(x) for x in unique_nodes(z)):
+            if depth >= MAX_DEPTH:
+                raise GeneratorException(f"{where}: guards nested more than {MAX_DEPTH} deep; the guard check cannot "
+                                         f"decide whether they multiply a value by 0 (docs, section 7).")
+            return guard_like(z, depth + 1)
+        return False
 
-    # Every value first, in definition order, so that a guard held in a temporary or an output is known where it is
-    # used.
     for lhs, rhs in eqns.items():
-        if guard_like(rhs):
-            guard_temps.add(lhs)
-    for lhs, rhs in eqns.items():
-        for node in sy.preorder_traversal(rhs):  # type: ignore[no-untyped-call]
+        for node in unique_nodes(rhs):
             if isinstance(node, Mul):
                 g = [f for f in node.args if guard_like(f)]
-                others = [f for f in node.args if not guard_like(f)]
-                if g and (len(g) > 1 or any(not f.is_number for f in others)):
+                if g and (len(g) > 1 or any(not f.is_number for f in node.args if f not in g)):
                     raise GeneratorException(
-                        f"{where}: {lhs} multiplies a guard (a Piecewise with a zero branch) by a non-constant factor; "
-                        f"0 * Inf would be NaN. Write the guarded product directly, Piecewise((f*S, c), (0, True)), "
-                        f"or Piecewise((f, c), (0, True))*S, which the backend folds (docs, section 7).")
+                        f"{where}: {lhs} multiplies a guard (a value that is 0 where a Piecewise with a zero branch is "
+                        f"false) by a non-constant factor; 0 * Inf would be NaN. Write the guarded product directly, "
+                        f"Piecewise((f*S, c), (0, True)), or Piecewise((f, c), (0, True))*S, which the backend folds "
+                        f"(docs, section 7).")
+        v = inline(rhs)
+        if tree_size(v, memo) <= MAX_INLINE:
+            value[lhs] = v
+        elif guard_like(rhs):  # opaque, but still a guard (round 5, A B8)
+            value[lhs] = Piecewise((lhs, sy.Dummy(f'{lhs}_c') > 0), (0, True))  # type: ignore[no-untyped-call]
+        else:
+            value[lhs] = lhs
+
+    # Carry: the loop's symbols that stayed symbols become one placeholder each, carried names stay names, and the old
+    # value of a name the loop assigns becomes its shared placeholder (round 5, A B9).
+    keep = {str(c) for c in carried}
+    placeholder: dict[sy.Basic, sy.Basic] = {
+        x: (Symbol(str(x).replace("'", "")) if str(x).replace("'", "") in keep  # type: ignore[no-untyped-call]
+            else sy.Dummy(str(x)))  # type: ignore[no-untyped-call]
+        for x in eqns}
+    for x in {x for v in value.values() for x in v.free_symbols}:
+        if x not in placeholder and not isinstance(x, sy.Dummy) and str(x) in (old or {}):
+            placeholder[x] = (old or {})[str(x)]
+    out: dict[str, Expr] = {}
+    for key, v in value.items():
+        name = str(key).replace("'", "")
+        if v == key:
+            out[name] = cast(Expr, Symbol(name))  # type: ignore[no-untyped-call]
+        else:
+            out[name] = cast(Expr, v.xreplace(  # type: ignore[no-untyped-call]
+                {x: placeholder[x] for x in v.free_symbols if x in placeholder}))
 
     # Hoisted work: arithmetic temporaries read only inside guarded branches, directly or through other such
     # temporaries (transitively).
@@ -179,5 +389,4 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
         wprint(f"{where}: {len(hoisted)} temporaries computed unconditionally but used only inside guarded branches "
                f"(work a false guard does not skip): {', '.join(map(str, hoisted[:10]))}"
                f"{', ...' if len(hoisted) > 10 else ''}")
-    return ({str(lhs).replace("'", "") for lhs in guard_temps},
-            {str(lhs).replace("'", "") for lhs in eqns if lhs not in guard_temps})
+    return out

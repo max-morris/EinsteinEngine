@@ -159,14 +159,26 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
             names |= {a.name for a in self.param_scheme.ctor_args}
         return names
 
-    def _prelude_identifiers(self) -> set[str]:
-        """The identifiers of MemberParams' constructor prelude (outside string literals): a parameter of the same
-        name would be shadowed there, or assigned from itself."""
+    @staticmethod
+    def cpp_identifiers(code: str) -> set[str]:
+        """The free identifiers of C++ text: not in string literals or comments, not member names after `.`, `->` or
+        `::`, not parts of numbers (the `e` of `1.0e-3`)."""
         import re
+        # Strings, character literals and comments in one left-to-right pass, so a quote in a comment (or // in a
+        # string, or '"') hides nothing. A quote after a hex digit is a digit separator (1'000), unless after u8.
+        string, char = r'"(?:\\.|[^"\\])*"', r"(?:(?<![0-9A-Fa-f])|(?<=u8))'(?:\\.|[^'\\\n])+'"
+        code = re.sub(rf'{string}|{char}|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
+        this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code)) | set(
+            re.findall(r'\(\s*\*\s*this\s*\)\s*\.\s*([A-Za-z_]\w*)', code))
+        code = re.sub(r'(?<![\w.])\d[\w.]*(?:[eE][+-]?\d+)?', ' ', code)
+        return set(re.findall(r'(?<![\w.])(?<!->)(?<!::)[A-Za-z_]\w*', code)) | this_members
+
+    def _prelude_identifiers(self) -> set[str]:
+        """The identifiers of MemberParams' constructor prelude: a parameter of the same name would be shadowed there,
+        or assigned from itself."""
         if not isinstance(self.param_scheme, MemberParams):
             return set()
-        text = re.sub(r'"(?:\\.|[^"\\])*"', '', '\n'.join(self.param_scheme.ctor_prelude))
-        return set(re.findall(r'[A-Za-z_]\w*', text))
+        return self.cpp_identifiers('\n'.join(self.param_scheme.ctor_prelude))
 
     def _check_name(self, name: str, what: str) -> None:
         if name in self.reserved_names():
@@ -214,7 +226,9 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                                    f"the rhs of {basename}.")
             if binder is None and self.rhs_binder is None:
                 raise DslException(f"{basename}: rhs= needs a field binding (the module's binder or its rhs_binder).")
-            if binder is not None and self.rhs_binder is not None and binder != self.rhs_binder:
+            if (binder is not None and self.rhs_binder is not None
+                    and (binder.array, binder.component(basename)) != (self.rhs_binder.array,
+                                                                       self.rhs_binder.component(basename))):
                 raise DslException(f"{basename}: the binder and rhs_binder bind it differently; bind rhs= fields in "
                                    f"one place.")
             self.output_bases[rhs_name] = basename
@@ -272,6 +286,24 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                                f"member would shadow or be assigned from.")
         if isinstance(self.param_scheme, MemberParams) and init is None:
             raise DslException(f"Parameter {name}: MemberParams needs an init expression.")
+        if init is not None:
+            # The constructor assigns the members in name order, then the spacing: an init (or a later one) that reads
+            # another parameter or the spacing would read it unset.
+            used = self.cpp_identifiers(init)
+            if bad := sorted(used & (set(self.params) | {'DX', 'DXI', 'DYI', 'DZI', name})):
+                raise DslException(f"Parameter {name}: its init {init!r} reads {bad}, which the constructor has not set "
+                                   f"yet; compute it from the constructor arguments or the prelude.")
+            if isinstance(self.param_scheme, MemberParams):
+                for c in self.param_scheme.ctor_checks:
+                    if bad_ := sorted(self.cpp_identifiers(c.failure_condition) & {'DX', 'DXI', 'DYI', 'DZI'}):
+                        raise DslException(f"The constructor check {c.failure_condition!r} reads {bad_}, which the "
+                                           f"constructor sets after the checks; check the constructor argument.")
+                    if name in self.cpp_identifiers(c.failure_condition):
+                        raise DslException(f"Parameter {name}: the constructor check {c.failure_condition!r} reads "
+                                           f"it before it is set; check the constructor argument instead.")
+        for p_ in self.params.values():
+            if p_.init is not None and name in self.cpp_identifiers(p_.init):
+                raise DslException(f"Parameter {name}: the init of {p_.name} ({p_.init!r}) reads it, unset there.")
         self.params[name] = AMReXParam(name, cpp_type, init)
         return mk_symbol(name)
 
