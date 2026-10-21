@@ -46,7 +46,7 @@ from EinsteinEngine.emit.code.grchombo.grchombo_visitor import GRChomboVisitor
 from EinsteinEngine.frontend.dsl.dsl_exception import DslException
 
 # The CCZ4 header validated against GRChombo (foreign-kernel-speedups/grchombo, levels 1-3 and the stencil-bias proof).
-CCZ4_HEADER_MD5 = 'cb9770a34f072504618989e83ce5a650'
+CCZ4_HEADER_MD5 = 'c5e059d51dfcc8ebbc3852c9682d6471'  # with the nested mixed derivatives (PR #114); cb9770a3 before
 
 
 def toy() -> tuple[GRChomboComputeClass, str]:
