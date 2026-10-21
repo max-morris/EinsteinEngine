@@ -19,7 +19,8 @@
 Toy modules for the AMReX backend's gates (docs/AMREX-BACKEND-DESIGN.md, section 9, items 6 and 7): one per emission
 mode, each exercising stencils in three directions, coordinates, parameters, a guard, and (kernel mode) a hard split
 with a tile temporary and an overwrite. `values()` evaluates a baked module's equations at 50 digits on given data, the
-reference the compiled code is compared with.
+reference the compiled code is compared with; on an unbaked module (`bake=False`) it evaluates the equations as the
+recipe wrote them, before the guard fold and CSE, so that a bake that changes values shows too.
 """
 
 from typing import Callable, Mapping
@@ -34,7 +35,7 @@ STATE_COMPONENTS = {'u': 0, 'w': 1}  # kernel toy: enum values
 POINT_COMPONENTS = {'u': 0, 'trK': 1}  # point toy: vars:: enum values; Df is pvars::Df = 0
 
 
-def kernel_toy() -> AMReXModule:
+def kernel_toy(bake: bool = True) -> AMReXModule:
     cc = AMReXModule("KernelToy",
                      arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
                      binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
@@ -56,11 +57,12 @@ def kernel_toy() -> AMReXModule:
     f1.add_eqn(w_rhs, t * t - Rational(1, 3) * w + sy.sqrt(1 + u * u) + u ** -2)
     f2 = cc.create_function("second")
     f2.add_eqn(cc.overwrite(u_rhs), u_rhs + D(w, l0) + Piecewise((kappa, kappa > 1), (0, True)) * D(u, l0, l0))
-    cc.bake()
+    if bake:
+        cc.bake()
     return cc
 
 
-def point_toy() -> AMReXModule:
+def point_toy(bake: bool = True) -> AMReXModule:
     cc = AMReXModule("PointToy",
                      arrays=[ArrayParam("un", "amrex::Array4<amrex::Real const> const &", Array4Call()),
                              ArrayParam("prim", "amrex::Array4<amrex::Real const> const &", Array4Call())],
@@ -80,7 +82,8 @@ def point_toy() -> AMReXModule:
     f.add_eqn(v_rhs, D(u, l0) * trK0 + trK * Df + x * z ** 2 + D(u, l0, l1) + u ** Rational(-3, 2))
     k = cc.create_function("ko")
     k.add_eqn(ko_u, Piecewise((eps, eps > 0), (0, True)) * (D(u, l0, l0) + D(u, l1, l1) + D(u, l2, l2)))
-    cc.bake()
+    if bake:
+        cc.bake()
     return cc
 
 
@@ -98,7 +101,9 @@ def values(cc: AMReXModule, field: Callable[[str, tuple[int, int, int]], mpmath.
     for name in cc.function_order:
         fn = cc.functions[name]
         for eqn_list in fn.eqn_complex.eqn_lists:
-            for lhs, rhs in eqn_list.sorted_eqns:
+            # Baked: EE's order; unbaked: the recipe's (add_eqn) order, which the toys write in dependency order.
+            eqns = eqn_list.sorted_eqns if fn.been_baked else list(eqn_list.eqns.items())
+            for lhs, rhs in eqns:
                 expr = rhs.replace(lambda e: isinstance(e, sy.Function) and getattr(e.func, 'name', '') == 'stencil',
                                    lambda e: sy.Float(field(str(e.args[0]), tuple(int(a) for a in e.args[1:])), 60))
                 expr = expr.replace(lambda e: isinstance(e, sy.Function) and getattr(e.func, 'name', '') == 'noop',

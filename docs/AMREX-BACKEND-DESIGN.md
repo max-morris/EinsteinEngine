@@ -89,6 +89,13 @@ printed as a state load. Version 2 classifies every symbol by its declaration:
 - `module.output(name, indices, ...)` declares an output: an rhs component in kernel mode, a register output in point
   mode. `decl(name, ..., rhs=R)` stays as a shorthand for a field X whose output is R, written to X's component.
 - `add_param` declares parameters. `decl` with no binding declares temporaries.
+- Every name has one classification. Declaring a name as two kinds is refused, as is assigning a field or a
+  parameter. So is any name the generated code uses itself: the cell indices, the spacing, the array arguments,
+  each mode's locals (`rhs_ptr`, `rn`, `tile_ptr`, `tn`, `out`, ...), the access scheme's (`state_ptr`, `sy`, `sz`,
+  `sn`, the `in_` component pointers), the coordinate and parameter schemes' arguments. One output is the `rhs=` of
+  at most one field. Every declared output must be written by some function.
+- An output that the loop writing it (or a later loop) reads again is computed into a local, then stored; EE's
+  `EqnList` counts such an lhs as a temporary, so the analysis classifies every lhs by declaration instead.
 - The coordinates `x`, `y`, `z` come from the `CoordinateScheme`.
 - Anything else in an equation, including EE's `DY`, `DZ`, `DT` and `t` unless the frontend binds them, makes the
   generator raise.
@@ -154,8 +161,11 @@ silently move MHDuet's coordinates, which changes its results.
      KO declares one function with both outputs.
    - **Name safety:** point-mode locals and temporaries get a prefix (`ee_`, configurable), because the host
      translation unit may have `using namespace` directives and macros.
-5. **Printing hooks** (section 6), as visitor methods a subclass may override: `float_literal`, `constant`,
-   `function_name`, `abs_call`, `minmax_call`, `pow`, `conditional`, `boolean`.
+5. **Printing hooks** (section 6). `AMReXVisitor.float_literal` and `AMReXVisitor.pow` print literals and powers.
+   `AMReXModule.sympy_visitor` returns the visitor that lowers sympy to the code tree, so a subclass may override how
+   constants, functions, `Abs`, `Max`/`Min`, conditionals and booleans lower. `AMReXModule.default_cse_optimizations`
+   gives the CSE list a bake uses when its options name none; the guard fold is always inserted first. (Version 3.2
+   named eight visitor methods; the implementation groups the six lowering ones in the sympy visitor.)
 6. **Naming and banner.** Class or namespace, function and header names. The banner is fixed text that the recipe
    supplies: recipe path, arguments and purpose. It never contains the EE commit or a date, so the header is
    deterministic and its md5 is stable across EE commits that do not change the output. The EE commit, Python and

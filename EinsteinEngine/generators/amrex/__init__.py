@@ -33,15 +33,20 @@ class AMReXGenerator(DslGenerator[AMReXModule]):
         module = self.frontend
         groups: list[tuple[str, list[str], list[LoopAnalysis]]] = list()
         prior: set[str] = set()
+        guards: set[str] = set()
         used_params: set[str] = set()
         for name in module.function_order:
             fn = module.functions[name]
             if not fn.been_baked:
                 raise GeneratorException(f"{name} is not baked.")
-            loops, tiles, writes = analyze_function(module, fn, prior)
+            loops, tiles, writes = analyze_function(module, fn, prior, guards)
             groups.append((name, tiles, loops))
             prior |= writes
             used_params |= {p for loop in loops for p in loop.params}
+        declared = {c for (base, _), c in module.component_of.items() if base in module.output_bases}
+        if unwritten := sorted(declared - prior):
+            raise GeneratorException(f"{module.name}: the outputs {unwritten} are declared but no function writes them "
+                                     f"(a caller would read them uninitialized).")
         if isinstance(module.mode, KernelLaunchMode):
             return kernel_class(module, groups, used_params, banner)
         order = [c for base in module.output_bases for (b, _), c in module.component_of.items() if b == base]

@@ -40,7 +40,7 @@ COORDS = ('x', 'y', 'z')
 SPACING = ('DXI', 'DYI', 'DZI')
 
 
-def unprimed(s: sy.Basic) -> str:
+def unprimed(s: sy.Basic | str) -> str:
     return str(s).replace("'", "")
 
 
@@ -51,6 +51,7 @@ class Statement:
     original: str
     rhs: sy.Expr
     output: Optional[OutputInfo]  # set if it writes an output component
+    local: bool  # an output that this loop or a later one also reads: computed into a local first, then written
     reassign: bool
     mutable: bool
     comment: Optional[str]
@@ -71,11 +72,14 @@ class LoopAnalysis:
     params: list[str] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
     writes: dict[str, OutputInfo] = field(default_factory=dict)  # output component -> info
+    guards: set[str] = field(default_factory=set)  # values this loop computes that hold a guard (later loops' check)
 
 
-def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[str]) -> tuple[list[LoopAnalysis],
-                                                                                             list[str], set[str]]:
-    """The loops of one function, its tile temporaries (scratch-component order) and the output components it writes."""
+def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[str],
+                     guards: Optional[set[str]] = None) -> tuple[list[LoopAnalysis], list[str], set[str]]:
+    """The loops of one function, its tile temporaries (scratch-component order) and the output components it writes.
+    `guards`: the names (outputs, tile temporaries) that earlier loops set to a guard; updated with this function's."""
+    guards = set() if guards is None else guards
     complex_ = fn.eqn_complex
     complex_._calc_tile_temps()
     complex_._calc_vars()
@@ -88,14 +92,15 @@ def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[s
     writes: set[str] = set()
     prior = set(prior_writes)
     for loop_idx, eqn_list in enumerate(complex_.eqn_lists):
-        loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index))
+        loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index, guards))
+        guards |= loops[-1].guards
         prior |= set(loops[-1].writes)
         writes |= set(loops[-1].writes)
     return loops, tiles, writes
 
 
 def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops: int, eqn_list: EqnList,
-                  prior: set[str], tile_index: dict[str, int]) -> LoopAnalysis:
+                  prior: set[str], tile_index: dict[str, int], guards: set[str]) -> LoopAnalysis:
     where = fn.name if nloops == 1 else f"{fn.name} loop {loop_idx}"
     name = fn.name if nloops == 1 else f"{fn.name}_{loop_idx}"
     loop = LoopAnalysis(fn.name, loop_idx, name, fn.source_annotations.loops.get(loop_idx) or name)
@@ -105,19 +110,36 @@ def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops:
     loaded_tiles = {str(t) for t in eqn_list.preinitialized_tile_temporaries}
     if bad := sorted({str(x.new) for x in subst.substitutions} & loaded_tiles):
         raise GeneratorException(f"{where}: recycling reuses the loaded tile temporaries {bad}.")
-    check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where)
+    loop.guards = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards)
 
-    # Outputs. A tile temporary that its writer loop does not read itself is among the loop's outputs: it goes to the
-    # scratch, not to an output.
-    outputs = [lhs for lhs in eqn_list.outputs if str(lhs) not in stored_tiles]
-    written_raw = {str(lhs) for lhs in outputs}
-    for lhs in outputs:
-        w = unprimed(lhs)
+    # Every left-hand side is classified by declaration: assigning a field or a parameter is refused; an lhs declared
+    # as an output is a write of that output, whether or not EE's EqnList counts it as one (it counts an lhs that a
+    # later equation of the loop reads as a temporary, and a tile temporary that its writer loop does not read itself
+    # among the loop's outputs).
+    for raw_lhs in original_lhs:
+        w = unprimed(raw_lhs)
+        if module.field_binding(w) is not None:
+            raise GeneratorException(f"{where}: assigns {w}, which is a field (an input); fields are read-only.")
+        if w in module.params:
+            raise GeneratorException(f"{where}: assigns {w}, which is a parameter.")
+        if w in COORDS or w in SPACING:
+            raise GeneratorException(f"{where}: assigns {w}, which the generated code defines.")
+    for lhs in eqn_list.outputs:
+        if module.output_info(unprimed(lhs)) is None and str(lhs) not in stored_tiles:
+            raise GeneratorException(f"{where}: {unprimed(lhs)} is written but is not a declared output.")
+    true_outputs = {str(lhs) for lhs in eqn_list.outputs if str(lhs) not in stored_tiles}
+    written_raw: set[str] = set()
+    for raw_lhs in original_lhs:
+        w = unprimed(raw_lhs)
         if (info := module.output_info(w)) is None:
-            raise GeneratorException(f"{where}: {w} is written but is not a declared output.")
-        if "'" in str(lhs) and not isinstance(module.mode, KernelLaunchMode):
-            raise GeneratorException(f"{where}: {lhs} overwrites an output; point mode assigns each output once.")
+            continue
+        if "'" in raw_lhs and not isinstance(module.mode, KernelLaunchMode):
+            raise GeneratorException(f"{where}: {raw_lhs} overwrites an output; point mode assigns each output once.")
+        if w in loop.writes:
+            raise GeneratorException(f"{where}: {w} is written twice in one loop.")
         loop.writes[w] = info
+        if raw_lhs in true_outputs:
+            written_raw.add(raw_lhs)
 
     lhs_raw = {str(lhs) for lhs, _ in subst.eqns}
     params = {str(p) for p in eqn_list.params}
@@ -169,10 +191,12 @@ def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops:
     annotations = {str(lhs): ann for lhs, ann in fn.source_annotations.eqns[loop_idx].items()}
     for eqn_idx, (lhs, rhs) in enumerate(subst.eqns):
         lhs_name = unprimed(lhs)
-        info = loop.writes.get(lhs_name)
-        tile = tile_index[original_lhs[eqn_idx]] if info is None and original_lhs[eqn_idx] in stored_tiles else None
-        loop.statements.append(Statement(lhs_name, original_lhs[eqn_idx], rhs, info, eqn_idx in reassigned,
-                                         lhs_name in recycled_targets, annotations.get(str(lhs)), tile))
+        original = original_lhs[eqn_idx]
+        info = module.output_info(unprimed(original))
+        local = info is not None and original not in true_outputs
+        tile = tile_index[original] if original in stored_tiles else None
+        loop.statements.append(Statement(lhs_name, original, rhs, info, local, eqn_idx in reassigned,
+                                         lhs_name in recycled_targets, annotations.get(original), tile))
     loop.tile_loads = {t: tile_index[t] for t in sorted(loaded_tiles)}
     loop.coords = sorted(coords)
     loop.spacing = [d for d in SPACING if d in spacing]

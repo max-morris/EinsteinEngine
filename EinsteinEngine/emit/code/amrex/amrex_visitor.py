@@ -321,10 +321,12 @@ class AMReXVisitor(Visitor[CodeNode]):
             struct = (f'// The outputs of {n.name}, in order.\nstruct {n.struct_name}\n{{\n'
                       + indent('\n'.join(f'amrex::Real {o};' for o in n.outputs)) + '\n};\n\n')
             body = f'{n.struct_name} out{{}};\n' + body + '\nreturn out;'
+        order = f'// Outputs, in order: {", ".join(n.outputs)}.\n' if n.outputs and n.struct_name is None else ''
         return (
             struct
             + f'// {n.comment}\n'
-            f'AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE {ret} {n.name}(\n{args})\n'
+            + order
+            + f'AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE {ret} {n.name}(\n{args})\n'
             '{\n' + indent(body) + '\n}'
         )
 
