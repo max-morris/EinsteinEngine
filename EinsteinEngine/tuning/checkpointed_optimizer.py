@@ -174,7 +174,7 @@ class Batch:
     Trials proposed together by `CheckpointedOptimizer.ask`. `params` holds each trial's in-params as the checkpoint
     stores them (raw coordinates); `Experiment.recipe_facing_args` gives a trial's recipe-facing args.
 
-    `study` identifies the study it was asked for (checkpoint name, probe sidecar, in-param names), and `n_history`
+    `study` identifies the study it was asked for (see study_digest: the probe file's identity and the in-param names), and `n_history`
     and `history` the checkpoint entries it was asked against (their number and SHA-256). Asking again with the same
     `seed`, from a checkpoint holding exactly those entries and with the same `pending` batches, gives the same params
     (with the same `n_startup_trials` and optuna version, also recorded).
@@ -242,7 +242,7 @@ def _append(checkpoint_file: str, lines: Sequence[str]) -> None:
 
 
 @contextlib.contextmanager
-def _locked(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
+def checkpoint_lock(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
     """Hold a lock on `<checkpoint>.lock`: exclusive for tell's check-then-append, shared for ask's reads."""
     with open(f'{checkpoint_file}.lock', 'a') as fh:
         fcntl.flock(fh, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
@@ -278,8 +278,9 @@ class CheckpointedOptimizer:
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
+            #  External entries (record_external) do not count toward the random startup trials, as in ask.
             sampler = TPESampler(
-                n_startup_trials=n_startup_trials,
+                n_startup_trials=n_startup_trials + self._count_external(),
                 seed=random_state,
             )
         self._study = optuna.create_study(direction='maximize', sampler=sampler)
@@ -345,7 +346,7 @@ class CheckpointedOptimizer:
         if seed is None:
             seed = self._random_state if self._random_state is not None else secrets.randbelow(2**31)
         study_id = study_digest(self._experiment, self._checkpoint_file)
-        with _locked(self._checkpoint_file, exclusive=False):
+        with checkpoint_lock(self._checkpoint_file, exclusive=False):
             history = read_checkpoint(self._experiment, self._checkpoint_file)
             digest = _history_digest(self._checkpoint_file, len(history))
             told = self._told()
@@ -409,11 +410,11 @@ class CheckpointedOptimizer:
             raise ValueError(f"The batch has {len(batch.params)} trials but {len(targets)} targets were given")
         if batch.study != study_digest(self._experiment, self._checkpoint_file):
             raise RuntimeError(f"Batch {batch.id} was asked for another study than {self._checkpoint_file} (another "
-                               f"checkpoint name, probe sidecar or set of in-params).")
+                               f"study id, probe, search space, recipe arguments or set of in-params).")
         todo = [i for i, t in enumerate(targets) if t is not None]
         for i in todo:
             self._experiment.check_declared(batch.params[i], f'Trial {i} of batch {batch.id}')
-        with _locked(self._checkpoint_file):
+        with checkpoint_lock(self._checkpoint_file):
             if _history_digest(self._checkpoint_file, batch.n_history) != batch.history:
                 raise RuntimeError(f"Batch {batch.id} was not asked against this checkpoint: the first "
                                    f"{batch.n_history} entries of {self._checkpoint_file} differ from the ones it "
@@ -461,7 +462,7 @@ class CheckpointedOptimizer:
         stored = dict(realized)  # canonical: ints as ints
         coords, specs = self._experiment.reconstruct_coords(stored)
         target = float(value) if np.isfinite(value) else FAILED_VALUE
-        with _locked(self._checkpoint_file):
+        with checkpoint_lock(self._checkpoint_file):
             if os.path.exists(self._checkpoint_file):
                 with open(self._checkpoint_file) as fh:
                     for line in fh:

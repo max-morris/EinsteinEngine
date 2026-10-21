@@ -18,10 +18,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable, OrderedDict, NamedTuple, Optional, Sequence, runtime_checkable
-
-from collections.abc import Mapping
 
 from multimethod import multimethod
 
