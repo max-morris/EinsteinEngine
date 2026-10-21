@@ -36,6 +36,7 @@ machine and in every process.
 from typing import Callable, Iterator, List, Tuple
 
 from sympy import Add, Expr, Mul, Pow, Symbol, cancel, collect, count_ops, expand, factor, factor_terms, together
+from sympy.core.parameters import distribute
 from sympy.core.sorting import default_sort_key
 from sympy.core.traversal import preorder_traversal
 
@@ -93,7 +94,10 @@ def _abstract_atoms(expr: Expr) -> Tuple[Expr, dict[Expr, Expr]]:
         return expr, {}
     reps: dict[Expr, Expr] = {atom: Dummy(f"collect_atom_{i:06d}")  # type: ignore[no-untyped-call]
                               for i, atom in enumerate(sorted(atoms, key=default_sort_key))}
-    relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
+    # Like the restoration in collect_greedy, this must only relabel: distributing 3*(3*f(g)*t - 2*u) here would hand
+    # the search an expression it cannot improve on, and the factored input would be returned as it is.
+    with distribute(False):
+        relocated = expr.xreplace(reps)  # type: ignore[no-untyped-call]
     return relocated, {v: k for k, v in reps.items()}
 
 
@@ -169,7 +173,10 @@ def collect_greedy(expr: Expr, cost: CostFn | None = None,
         current, current_cost = best, best_cost
     if current is abstracted:
         return expr
-    result: Expr = current.xreplace(restore)  # type: ignore[no-untyped-call]
+    # Restoring the atoms rebuilds every node above one, which must not distribute a number over a sum that the search
+    # factored out: 3*(a*b + g) would become 3*a*b + 3*g, and the check below would then throw the move away.
+    with distribute(False):
+        result: Expr = current.xreplace(restore)  # type: ignore[no-untyped-call]
     # The search compared costs with each atom standing in as a Symbol. An atom can cost more than that as written (an
     # undefined function call counts as an operation), so a move that repeats an atom could cost more once restored.
     return result if cost(result) <= cost(expr) else expr
