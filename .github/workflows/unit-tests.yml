@@ -47,3 +47,4 @@ jobs:
           python unit_tests/test_tune_cse.py
           python unit_tests/test_cse_booleans.py
           python unit_tests/test_float_literal_printing.py
+          python unit_tests/test_first_derivative_pairing.py

@@ -15,6 +15,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+from fractions import Fraction
 from typing import *
 
 from multimethod import multimethod
@@ -229,11 +230,15 @@ def mk_term(v: Basic, i: int, j: int, k: int) -> Any:
         return stencil(v, i, j, k)
 
 
-def sort_exprs(expr: Tuple[Any, Any]) -> float:
-    sort_key: float = 2 * expr[0].p / expr[0].q
-    if sort_key < 0:
-        sort_key = -sort_key + 1
-    return sort_key
+def sort_exprs(expr: Tuple[Any, Any]) -> Tuple[Fraction, bool]:
+    """
+    Sort key for the (weight, point) terms of a stencil: by |weight|, then positive before negative, so that terms
+    of equal |weight| are adjacent and the caller groups them in pairs. In the centered 1-D stencils (first and
+    same-axis second derivatives) only mirror points share a |weight|, so the pairs formed there are the mirror
+    pairs; in the product form of the mixed derivative, other corners of equal |weight| are paired too.
+    """
+    weight = expr[0]
+    return Fraction(abs(weight.p), weight.q), weight.p < 0
 
 
 class ApplyDivN(Applier):
