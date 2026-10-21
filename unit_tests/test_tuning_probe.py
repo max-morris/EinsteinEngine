@@ -429,8 +429,17 @@ def test_sidecar(r: Recipes) -> None:
     #  record_probe (remote_tuner): probe and write the sidecar, with the counts and the probe params.
     e = build_experiment(tuner, path, checkpoint, record_probe=True)
     assert list(e.in_params)[:2] == ['split_0', 'soft_retain_percentile_0'] and len(e.in_params) == 6
-    assert recorded() == {'counts': {HARD: 3}, 'probe_params': {LOCUS: 'SplitLocus.Early'}}
+    assert recorded() == {'counts': {HARD: 3}, 'probe_params': {LOCUS: 'SplitLocus.Early'},
+                          'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}}
     build_experiment(tuner, path, checkpoint, record_probe=True)
+    #  A sidecar written before the search space was recorded is accepted (the space is not checked), and
+    #  record_probe adds the space.
+    old = {k: v for k, v in recorded().items() if k != 'space'}
+    with open(sidecar, 'w') as fh:
+        json.dump(old, fh)
+    build_experiment(tuner, None, checkpoint)
+    build_experiment(tuner, path, checkpoint, record_probe=True)
+    assert 'space' in recorded()
 
     #  While the checkpoint is empty, a changed probe is not an error, and record_probe replaces the sidecar.
     set_count(4)
@@ -544,7 +553,8 @@ def test_derived_order_sidecar(r: Recipes) -> None:
         'probe_params': {LOCUS: 'SplitLocus.Early',
                          'early_ordering_fn': 'rank_by_post_population('
                                               'EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)'},
-        'derived_orders': {'early_ordering_fn': list(derived)}}
+        'derived_orders': {'early_ordering_fn': list(derived)},
+        'space': {'split_*': 'CombinatorialSplitTuner(positions=probed)'}}
 
     #  A recorded order is reused, not derived again, with or without the recipe.
     frozen = [3, 2, 1, 0]
@@ -780,6 +790,67 @@ def test_prefixed_study(r: Recipes) -> None:
     assert os.path.exists(r.marker('two_functions'))
 
 
+#  Two thorns, each with one function that reads its own prefixed split params, baked one after the other.
+TWO_THORN_RECIPE = """\
+from EinsteinEngine import *
+from EinsteinEngine.intermediate.split_locus import SplitLocus
+from EinsteinEngine.tuning.tuning import get_optional_tuning_param, get_tuning_param
+
+def thorn(thorn_name, name):
+    gf = ThornDef("TestProbe", thorn_name)
+    v = gf.decl("v", [li])
+    a, b, c, src = (gf.decl(n, []) for n in ("a", "b", "c", "src"))
+    gf.create_function(name, ScheduleBin.Evolve,
+                       auto_hard_split_predicate=get_tuning_param(f'{name}_auto_hard_split_predicate', None),
+                       auto_soft_split_predicate=get_tuning_param(f'{name}_auto_soft_split_predicate', None),
+                       auto_split_locus=get_optional_tuning_param(f'{name}_auto_split_locus', SplitLocus.Early))
+    options = {name: {'ordering_fn': get_optional_tuning_param(f'{name}_ordering_fn', maximize_symbol_reuse),
+                       'early_ordering_fn': get_optional_tuning_param(f'{name}_early_ordering_fn', None)}}
+    f = gf.functions[name]
+    f.add_eqn(a, sin(src) * cos(src) + pull_out(src * src))
+    f.add_eqn(v[li], [a * sin(src), a * cos(src), sin(src) * cos(src)])
+    f.add_eqn(b, v[l0] + v[l1] * sin(src))
+    f.add_eqn(c, b + v[l2] * sin(src) * cos(src))
+    gf.bake(do_cse=True, temporary_promotion_strategy=promote_all(), functions=options)
+
+thorn("PROBETWOTHORNSA", "f1")
+thorn("PROBETWOTHORNSB", "f2")
+"""
+
+
+def test_prefixed_separate_bakes(r: Recipes) -> None:
+    """Prefixed split tuners for functions baked separately: a ranked early ordering function for the function baked
+    first or second, or for both, derives the same order as the same function alone without a prefix; and a prefixed
+    CutPositionSplitTuner probes its own function."""
+    path = r.write('two_thorns', TWO_THORN_RECIPE, prelude='')
+    alone = write_real_recipe(r, 'two_thorns_alone')
+    _, expected = derive_add_eqn_order(alone, prioritize_rare_symbols, {LOCUS: SplitLocus.Early})
+    rank = rank_by_post_population(prioritize_rare_symbols)
+    for n, ranked in enumerate((['f1'], ['f2'], ['f1', 'f2'])):
+        study = CompositeTuner(*(CombinatorialSplitTuner(prefix=f'{f}_', early_ordering_fn=rank if f in ranked else None)
+                                 for f in ('f1', 'f2')))
+        checkpoint = r.path(f'two_thorns_{n}.jsonl')
+        e = build_experiment(study, path, checkpoint, record_probe=True)
+        assert_idle()
+        with open(probe_sidecar_path(checkpoint)) as fh:
+            recorded = json.load(fh)
+        assert recorded['counts'] == {f'f1_{HARD}': 4, f'f2_{HARD}': 4}
+        assert recorded['derived_orders'] == {f'{f}_early_ordering_fn': list(expected) for f in ranked}
+        assert len(e.in_params) == 16
+    cuts = CompositeTuner(CombinatorialSplitTuner(prefix='f1_'),
+                          CutPositionSplitTuner(1, locus=SplitLocus.Early, prefix='f2_'))
+    e = build_experiment(cuts, path, r.path('two_thorns_cuts.jsonl'), record_probe=True)
+    assert [n for n in e.in_params if n.startswith('f2_')] == ['f2_cut_position_0', 'f2_cut_kind_0',
+                                                                'f2_cut_retain_percentile_0']
+    assert e.in_params['f2_cut_position_0'].resolve_domain({}).coord_distribution({})[1:] == (0, 3)
+    #  A prefix must be an identifier ending in '_'; the split-param hints recognize prefixed names.
+    for bad in ('rhs', '1_', 'a-b_'):
+        expect_error(ValueError, lambda: CombinatorialSplitTuner(prefix=bad), "ending in '_'")
+    e = CombinatorialSplitTuner(n_vars=1, prefix='rhs_').get_experiment()
+    expect_error(UndeclaredParamError, lambda: e.check_declared({'rhs_split_0': 0, 'rhs_split_1': 0}, 'x'),
+                 'For split params')
+
+
 def test_strict_checkpoint(r: Recipes) -> None:
     e = CombinatorialSplitTuner(n_vars=2).get_experiment()
     good = {'split_0': 1, 'soft_retain_percentile_0': 0.5, 'split_1': 2}
@@ -1000,6 +1071,7 @@ if __name__ == "__main__":
             test_cut_position_tuner()
             test_prefix()
             test_prefixed_study(recipes)
+            test_prefixed_separate_bakes(recipes)
             test_strict_checkpoint(recipes)
             test_shift_script(recipes)
             test_real_recipe_loci(recipes)

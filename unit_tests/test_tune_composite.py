@@ -22,6 +22,7 @@ import json
 import os
 import tempfile
 import textwrap
+import warnings
 from collections.abc import Collection
 from typing import Any, Callable
 
@@ -33,7 +34,7 @@ from EinsteinEngine.tuning.generate_best import _FixedTrial, load_best_params
 from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult
 from EinsteinEngine.tuning.tune_composite import CompositeTuner, DiscreteKnobTuner
 from EinsteinEngine.tuning.tune_cse import CseOptimizationTuner
-from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner
+from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner, CutPositionSplitTuner
 from EinsteinEngine.tuning.tuning import Tuner, build_experiment, get_tuning_param, probe_sidecar_path
 
 HARD = 'auto_hard_split_predicate'
@@ -86,6 +87,10 @@ class FakeProbingTuner(Tuner):
         return e
 
 
+def renamed_space() -> dict[str, str]:
+    return dict(DiscreteKnobTuner('layout', ['alpha', 'zeta', 'mu']).describe_space())
+
+
 def test_discrete_knob() -> None:
     knob = DiscreteKnobTuner('layout', ['zeta', 'alpha', 'mu'])
     e = knob.get_experiment()
@@ -98,12 +103,16 @@ def test_discrete_knob() -> None:
     #  Unhashable or equal choices are fine: the domain is the index.
     assert realize(DiscreteKnobTuner('k', [[1], [1]]).get_experiment(), {'k': 1}) == {'k': [1]}
     expect_error(ValueError, lambda: DiscreteKnobTuner('k', []), "'k'", 'at least one choice')
+    expect_error(ValueError, lambda: DiscreteKnobTuner('k', ['default', None]), 'cannot be None')
+    #  The choices, in order, are the knob's search space (recorded in the probe sidecar).
+    assert knob.describe_space() == {'layout': "['zeta', 'alpha', 'mu'] -> layout"}
+    assert renamed_space() != knob.describe_space()
     assert not knob.probe_targets() and not knob.probe_params()
 
 
 def test_merge() -> None:
     composite = CompositeTuner(CseOptimizationTuner(), DiscreteKnobTuner('layout', ['a', 'b']),
-                               DiscreteKnobTuner('bounds', [None, (128, 1)], out_param='launch_bounds'))
+                               DiscreteKnobTuner('bounds', ['default', (128, 1)], out_param='launch_bounds'))
     assert not composite.probe_targets() and not composite.probe_params()
     e = composite.get_experiment()
     assert list(e.in_params) == ['cse_preset', 'cse_collect_max_iter', 'layout', 'bounds']
@@ -119,10 +128,11 @@ def test_merge() -> None:
 
 
 def test_name_collisions() -> None:
-    same_in = CompositeTuner(DiscreteKnobTuner('k', [1, 2]), DiscreteKnobTuner('k', [1, 2], out_param='other'))
-    expect_error(ValueError, same_in.get_experiment, "in-param 'k'", 'tuners 0 and 1')
+    expect_error(ValueError, lambda: CompositeTuner(DiscreteKnobTuner('k', [1, 2]),
+                                                    DiscreteKnobTuner('k', [1, 2], out_param='other')),
+                 "search space of 'k'", 'tuners 0 (DiscreteKnobTuner) and 1 (DiscreteKnobTuner)')
     same_out = CompositeTuner(DiscreteKnobTuner('a', [1, 2], out_param='o'), DiscreteKnobTuner('b', [1], out_param='o'))
-    expect_error(ValueError, same_out.get_experiment, "out-param 'o'", 'tuners 0 and 1')
+    expect_error(ValueError, same_out.get_experiment, "out-param 'o'", 'tuners 0 (DiscreteKnobTuner) and 1')
     #  A knob may not provide an out-param that another tuner provides as a probe param, even with the same value:
     #  only a probe param provided by both is shared.
     knob_locus = CompositeTuner(FakeProbingTuner('p', {LOCUS: SplitLocus.Early}),
@@ -132,7 +142,26 @@ def test_name_collisions() -> None:
 
 def test_probe_targets_and_params() -> None:
     expect_error(ValueError, lambda: CompositeTuner(CombinatorialSplitTuner(), CombinatorialSplitTuner()),
-                 f"probe target '{HARD}'", 'tuners 0 and 1', 'prefix')
+                 f"probe target '{HARD}'", 'tuners 0 (CombinatorialSplitTuner) and 1', 'prefix')
+    expect_error(ValueError, lambda: CompositeTuner(CombinatorialSplitTuner(prefix='a_'),
+                                                    CombinatorialSplitTuner(prefix='a_')), "prefix 'a_'")
+    #  A probe target of one tuner that another provides as a probe param.
+    expect_error(ValueError, lambda: CompositeTuner(FakeProbingTuner('p'), FakeProbingTuner('q', {'p': 1}, 'q')),
+                 "'p' is a probe target of tuner 0", 'probe param of tuner 1')
+    #  Equal values of different types are different (1, 1.0 and True).
+    expect_error(ValueError, lambda: CompositeTuner(FakeProbingTuner('p', {'v': 1}),
+                                                    FakeProbingTuner('q', {'v': True}, 'q')), "probe param 'v'")
+    #  A split tuner after the early locus, combined with other tuners, is probed with their out-params at the
+    #  recipe defaults: a warning.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        CompositeTuner(CombinatorialSplitTuner(prefix='a_'), CseOptimizationTuner())
+        assert not caught
+        CompositeTuner(CutPositionSplitTuner(2, locus=SplitLocus.PostPopulation), CseOptimizationTuner())
+        CompositeTuner(CutPositionSplitTuner(2, locus=SplitLocus.PostPopulation))  # alone: no warning
+    assert len(caught) == 1 and 'after the early one' in \
+        str(caught[0].message), [str(c.message) for c in caught]
+    assert os.path.basename(caught[0].filename) == os.path.basename(__file__)
     #  Different values for one probe param are refused at construction.
     expect_error(ValueError, lambda: CompositeTuner(FakeProbingTuner('p', {LOCUS: SplitLocus.Early}),
                                                     FakeProbingTuner('q', {LOCUS: SplitLocus.PrePopulation}, 'q')),
@@ -209,9 +238,21 @@ def test_build_experiment_and_replay(directory: str) -> None:
     assert [args[HARD](i) for i in range(3)] == [True, False, False]
     assert args[SOFT](0) is False and args[SOFT](1) is not False and args[SOFT](2) is False
     assert args['cse_optimizations'] == CseOptimizationTuner()._optimizations({'cse_preset': 1})
+    #  The sub-tuners in another order: the same study (names, probe and search space), so it replays.
+    reordered = build_experiment(CompositeTuner(DiscreteKnobTuner('layout', ['a', 'b']), CseOptimizationTuner(),
+                                                CombinatorialSplitTuner()), None, checkpoint)
+    assert len(read_checkpoint(reordered, checkpoint)) == 3
+    assert reordered.recipe_facing_args(best_params)['layout'] == 'b'
     #  The same study with a sub-tuner left out does not replay its checkpoint.
     expect_error(Exception, lambda: read_checkpoint(build_experiment(
         CompositeTuner(CombinatorialSplitTuner(), CseOptimizationTuner()), None, checkpoint), checkpoint), 'layout')
+    #  Nor with the knob's choices reordered or extended: the indices would mean other values.
+    for choices in (['b', 'a'], ['a', 'b', 'c']):
+        changed = CompositeTuner(CombinatorialSplitTuner(), CseOptimizationTuner(), DiscreteKnobTuner('layout', choices))
+        expect_error(RuntimeError, lambda: build_experiment(changed, None, checkpoint), "search space of 'layout'",
+                     'misinterpreted')
+    with open(probe_sidecar_path(checkpoint)) as fh:
+        assert json.load(fh)['space']['layout'] == "['a', 'b'] -> layout"
 
 
 if __name__ == '__main__':
