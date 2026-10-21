@@ -102,50 +102,73 @@ def _is_load(expr: sy.Basic, temps: Collection[Symbol]) -> bool:
 
 
 def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
-                 external: Collection[str] = ()) -> tuple[set[str], set[str]]:
+                 external: Mapping[str, Expr] | None = None) -> dict[str, Expr]:
     """
-    `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the names of
-    values that earlier loops or functions set to a guard (tile temporaries, outputs), read here. Raises if a guard
-    multiplies a non-constant factor. A guard is any expression that contains a guarded value (a Piecewise with a zero
-    branch, or a value holding a guard) and is exactly zero once every guarded value is replaced by 0: a constant
-    multiple, a sum or power of guards, Abs, Max, sin of one, a choice between guards. A power with a symbolic exponent
-    (0**n) counts as a guard. A sum with any other term (A + P) is not a guard: it is A where P is false. Warns about
-    arithmetic temporaries used only inside guarded branches. Returns the names (unprimed) of the values this loop sets
-    to a guard and of those it sets to anything else, for the loops that read them.
+    `eqns`: one loop's equations after CSE (temporaries included); `temps`: its temporaries; `external`: the zero forms
+    (below) of the values that earlier loops or functions computed from a guard (outputs, tile temporaries), by name.
+
+    A value's zero form is its expression with every guard (a Piecewise with a zero branch) replaced by 0 and every
+    value read replaced by its own zero form. A guard is anything whose zero form is exactly 0, is still a guard, or is
+    0**n with n symbolic (conservatively): a constant multiple, a sum, a power, Abs, Max or sin of guards, a choice
+    between guards or between a guard and anything else (zero in some region), and values computed from such through
+    temporaries, including cancellations ((exp(P) - 1)*S). A sum with any other term (A + P) is not a guard: it is A
+    where P is false. Raises if a guard multiplies a non-constant factor (0 * Inf would be NaN). Warns about arithmetic
+    temporaries used only inside guarded branches. Returns the zero forms of this loop's values that differ from the
+    values themselves, by unprimed name, with the loop's own symbols replaced by placeholders.
     """
-    guard_temps: set[Symbol] = set()
+    ext = dict(external or {})
+    zero_form: dict[Symbol, Expr] = {}
 
-    def held(e: sy.Basic) -> bool:
-        return isinstance(e, Symbol) and (e in guard_temps or str(e).replace("'", "") in external)
+    def lookup(x: sy.Basic) -> Expr | None:
+        if not isinstance(x, Symbol):
+            return None
+        if x in zero_form:
+            return zero_form[x]
+        return ext.get(str(x).replace("'", ""))
 
-    def guard_like(e: sy.Basic) -> bool:
-        if held(e) or is_guard(e):
-            return True
-        guarded = [x for x in sy.preorder_traversal(e) if is_guard(x) or held(x)]  # type: ignore[no-untyped-call]
-        if not guarded:
+    def subst(e: sy.Basic) -> sy.Basic | None:
+        """The zero form of e, or None if e involves no guard."""
+        repl: dict[sy.Basic, sy.Basic] = {}
+        for x in sy.preorder_traversal(e):  # type: ignore[no-untyped-call]
+            if is_guard(x):
+                repl[x] = sy.Integer(0)
+            elif isinstance(x, Symbol) and (z := lookup(x)) is not None:
+                repl[x] = z
+        return e.xreplace(repl) if repl else None  # type: ignore[no-untyped-call]
+
+    def guard_like(e: sy.Basic, depth: int = 0) -> bool:
+        z = subst(e)
+        if z is None:
             return False
-        zero = e.xreplace({x: sy.Integer(0) for x in guarded})  # type: ignore[no-untyped-call]
-        if zero.is_zero is True:
+        if z.is_zero is True:
             return True
-        # 0**n with n symbolic is 0 for n > 0: a guard, conservatively.
-        return any(isinstance(x, sy.Pow) and x.base.is_zero is True and not x.exp.is_number
-                   for x in sy.preorder_traversal(zero))  # type: ignore[no-untyped-call]
+        if any(isinstance(x, sy.Pow) and x.base.is_zero is True and not x.exp.is_number
+               for x in sy.preorder_traversal(z)):  # type: ignore[no-untyped-call]
+            return True  # 0**n with n symbolic: 0 for n > 0
+        # Still a guard after the substitution (a choice with a zero branch now): zero in some region.
+        return depth < 16 and z != e and guard_like(z, depth + 1)
 
-    # Every value first, in definition order, so that a guard held in a temporary or an output is known where it is
-    # used.
-    for lhs, rhs in eqns.items():
-        if guard_like(rhs):
-            guard_temps.add(lhs)
     for lhs, rhs in eqns.items():
         for node in sy.preorder_traversal(rhs):  # type: ignore[no-untyped-call]
             if isinstance(node, Mul):
                 g = [f for f in node.args if guard_like(f)]
-                others = [f for f in node.args if not guard_like(f)]
-                if g and (len(g) > 1 or any(not f.is_number for f in others)):
+                if g and (len(g) > 1 or any(not f.is_number for f in node.args if f not in g)):
                     raise GeneratorException(
-                        f"{where}: {lhs} multiplies a guard (a Piecewise with a zero branch) by a non-constant factor; "
-                        f"0 * Inf would be NaN. Write the guarded product directly, Piecewise((f*S, c), (0, True)), "
-                        f"or Piecewise((f, c), (0, True))*S, which the backend folds (docs, section 7).")
+                        f"{where}: {lhs} multiplies a guard (a value that is 0 where a Piecewise with a zero branch is "
+                        f"false) by a non-constant factor; 0 * Inf would be NaN. Write the guarded product directly, "
+                        f"Piecewise((f*S, c), (0, True)), or Piecewise((f, c), (0, True))*S, which the backend folds "
+                        f"(docs, section 7).")
+        if guard_like(rhs):
+            zero_form[lhs] = sy.Integer(0)
+        elif (z := subst(rhs)) is not None:
+            zero_form[lhs] = cast(Expr, z)
+    local = set(eqns)
+    out: dict[str, Expr] = {}
+    for lhs, z in zero_form.items():
+        placeholders = {s: sy.Dummy(str(s)) for s in z.free_symbols if s in local}  # type: ignore[no-untyped-call]
+        out[str(lhs).replace("'", "")] = cast(Expr, z.xreplace(placeholders))  # type: ignore[no-untyped-call]
+    for lhs in eqns:  # recomputed without a guard: no longer a zero form
+        out.setdefault(str(lhs).replace("'", ""), cast(Expr, lhs))
 
     # Hoisted work: arithmetic temporaries read only inside guarded branches, directly or through other such
     # temporaries (transitively).
@@ -179,5 +202,4 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
         wprint(f"{where}: {len(hoisted)} temporaries computed unconditionally but used only inside guarded branches "
                f"(work a false guard does not skip): {', '.join(map(str, hoisted[:10]))}"
                f"{', ...' if len(hoisted) > 10 else ''}")
-    return ({str(lhs).replace("'", "") for lhs in guard_temps},
-            {str(lhs).replace("'", "") for lhs in eqns if lhs not in guard_temps})
+    return out

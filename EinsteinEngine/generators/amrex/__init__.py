@@ -17,6 +17,8 @@
 
 """The generator of EE's shared AMReX backend: shared analysis (analysis.py), then assembly by mode (modes.py)."""
 
+import sympy as sy
+
 from EinsteinEngine.emit.code.common.code_tree import CodeNode
 from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXModule
 from EinsteinEngine.frontend.dsl.amrex.schemes import KernelLaunchMode
@@ -33,7 +35,7 @@ class AMReXGenerator(DslGenerator[AMReXModule]):
         module = self.frontend
         groups: list[tuple[str, list[str], list[LoopAnalysis]]] = list()
         prior: set[str] = set()
-        guards: set[str] = set()
+        guards: dict[str, sy.Expr] = {}
         used_params: set[str] = set()
         for name in module.function_order:
             fn = module.functions[name]
@@ -41,7 +43,7 @@ class AMReXGenerator(DslGenerator[AMReXModule]):
                 raise GeneratorException(f"{name} is not baked.")
             # Point-mode functions are independent (one never reads another's outputs): nothing carries across.
             loops, tiles, writes = analyze_function(module, fn, prior,
-                                                    guards if isinstance(module.mode, KernelLaunchMode) else set())
+                                                    guards if isinstance(module.mode, KernelLaunchMode) else {})
             groups.append((name, tiles, loops))
             prior |= writes
             used_params |= {p for loop in loops for p in loop.params}

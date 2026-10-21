@@ -42,16 +42,16 @@ int main(int argc, char *argv[])
     {
         const amrex::MFInfo info = amrex::MFInfo().SetArena(amrex::The_Managed_Arena());
 #ifndef GATE_POINT_ONLY
-        // Kernel toy: 3 components (c_u, c_w, c_q), 8 boxes from (5, -3, 7) to (12, 4, 14), 3 ghost cells.
+        // Kernel toy: 4 components (c_u, c_w, c_q, c_p), 8 boxes from (5, -3, 7) to (12, 4, 14), 3 ghost cells.
         const amrex::Box domain(amrex::IntVect(5, -3, 7), amrex::IntVect(12, 4, 14));
         amrex::BoxArray ba(domain);
         ba.maxSize(4);
         const amrex::DistributionMapping dm(ba);
-        amrex::MultiFab state(ba, dm, 3, 3, info), rhs(ba, dm, 3, 0, info);
+        amrex::MultiFab state(ba, dm, 4, 3, info), rhs(ba, dm, 4, 0, info);
         for (amrex::MFIter mfi(state); mfi.isValid(); ++mfi)
         {
             const auto a = state.array(mfi);
-            amrex::LoopOnCpu(mfi.fabbox(), 3, [&](int i, int j, int k, int c) { a(i, j, k, c) = input(i, j, k, c); });
+            amrex::LoopOnCpu(mfi.fabbox(), 4, [&](int i, int j, int k, int c) { a(i, j, k, c) = input(i, j, k, c); });
         }
         rhs.setVal(std::nan(""));
         EE::KernelToy(0.1, 1.3).compute(rhs, state);
@@ -69,13 +69,18 @@ int main(int argc, char *argv[])
                 state.array(mfi)(nan_cell, 2) = std::nan("");
             }
         }
-        amrex::MultiFab rhs_false(ba, dm, 3, 0, info);
+        amrex::MultiFab rhs_false(ba, dm, 4, 0, info);
         rhs_false.setVal(std::nan(""));
         EE::KernelToy(0.1, 0.5).compute(rhs_false, state);
         amrex::Gpu::streamSynchronize();
         amrex::MultiFab q_false(ba, dm, 1, 0, info);
         amrex::MultiFab::Copy(q_false, rhs_false, 2, 0, 1, 0);
         dump(q_false, 0, out + "/kernel_q_false.txt");
+        {
+            std::FILE *f = std::fopen((out + "/false_runs.txt").c_str(), "a");
+            std::fprintf(f, "kernel: kappa 0.5 (q_rhs's guard false), NaN in q at (8, 0, 10)\n");
+            std::fclose(f);
+        }
 #endif
 
         // Point toy: un (u, trK) and prim (Df) on one box from (-2, 3, 1), anisotropic dx and prob_lo.
@@ -133,6 +138,11 @@ int main(int argc, char *argv[])
         }
         amrex::Gpu::streamSynchronize();
         dump(kout, 0, out + "/point_ko_false.txt");
+        {
+            std::FILE *f = std::fopen((out + "/false_runs.txt").c_str(), "a");
+            std::fprintf(f, "point: eps -0.2 (ko's guard false), NaN in u at (0, 5, 3)\n");
+            std::fclose(f);
+        }
     }
     amrex::Finalize();
     return 0;

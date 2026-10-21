@@ -569,6 +569,80 @@ def test_round2() -> None:
     expect(code, '// Outputs, in order: hr11, hr12, hr22, hr13, hr23, hr33.')
 
 
+def test_round3() -> None:
+    """Implementation review round 3: zero forms through temporaries (cancellations), guards in one branch of a
+    choice, parameters read before they are set, prelude identifiers, binder agreement, Float underflow."""
+    from EinsteinEngine.generators.amrex.guards import check_guards
+    f, S, a, b, k, c2, A, DXI = sy.symbols("f S a b kappa c2 A DXI")
+    g = Piecewise((f, f > 0), (0, True))
+    h = Piecewise((a, a > 0), (0, True))
+    o, t = sy.Symbol('o'), sy.Symbol('t')
+    rows = [  # reviewer B's round-3 table (review-impl-B/r3_fixsketch.py) and reviewer A's B6
+        ('pass', {o: 2 * g * 3}), ('pass', {o: g * S}), ('pass', {o: (A + g) * S}), ('pass', {o: DXI * (A + g)}),
+        ('pass', {o: (g + 1) * S}), ('pass', {o: sy.exp(g) * S}), ('pass', {o: sy.cos(g) * S}),
+        ('pass', {t: g, o: (t + A) * S}), ('pass', {t: sy.exp(g), o: t * S}), ('pass', {t: 1 + g, o: (t + A) * S}),
+        ('pass', {o: g / 2 + h / 3}), ('pass', {o: sy.Max(g, b) * S}),
+        ('raise', {o: sy.Abs(g) * S}), ('raise', {o: sy.Max(g, h) * S}), ('raise', {o: g ** k * S}),
+        ('raise', {o: Piecewise((g, c2 > 0), (h, True)) * S}), ('raise', {o: Piecewise((g, c2 > 0), (b, True)) * S}),
+        ('raise', {t: Piecewise((g, c2 > 0), (b, True)), o: t * S}), ('raise', {o: Piecewise((b, b > g), (g, True)) * S}),
+        ('raise', {t: sy.exp(g), o: (t - 1) * S}), ('raise', {t: 1 + g, o: (t - 1) * S}),
+        ('raise', {o: (sy.exp(g) - 1) * S}), ('raise', {t: sy.Abs(g), o: t * S}),
+        ('raise', {o: sy.Abs(Piecewise((g, c2 > 0), (A, True))) * S}),
+    ]
+    for want, eqns in rows:
+        folded = {lhs: fold_guards(rhs) for lhs, rhs in eqns.items()}
+        if want == 'raise':
+            refuses(lambda: check_guards(folded, {t}, str(eqns)), "multiplies a guard")
+        else:
+            check_guards(folded, {t}, str(eqns))
+    # Carried across a split: a temporary computed from a guard, cancelled in the next loop.
+    def cancel_across_split() -> None:
+        cc = kernel_module()
+        kappa = cc.add_param("kappa", init="1.5")
+        r = cc.output("u_rhs", [])
+        u = cc.decl("u", [], rhs=r)
+        tt = cc.decl("tt", [])
+        fn = cc.create_function("f")
+        fn.add_eqn(tt, 1 + Piecewise((kappa, kappa > 1), (0, True)))
+        fn.split_loop()
+        fn.add_eqn(r, (tt - 1) * D(u, l0, l0))
+        cc.bake()
+        text(cc)
+    refuses(cancel_across_split, "multiplies a guard")
+    # Parameters are assigned in name order, before the spacing: no init or check may read one.
+    refuses(lambda: (lambda cc: (cc.add_param("beta", init="1.0"), cc.add_param("alpha", init="2.0 * beta")))(
+        kernel_module()), "has not set")
+    refuses(lambda: kernel_module().add_param("alpha", init="0.5 * DX"), "has not set")
+    refuses(lambda: (lambda cc: (cc.add_param("alpha", init="2.0 * beta"), cc.add_param("beta", init="1.0")))(
+        kernel_module()), "reads it, unset")
+    def check_reads_param() -> None:
+        cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                         binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
+                         coordinates=CellCentered(), mode=KernelLaunchMode(),
+                         params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")], dx="a_dx",
+                                             ctor_checks=[CtorCheck("kappa <= 0", "kappa must be positive")]))
+        cc.add_param("kappa", init="1.5")
+    refuses(check_reads_param, "before it is set")
+    # Prelude identifiers ignore comments, members and numbers.
+    cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                     binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
+                     coordinates=CellCentered(), mode=KernelLaunchMode(),
+                     params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")], dx="a_dx",
+                                         ctor_prelude=['params_t gauge{};  // eta is set below', 'gauge.eta = 1.0e-3;']))
+    cc.add_param("eta", init="gauge.eta")
+    cc.add_param("e", init="1.0")
+    # A binder and rhs_binder that agree are accepted.
+    cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                     binder=lambda base: FieldBinder("state", lambda c: f"c_{c}") if base == "u" else None,
+                     rhs_binder=FieldBinder("state", lambda c: f"c_{c}"), coordinates=CellCentered(),
+                     mode=KernelLaunchMode(), params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")], dx="a_dx"))
+    cc.decl("u", [], rhs=cc.output("u_rhs", []))
+    # A Float that underflows is refused.
+    from EinsteinEngine.emit.code.amrex.amrex_sympy_visitor import AMReXSympyVisitor
+    sv = AMReXSympyVisitor(is_field=lambda n: False)
+    refuses(lambda: sv.visit(sy.Float('1e-400', 30)), "underflows")
+
+
 def main() -> None:
     test_kernel_mode()
     test_point_mode('refs')
@@ -581,6 +655,7 @@ def main() -> None:
     test_numbers()
     test_guards_round1()
     test_round2()
+    test_round3()
     test_golden_and_determinism()
     print('test_amrex_backend: OK')
 

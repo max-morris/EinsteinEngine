@@ -72,15 +72,15 @@ class LoopAnalysis:
     params: list[str] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
     writes: dict[str, OutputInfo] = field(default_factory=dict)  # output component -> info
-    guards: set[str] = field(default_factory=set)  # values this loop sets to a guard (later loops' check)
-    not_guards: set[str] = field(default_factory=set)  # values this loop sets to anything else
+    zero_forms: dict[str, sy.Expr] = field(default_factory=dict)  # by name: each value's zero form (guards.py)
 
 
 def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[str],
-                     guards: Optional[set[str]] = None) -> tuple[list[LoopAnalysis], list[str], set[str]]:
+                     guards: Optional[dict[str, sy.Expr]] = None) -> tuple[list[LoopAnalysis], list[str], set[str]]:
     """The loops of one function, its tile temporaries (scratch-component order) and the output components it writes.
-    `guards`: the names (outputs, tile temporaries) that earlier loops set to a guard; updated with this function's."""
-    guards = set() if guards is None else guards
+    `guards`: the zero forms (guards.py) of the outputs and tile temporaries that earlier loops computed from a guard,
+    by name; updated with this function's outputs (its tile temporaries end with it)."""
+    guards = {} if guards is None else guards
     complex_ = fn.eqn_complex
     complex_._calc_tile_temps()
     complex_._calc_vars()
@@ -96,15 +96,22 @@ def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[s
         loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index, guards))
         # Only outputs and tile temporaries carry a value to later loops; a name's latest assignment decides.
         carried = set(module.output_bases_components()) | set(tiles)
-        guards -= loops[-1].not_guards
-        guards |= loops[-1].guards & carried
+        for name, z in loops[-1].zero_forms.items():
+            if name not in carried:
+                continue
+            if isinstance(z, sy.Symbol) and unprimed(z) == name:
+                guards.pop(name, None)  # computed without a guard
+            else:
+                guards[name] = z
         prior |= set(loops[-1].writes)
         writes |= set(loops[-1].writes)
+    for t in tiles:  # tile temporaries are the function's own
+        guards.pop(t, None)
     return loops, tiles, writes
 
 
 def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops: int, eqn_list: EqnList,
-                  prior: set[str], tile_index: dict[str, int], guards: set[str]) -> LoopAnalysis:
+                  prior: set[str], tile_index: dict[str, int], guards: dict[str, sy.Expr]) -> LoopAnalysis:
     where = fn.name if nloops == 1 else f"{fn.name} loop {loop_idx}"
     name = fn.name if nloops == 1 else f"{fn.name}_{loop_idx}"
     loop = LoopAnalysis(fn.name, loop_idx, name, fn.source_annotations.loops.get(loop_idx) or name)
@@ -114,7 +121,7 @@ def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops:
     loaded_tiles = {str(t) for t in eqn_list.preinitialized_tile_temporaries}
     if bad := sorted({str(x.new) for x in subst.substitutions} & loaded_tiles):
         raise GeneratorException(f"{where}: recycling reuses the loaded tile temporaries {bad}.")
-    loop.guards, loop.not_guards = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards)
+    loop.zero_forms = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards)
 
     # Every left-hand side is classified by declaration: assigning a field or a parameter is refused; an lhs declared
     # as an output is a write of that output, whether or not EE's EqnList counts it as one (it counts an lhs that a

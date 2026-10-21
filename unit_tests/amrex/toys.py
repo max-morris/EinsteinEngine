@@ -18,7 +18,7 @@
 """
 Toy modules for the AMReX backend's gates (docs/AMREX-BACKEND-DESIGN.md, section 9, items 6 and 7): one per emission
 mode, each exercising stencils in three directions, coordinates, parameters, a guard, and (kernel mode) a hard split
-with a tile temporary, an output read back by a later loop, and an overwrite. `values()` evaluates a baked module's equations at 50 digits on given data, the
+with a tile temporary, an output read back by a later loop and by its own loop, and an overwrite. `values()` evaluates a baked module's equations at 50 digits on given data, the
 reference the compiled code is compared with; on an unbaked module (`bake=False`) it evaluates the equations as the
 recipe wrote them, before the guard fold and CSE, so that a bake that changes values shows too.
 """
@@ -31,7 +31,7 @@ from sympy import Abs, Piecewise, Rational
 
 from EinsteinEngine import *
 
-STATE_COMPONENTS = {'u': 0, 'w': 1, 'q': 2}  # kernel toy: enum values
+STATE_COMPONENTS = {'u': 0, 'w': 1, 'q': 2, 'p': 3}  # kernel toy: enum values
 POINT_COMPONENTS = {'u': 0, 'trK': 1}  # point toy: vars:: enum values; Df is pvars::Df = 0
 
 
@@ -51,6 +51,8 @@ def kernel_toy(bake: bool = True) -> AMReXModule:
     w = cc.decl("w", [], rhs=w_rhs)
     q_rhs = cc.output("q_rhs", [])
     q = cc.decl("q", [], rhs=q_rhs)
+    p_rhs = cc.output("p_rhs", [])
+    p = cc.decl("p", [], rhs=p_rhs)
     t = cc.decl("t", [])
     f1 = cc.create_function("first")
     f1.add_eqn(t, kappa * (D(u, l0, l0) + D(u, l1, l2) + D(w, l2)))
@@ -62,6 +64,7 @@ def kernel_toy(bake: bool = True) -> AMReXModule:
     # A guard alone on q (the driver's false-guard run puts a NaN in q).
     f3 = cc.create_function("third")
     f3.add_eqn(q_rhs, Piecewise((kappa - 1, kappa > 1), (0, True)) * (D(q, l0, l0) + D(q, l1, l2)))
+    f3.add_eqn(p_rhs, 2 * q_rhs + p * D(p, l1))  # reads q_rhs back in its own loop (the Gamma-driver shape)
     if bake:
         cc.bake()
     return cc
