@@ -35,7 +35,7 @@ from EinsteinEngine.tuning.generate_best import load_best_params
 from EinsteinEngine.tuning.generate_best import main as generate_best_main
 from EinsteinEngine.tuning.plot_tuning import load_jsonl, map_coords_to_values, plot
 from EinsteinEngine.tuning.tune_composite import DiscreteKnobTuner
-from EinsteinEngine.tuning.tuning import Tuner, build_experiment, probe_sidecar_path
+from EinsteinEngine.tuning.tuning import Tuner, build_experiment, fork_probe_file, probe_sidecar_path
 
 
 def expect_error[E: BaseException](kind: type[E], fn: Callable[[], Any], *fragments: str) -> E:
@@ -239,25 +239,28 @@ def test_constant_liar(directory: str) -> None:
     assert len(xs) > len(plain), (xs, plain)
 
 
-def test_seed(directory: str) -> None:
-    """Externally chosen trials (seeded, with their source) are checked, recorded and replayed like any trial."""
-    checkpoint = os.path.join(directory, 'seed.jsonl')
+def test_record_external(directory: str) -> None:
+    """Externally chosen trials (with their source) are checked, recorded and replayed like any trial, and do not count
+    toward the random startup trials."""
+    checkpoint = os.path.join(directory, 'external.jsonl')
     optimizer = opt(checkpoint, n_startup_trials=2)
     good = {'x': 13, 'odd': 1, 'knob': 2, 'rate': 0.5}
-    optimizer.seed(good, -0.1, source='round 0: hand-picked')
-    optimizer.seed({'x': 0, 'odd': 9, 'knob': 0}, float('inf'), source='round 0: hand-picked')
-    assert lines(checkpoint) == [{'target': -0.1, 'params': good, 'seeded': 'round 0: hand-picked'},
-                                 {'target': FAILED_VALUE, 'params': {'x': 0, 'odd': 9, 'knob': 0},
-                                  'seeded': 'round 0: hand-picked'}]
+    optimizer.record_external(good, -0.1, source='round 0: hand-picked')
+    optimizer.record_external({'x': 0.0, 'odd': 9, 'knob': True}, float('inf'), source='round 0: hand-picked')
+    #  Recorded with the realized coordinates (ints as ints).
+    assert lines(checkpoint) == [{'target': -0.1, 'params': good, 'external': 'round 0: hand-picked'},
+                                 {'target': FAILED_VALUE, 'params': {'x': 0, 'odd': 9, 'knob': 1},
+                                  'external': 'round 0: hand-picked'}]
+    assert [type(v) for v in lines(checkpoint)[1]['params'].values()] == [int, int, int]
     #  Refused: the same trial from the same source, a value outside its domain, an undeclared or missing param (the
     #  rate is sampled only for knob 2), a constraint (odd must be odd), and no source.
-    expect_error(RuntimeError, lambda: optimizer.seed(good, -0.1, source='round 0: hand-picked'), 'already')
-    expect_error(ValueError, lambda: optimizer.seed({'x': 21, 'odd': 1, 'knob': 0}, 0.0, source='s'), 'x')
-    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 1, 'knob': 0, 'rate': 0.5}, 0.0, source='s'),
-                 'rate')
-    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 1, 'knob': 2}, 0.0, source='s'), 'rate')
-    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 2, 'knob': 0}, 0.0, source='s'), 'constraint')
-    expect_error(ValueError, lambda: optimizer.seed(good, 0.0, source=''), 'source')
+    rec = optimizer.record_external
+    expect_error(RuntimeError, lambda: rec(good, -0.1, source='round 0: hand-picked'), 'already')
+    expect_error(ValueError, lambda: rec({'x': 21, 'odd': 1, 'knob': 0}, 0.0, source='s'), 'x')
+    expect_error(ValueError, lambda: rec({'x': 1, 'odd': 1, 'knob': 0, 'rate': 0.5}, 0.0, source='s'), 'rate')
+    expect_error(ValueError, lambda: rec({'x': 1, 'odd': 1, 'knob': 2}, 0.0, source='s'), 'rate')
+    expect_error(ValueError, lambda: rec({'x': 1, 'odd': 2, 'knob': 0}, 0.0, source='s'), 'constraint')
+    expect_error(ValueError, lambda: rec(good, 0.0, source=''), 'source')
     assert len(lines(checkpoint)) == 2
     #  Replayed on resume, by generate_best's best entry, and by ask, which does not repeat them.
     assert len(read_checkpoint(experiment(), checkpoint)) == 2
@@ -266,8 +269,39 @@ def test_seed(directory: str) -> None:
     assert resumed.n_checkpoint_loaded == 2 and resumed.max is not None and resumed.max['target'] == -0.1
     batch = resumed.ask(4, seed=1)
     assert batch.n_history == 2 and good not in batch.params
+    #  Still in the random startup (the 2 external entries do not count): the same draws as an empty study's.
+    assert batch.params == opt(os.path.join(directory, 'external-empty.jsonl'), n_startup_trials=2).ask(4, seed=1).params
     resumed.tell(batch, [objective(p) for p in batch.params])
     assert len(lines(checkpoint)) == 6
+
+
+def test_study_changes_between_ask_and_tell(directory: str) -> None:
+    """A batch is refused if the study's search space changed after it was asked, whether or not the probe file was
+    rewritten; and a forked probe file starts a new study."""
+    def knob_study(choices: list[str]) -> DiscreteKnobTuner:
+        return DiscreteKnobTuner('lb', choices)
+    checkpoint = os.path.join(directory, 'knob.jsonl')
+    e = build_experiment(knob_study(['64', '128', '256']), None, checkpoint, record_probe=True)
+    batch = CheckpointedOptimizer.for_batches(e, checkpoint).ask(2, seed=1)
+    changed = knob_study(['64', '96', '128', '256'])
+    #  The tell side built from the changed tuner, the probe file untouched.
+    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(
+        build_experiment(changed, None, checkpoint), checkpoint).tell(batch, [0.0, 0.0]), 'search space')
+    #  The probe file rewritten for the changed tuner (allowed while the checkpoint is empty).
+    rewritten = build_experiment(changed, None, checkpoint, record_probe=True)
+    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(rewritten, checkpoint).tell(batch, [0.0, 0.0]),
+                 'another study')
+    assert not os.path.exists(checkpoint)
+    #  fork_probe_file: a new study from another's probe file, with its own id.
+    fork = os.path.join(directory, 'knob-fork.jsonl')
+    fork_probe_file(checkpoint, fork)
+    with open(probe_sidecar_path(checkpoint)) as a, open(probe_sidecar_path(fork)) as b:
+        ra, rb = json.load(a), json.load(b)
+    assert ra['study'] != rb['study'] and ra['space'] == rb['space'] and rb['origin'] == os.path.abspath(fork)
+    expect_error(RuntimeError, lambda: fork_probe_file(checkpoint, fork), 'already')
+    forked = CheckpointedOptimizer.for_batches(build_experiment(changed, None, fork), fork).ask(1, seed=1)
+    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(rewritten, checkpoint).tell(forked, [0.0]),
+                 'another study')
 
 
 GENERATE_RECIPE = """\
@@ -293,7 +327,8 @@ def test_generate_best_batch_trial(directory: str) -> None:
         """))
     checkpoint = str(d / 'study.jsonl')
     tuner = DiscreteKnobTuner('layout', ['fused', 'split', 'per-component'])
-    e = build_experiment(tuner, None, checkpoint, record_probe=True)  # writes the sidecar (the search space)
+    #  The probe file records the recipe arguments, which generate_best must be given (after --).
+    e = build_experiment(tuner, None, checkpoint, record_probe=True, recipe_args=['--flag', 'x'])
     batch = CheckpointedOptimizer.for_batches(e, checkpoint).ask(3, seed=1)
     batch_file = d / 'batch.json'
     batch_file.write_text(batch.to_json())
@@ -301,17 +336,22 @@ def test_generate_best_batch_trial(directory: str) -> None:
     try:
         for i, params in enumerate(batch.params):
             sys.argv = ['generate_best', str(recipe), str(tuner_file), '--checkpoint-file', checkpoint,
-                        '--batch', str(batch_file), '--trial', str(i), '--', '--out-dir', f'trial{i}']
+                        '--batch', str(batch_file), '--trial', str(i), '--', '--flag', 'x']
             generate_best_main()
             assert json.loads(out.read_text()) == {'layout': tuner.choices[int(params['layout'])],
-                                                   'argv': ['--out-dir', f'trial{i}']}
+                                                   'argv': ['--flag', 'x']}
+        #  Other recipe arguments than the probe file's are refused.
+        sys.argv = ['generate_best', str(recipe), str(tuner_file), '--checkpoint-file', checkpoint,
+                    '--batch', str(batch_file), '--trial', '0', '--', '--flag', 'y']
+        expect_error(RuntimeError, generate_best_main, 'recipe arguments')
         #  A batch of another study is refused.
         other_checkpoint = str(d / 'other.jsonl')
-        other = CheckpointedOptimizer.for_batches(build_experiment(tuner, None, other_checkpoint, record_probe=True),
+        other = CheckpointedOptimizer.for_batches(build_experiment(tuner, None, other_checkpoint, record_probe=True,
+                                                                   recipe_args=['--flag', 'x']),
                                                   other_checkpoint).ask(1, seed=2)
         batch_file.write_text(other.to_json())
         sys.argv = ['generate_best', str(recipe), str(tuner_file), '--checkpoint-file', checkpoint,
-                    '--batch', str(batch_file), '--trial', '0']
+                    '--batch', str(batch_file), '--trial', '0', '--', '--flag', 'x']
         expect_error(SystemExit, generate_best_main, 'another study')
     finally:
         sys.argv = saved
@@ -325,6 +365,7 @@ if __name__ == '__main__':
         test_tell_refusals_and_partial_tells(tmp)
         test_pending(tmp)
         test_constant_liar(tmp)
-        test_seed(tmp)
+        test_record_external(tmp)
+        test_study_changes_between_ask_and_tell(tmp)
         test_generate_best_batch_trial(tmp)
     print("All checkpoint batch tests passed.")

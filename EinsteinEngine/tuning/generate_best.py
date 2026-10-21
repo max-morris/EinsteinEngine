@@ -43,26 +43,12 @@ from typing import Any
 
 from EinsteinEngine.tuning import tuning
 from EinsteinEngine.tuning.checkpointed_optimizer import Batch, is_failed, study_digest
-from EinsteinEngine.tuning.experiment import ParamType
+from EinsteinEngine.tuning.experiment import FixedTrial
 from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
 
 
-class _FixedTrial:
-    """A TrialObj whose suggest_* methods return pre-recorded values.
-
-    Passing this to Experiment.suggest_params replays a fixed set of in_params
-    through the experiment's conditions and out_param mappings, yielding the
-    same recipe-facing args a live trial with those values would have produced.
-    """
-
-    def __init__(self, params: dict[str, ParamType]) -> None:
-        self._params = params
-
-    def suggest_int(self, name: str, _lo: int, _hi: int, /) -> int:
-        return int(self._params[name])
-
-    def suggest_float(self, name: str, _lo: float, _hi: float, /) -> float:
-        return float(self._params[name])
+#  Kept for callers of the old private name.
+_FixedTrial = FixedTrial
 
 
 def load_best_params(checkpoint_file: str) -> tuple[float, dict[str, Any]]:
@@ -96,7 +82,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run a recipe with its tuning in_params fixed to the best (max-target) values from a checkpoint "
                     "file, or to one trial of a batch (CheckpointedOptimizer.ask).",
-        epilog="Arguments after -- are passed to the recipe (its sys.argv[1:]).")
+        epilog="Arguments after -- are passed to the recipe (its sys.argv[1:]). They must be the ones the probe file "
+               "records (the probe ran the recipe with them), since they can change the equations; to choose "
+               "where a recipe writes its output, run generate_best in that directory instead.")
     parser.add_argument("recipe", help="Path to the Einstein Engine recipe.")
     parser.add_argument("tuner", help="Path to the Python file providing the Tuner instance (the same file used with remote_tuner).")
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="Checkpoint file to read the best parameters from.")
@@ -117,7 +105,7 @@ def main() -> None:
             batch = Batch.from_json(fh.read())
         if not 0 <= args.trial < len(batch.params):
             parser.error(f"--trial must be in 0..{len(batch.params) - 1}")
-        experiment = tuning.build_experiment(tuner_inst, None, args.checkpoint_file)
+        experiment = tuning.build_experiment(tuner_inst, None, args.checkpoint_file, recipe_args=recipe_args)
         if batch.study != study_digest(experiment, args.checkpoint_file):
             sys.exit(f"Batch {batch.id} was asked for another study than {args.checkpoint_file} (another checkpoint "
                      f"name, probe file or set of in-params).")
@@ -129,8 +117,9 @@ def main() -> None:
         source = f"The best entry in {args.checkpoint_file}"
         if tuner_inst.probe_targets() and os.path.exists(tuning.probe_sidecar_path(args.checkpoint_file)):
             #  Fail fast, before probing, if the best entry does not fit the recorded probe.
-            tuning.build_experiment(tuner_inst, None, args.checkpoint_file).check_declared(fixed, source)
-        experiment = tuning.build_experiment(tuner_inst, args.recipe, args.checkpoint_file)
+            tuning.build_experiment(tuner_inst, None, args.checkpoint_file,
+                                    recipe_args=recipe_args).check_declared(fixed, source)
+        experiment = tuning.build_experiment(tuner_inst, args.recipe, args.checkpoint_file, recipe_args=recipe_args)
         recipe_facing_args = experiment.recipe_facing_args(fixed, source)
         print(f"Best target {best_target} found in {args.checkpoint_file}.")
     print(f"Fixed in_params: {fixed}")
