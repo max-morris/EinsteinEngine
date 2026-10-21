@@ -155,9 +155,11 @@ def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None 
             for p in parts:
                 terms = min(cap, terms * p[0])
             r = (terms, min(cap, terms * sum(p[1] / p[0] for p in parts)))
-        elif isinstance(x, sy.Pow) and x.exp.is_Integer and x.exp > 0:
+        elif isinstance(x, sy.Pow) and x.exp.is_Rational and abs(x.exp) >= 1:
+            # sy.expand also expands negative and fractional powers of sums ((x + y)**-2 -> 1/(x**2 + 2*x*y + y**2),
+            # (x + y)**(5/2) -> (x**2 + 2*x*y + y**2)*sqrt(x + y)): estimated as the power floor(|n|) (round 6, B B2).
             bt, bs = parts[0]
-            n = int(x.exp)
+            n = int(abs(x.exp))
             terms = min(cap, bt ** min(n, 64))
             r = (terms, min(cap, terms * n * bs / bt))
         else:
@@ -167,18 +169,17 @@ def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None 
     return size(e)[1]
 
 
-def _branches(e: sy.Basic, memo: dict[sy.Basic, int] | None = None) -> int:
-    """An upper bound on the number of branches piecewise_fold(e) makes, on the DAG (capped at 10**9)."""
-    memo = {} if memo is None else memo
-    if e not in memo:
-        if isinstance(e, Piecewise):
-            r = sum(_branches(x, memo) for x, _ in _pieces(e))
-        else:
-            r = 1
-            for a in e.args:
-                r = min(r * _branches(a, memo), 10 ** 9)
-        memo[e] = min(r, 10 ** 9)
-    return memo[e]
+def _branches(e: sy.Basic) -> int:
+    """An upper bound on the number of branches of the fold of e on opaque conditions: the product of the piece counts
+    of its distinct choices (a choice shared by several terms is counted once; round 6, B B1), and at most 2**k for k
+    distinct conditions, since the opaque fold drops contradictory combinations (round 6, A N36). Capped at 10**9."""
+    r = 1
+    conds: set[sy.Basic] = set()
+    for x in unique_nodes(e):
+        if isinstance(x, Piecewise):
+            r = min(r * len(x.args), 10 ** 9)
+            conds |= {c for _, c in _pieces(x) if c is not sy.true and c is not sy.false}
+    return int(min(r, 2 ** min(len(conds), 30)))
 
 
 def _minmax_choices(z: sy.Basic) -> sy.Basic:
