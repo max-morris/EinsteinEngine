@@ -58,6 +58,7 @@ from EinsteinEngine.frontend.dsl.amrex.schemes import CellCentered, NodeCentered
     CtorArg, CtorCheck, KernelLaunchMode, PointFunctionMode
 from EinsteinEngine.frontend.dsl.amrex.naming import digit_component_names
 from EinsteinEngine.generators.amrex import AMReXGenerator
+from EinsteinEngine.frontend.dsl.amrex.mhduet import MHDuetPointFunction, mhduet_component_names
 from EinsteinEngine.wizards.amrex_wizard import AMReXWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
@@ -73,7 +74,8 @@ __all__ = [
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
     "AMReXModule", "AMReXFunction", "ArrayParam", "FieldBinder", "FieldBinding", "StridedPointer", "Array4Call",
     "CellCentered", "NodeCentered", "MemberParams", "StructParams", "CtorArg", "CtorCheck", "KernelLaunchMode",
-    "PointFunctionMode", "digit_component_names", "AMReXGenerator", "AMReXWizard",
+    "PointFunctionMode", "digit_component_names", "AMReXGenerator", "AMReXWizard", "MHDuetPointFunction",
+    "mhduet_component_names",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",

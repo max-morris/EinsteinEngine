@@ -67,7 +67,8 @@ def cmin(a: Expr, b: Expr) -> Expr:
     return Piecewise((b, b < a), (a, True))
 
 
-def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False) -> dict[str, IndexedBase]:
+def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False,
+                    output: Callable[..., IndexedBase] | None = None) -> dict[str, IndexedBase]:
     """Declare the fields and add the 22 interior right-hand sides to `fn`. `param(name)` returns the symbol of
     MHDuet parameter `name` (its frontend-specific declaration). With `ko`, each RHS also gets MHDuet's
     Kreiss-Oliger dissipation, dissipation_factor_<field> sum_a meshDissipation_a(<field>) (MHDuet adds it only when
@@ -75,17 +76,20 @@ def add_ccz4_mhduet(cc, fn, param: Callable[[str], Expr], ko: bool = False) -> d
     override, so whether it belongs in the generated function is the slot-in's choice.
 
     For the slot-in: MHDuet's coordinates are grid nodes, x = prob_lo + i dx (its `xcoord(i)`), not cell centers;
-    the radial damping (D1 of the justification) depends on them. Returns the declared state and RHS symbols."""
+    the radial damping (D1 of the justification) depends on them. `output(name, indices, **kwargs)` declares each
+    RHS_<field> (an output; the default is `cc.decl`), which `cc.decl(<field>, ..., rhs=RHS_<field>)` then attaches to
+    its field. Returns the declared state and RHS symbols."""
     # D(f, ...) must be MHDuet's 4th-order centered stencils (D1CDO4, D2CDO4, D1CDO4crossed): width 5.
     assert cc.apply_div.n == 5, f"derivative stencil width {cc.apply_div.n}, MHDuet needs 5"
     ul, ll = cc.mk_pair("l")
     um, lm = cc.mk_pair("m")
     x, y, z = cc.mk_coords()
     p = {n: param(n) for n in PARAMS}
+    declare = output if output is not None else cc.decl
 
     def state(name: str, indices, symmetric: bool = False) -> tuple[IndexedBase, IndexedBase]:
         syms = dict(symmetries=[(indices[0], indices[1])]) if symmetric else dict()
-        rhs = cc.decl(f"RHS_{name}", indices, **syms)
+        rhs = declare(f"RHS_{name}", indices, **syms)
         return cc.decl(name, indices, rhs=rhs, **syms), rhs
 
     chi, chi_rhs = state("chi", [])
