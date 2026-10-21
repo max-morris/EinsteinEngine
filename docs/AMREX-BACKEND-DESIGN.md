@@ -230,17 +230,20 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
      recipe code (section 5.4).
 2. **Check after CSE.** The correctness property is: no product of a zero-branch Piecewise with a non-constant factor
    survives into the emitted code. With it, a false guard yields exactly 0 whatever any other temporary holds.
-   - The generator follows temporaries through each equation and raises on any surviving product of a Piecewise that
-     has a zero branch in any position (two or more branches) with a non-constant factor F, whether the Piecewise is a direct factor or reaches the product through a
-     temporary (a recipe's `g = Piecewise(...)`, then `g*S`). This is an unconditional hard error in both modes, so a
-     bypassed fold cannot pass silently. (Implementation: a guard is any expression that contains a guarded value
-     and is exactly zero once every guarded value is replaced by 0, so sums, powers, `Abs`, `Max`, `sin` of guards
-     and choices between guards count too; a symbolic power `0**n` counts, conservatively. Only outputs and tile
-     temporaries carry guard status to later loops, and in point mode nothing crosses functions.) A constant
-     multiple is allowed and tested: sympy's CSE preprocessing turns a
-     folded guard into `3*(2*a - P)` and then `-3*x0`, which is still exactly 0 when the guard is false. The check
-     follows a guard through products, constant multiples and temporaries holding such products, not through sums:
-     `DXI*(A + P)`, which the default `BasicCollectAfter` preset can produce, is safe and is tested.
+   - The generator raises on any surviving product of a guard with a non-constant factor. This is an unconditional
+     hard error in both modes, so a bypassed fold cannot pass silently.
+     - A guard is defined by its zero form: the value with every guard Piecewise replaced by 0 and every value it
+       reads replaced by that value's zero form. The zero forms are carried through temporaries, and through outputs
+       and tile temporaries to later loops; in point mode nothing crosses functions.
+     - A value is a guard if its zero form is exactly 0, is itself still a guard (recursively: a choice with a guarded
+       branch is zero in some region), or is `0**n` with n symbolic (conservatively).
+     - So constant multiples, sums, powers, `Abs`, `Max` and `sin` of guards count; so do choices between a guard and
+       anything else, and cancellations through temporaries such as `t = exp(P)`, then `(t - 1)*S`.
+     - A sum with any other term is not a guard: `A + P` is A where P is false. `DXI*(A + P)`, which the default
+       `BasicCollectAfter` preset can produce, is therefore safe, and is tested. Nor are `P + 1`, `exp(P)` and
+       `cos(P)` guards.
+     - A constant multiple of a folded guard is allowed and tested: sympy's CSE preprocessing turns one into
+       `3*(2*a - P)` and then `-3*x0`, which is still exactly 0 when the guard is false.
    - A guard held in a temporary (`g = Piecewise(...)`, then `g*S`) is not folded and therefore raises. A recipe
      writes the guarded product directly, as MHDuet's does. Guards with three or more pieces are checked but not
      folded, so they raise too.

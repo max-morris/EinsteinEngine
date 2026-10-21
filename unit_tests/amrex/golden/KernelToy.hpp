@@ -164,11 +164,14 @@ class KernelToy
         (void)sz;
         (void)sn;
         (void)rn;
+        const amrex::Real *const in_p = state_ptr + static_cast<std::ptrdiff_t>(c_p) * sn;
         const amrex::Real *const in_q = state_ptr + static_cast<std::ptrdiff_t>(c_q) * sn;
+        const amrex::Real x4 = (DYI * DZI);
         amrex::Real x2 = (DXI * DXI);
         const amrex::Real x3 = (12 * x2);
-        x2 = (DYI * DZI);
-        rhs_ptr[static_cast<std::ptrdiff_t>(c_q) * rn] = ((kappa > 1) ? amrex::Real(((-1.0 / 144.0) * (-1 + kappa) * ((x3 * ((-16 * ((in_q[1] + in_q[- 1]))) + (30 * in_q[0]) + ((in_q[- 2] + in_q[2])))) + (-1 * x2 * ((-(((in_q[- 2 * sy + 2 * sz] + in_q[2 * sy - 2 * sz])))) + (-64 * ((in_q[sy - sz] + in_q[- sy + sz]))) + (-8 * ((in_q[sy + 2 * sz] + in_q[2 * sy + sz]))) + (-8 * ((in_q[- sy - 2 * sz] + in_q[- 2 * sy - sz]))) + (8 * ((in_q[sy - 2 * sz] + in_q[2 * sy - sz]))) + (8 * ((in_q[- sy + 2 * sz] + in_q[- 2 * sy + sz]))) + (64 * ((in_q[sy + sz] + in_q[- sy - sz]))) + ((in_q[- 2 * sy - 2 * sz] + in_q[2 * sy + 2 * sz]))))))) : amrex::Real(0));
+        x2 = ((kappa > 1) ? amrex::Real(((-1.0 / 144.0) * (-1 + kappa) * ((x3 * ((-16 * ((in_q[1] + in_q[- 1]))) + (30 * in_q[0]) + ((in_q[- 2] + in_q[2])))) + (-1 * x4 * ((-(((in_q[- 2 * sy + 2 * sz] + in_q[2 * sy - 2 * sz])))) + (-64 * ((in_q[sy - sz] + in_q[- sy + sz]))) + (-8 * ((in_q[sy + 2 * sz] + in_q[2 * sy + sz]))) + (-8 * ((in_q[- sy - 2 * sz] + in_q[- 2 * sy - sz]))) + (8 * ((in_q[sy - 2 * sz] + in_q[2 * sy - sz]))) + (8 * ((in_q[- sy + 2 * sz] + in_q[- 2 * sy + sz]))) + (64 * ((in_q[sy + sz] + in_q[- sy - sz]))) + ((in_q[- 2 * sy - 2 * sz] + in_q[2 * sy + 2 * sz]))))))) : amrex::Real(0));
+        rhs_ptr[static_cast<std::ptrdiff_t>(c_q) * rn] = x2;
+        rhs_ptr[static_cast<std::ptrdiff_t>(c_p) * rn] = ((2 * x2) + ((1.0 / 12.0) * DYI * in_p[0] * ((8 * (((-(in_p[- sy])) + in_p[sy]))) + (((-(in_p[2 * sy])) + in_p[- 2 * sy])))));
     }
 };
 
