@@ -78,7 +78,17 @@ int main(int argc, char *argv[])
         dump(q_false, 0, out + "/kernel_q_false.txt");
         {
             std::FILE *f = std::fopen((out + "/false_runs.txt").c_str(), "a");
-            std::fprintf(f, "kernel: kappa 0.5 (q_rhs's guard false), NaN in q at (8, 0, 10)\n");
+            int boxes = 0, nans = 0;
+            for (amrex::MFIter mfi(state); mfi.isValid(); ++mfi)
+            {
+                if (mfi.fabbox().contains(nan_cell))
+                {
+                    ++boxes;
+                    nans += std::isnan(state.const_array(mfi)(nan_cell, 2)) ? 1 : 0;
+                }
+            }
+            std::fprintf(f, "kernel: kappa 0.5 (q_rhs's guard false); q at (8, 0, 10) read back as NaN in %d of the %d "
+                            "boxes holding it\n", nans, boxes);
             std::fclose(f);
         }
 #endif
@@ -140,7 +150,12 @@ int main(int argc, char *argv[])
         dump(kout, 0, out + "/point_ko_false.txt");
         {
             std::FILE *f = std::fopen((out + "/false_runs.txt").c_str(), "a");
-            std::fprintf(f, "point: eps -0.2 (ko's guard false), NaN in u at (0, 5, 3)\n");
+            int nans = 0;
+            for (amrex::MFIter mfi(un); mfi.isValid(); ++mfi)
+            {
+                nans += std::isnan(un.const_array(mfi)(0, 5, 3, 0)) ? 1 : 0;
+            }
+            std::fprintf(f, "point: eps -0.2 (ko's guard false); u at (0, 5, 3) read back as NaN in %d box\n", nans);
             std::fclose(f);
         }
     }

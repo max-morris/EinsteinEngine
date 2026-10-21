@@ -164,10 +164,11 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
         """The free identifiers of C++ text: not in string literals or comments, not member names after `.`, `->` or
         `::`, not parts of numbers (the `e` of `1.0e-3`)."""
         import re
-        code = re.sub(r'"(?:\\.|[^"\\])*"', ' ', code)
-        code = re.sub(r'//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
+        # Strings and comments in one left-to-right pass, so a quote in a comment (or // in a string) hides nothing.
+        code = re.sub(r'"(?:\\.|[^"\\])*"|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
+        this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code))
         code = re.sub(r'(?<![\w.])\d[\w.]*(?:[eE][+-]?\d+)?', ' ', code)
-        return set(re.findall(r'(?<![\w.])(?<!->)(?<!::)[A-Za-z_]\w*', code))
+        return set(re.findall(r'(?<![\w.])(?<!->)(?<!::)[A-Za-z_]\w*', code)) | this_members
 
     def _prelude_identifiers(self) -> set[str]:
         """The identifiers of MemberParams' constructor prelude: a parameter of the same name would be shadowed there,
@@ -291,6 +292,9 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                                    f"yet; compute it from the constructor arguments or the prelude.")
             if isinstance(self.param_scheme, MemberParams):
                 for c in self.param_scheme.ctor_checks:
+                    if bad_ := sorted(self.cpp_identifiers(c.failure_condition) & {'DX', 'DXI', 'DYI', 'DZI'}):
+                        raise DslException(f"The constructor check {c.failure_condition!r} reads {bad_}, which the "
+                                           f"constructor sets after the checks; check the constructor argument.")
                     if name in self.cpp_identifiers(c.failure_condition):
                         raise DslException(f"Parameter {name}: the constructor check {c.failure_condition!r} reads "
                                            f"it before it is set; check the constructor argument instead.")

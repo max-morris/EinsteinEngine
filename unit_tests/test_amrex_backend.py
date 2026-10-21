@@ -581,13 +581,19 @@ def test_round3() -> None:
         ('pass', {o: 2 * g * 3}), ('pass', {o: g * S}), ('pass', {o: (A + g) * S}), ('pass', {o: DXI * (A + g)}),
         ('pass', {o: (g + 1) * S}), ('pass', {o: sy.exp(g) * S}), ('pass', {o: sy.cos(g) * S}),
         ('pass', {t: g, o: (t + A) * S}), ('pass', {t: sy.exp(g), o: t * S}), ('pass', {t: 1 + g, o: (t + A) * S}),
-        ('pass', {o: g / 2 + h / 3}), ('pass', {o: sy.Max(g, b) * S}),
+        ('pass', {o: g / 2 + h / 3}), ('raise', {o: sy.Max(g, b) * S}),  # Max(0, b) is 0 where b <= 0 (round 4)
         ('raise', {o: sy.Abs(g) * S}), ('raise', {o: sy.Max(g, h) * S}), ('raise', {o: g ** k * S}),
         ('raise', {o: Piecewise((g, c2 > 0), (h, True)) * S}), ('raise', {o: Piecewise((g, c2 > 0), (b, True)) * S}),
         ('raise', {t: Piecewise((g, c2 > 0), (b, True)), o: t * S}), ('raise', {o: Piecewise((b, b > g), (g, True)) * S}),
         ('raise', {t: sy.exp(g), o: (t - 1) * S}), ('raise', {t: 1 + g, o: (t - 1) * S}),
         ('raise', {o: (sy.exp(g) - 1) * S}), ('raise', {t: sy.Abs(g), o: t * S}),
         ('raise', {o: sy.Abs(Piecewise((g, c2 > 0), (A, True))) * S}),
+        # Round 4 (A B7 and N28, B B1 and B2): copies, a tile across a split, a choice whose guarded branch cancels,
+        # 0**n stored exactly, Min, cancellation after expansion.
+        ('raise', {t: 1 + g ** k, o: (t - 1) * S}), ('pass', {o: (1 + g ** k) * S}),
+        ('raise', {o: (Piecewise((1 + g, c2 > 1), (b, True)) - 1) * S}), ('raise', {o: sy.Min(g, b) * S}),
+        ('raise', {o: (sy.exp(g) * A * (b + 1) - A * b - A) * S}),
+        ('raise', {t: A * b, sy.Symbol('t1'): t, o: ((t + g) - sy.Symbol('t1')) * S}),
     ]
     for want, eqns in rows:
         folded = {lhs: fold_guards(rhs) for lhs, rhs in eqns.items()}
@@ -643,6 +649,68 @@ def test_round3() -> None:
     refuses(lambda: sv.visit(sy.Float('1e-400', 30)), "underflows")
 
 
+def test_random_guards(trials: int = 300) -> None:
+    """Review round 4 (B): random equation systems with guards. Wherever the output is NaN with the guards false and
+    S infinite at two generic points of the other symbols, but not with the guards true (a guard-caused 0 * S), the
+    check must raise, in one loop and after a split at a random point (the first part's zero forms carried, its values
+    read by name)."""
+    import contextlib
+    import io
+    import random
+    from EinsteinEngine.generators.amrex.guards import check_guards
+    f, a, A, B, c, S = sy.symbols('f a A B c S')
+    G1, G2 = Piecewise((f, f > 0), (0, True)), Piecewise((a, a > 0), (0, True))
+    rng = random.Random(20261020)
+
+    def expr(depth: int, temps: list) -> sy.Basic:
+        if depth == 0 or rng.random() < 0.25:
+            return rng.choice([G1, G2, A, B, sy.Integer(rng.randint(1, 3))] + temps)
+        x, y = expr(depth - 1, temps), expr(depth - 1, temps)
+        return [x + y, x - y, x * y, sy.Abs(x), sy.exp(x), sy.sin(x), sy.Max(x, y), Piecewise((x, c > 0), (y, True)),
+                x ** 2][rng.randrange(9)]
+
+    def verdict(eqns: dict, split: int | None) -> str:
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                if split is None:
+                    check_guards(eqns, set(eqns), 'r')
+                else:
+                    items = list(eqns.items())
+                    first, second = dict(items[:split]), dict(items[split:])
+                    zf = check_guards(first, set(first), 'r0', carried=[str(k) for k in first])
+                    carried = {k: v for k, v in zf.items() if not (isinstance(v, sy.Symbol) and str(v) == k)}
+                    check_guards(second, set(second), 'r1', carried)
+            return 'pass'
+        except GeneratorException:
+            return 'raise'
+
+    def nan(eqns: dict, vals: dict) -> bool:
+        env: dict = {}
+        for lhs, rhs in eqns.items():
+            env[lhs] = sy.sympify(rhs).xreplace(env).subs(vals)
+        out = env[sy.Symbol('o')]
+        return out is sy.nan or out.has(sy.nan)
+
+    for _ in range(trials):
+        temps: list = []
+        eqns: dict = {}
+        for k in range(rng.randint(0, 3)):
+            t = sy.Symbol(f't{k}')
+            eqns[t] = fold_guards(expr(2, temps))
+            temps.append(t)
+        eqns[sy.Symbol('o')] = fold_guards(expr(2, temps) * S)
+        # Guard-caused: NaN with the guards false at two generic points (a zero of the data, as |B| - B at B > 0, is
+        # outside R10: docs, section 7), and not with the guards true.
+        points = ({A: Rational(7, 10), B: Rational(13, 10)}, {A: Rational(-6, 10), B: Rational(-17, 10)})
+        hazard = any(all(nan(eqns, {**pt, c: cv, S: sy.oo, f: -1, a: -1}) for pt in points)
+                     and not nan(eqns, {**points[0], c: cv, S: sy.oo, f: Rational(37, 100), a: Rational(53, 100)})
+                     for cv in (1, -1))
+        if hazard:
+            assert verdict(eqns, None) == 'raise', f'escape: {eqns}'
+            if len(eqns) > 1:
+                assert verdict(eqns, rng.randint(1, len(eqns) - 1)) == 'raise', f'escape after a split: {eqns}'
+
+
 def main() -> None:
     test_kernel_mode()
     test_point_mode('refs')
@@ -656,6 +724,7 @@ def main() -> None:
     test_guards_round1()
     test_round2()
     test_round3()
+    test_random_guards()
     test_golden_and_determinism()
     print('test_amrex_backend: OK')
 
