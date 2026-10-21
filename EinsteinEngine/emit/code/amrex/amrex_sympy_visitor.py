@@ -15,12 +15,14 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import math
+from fractions import Fraction
 from typing import Callable, Optional
 
 import sympy as sy
 
 from EinsteinEngine.common.stencil_idx import StencilIdx
-from EinsteinEngine.emit.code.common.code_tree import Expr, IdExpr, FunctionCall, BinOpExpr, BinOp
+from EinsteinEngine.emit.code.common.code_tree import Expr, IdExpr, FunctionCall, BinOpExpr, BinOp, FloatLiteralExpr
 from EinsteinEngine.emit.code.amrex.amrex_tree import FieldLoad
 from EinsteinEngine.emit.code.sympy_visitor import BaseSympyExprVisitor
 from EinsteinEngine.emit.tree import Identifier
@@ -34,7 +36,14 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
     parameters as struct members). |x| becomes amrex::Math::abs; Max and Min (not sympy Functions, so not reachable
     through the base visitor's rewrite table) become amrex::max/amrex::min with Real operands; And, Or and Not become
     &&, || and !.
+
+    Numbers follow section 6 of the design: a Float of less than 53 bits of precision is refused (its value is a
+    low-precision approximation); a Rational p/q prints as (p.0 / q.0) when |p| and |q| are at most 2^53, else as the
+    correctly rounded double of p/q; pi and E print as their correctly rounded doubles, and any other constant is
+    refused; so is a call of a function that is neither a stencil read nor one the backend itself writes.
     """
+    MAX_EXACT = 2 ** 53
+    backend_functions = {'amrex::Math::abs', 'noop'}
     is_field: Callable[[str], bool]
     name_of: Callable[[str], str]
     max_offset: int
@@ -52,6 +61,27 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
         self.max_offset = max_offset
 
     def visit(self, expr: sy.Basic) -> Expr:
+        if isinstance(expr, sy.Float):
+            if expr._prec < 53:
+                raise GeneratorException(f"AMReX backend: the Float {expr} has {expr._prec} bits of precision (< 53); "
+                                         f"use a full-precision Float or a Rational.")
+        elif isinstance(expr, sy.Rational) and not isinstance(expr, sy.Integer):
+            if abs(expr.p) > self.MAX_EXACT or abs(expr.q) > self.MAX_EXACT:
+                value = float(Fraction(int(expr.p), int(expr.q)))
+                if not math.isfinite(value):
+                    raise GeneratorException(f"AMReX backend: the Rational {expr} is not a finite double.")
+                return FloatLiteralExpr(value)
+        elif expr is sy.E:
+            return FloatLiteralExpr(math.e)
+        elif isinstance(expr, (sy.NumberSymbol, sy.core.numbers.NaN, sy.core.numbers.Infinity,
+                               sy.core.numbers.NegativeInfinity, sy.core.numbers.ComplexInfinity,
+                               sy.core.numbers.ImaginaryUnit)) and expr is not sy.pi:
+            raise GeneratorException(f"AMReX backend: the constant {expr} is not supported (only pi and E).")
+        elif isinstance(expr, sy.Function) and isinstance(expr.func, sy.core.function.UndefinedFunction):
+            name = getattr(expr.func, 'name', '')
+            if name not in self.stencil_fns and name not in self.backend_functions:
+                raise GeneratorException(f"AMReX backend: call of the undefined function {name}; only the standard "
+                                         f"functions of section 6 and stencil reads print.")
         if isinstance(expr, (sy.Max, sy.Min)):
             name = 'amrex::max' if isinstance(expr, sy.Max) else 'amrex::min'
             args = [self.visit(sy.Float(a) if a.is_Integer else a) for a in expr.args]  # type: ignore[no-untyped-call]

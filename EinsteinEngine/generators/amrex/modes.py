@@ -19,15 +19,15 @@
 
 from typing import Sequence
 
-from EinsteinEngine.emit.code.amrex.amrex_sympy_visitor import AMReXSympyVisitor
 from EinsteinEngine.emit.code.amrex.amrex_tree import Line, RhsLoad, TileLoad, TileStore, CoordDecl, TempDecl, \
     RhsStore, OutputAssign, KernelParam, DeviceFunctionDecl, LaunchGroup, KernelClassDecl, PointArg, \
     PointFunctionDecl, PointHeaderDecl
-from EinsteinEngine.emit.code.common.code_tree import Stmt
+from EinsteinEngine.emit.code.common.code_tree import IdExpr, Stmt
+from EinsteinEngine.emit.tree import Identifier
 from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXModule
 from EinsteinEngine.frontend.dsl.amrex.schemes import KernelLaunchMode, MemberParams, NodeCentered, \
     PointFunctionMode, StructParams
-from EinsteinEngine.generators.amrex.analysis import COORDS, STENCIL_FN, LoopAnalysis
+from EinsteinEngine.generators.amrex.analysis import COORDS, STENCIL_FN, LoopAnalysis, unprimed
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
 
@@ -39,12 +39,13 @@ def kernel_class(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
     if len(module.arrays) != 1:
         raise GeneratorException("Kernel mode reads one state array (the compute() argument a_state).")
     state = module.arrays[0]
-    visitor = AMReXSympyVisitor(stencil_fns={STENCIL_FN}, is_field=lambda v: module.field_binding(v) is not None,
-                                max_offset=module.max_stencil_offset)
     launches = []
     for fn_name, tiles, loops in groups:
         decls = []
         for loop in loops:
+            # The printer classifies symbols as the analysis did: a field is what this loop reads as one.
+            visitor = module.sympy_visitor(stencil_fns={STENCIL_FN}, is_field=loop.field_reads.__contains__,
+                                           max_offset=module.max_stencil_offset)
             body: list[Stmt] = [Line(d) for v in sorted(loop.field_reads)
                                 if (d := state.access.component_decl(state.name, v, loop.field_reads[v].component))]
             for v in sorted(loop.output_reads):
@@ -61,7 +62,14 @@ def kernel_class(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
                     if st.output.field_component is None:
                         raise GeneratorException(f"{loop.name}: kernel mode stores only rhs= outputs ({st.lhs}).")
                     enum = module.field_binding(st.output.field_component).component  # type: ignore[union-attr]
-                    body.append(RhsStore(enum, expr, st.comment))
+                    if st.local:  # read again by this loop or a later one: a local, then the store
+                        body.append(TempDecl(st.lhs, expr, reassign=st.reassign, mutable=st.mutable,
+                                             comment=st.comment))
+                        body.append(RhsStore(enum, IdExpr(Identifier(st.lhs)), None))
+                        if st.tile_index is not None:
+                            body.append(TileStore(st.lhs, st.tile_index))
+                    else:
+                        body.append(RhsStore(enum, expr, st.comment))
                 else:
                     body.append(TempDecl(st.lhs, expr, reassign=st.reassign, mutable=st.mutable, comment=st.comment))
                     if st.tile_index is not None:
@@ -91,7 +99,8 @@ def point_header(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
             raise GeneratorException(f"{fn_name}: point mode emits one inline function per DSL function; hard splits "
                                      f"are not supported yet.")
         loop = loops[0]
-        locals_ = {st.lhs for st in loop.statements if st.output is None} | set(loop.coords) | set(loop.spacing)
+        locals_ = ({st.lhs for st in loop.statements if st.output is None or st.local} | set(loop.coords)
+                   | set(loop.spacing))
 
         def name_of(n: str) -> str:
             if n in locals_:
@@ -100,8 +109,8 @@ def point_header(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
                 return f'{params.arg}.{params.member(n)}'
             return n
 
-        visitor = AMReXSympyVisitor(stencil_fns={STENCIL_FN}, is_field=lambda v: module.field_binding(v) is not None,
-                                    name_of=name_of, max_offset=module.max_stencil_offset)
+        visitor = module.sympy_visitor(stencil_fns={STENCIL_FN}, is_field=loop.field_reads.__contains__,
+                                       name_of=name_of, max_offset=module.max_stencil_offset)
         body: list[Stmt] = []
         body += [Line(f'const amrex::Real {prefix}{d} = 1.0 / {params.dx}[{"XYZ".index(d[1])}];') for d in loop.spacing]
         body += [CoordDecl(prefix + c, module.coordinate_scheme.expr(COORDS.index(c), 'ijk'[COORDS.index(c)]))
@@ -110,8 +119,13 @@ def point_header(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
         for st in loop.statements:
             expr = visitor.visit(st.rhs)
             if st.output is not None:
-                target = f'out.{st.lhs}' if mode.outputs == 'struct' else st.lhs
-                body.append(OutputAssign(target, expr, st.comment))
+                target = f'out.{unprimed(st.original)}' if mode.outputs == 'struct' else unprimed(st.original)
+                if st.local:  # read again by this function: a local, then the output
+                    body.append(TempDecl(prefix + st.lhs, expr, reassign=st.reassign, mutable=st.mutable,
+                                         comment=st.comment))
+                    body.append(OutputAssign(target, IdExpr(Identifier(prefix + st.lhs)), None))
+                else:
+                    body.append(OutputAssign(target, expr, st.comment))
             else:
                 body.append(TempDecl(prefix + st.lhs, expr, reassign=st.reassign, mutable=st.mutable,
                                      comment=st.comment))

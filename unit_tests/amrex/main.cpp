@@ -1,7 +1,8 @@
 // Driver of the AMReX backend's differential gate (docs/AMREX-BACKEND-DESIGN.md, section 9, item 7): evaluates the
 // kernel toy through compute() on a multi-box MultiFab with a nonzero box origin, and the point toy at every cell of a
 // box with anisotropic dx and prob_lo, and writes every input and output value (%.17g) for gate.py to compare with its
-// 50-digit evaluation of the baked equations. Usage: AMReXGate OUT_DIR
+// 50-digit evaluation of the baked equations (and of the equations as written). A second point-toy run with a false
+// guard and a NaN in the KO stencil checks that a false guard contributes exactly +0. Usage: AMReXGate OUT_DIR
 // With -DGATE_POINT_ONLY (make POINT_ONLY=TRUE) only the point toy is built: the kernel toy's StridedPointer access
 // reads Array4::stride, which AMReX 25.11 (MHDuet's) does not have (26.10 does).
 #include "toy_enums.H"
@@ -91,6 +92,29 @@ int main(int argc, char *argv[])
         dump(un, 3, out + "/point_un.txt");
         dump(prim, 3, out + "/point_prim.txt");
         dump(pout, 0, out + "/point_outputs.txt");
+
+        // R10 (docs, section 7): a false guard (eps < 0) with a NaN in u at one interior cell. Every ko output, the
+        // cells whose stencil reaches the NaN included, must be exactly +0 (point_ko_false.txt).
+        amrex::MultiFab kout(pba, pdm, 1, 0, info);
+        const ToyPar par_false{0.7, -0.2};
+        for (amrex::MFIter mfi(un); mfi.isValid(); ++mfi)
+        {
+            un.array(mfi)(0, 5, 3, 0) = std::nan("");
+        }
+        for (amrex::MFIter mfi(kout); mfi.isValid(); ++mfi)
+        {
+            const auto u = un.const_array(mfi);
+            const auto p = prim.const_array(mfi);
+            const auto o = kout.array(mfi);
+            amrex::ParallelFor(mfi.validbox(), [=] AMREX_GPU_DEVICE(int i, int j, int k)
+                               {
+                                   amrex::Real ko_u;
+                                   EE::ko(i, j, k, u, p, prob_lo, dx, par_false, ko_u);
+                                   o(i, j, k, 0) = ko_u;
+                               });
+        }
+        amrex::Gpu::streamSynchronize();
+        dump(kout, 0, out + "/point_ko_false.txt");
     }
     amrex::Finalize();
     return 0;
