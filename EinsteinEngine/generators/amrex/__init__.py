@@ -39,11 +39,13 @@ class AMReXGenerator(DslGenerator[AMReXModule]):
             fn = module.functions[name]
             if not fn.been_baked:
                 raise GeneratorException(f"{name} is not baked.")
-            loops, tiles, writes = analyze_function(module, fn, prior, guards)
+            # Point-mode functions are independent (one never reads another's outputs): nothing carries across.
+            loops, tiles, writes = analyze_function(module, fn, prior,
+                                                    guards if isinstance(module.mode, KernelLaunchMode) else set())
             groups.append((name, tiles, loops))
             prior |= writes
             used_params |= {p for loop in loops for p in loop.params}
-        declared = {c for (base, _), c in module.component_of.items() if base in module.output_bases}
+        declared = module.output_bases_components()
         if unwritten := sorted(declared - prior):
             raise GeneratorException(f"{module.name}: the outputs {unwritten} are declared but no function writes them "
                                      f"(a caller would read them uninitialized).")

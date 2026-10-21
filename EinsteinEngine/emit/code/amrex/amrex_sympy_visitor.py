@@ -65,12 +65,12 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
             if expr._prec < 53:
                 raise GeneratorException(f"AMReX backend: the Float {expr} has {expr._prec} bits of precision (< 53); "
                                          f"use a full-precision Float or a Rational.")
-        elif isinstance(expr, sy.Rational) and not isinstance(expr, sy.Integer):
+        elif isinstance(expr, sy.Integer):
+            if abs(expr.p) > self.MAX_EXACT:  # an integer literal past 2^63 would wrap; past 2^53 it rounds anyway
+                return FloatLiteralExpr(self._rounded(int(expr.p), 1, expr))
+        elif isinstance(expr, sy.Rational):
             if abs(expr.p) > self.MAX_EXACT or abs(expr.q) > self.MAX_EXACT:
-                value = float(Fraction(int(expr.p), int(expr.q)))
-                if not math.isfinite(value):
-                    raise GeneratorException(f"AMReX backend: the Rational {expr} is not a finite double.")
-                return FloatLiteralExpr(value)
+                return FloatLiteralExpr(self._rounded(int(expr.p), int(expr.q), expr))
         elif expr is sy.E:
             return FloatLiteralExpr(math.e)
         elif isinstance(expr, (sy.NumberSymbol, sy.core.numbers.NaN, sy.core.numbers.Infinity,
@@ -99,6 +99,17 @@ class AMReXSympyVisitor(BaseSympyExprVisitor[Expr]):
         if isinstance(expr, sy.Not):
             return FunctionCall(Identifier('!'), [self.visit(expr.args[0])], [])
         return super().visit(expr)  # type: ignore[no-any-return]
+
+    @staticmethod
+    def _rounded(p: int, q: int, expr: sy.Basic) -> float:
+        """The correctly rounded double of p/q; refuses overflow, and underflow to zero of a nonzero value."""
+        try:
+            value = float(Fraction(p, q))
+        except OverflowError:
+            raise GeneratorException(f"AMReX backend: the number {expr} is not a finite double.")
+        if value == 0.0 and p != 0:
+            raise GeneratorException(f"AMReX backend: the number {expr} underflows to zero as a double.")
+        return value
 
     def _visit_symbol(self, symbol_name: str) -> Expr:
         if self.is_field(symbol_name) and not self.visiting_stencil_fn_args:

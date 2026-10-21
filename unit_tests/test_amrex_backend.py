@@ -409,6 +409,20 @@ def test_guards_round1() -> None:
         text(cc)
     refuses(guard_across_split, "multiplies a guard")
 
+    # MHDuet's backend review A, finding 7 (mhduet/analysis/reviews/backend-A-work/guard_probe.py): a sum or a power
+    # of guards is zero when they all are false, so it must not multiply a non-constant factor; A + P is not a guard.
+    from EinsteinEngine.generators.amrex.guards import check_guards
+    a_, b_ = sy.symbols('a b')
+    g1 = Piecewise((f, f > 0), (0, True))
+    g2 = Piecewise((a_, a_ > 0), (0, True))
+    for label, e in (("(g1 + g2) * S", (g1 + g2) * S), ("2*(g1 + 3*g2) * S", 2 * (g1 + 3 * g2) * S)):
+        refuses(lambda: check_guards({sy.Symbol('o'): fold_guards(e)}, set(), label), "multiplies a guard")
+    assert fold_guards(g1 ** 2 * S) == Piecewise((S * f ** 2, f > 0), (0, True))  # sympy squares the branches: folded
+    gt = sy.Symbol('gt')
+    refuses(lambda: check_guards({gt: g1, sy.Symbol('o'): gt ** 2 * S}, {gt}, "gt**2 * S"), "multiplies a guard")
+    check_guards({sy.Symbol('o'): fold_guards((a_ + g1) * S)}, set(), "A + P")  # safe: A where P is false
+    check_guards({sy.Symbol('o'): fold_guards(g1 * S)}, set(), "P * S")  # folded
+
     cc = point_module()
     u = cc.decl("u", [])
     eps = cc.add_param("eps")
@@ -440,6 +454,121 @@ def test_golden_and_determinism() -> None:
                     assert a.read() == b.read(), f'{name} differs from golden/{name} under PYTHONHASHSEED={seed}'
 
 
+def test_round2() -> None:
+    """Implementation review round 2: guards recognized by their property; constructor names; one spacing owner;
+    array and local names; number limits; no false guard errors across functions; tensor output order."""
+    from EinsteinEngine.generators.amrex.guards import check_guards
+    f, a, S, n, c, DXI = sy.symbols('f a S n c DXI')
+    g1 = Piecewise((f, f > 0), (0, True))
+    g2 = Piecewise((a, a > 0), (0, True))
+    o, t = sy.Symbol('o'), sy.Symbol('t')
+    guards = {'Abs(g1)': sy.Abs(g1), 'Abs(g1 + g2)': sy.Abs(g1 + g2), 'sin(g1)': sy.sin(g1), 'tanh(g1)': sy.tanh(g1),
+              'Max(g1, g2)': sy.Max(g1, g2), 'PW(g1, g2)': Piecewise((g1, c > 0), (g2, True)), 'g1**n': g1 ** n,
+              'g1 + g2': g1 + g2}
+    for label, e in guards.items():
+        refuses(lambda: check_guards({o: e * S}, set(), label), "multiplies a guard")
+    refuses(lambda: check_guards({t: sy.Abs(g1), o: t * S}, {t}, "temp"), "multiplies a guard")
+    for label, e in {'a + g1': a + g1, 'g1 + 1': g1 + 1, 'exp(g1)': sy.exp(g1), 'cos(g1)': sy.cos(g1),
+                     'DXI*(a + g1)': DXI * (a + g1)}.items():
+        check_guards({o: e * S}, set(), label)
+    # A temporary that is a guard in one function and not in another; an output overwritten with a non-guard.
+    cc = kernel_module()
+    kappa = cc.add_param("kappa", init="1.5")
+    r = cc.output("u_rhs", [])
+    u = cc.decl("u", [], rhs=r)
+    rw = cc.output("w_rhs", [])
+    w = cc.decl("w", [], rhs=rw)
+    tt = cc.decl("tt", [])
+    f1 = cc.create_function("f1")
+    f1.add_eqn(r, Piecewise((kappa, kappa > 1), (0, True)) * D(u, l0, l0))
+    f1.add_eqn(tt, Piecewise((kappa, kappa > 2), (0, True)))  # a guard in f1 ...
+    f1.add_eqn(rw, tt + w)
+    f2 = cc.create_function("f2")
+    f2.add_eqn(cc.overwrite(r), r + u)  # u_rhs is no longer a guard
+    f3 = cc.create_function("f3")
+    f3.add_eqn(tt, D(u, l1))  # ... and an unrelated value in f3
+    f3.add_eqn(cc.overwrite(rw), r * tt + w)
+    cc.bake()
+    text(cc)
+    # The fold keeps a number times a sum a product.
+    b_ = sy.Symbol('b')
+    folded = fold_guards(Rational(1, 3) * g1 * (a + b_))
+    assert folded.args[0][0] != f * a / 3 + f * b_ / 3, folded
+    # Constructor arguments and prelude identifiers are not parameter names.
+    def ctor_arg_param() -> None:
+        cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                         binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
+                         coordinates=CellCentered(), mode=KernelLaunchMode(),
+                         params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx"), CtorArg("amrex::Real", "sigma")],
+                                             dx="a_dx"))
+        cc.add_param("sigma", init="sigma")
+    refuses(ctor_arg_param, "reserved")
+    def prelude_param() -> None:
+        cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                         binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
+                         coordinates=CellCentered(), mode=KernelLaunchMode(),
+                         params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")], dx="a_dx",
+                                             ctor_prelude=['amrex::Real eta{};', 'pp.get("gauge.eta", eta);']))
+        cc.add_param("eta", init="eta")
+    refuses(prelude_param, "constructor prelude")
+    # A name inside a prelude string literal is not an identifier.
+    cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                     binder=lambda base: None, rhs_binder=FieldBinder("state", lambda c: f"c_{c}"),
+                     coordinates=CellCentered(), mode=KernelLaunchMode(),
+                     params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")], dx="a_dx",
+                                         ctor_prelude=['amrex::Real a_sigma{};', 'pp.get("evolution.sigma", a_sigma);']))
+    cc.add_param("sigma", init="a_sigma")
+    # One owner of the spacing.
+    refuses(lambda: AMReXModule("P", arrays=[], binder=lambda b: None, coordinates=NodeCentered(dx='h'),
+                                mode=PointFunctionMode(), params=StructParams(cpp_type="const Par &")), "same spacing")
+    refuses(lambda: AMReXModule("K", arrays=[], binder=lambda b: None, coordinates=CellCentered(spacing='H'),
+                                mode=KernelLaunchMode(), params=MemberParams(ctor_args=[], dx="a")), "spacing member")
+    # Array names and generated locals.
+    refuses(lambda: AMReXModule("P", arrays=[ArrayParam("out", "amrex::Array4<amrex::Real const> const &", Array4Call())],
+                                binder=lambda b: None, coordinates=NodeCentered(), mode=PointFunctionMode(),
+                                params=StructParams(cpp_type="const Par &")), "reserved")
+    refuses(lambda: point_module().output("ee_a", []), "generated locals")
+    def binders_disagree() -> None:
+        cc = AMReXModule("K", arrays=[ArrayParam("state", "amrex::Array4<amrex::Real const> const &", StridedPointer())],
+                         binder=lambda base: FieldBinder("state", lambda c: f"v::{c}") if base == "u" else None,
+                         rhs_binder=FieldBinder("state", lambda c: f"c_{c}"), coordinates=CellCentered(),
+                         mode=KernelLaunchMode(), params=MemberParams(ctor_args=[CtorArg("amrex::Real", "a_dx")],
+                                                                     dx="a_dx"))
+        r = cc.output("u_rhs", [])
+        cc.decl("u", [], rhs=r)
+    refuses(binders_disagree, "bind it differently")
+    # Number limits.
+    v = AMReXVisitor()
+    from EinsteinEngine.emit.code.amrex.amrex_sympy_visitor import AMReXSympyVisitor
+    sv = AMReXSympyVisitor(is_field=lambda n: False)
+    x = sy.Symbol('x')
+    p = lambda e: v.visit(sv.visit(e))  # noqa: E731
+    big = sy.Integer(2 ** 70) * x
+    assert p(big) in (f'({float(2 ** 70)!r} * x)', f'(x * {float(2 ** 70)!r})'), p(big)
+    assert p(sy.Integer(3) * x) == '(3 * x)', p(sy.Integer(3) * x)
+    refuses(lambda: p(Rational(10 ** 400, 3)), "not a finite double")
+    refuses(lambda: p(Rational(1, 10 ** 400)), "underflows")
+    # cse_optimizations=None means the default list.
+    cc = point_module()
+    u = cc.decl("u", [])
+    o2 = cc.output("o", [])
+    fn = cc.create_function("f")
+    fn.add_eqn(o2, D(u, l0))
+    cc.bake(cse_optimizations=None)  # type: ignore[arg-type]
+    text(cc)
+    # Tensor outputs: the point signature lists components in the module's order, which the header states.
+    cc = point_module()
+    _, li = cc.mk_pair("i")
+    _, lj = cc.mk_pair("j")
+    u = cc.decl("u", [])
+    hr = cc.output("hr", [li, lj], symmetries=[(li, lj)])
+    fn = cc.create_function("f")
+    fn.add_eqn(hr[li, lj], D(u, li, lj))
+    cc.bake()
+    code = text(cc)
+    expect(code, '// Outputs, in order: hr11, hr12, hr22, hr13, hr23, hr33.')
+
+
 def main() -> None:
     test_kernel_mode()
     test_point_mode('refs')
@@ -451,6 +580,7 @@ def main() -> None:
     test_declarations()
     test_numbers()
     test_guards_round1()
+    test_round2()
     test_golden_and_determinism()
     print('test_amrex_backend: OK')
 
