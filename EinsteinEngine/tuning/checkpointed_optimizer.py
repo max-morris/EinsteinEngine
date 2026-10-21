@@ -19,15 +19,23 @@
 
 The checkpoint is a JSON-lines file with one {"target": float, "params": {...}} object per trial. TPE copes with
 non-smooth objectives, integer and combinatorial parameters, and noisy timings.
+
+Besides `maximize`, which runs one trial at a time, a study can be driven in batches: `ask(n)` proposes n trials as a
+`Batch`, which the caller runs however it likes (for example baked on one machine, built and timed on others), and
+`tell(batch, targets)` appends the results to the checkpoint. Each call rebuilds the study from the checkpoint, so the
+two may run in different processes; the batch, saved with `Batch.to_json`, carries what links them.
 """
 
+import hashlib
 import json
 import os
+import secrets
 import subprocess
 import time
 import urllib.request
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -62,6 +70,18 @@ def _distribution_of(spec: CoordSpec) -> optuna.distributions.BaseDistribution:
     return optuna.distributions.FloatDistribution(float(spec.lo), float(spec.hi))
 
 
+def _add_trials(study: optuna.Study,
+                entries: Sequence[tuple[float, dict[str, Coord], dict[str, CoordSpec]]]) -> int:
+    """Add checkpoint entries (as read_checkpoint returns them) to a study as completed trials."""
+    for target, coords, specs in entries:
+        study.add_trial(optuna.trial.create_trial(
+            params=coords,
+            distributions={name: _distribution_of(spec) for name, spec in specs.items()},
+            value=target,
+        ))
+    return len(entries)
+
+
 def read_checkpoint(
     experiment: Experiment, checkpoint_file: str
 ) -> list[tuple[float, dict[str, Coord], dict[str, CoordSpec]]]:
@@ -92,6 +112,56 @@ def read_checkpoint(
     return entries
 
 
+def _history_digest(checkpoint_file: str, n_entries: int) -> str:
+    """The SHA-256 of the first `n_entries` non-blank lines of a checkpoint, each stripped; raises if it has fewer."""
+    digest = hashlib.sha256()
+    found = 0
+    if n_entries > 0:
+        with open(checkpoint_file) as fh:
+            for line in fh:
+                if found == n_entries:
+                    break
+                if line := line.strip():
+                    digest.update(line.encode() + b'\n')
+                    found += 1
+    if found < n_entries:
+        raise RuntimeError(f"The checkpoint {checkpoint_file} has {found} entries, fewer than the {n_entries} a batch "
+                           f"was asked against.")
+    return digest.hexdigest()
+
+
+@dataclass(frozen=True)
+class Batch:
+    """
+    Trials proposed together by `CheckpointedOptimizer.ask`. `params` holds each trial's in-params as the checkpoint
+    stores them (raw coordinates); the recipe-facing args follow from them through the Experiment, as generate_best
+    gets them. `seed` and the first `n_history` checkpoint entries (whose digest is `history`) determine the batch:
+    asking again with them gives the same params.
+    """
+    seed: int
+    n_history: int
+    history: str
+    params: tuple[dict[str, Coord], ...]
+
+    @property
+    def id(self) -> str:
+        """Written with each of the batch's entries in the checkpoint, so a batch cannot be told twice."""
+        return f'{self.n_history}-{self.seed}-{self.history[:16]}'
+
+    def to_json(self) -> str:
+        return json.dumps({'seed': self.seed, 'n_history': self.n_history, 'history': self.history,
+                           'params': list(self.params)}, indent=1)
+
+    @staticmethod
+    def from_json(text: str) -> 'Batch':
+        obj = json.loads(text)
+        if not isinstance(obj, dict) or set(obj) != {'seed', 'n_history', 'history', 'params'} or \
+                not isinstance(obj['params'], list) or not all(isinstance(p, dict) for p in obj['params']):
+            raise ValueError('Expected a JSON object with the keys seed, n_history, history and params (a list of '
+                             'objects), as Batch.to_json writes it')
+        return Batch(int(obj['seed']), int(obj['n_history']), str(obj['history']), tuple(obj['params']))
+
+
 class CheckpointedOptimizer:
     """Optuna-backed optimizer that checkpoints every probe to a
     JSON-lines file and resumes from it on construction.
@@ -113,6 +183,7 @@ class CheckpointedOptimizer:
         self._telegram_verbosity = telegram_verbosity
         self._checkpoint_file = checkpoint_file
         self._experiment = experiment
+        self._n_startup_trials = n_startup_trials
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
@@ -138,16 +209,64 @@ class CheckpointedOptimizer:
             return None
 
     def _load_checkpoint(self) -> int:
-        count = 0
-        for target, coords, specs in read_checkpoint(self._experiment, self._checkpoint_file):
-            trial = optuna.trial.create_trial(
-                params=coords,
-                distributions={name: _distribution_of(spec) for name, spec in specs.items()},
-                value=target,
-            )
-            self._study.add_trial(trial)
-            count += 1
-        return count
+        return _add_trials(self._study, read_checkpoint(self._experiment, self._checkpoint_file))
+
+    def ask(self, n: int, *, seed: int | None = None) -> Batch:
+        """
+        Propose `n` trials at once, from a study rebuilt from the checkpoint as it is now. The sampler is TPE with
+        `constant_liar`, so each trial is proposed knowing the earlier ones of the batch are pending, and is seeded with
+        `seed` (a random one if None), which the batch records. Trials that violate a parameter constraint are
+        rejected and redrawn, as in `maximize`. Nothing is written; save the batch with `Batch.to_json`.
+        """
+        if n < 1:
+            raise ValueError(f"A batch needs at least one trial, got {n}")
+        seed = secrets.randbelow(2**31) if seed is None else seed
+        history = read_checkpoint(self._experiment, self._checkpoint_file)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
+            sampler = TPESampler(n_startup_trials=self._n_startup_trials, seed=seed, constant_liar=True)
+        study = optuna.create_study(direction='maximize', sampler=sampler)
+        _add_trials(study, history)
+        proposed: list[dict[str, Coord]] = []
+        for _ in range(_MAX_ATTEMPT_FACTOR * n):
+            if len(proposed) == n:
+                break
+            trial = study.ask()
+            try:
+                params, _ = self._experiment.suggest_params(trial)
+            except InfeasibleParamError:
+                study.tell(trial, state=TrialState.PRUNED)
+                continue
+            proposed.append(dict(params))  # left RUNNING: the constant liar counts it as pending
+        if len(proposed) < n:
+            raise RuntimeError(f"Proposed only {len(proposed)} of {n} trials in {_MAX_ATTEMPT_FACTOR * n} attempts; "
+                               f"parameter constraints may reject too much of the search space.")
+        return Batch(seed, len(history), _history_digest(self._checkpoint_file, len(history)), tuple(proposed))
+
+    def tell(self, batch: Batch, targets: Sequence[float]) -> None:
+        """
+        Append a batch's results to the checkpoint, in the batch's order: `targets[i]` is the value (maximized) of
+        `batch.params[i]`, and a non-finite target records a failed run. Refuses a batch asked against another
+        checkpoint (or one whose first `batch.n_history` entries have changed), a batch already told, and params that
+        do not fit the Experiment, before writing anything.
+        """
+        if len(targets) != len(batch.params):
+            raise ValueError(f"The batch has {len(batch.params)} trials but {len(targets)} targets were given")
+        if _history_digest(self._checkpoint_file, batch.n_history) != batch.history:
+            raise RuntimeError(f"Batch {batch.id} was not asked against the checkpoint {self._checkpoint_file}: its "
+                               f"first {batch.n_history} entries differ from the ones the batch was asked against.")
+        if os.path.exists(self._checkpoint_file):
+            with open(self._checkpoint_file) as fh:
+                if any(line.strip() and json.loads(line).get('batch') == batch.id for line in fh):
+                    raise RuntimeError(f"Batch {batch.id} has already been told to {self._checkpoint_file}.")
+        for i, params in enumerate(batch.params):
+            self._experiment.check_declared(params, f'Trial {i} of batch {batch.id}')
+        values = [float(t) if np.isfinite(t) else FAILED_VALUE for t in targets]
+        entries = [(value, *self._experiment.reconstruct_coords(params)) for value, params in zip(values, batch.params)]
+        with open(self._checkpoint_file, 'a') as fh:
+            for value, params in zip(values, batch.params):
+                fh.write(json.dumps({'target': value, 'params': params, 'batch': batch.id}) + '\n')
+        _add_trials(self._study, [(value, dict(coords), dict(specs)) for value, coords, specs in entries])
 
     def _objective(self, trial: optuna.Trial) -> float:
         try:
