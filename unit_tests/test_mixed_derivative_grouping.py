@@ -28,7 +28,7 @@ D(f, l1, l0) are the same expression. Run as a plain script.
 import math
 import random
 from fractions import Fraction
-from typing import Callable
+from typing import Any, Callable
 
 import mpmath  # type: ignore[import-untyped]
 import sympy as sy
@@ -43,24 +43,24 @@ f = mk_symbol("f")
 H = 1.0 / 64
 
 
-def evaluate(e: sy.Basic, value: Callable[[int, int], float], num: Callable[[object], object],
-             inv_h: object, axes: tuple[int, int] = (0, 1)) -> object:
+def evaluate(e: sy.Basic, value: Callable[[int, int], float], num: Callable[[Any], Any],
+             inv_h: Any, axes: tuple[int, int] = (0, 1)) -> Any:
     """Evaluates the stencil expression bottom up in the number type of num, in the expression's own order; value
     takes the offsets along the two axes of the derivative (0, 1, 2 for x, y, z)."""
     if isinstance(e, sy.Add):
-        acc = None
+        acc: Any = None
         for a in e.args:
             v = evaluate(a, value, num, inv_h, axes)
-            acc = v if acc is None else acc + v  # type: ignore[operator]
+            acc = v if acc is None else acc + v
         return acc
     if isinstance(e, sy.Mul):
         acc = None
         for a in e.args:
             v = evaluate(a, value, num, inv_h, axes)
-            acc = v if acc is None else acc * v  # type: ignore[operator]
+            acc = v if acc is None else acc * v
         return acc
     if isinstance(e, sy.Rational):
-        return num(e.p) / num(e.q)  # type: ignore[operator]
+        return num(e.p) / num(e.q)
     if e in (DXI, DYI, DZI):
         return inv_h
     if isinstance(e, sy.Function) and getattr(e.func, 'name', None) == 'noop':
@@ -76,17 +76,17 @@ def evaluate(e: sy.Basic, value: Callable[[int, int], float], num: Callable[[obj
 
 def weights(e: sy.Basic, axes: tuple[int, int] = (0, 1)) -> dict[tuple[int, int], Fraction]:
     """The exact weight of each point (the expression evaluated in rational arithmetic on unit impulses)."""
-    out = {}
+    out: dict[tuple[int, int], Fraction] = {}
     for p in [(a, b) for a in range(-4, 5) for b in range(-4, 5)]:
         v = evaluate(e, lambda a, b: 1.0 if (a, b) == p else 0.0, Fraction, Fraction(1), axes)
         if v != 0:
-            out[p] = v  # type: ignore[assignment]
+            out[p] = v
     return out
 
 
 def first_derivative_weights(width: int) -> list[Fraction]:
     col = ApplyDivN(width, {}, {}, {}, 3).fd_matrix.col(1)
-    return [Fraction(int(sy.fraction(c)[0]), int(sy.fraction(c)[1])) for c in col]
+    return [Fraction(int(sy.Rational(c).p), int(sy.Rational(c).q)) for c in col]
 
 
 def errors(e: sy.Basic, width: int, samples: int = 400, seed: int = 7) -> tuple[float, float]:
@@ -110,9 +110,9 @@ def errors(e: sy.Basic, width: int, samples: int = 400, seed: int = 7) -> tuple[
         inner = {a: sum(c[half + b] * (vals[(a, b)] - vals[(a, -b)]) for b in range(1, half + 1))
                  for a in range(-half, half + 1)}
         ref = sum(c[half + a] * (inner[a] - inner[-a]) for a in range(1, half + 1)) * (1.0 / H) * (1.0 / H)
-        sq_e += float(got - exact) ** 2  # type: ignore[operator]
-        sq_r += float(ref - exact) ** 2  # type: ignore[operator]
-        sq_x += float(exact) ** 2  # type: ignore[arg-type]
+        sq_e += float(got - exact) ** 2
+        sq_r += float(ref - exact) ** 2
+        sq_x += float(exact) ** 2
     return math.sqrt(sq_e / sq_x), math.sqrt(sq_r / sq_x)
 
 
