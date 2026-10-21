@@ -80,15 +80,15 @@ class KernelToy
         const amrex::Real x = (i + 0.5) * DX;
         const amrex::Real y = (j + 0.5) * DX;
         const amrex::Real z = (k + 0.5) * DX;
-        const amrex::Real x4 = (DYI * DZI);
-        amrex::Real x0 = in_u[0];
-        amrex::Real x1 = ((-16 * ((in_u[1] + in_u[- 1]))) + (30 * x0) + ((in_u[- 2] + in_u[2])));
-        x0 = (DXI * DXI);
-        const amrex::Real x3 = (12 * x0);
-        const amrex::Real t = ((1.0 / 144.0) * kappa * ((x4 * ((-(((in_u[- 2 * sy + 2 * sz] + in_u[2 * sy - 2 * sz])))) + (-64 * ((in_u[sy - sz] + in_u[- sy + sz]))) + (-8 * ((in_u[sy + 2 * sz] + in_u[2 * sy + sz]))) + (-8 * ((in_u[- sy - 2 * sz] + in_u[- 2 * sy - sz]))) + (8 * ((in_u[sy - 2 * sz] + in_u[2 * sy - sz]))) + (8 * ((in_u[- sy + 2 * sz] + in_u[- 2 * sy + sz]))) + (64 * ((in_u[sy + sz] + in_u[- sy - sz]))) + ((in_u[- 2 * sy - 2 * sz] + in_u[2 * sy + 2 * sz])))) + (-1 * x1 * x3) + (12 * DZI * ((8 * (((-(in_w[- sz])) + in_w[sz]))) + (((-(in_w[2 * sz])) + in_w[- 2 * sz]))))));
+        const amrex::Real x3 = (DYI * DZI);
+        const amrex::Real x1 = in_u[0];
+        amrex::Real x0 = (DXI * DXI);
+        amrex::Real x2 = (x0 * ((-16 * ((in_u[1] + in_u[- 1]))) + (30 * x1) + ((in_u[- 2] + in_u[2]))));
+        x0 = ((1.0 / 12.0) * kappa);
+        const amrex::Real t = (x0 * ((-(x2)) + (DZI * ((8 * (((-(in_w[- sz])) + in_w[sz]))) + (((-(in_w[2 * sz])) + in_w[- 2 * sz])))) + (x3 * ((8 * (((-((((1.0 / 12.0) * ((8 * (((-(in_u[- sy - sz])) + in_u[- sy + sz]))) + (((-(in_u[- sy + 2 * sz])) + in_u[- sy - 2 * sz]))))))) + (((1.0 / 12.0) * ((8 * (((-(in_u[sy - sz])) + in_u[sy + sz]))) + (((-(in_u[sy + 2 * sz])) + in_u[sy - 2 * sz])))))))) + (((-((((1.0 / 12.0) * ((8 * (((-(in_u[2 * sy - sz])) + in_u[2 * sy + sz]))) + (((-(in_u[2 * sy + 2 * sz])) + in_u[2 * sy - 2 * sz]))))))) + (((1.0 / 12.0) * ((8 * (((-(in_u[- 2 * sy - sz])) + in_u[- 2 * sy + sz]))) + (((-(in_u[- 2 * sy + 2 * sz])) + in_u[- 2 * sy - 2 * sz])))))))))));
         tile_ptr[0 * tn] = t;
-        x1 = in_w[0];
-        const amrex::Real u_rhs = ((-(z)) + ((1.0 / 12.0) * amrex::Math::abs((DYI * ((8 * ((-(((-(in_u[sy])) + in_u[- sy]))))) + (((-(in_u[2 * sy])) + in_u[- 2 * sy])))))) + (t * x1) + (x * y));
+        x2 = in_w[0];
+        const amrex::Real u_rhs = ((-(z)) + ((1.0 / 12.0) * amrex::Math::abs((DYI * ((8 * ((-(((-(in_u[sy])) + in_u[- sy]))))) + (((-(in_u[2 * sy])) + in_u[- 2 * sy])))))) + (t * x2) + (x * y));
         rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] = u_rhs;
         tile_ptr[1 * tn] = u_rhs;
     }
@@ -119,8 +119,8 @@ class KernelToy
         const amrex::Real u_rhs = tile_ptr[1 * tn];
         const amrex::Real x5 = in_w[0];
         const amrex::Real x7 = u_rhs;
-        const amrex::Real x0 = in_u[0];
-        const amrex::Real x6 = (x0 * x0);
+        const amrex::Real x1 = in_u[0];
+        const amrex::Real x6 = (x1 * x1);
         rhs_ptr[static_cast<std::ptrdiff_t>(c_w) * rn] = ((t * t) + (1.0 / (x6)) + sqrt((1 + x6)) + ((-1.0 / 3.0) * x5) + ((1.0 / 4.0) * x7));
     }
     
@@ -142,11 +142,12 @@ class KernelToy
         const amrex::Real *const in_u = state_ptr + static_cast<std::ptrdiff_t>(c_u) * sn;
         const amrex::Real *const in_w = state_ptr + static_cast<std::ptrdiff_t>(c_w) * sn;
         const amrex::Real u_rhs = rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn];
-        const amrex::Real x2 = (DXI * DXI);
-        amrex::Real x0 = in_u[0];
-        const amrex::Real x1 = ((-16 * ((in_u[1] + in_u[- 1]))) + (30 * x0) + ((in_u[- 2] + in_u[2])));
+        const amrex::Real x4 = ((1.0 / 12.0) * kappa);
+        amrex::Real x0 = (DXI * DXI);
+        const amrex::Real x1 = in_u[0];
+        const amrex::Real x2 = (x0 * ((-16 * ((in_u[1] + in_u[- 1]))) + (30 * x1) + ((in_u[- 2] + in_u[2]))));
         x0 = u_rhs;
-        rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] = (x0 + ((1.0 / 12.0) * DXI * ((8 * (((-(in_w[- 1])) + in_w[1]))) + (((-(in_w[2])) + in_w[- 2])))) + ((kappa > 1) ? amrex::Real(((-1.0 / 12.0) * kappa * x1 * x2)) : amrex::Real(0)));
+        rhs_ptr[static_cast<std::ptrdiff_t>(c_u) * rn] = (x0 + ((1.0 / 12.0) * DXI * ((8 * (((-(in_w[- 1])) + in_w[1]))) + (((-(in_w[2])) + in_w[- 2])))) + ((kappa > 1) ? amrex::Real((-1 * x2 * x4)) : amrex::Real(0)));
     }
     
     // third loop 0
@@ -166,12 +167,11 @@ class KernelToy
         (void)rn;
         const amrex::Real *const in_p = state_ptr + static_cast<std::ptrdiff_t>(c_p) * sn;
         const amrex::Real *const in_q = state_ptr + static_cast<std::ptrdiff_t>(c_q) * sn;
-        const amrex::Real x4 = (DYI * DZI);
-        amrex::Real x2 = (DXI * DXI);
-        const amrex::Real x3 = (12 * x2);
-        x2 = ((kappa > 1) ? amrex::Real(((-1.0 / 144.0) * (-1 + kappa) * ((x3 * ((-16 * ((in_q[1] + in_q[- 1]))) + (30 * in_q[0]) + ((in_q[- 2] + in_q[2])))) + (-1 * x4 * ((-(((in_q[- 2 * sy + 2 * sz] + in_q[2 * sy - 2 * sz])))) + (-64 * ((in_q[sy - sz] + in_q[- sy + sz]))) + (-8 * ((in_q[sy + 2 * sz] + in_q[2 * sy + sz]))) + (-8 * ((in_q[- sy - 2 * sz] + in_q[- 2 * sy - sz]))) + (8 * ((in_q[sy - 2 * sz] + in_q[2 * sy - sz]))) + (8 * ((in_q[- sy + 2 * sz] + in_q[- 2 * sy + sz]))) + (64 * ((in_q[sy + sz] + in_q[- sy - sz]))) + ((in_q[- 2 * sy - 2 * sz] + in_q[2 * sy + 2 * sz]))))))) : amrex::Real(0));
-        rhs_ptr[static_cast<std::ptrdiff_t>(c_q) * rn] = x2;
-        rhs_ptr[static_cast<std::ptrdiff_t>(c_p) * rn] = ((2 * x2) + ((1.0 / 12.0) * DYI * in_p[0] * ((8 * (((-(in_p[- sy])) + in_p[sy]))) + (((-(in_p[2 * sy])) + in_p[- 2 * sy])))));
+        const amrex::Real x3 = (DYI * DZI);
+        const amrex::Real x0 = (DXI * DXI);
+        const amrex::Real q_rhs = ((kappa > 1) ? amrex::Real(((-1.0 / 12.0) * (-1 + kappa) * ((x0 * ((-16 * ((in_q[1] + in_q[- 1]))) + (30 * in_q[0]) + ((in_q[- 2] + in_q[2])))) + (-1 * x3 * ((8 * (((-((((1.0 / 12.0) * ((8 * (((-(in_q[- sy - sz])) + in_q[- sy + sz]))) + (((-(in_q[- sy + 2 * sz])) + in_q[- sy - 2 * sz]))))))) + (((1.0 / 12.0) * ((8 * (((-(in_q[sy - sz])) + in_q[sy + sz]))) + (((-(in_q[sy + 2 * sz])) + in_q[sy - 2 * sz])))))))) + (((-((((1.0 / 12.0) * ((8 * (((-(in_q[2 * sy - sz])) + in_q[2 * sy + sz]))) + (((-(in_q[2 * sy + 2 * sz])) + in_q[2 * sy - 2 * sz]))))))) + (((1.0 / 12.0) * ((8 * (((-(in_q[- 2 * sy - sz])) + in_q[- 2 * sy + sz]))) + (((-(in_q[- 2 * sy + 2 * sz])) + in_q[- 2 * sy - 2 * sz])))))))))))) : amrex::Real(0));
+        rhs_ptr[static_cast<std::ptrdiff_t>(c_q) * rn] = q_rhs;
+        rhs_ptr[static_cast<std::ptrdiff_t>(c_p) * rn] = ((2 * q_rhs) + ((1.0 / 12.0) * DYI * in_p[0] * ((8 * (((-(in_p[- sy])) + in_p[sy]))) + (((-(in_p[2 * sy])) + in_p[- 2 * sy])))));
     }
 };
 
