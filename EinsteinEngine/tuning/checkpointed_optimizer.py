@@ -19,15 +19,27 @@
 
 The checkpoint is a JSON-lines file with one {"target": float, "params": {...}} object per trial. TPE copes with
 non-smooth objectives, integer and combinatorial parameters, and noisy timings.
+
+Besides `maximize`, which runs one trial at a time, a study can be driven in batches: `ask(n)` proposes n trials as a
+`Batch`, which the caller runs however it likes (for example baked on one machine, built and timed on others), and
+`tell(batch, targets)` appends the results to the checkpoint. Each call rebuilds the study from the checkpoint, so the
+two may run in different processes; the batch, saved with `Batch.to_json`, carries what links them. Told entries also
+record the batch id and trial index; `record_external` records externally chosen trials (with their source). The
+readers, `read_checkpoint`, `generate_best` and `plot_tuning`, ignore these extra keys.
 """
 
+import contextlib
+import fcntl
+import hashlib
 import json
 import os
+import secrets
 import subprocess
 import time
 import urllib.request
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -36,7 +48,7 @@ from optuna.samplers import TPESampler
 from optuna.study import MaxTrialsCallback
 from optuna.trial import TrialState
 
-from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, InfeasibleParamError
+from EinsteinEngine.tuning.experiment import Coord, CoordSpec, Experiment, FixedTrial, InfeasibleParamError
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -60,6 +72,18 @@ def _distribution_of(spec: CoordSpec) -> optuna.distributions.BaseDistribution:
     if spec.kind is int:
         return optuna.distributions.IntDistribution(int(spec.lo), int(spec.hi))
     return optuna.distributions.FloatDistribution(float(spec.lo), float(spec.hi))
+
+
+def _add_trials(study: optuna.Study,
+                entries: Sequence[tuple[float, dict[str, Coord], dict[str, CoordSpec]]]) -> int:
+    """Add checkpoint entries (as read_checkpoint returns them) to a study as completed trials."""
+    for target, coords, specs in entries:
+        study.add_trial(optuna.trial.create_trial(
+            params=coords,
+            distributions={name: _distribution_of(spec) for name, spec in specs.items()},
+            value=target,
+        ))
+    return len(entries)
 
 
 def read_checkpoint(
@@ -92,6 +116,143 @@ def read_checkpoint(
     return entries
 
 
+def _history_digest(checkpoint_file: str, n_entries: int) -> str:
+    """The SHA-256 of the first `n_entries` non-blank lines of a checkpoint, each stripped; raises if it has fewer."""
+    digest = hashlib.sha256()
+    found = 0
+    if n_entries > 0:
+        with open(checkpoint_file) as fh:
+            for line in fh:
+                if found == n_entries:
+                    break
+                if line := line.strip():
+                    digest.update(line.encode() + b'\n')
+                    found += 1
+    if found < n_entries:
+        raise RuntimeError(f"The checkpoint {checkpoint_file} has {found} entries, fewer than the {n_entries} a batch "
+                           f"was asked against.")
+    return digest.hexdigest()
+
+
+def study_digest(experiment: Experiment, checkpoint_file: str) -> str:
+    """
+    What identifies a study apart from its entries: its probe sidecar's identity (`ProbeRecord.identity`: study id,
+    probe counts, probe params, derived orders, search space, recipe arguments) and the Experiment's in-param names.
+    The sidecar must exist and have a study id (`build_experiment(..., record_probe=True)` writes one), and the
+    Experiment's search space, if `build_experiment` attached one, must be the recorded one. To start a study from
+    another's sidecar, use `tuning.fork_probe_file`.
+    """
+    from EinsteinEngine.tuning.tuning import ProbeRecord, probe_sidecar_path  # imported here: tuning imports the engine
+    sidecar = probe_sidecar_path(checkpoint_file)
+    if not os.path.exists(sidecar):
+        raise RuntimeError(f"Batches need the study's probe file {sidecar}; build the Experiment with "
+                           f"build_experiment(..., record_probe=True) first.")
+    with open(sidecar) as fh:
+        record = ProbeRecord.from_json(fh.read())
+    if record.study is None:
+        raise RuntimeError(f"The probe file {sidecar} has no study id (it predates them); build the Experiment with "
+                           f"build_experiment(..., record_probe=True) once to add one.")
+    if experiment.described_space is not None and record.space is not None and \
+            dict(experiment.described_space) != dict(record.space):
+        raise RuntimeError(f"The tuner's search space differs from the one recorded in {sidecar}: a batch's indices "
+                           f"would be misread. Restore the tuner, or start a new study.")
+    blob = json.dumps({'record': record.identity(), 'in_params': sorted(experiment.in_params)}, sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def _is_int(x: object) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _is_coord(x: object) -> bool:
+    return _is_int(x) or isinstance(x, float)
+
+
+@dataclass(frozen=True)
+class Batch:
+    """
+    Trials proposed together by `CheckpointedOptimizer.ask`. `params` holds each trial's in-params as the checkpoint
+    stores them (raw coordinates); `Experiment.recipe_facing_args` gives a trial's recipe-facing args.
+
+    `study` identifies the study it was asked for (see study_digest: the probe file's identity and the in-param
+    names), and `n_history` and `history` the checkpoint entries it was asked against (their number and SHA-256).
+    Asking again with the same `seed`, from a checkpoint holding exactly those entries and with the same `pending`
+    batches, gives the same params (with the same `n_startup_trials` and optuna version, also recorded).
+    """
+    seed: int
+    n_history: int
+    history: str
+    study: str
+    n_startup_trials: int
+    optuna_version: str
+    pending: tuple[str, ...]
+    params: tuple[dict[str, Coord], ...]
+    #  Draws discarded while asking (infeasible, or repeating a trial); they acted as extra liars.
+    rejected: int = 0
+
+    @property
+    def id(self) -> str:
+        """Unique to these trials. Written with each told entry, so a trial cannot be told twice."""
+        blob = json.dumps([self.seed, self.n_history, self.history, self.study, self.n_startup_trials,
+                           self.optuna_version, list(self.pending), list(self.params), self.rejected], sort_keys=True)
+        return f'{self.n_history}-{self.seed}-{hashlib.sha256(blob.encode()).hexdigest()[:16]}'
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+    def to_json(self) -> str:
+        return json.dumps({'id': self.id, 'seed': self.seed, 'n_history': self.n_history, 'history': self.history,
+                           'study': self.study, 'n_startup_trials': self.n_startup_trials,
+                           'optuna_version': self.optuna_version, 'pending': list(self.pending),
+                           'rejected': self.rejected, 'params': list(self.params)}, indent=1) + '\n'
+
+    @staticmethod
+    def from_json(text: str) -> 'Batch':
+        obj = json.loads(text)
+        keys = {'id', 'seed', 'n_history', 'history', 'study', 'n_startup_trials', 'optuna_version', 'pending',
+                'rejected', 'params'}
+        if not isinstance(obj, dict) or set(obj) != keys:
+            raise ValueError(f'Expected a JSON object with the keys {sorted(keys)}, as Batch.to_json writes it')
+        ok = (_is_int(obj['seed']) and _is_int(obj['n_history']) and obj['n_history'] >= 0
+              and _is_int(obj['n_startup_trials']) and _is_int(obj['rejected']) and all(isinstance(obj[k], str) for k in
+                                                            ('id', 'history', 'study', 'optuna_version'))
+              and isinstance(obj['pending'], list) and all(isinstance(x, str) for x in obj['pending'])
+              and isinstance(obj['params'], list) and obj['params']
+              and all(isinstance(p, dict) and all(isinstance(k, str) and _is_coord(x) for k, x in p.items())
+                      for p in obj['params']))
+        if not ok:
+            raise ValueError('A batch file has a field of the wrong type (see Batch.to_json)')
+        batch = Batch(obj['seed'], obj['n_history'], obj['history'], obj['study'], obj['n_startup_trials'],
+                      obj['optuna_version'], tuple(obj['pending']), tuple(obj['params']), obj['rejected'])
+        if batch.id != obj['id']:
+            raise ValueError(f"The batch file's id {obj['id']} does not match its contents ({batch.id}); was it "
+                             f"edited?")
+        return batch
+
+
+def _append(checkpoint_file: str, lines: Sequence[str]) -> None:
+    """Append JSON lines to a checkpoint in one write (looping on a short one), then fsync."""
+    fd = os.open(checkpoint_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        data = ('\n'.join(lines) + '\n').encode()
+        while data:
+            data = data[os.write(fd, data):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def checkpoint_lock(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
+    """Hold a lock on `<checkpoint>.lock`: exclusive for tell's check-then-append, shared for ask's reads."""
+    with open(f'{checkpoint_file}.lock', 'a') as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 class CheckpointedOptimizer:
     """Optuna-backed optimizer that checkpoints every probe to a
     JSON-lines file and resumes from it on construction.
@@ -113,11 +274,14 @@ class CheckpointedOptimizer:
         self._telegram_verbosity = telegram_verbosity
         self._checkpoint_file = checkpoint_file
         self._experiment = experiment
+        self._n_startup_trials = n_startup_trials
+        self._random_state = random_state
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
+            #  External entries (record_external) do not count toward the random startup trials, as in ask.
             sampler = TPESampler(
-                n_startup_trials=n_startup_trials,
+                n_startup_trials=n_startup_trials + self._count_external(),
                 seed=random_state,
             )
         self._study = optuna.create_study(direction='maximize', sampler=sampler)
@@ -138,16 +302,176 @@ class CheckpointedOptimizer:
             return None
 
     def _load_checkpoint(self) -> int:
-        count = 0
-        for target, coords, specs in read_checkpoint(self._experiment, self._checkpoint_file):
-            trial = optuna.trial.create_trial(
-                params=coords,
-                distributions={name: _distribution_of(spec) for name, spec in specs.items()},
-                value=target,
-            )
-            self._study.add_trial(trial)
-            count += 1
-        return count
+        return _add_trials(self._study, read_checkpoint(self._experiment, self._checkpoint_file))
+
+    @classmethod
+    def for_batches(cls, experiment: Experiment, checkpoint_file: str, n_startup_trials: int = 10,
+                    random_state: int | None = None) -> 'CheckpointedOptimizer':
+        """An optimizer for `ask` and `tell` only (no objective to `maximize`)."""
+        return cls(None, experiment, checkpoint_file, random_state=random_state, n_startup_trials=n_startup_trials)
+
+    def _told(self) -> set[tuple[str, int]]:
+        """The (batch id, trial index) pairs already told to the checkpoint."""
+        told: set[tuple[str, int]] = set()
+        if os.path.exists(self._checkpoint_file):
+            with open(self._checkpoint_file) as fh:
+                for line in fh:
+                    if line.strip() and 'batch' in (entry := json.loads(line)):
+                        told.add((entry['batch'], entry.get('trial', -1)))
+        return told
+
+    def _count_external(self) -> int:
+        """The number of external entries (record_external) in the checkpoint."""
+        if not os.path.exists(self._checkpoint_file):
+            return 0
+        with open(self._checkpoint_file) as fh:
+            return sum(1 for line in fh if line.strip() and 'external' in json.loads(line))
+
+    def ask(self, n: int, *, seed: int | None = None, pending: Sequence[Batch] = ()) -> Batch:
+        """
+        Propose `n` trials at once, from a study rebuilt from the checkpoint as it is now.
+
+        - The sampler is TPE with `constant_liar`: each trial is proposed knowing that the earlier ones of the batch,
+          and the not yet told trials of the `pending` batches (asked earlier for this study), are running. Pass the
+          batches still out, or a second batch can repeat their configurations.
+        - It is seeded with `seed` (by default the optimizer's `random_state`, or a random seed), which the batch
+          records. Below `n_startup_trials` told entries (external ones not counted), TPE samples at random.
+        - A draw that violates a parameter constraint, or repeats a trial of the checkpoint, of a pending batch or of
+          this batch, is redrawn. It stays running in the rebuilt study (which is discarded), so the liar steers the
+          later draws away from it; it is not recorded anywhere.
+
+        Nothing is written; save the batch with `Batch.to_json`. Targets are maximized, so tell `-time`.
+        """
+        if n < 1:
+            raise ValueError(f"A batch needs at least one trial, got {n}")
+        if seed is None:
+            seed = self._random_state if self._random_state is not None else secrets.randbelow(2**31)
+        study_id = study_digest(self._experiment, self._checkpoint_file)
+        with checkpoint_lock(self._checkpoint_file, exclusive=False):
+            history = read_checkpoint(self._experiment, self._checkpoint_file)
+            digest = _history_digest(self._checkpoint_file, len(history))
+            told = self._told()
+            n_external = self._count_external()
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', optuna.exceptions.ExperimentalWarning)
+            #  External entries do not count toward the random startup trials.
+            sampler = TPESampler(n_startup_trials=self._n_startup_trials + n_external, seed=seed, constant_liar=True)
+        study = optuna.create_study(direction='maximize', sampler=sampler)
+        _add_trials(study, history)
+        seen = [coords for _, coords, _ in history]
+        for other in pending:
+            if other.study != study_id:
+                raise RuntimeError(f"Pending batch {other.id} belongs to another study than {self._checkpoint_file}.")
+            for i, params in enumerate(other.params):
+                if (other.id, i) in told:
+                    continue  # told, so already in the history
+                self._experiment.check_declared(params, f'Trial {i} of pending batch {other.id}')
+                coords, _ = self._experiment.reconstruct_coords(params)
+                study.enqueue_trial(dict(coords), skip_if_exists=False)
+                self._experiment.suggest_params(study.ask())  # left RUNNING with those params
+                seen.append(dict(coords))
+        proposed: list[dict[str, Coord]] = []
+        rejected = 0
+        for _ in range(_MAX_ATTEMPT_FACTOR * n):
+            if len(proposed) == n:
+                break
+            trial = study.ask()
+            try:
+                params, _ = self._experiment.suggest_params(trial)
+            except InfeasibleParamError:
+                rejected += 1
+                continue  # left RUNNING (with the params it drew), so the liar steers the next draws away from it
+            if dict(params) in seen or dict(params) in proposed:
+                rejected += 1
+                continue  # likewise
+            proposed.append(dict(params))  # left RUNNING: the constant liar counts it as pending
+        if len(proposed) < n:
+            raise RuntimeError(f"Proposed only {len(proposed)} of {n} new trials in {_MAX_ATTEMPT_FACTOR * n} "
+                               f"attempts; parameter constraints may reject too much of the search space, or too "
+                               f"little of it is left.")
+        if rejected > n:
+            warnings.warn(f"ask rejected {rejected} draws for a batch of {n} (infeasible, or repeating a trial); each "
+                          f"acted as an extra liar, which can push the batch away from the best trials so far.")
+        return Batch(seed, len(history), digest, study_id, self._n_startup_trials, optuna.__version__,
+                     tuple(b.id for b in pending), tuple(proposed), rejected)
+
+    def tell(self, batch: Batch, targets: Sequence[float | None]) -> None:
+        """
+        Append a batch's results to the checkpoint: `targets[i]` is the value (maximized, so `-time`) of
+        `batch.params[i]`. A non-finite target records a failed run (a bad configuration). None records nothing, for a
+        trial that did not run (a lost node, say): tell it later, in another call with the batch. Each entry also
+        records the batch id and trial index.
+
+        Refuses, before writing anything: a batch asked for another study (another checkpoint, probe sidecar or
+        Experiment) or against other first `batch.n_history` entries; a trial already told; and params that do not fit
+        the Experiment. The checks and the append hold a lock on `<checkpoint>.lock`, and the entries are appended in
+        one write.
+        """
+        if len(targets) != len(batch.params):
+            raise ValueError(f"The batch has {len(batch.params)} trials but {len(targets)} targets were given")
+        if batch.study != study_digest(self._experiment, self._checkpoint_file):
+            raise RuntimeError(f"Batch {batch.id} was asked for another study than {self._checkpoint_file} (another "
+                               f"study id, probe, search space, recipe arguments or set of in-params).")
+        todo = [i for i, t in enumerate(targets) if t is not None]
+        for i in todo:
+            self._experiment.check_declared(batch.params[i], f'Trial {i} of batch {batch.id}')
+        with checkpoint_lock(self._checkpoint_file):
+            if _history_digest(self._checkpoint_file, batch.n_history) != batch.history:
+                raise RuntimeError(f"Batch {batch.id} was not asked against this checkpoint: the first "
+                                   f"{batch.n_history} entries of {self._checkpoint_file} differ from the ones it "
+                                   f"was asked against.")
+            told = self._told()
+            if again := sorted(i for i in todo if (batch.id, i) in told):
+                raise RuntimeError(f"Trials {again} of batch {batch.id} have already been told to "
+                                   f"{self._checkpoint_file}.")
+            entries = []
+            lines = []
+            for i in todo:
+                t = targets[i]
+                assert t is not None
+                value = float(t) if np.isfinite(t) else FAILED_VALUE
+                entries.append((value, *self._experiment.reconstruct_coords(batch.params[i])))
+                lines.append(json.dumps({'target': value, 'params': batch.params[i], 'batch': batch.id, 'trial': i}))
+            if lines:
+                _append(self._checkpoint_file, lines)
+        _add_trials(self._study, [(value, dict(coords), dict(specs)) for value, coords, specs in entries])
+
+    def record_external(self, params: Mapping[str, Coord], value: float, *, source: str) -> None:
+        """
+        Record an externally chosen trial, for example a hand-picked configuration, so that TPE starts from it.
+        `params` are in-params as the checkpoint stores them (raw coordinates), and `value` is its target (maximized,
+        so `-time`; non-finite records a failed run). Its value must have been measured as the study's trials are
+        (same host, build and timing protocol), or TPE compares incomparable numbers.
+
+        It is checked against the study's Experiment like any trial (names, domains, conditions and constraints,
+        which the probe shaped), then appended under the lock as `{"target", "params", "external": source}`, with
+        the realized coordinates, and replayed on resume like any entry. External entries do not count toward
+        `ask`'s random startup trials. As good trials often are, they can fill TPE's "good" set and concentrate the
+        search around them. Refuses an empty `source`, and the same params from the same source twice.
+        """
+        if not source:
+            raise ValueError("An external trial needs a source (where it comes from, e.g. 'round 0: v8')")
+        given = dict(params)
+        what = f"The external trial from {source!r}"
+        try:
+            self._experiment.check_declared(given, what)
+            realized, _ = self._experiment.suggest_params(FixedTrial(given))
+        except InfeasibleParamError as e:
+            raise ValueError(f"{what} violates a constraint: {e}") from e
+        if extra := sorted(set(given) - set(realized)):
+            raise ValueError(f"{what} has params whose conditions do not hold for its other values: {extra}")
+        stored = dict(realized)  # canonical: ints as ints
+        coords, specs = self._experiment.reconstruct_coords(stored)
+        target = float(value) if np.isfinite(value) else FAILED_VALUE
+        with checkpoint_lock(self._checkpoint_file):
+            if os.path.exists(self._checkpoint_file):
+                with open(self._checkpoint_file) as fh:
+                    for line in fh:
+                        if line.strip() and (entry := json.loads(line)).get('external') == source \
+                                and entry['params'] == stored:
+                            raise RuntimeError(f"{what} is already in {self._checkpoint_file}.")
+            _append(self._checkpoint_file, [json.dumps({'target': target, 'params': stored, 'external': source})])
+        _add_trials(self._study, [(target, dict(coords), dict(specs))])
 
     def _objective(self, trial: optuna.Trial) -> float:
         try:
@@ -318,6 +642,8 @@ class CheckpointedOptimizer:
         cap on total attempts.
         """
 
+        if self._f is None:
+            raise ValueError('maximize needs an objective; this optimizer was made for ask and tell only')
         n = self._n_checkpoint_loaded
         total = warmup_iterations + iterations
         n_remaining = max(0, total - n)

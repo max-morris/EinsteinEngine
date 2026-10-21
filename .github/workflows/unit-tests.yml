@@ -45,5 +45,7 @@ jobs:
           python unit_tests/test_cse_optimizations.py
           python unit_tests/test_collect.py
           python unit_tests/test_tune_cse.py
+          python unit_tests/test_tune_composite.py
+          python unit_tests/test_checkpoint_batches.py
           python unit_tests/test_cse_booleans.py
           python unit_tests/test_float_literal_printing.py

@@ -28,7 +28,7 @@ module import time.
 import functools
 import runpy
 import sys
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -75,6 +75,8 @@ class _ProbeState:
     ranking_fn: Any = None
     origins: dict[str, list[dict[Symbol, int]]] = field(default_factory=dict)
     derived: dict[str, tuple[int, ...]] = field(default_factory=dict)
+    # The recipe's own arguments (its sys.argv[1:]).
+    argv: tuple[str, ...] = ()
 
     def name_of(self, predicate: object) -> str | None:
         for name, placeholder in self.placeholders.items():
@@ -199,11 +201,11 @@ EMPTY_PROBE = ProbeResult()
 
 
 def probe_recipe(recipe_path: str, predicate_names: Collection[str],
-                 extra_params: Mapping[str, Any] | None = None) -> ProbeResult:
+                 extra_params: Mapping[str, Any] | None = None, *, argv: Sequence[str] = ()) -> ProbeResult:
     """
     Run `recipe_path` and count the split positions seen by each out-param in `predicate_names`. `extra_params`
     supplies fixed recipe-facing params that change the count (e.g. the locus or an ordering function). The recipe
-    runs as remote_feedback runs it (as `__main__`, with `sys.argv` reset).
+    runs as remote_feedback runs it (as `__main__`, with `sys.argv` reset to the recipe and `argv`, its own arguments).
 
     Raises RuntimeError if the recipe fails, never reads a provided name, never evaluates a placeholder, or evaluates
     one placeholder with different counts in different functions.
@@ -216,7 +218,7 @@ def probe_recipe(recipe_path: str, predicate_names: Collection[str],
         raise ValueError(f'Out-params {overlap} are both probed and passed as extra_params.')
 
     placeholders = {name: _PlaceholderPredicate(name) for name in names}
-    state = _ProbeState(recipe_path, placeholders, {**extra, **placeholders})
+    state = _ProbeState(recipe_path, placeholders, {**extra, **placeholders}, argv=tuple(argv))
     _run(state, f'while being probed for {names}')
     _check_read(state)
 
@@ -263,24 +265,27 @@ def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulatio
 
 
 def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
-                         extra_params: Mapping[str, Any] | None = None) -> tuple[str, tuple[int, ...]]:
+                         extra_params: Mapping[str, Any] | None = None, *,
+                         prefix: str = '', argv: Sequence[str] = ()) -> tuple[str, tuple[int, ...]]:
     """
     Run `recipe_path` without auto splits or an early ordering function (nor a pre-population one, if `extra_params`
-    provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
-    of their equations. Returns the function's name and its 0-based add_eqn order.
+    provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked
+    with it by the median post-CSE position of their equations. Returns the function's name and its 0-based add_eqn
+    order. The ordering out-params and the locus are named with `prefix`, as a split tuner with that prefix names them.
 
-    Raises RuntimeError if the recipe fails, never reads a provided name, or does not bake exactly one function with
-    `ordering_fn`.
+    Raises RuntimeError if the recipe fails, does not bake exactly one function with `ordering_fn`, or never reads
+    one of the provided names with this prefix (the locus and ordering functions of that function's split tuner). The
+    run stops after that function's bake, so the names of other split tuners (other prefixes) need not be read.
     """
     # A distinct object, so the hooks can tell the ranked function by its ordering function; pre_cse_stand_in and
     # respects_dependency_order look through the partial, so it bakes exactly as ordering_fn would.
     ranking_fn = functools.partial(ordering_fn)
-    params = {**(extra_params or {}), 'early_ordering_fn': None, 'ordering_fn': ranking_fn}
-    if 'pre_population_ordering_fn' in params:
-        params['pre_population_ordering_fn'] = None
-    state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn)
+    params = {**(extra_params or {}), f'{prefix}early_ordering_fn': None, f'{prefix}ordering_fn': ranking_fn}
+    if f'{prefix}pre_population_ordering_fn' in params:
+        params[f'{prefix}pre_population_ordering_fn'] = None
+    state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn, argv=tuple(argv))
     _run(state, 'while deriving an add_eqn order')
-    _check_read(state)
+    _check_read(state, [prefix + name for name in _SPLIT_TUNER_PARAMS if prefix + name in params])
     if len(state.derived) != 1:
         raise RuntimeError(f'Recipe {recipe_path} must bake exactly one function with the ordering_fn out-param to '
                            f'derive its add_eqn order, but baked {sorted(state.derived) or "none"}.')
@@ -299,7 +304,7 @@ def _run(state: _ProbeState, doing: str) -> None:
     saved_argv = sys.argv
     _state = state
     try:
-        sys.argv = [state.recipe_path]
+        sys.argv = [state.recipe_path, *state.argv]
         try:
             runpy.run_path(state.recipe_path, run_name='__main__')
         except _ProbeComplete:
@@ -313,8 +318,14 @@ def _run(state: _ProbeState, doing: str) -> None:
         clear_caches()
 
 
-def _check_read(state: _ProbeState) -> None:
-    if unread := [name for name in state.params if name not in state.read]:
+#  The fixed out-params of a split tuner (tune_splitting._SplitTuner.probe_params), each after the tuner's prefix;
+#  test_tuning_probe checks that the two agree.
+_SPLIT_TUNER_PARAMS = ('auto_split_locus', 'early_ordering_fn', 'pre_population_ordering_fn', 'ordering_fn')
+
+
+def _check_read(state: _ProbeState, names: Collection[str] | None = None) -> None:
+    """Raise unless the recipe read each of `names` (default: every provided param)."""
+    if unread := [name for name in (state.params if names is None else names) if name not in state.read]:
         raise RuntimeError(
             f'Recipe {state.recipe_path} never read the tuner out-param(s) {unread} before the probe stopped it, so '
             f'the probe would count the wrong positions. Read each with get_optional_tuning_param(name, default) and '

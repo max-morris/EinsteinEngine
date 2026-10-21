@@ -349,7 +349,9 @@ because the checkpoint's coordinates only mean something against it:
   "counts": {"auto_hard_split_predicate": 13},
   "probe_params": {"auto_split_locus": "SplitLocus.Early",
                    "early_ordering_fn": "rank_by_post_population(EinsteinEngine.intermediate.eqn_ordering.prioritize_rare_symbols)"},
-  "derived_orders": {"early_ordering_fn": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]}
+  "derived_orders": {"early_ordering_fn": [8, 1, 0, 2, 3, 5, 10, 7, 4, 9, 12, 6, 11]},
+  "space": {"split_*": "CombinatorialSplitTuner(positions=probed)"},
+  "study": "3f2c9e0d5b7a4c1e8d6f0a2b4c6e8f10"
 }
 ```
 
@@ -363,6 +365,22 @@ because the checkpoint's coordinates only mean something against it:
   derive it again, start a new checkpoint file. With
   `early_ordering_fn=add_eqn_order([...])` the order is part of the description
   instead.
+- `space`: the tuner's `describe_space()`, what its coordinates mean beyond
+  their names: for example the choices a `DiscreteKnobTuner` index picks from,
+  in order, or the CSE tuner's presets and budgets. A tuner that describes its
+  space gets a probe file even if it does not probe. A probe file written
+  before `space` was recorded is accepted without checking it.
+- `study`: a random id, made when the probe file is first written and kept
+  when it is rewritten, which tells apart studies with the same tuner and
+  recipe (one per compiler, say). `record_probe=True` always writes the probe
+  file. To start a study from another's probe file (to reuse a slow derived
+  order), use `tuning.fork_probe_file(from_checkpoint, to_checkpoint)`, which
+  gives it a new id; a copied file would share the id, and `record_probe`
+  warns when the file was made for another checkpoint (`origin`).
+- `recipe_args`: the recipe's own arguments (its `sys.argv[1:]`) the probe ran
+  it with (`build_experiment(..., recipe_args=...)`; none by default), since
+  they can change the equations. Without a recipe to probe, they must be the
+  recorded ones; `generate_best` takes them after `--`.
 
 `probe_params` describes each `probe_params()` value in a form that is stable
 across runs (see `probe.describe_param`): an enum by name; a function by its
@@ -527,7 +545,124 @@ too; split predicates read that way never split.
 
 ---
 
-## 7. Advanced domains
+## 7. Composite studies and batches
+
+### Several tuners in one study
+
+`EinsteinEngine.tuning.tune_composite.CompositeTuner(*tuners)` searches several
+tuners' spaces in one study: its Experiment merges theirs, and it probes for
+the union of their probe targets. A name declared by two sub-tuners is an
+error. (A probe param that two custom tuners provide with the same value is
+kept once; the split tuners never share one, since their names carry their
+prefixes.) `DiscreteKnobTuner(name, choices, out_param=None)` is one discrete
+knob for code-specific choices: the in-param `name` is an index into `choices`,
+and the out-param (`out_param`, default `name`) is the chosen value. A choice
+cannot be None; use an explicit value such as `'default'`. Choices are recorded
+by their repr, so give them a meaningful one.
+
+To tune the splits of several functions in one study, give each split tuner a
+`prefix`, an identifier ending in `_`. It is prepended to every name the tuner
+uses: its in-params, its predicates, its locus and its ordering functions. With
+prefix `rhs_`, the recipe passes `rhs_auto_hard_split_predicate`,
+`rhs_auto_soft_split_predicate`, `rhs_auto_split_locus` (and any
+`rhs_..._ordering_fn`) to the function `rhs`. A `rank_by_post_population`
+early ordering function works with a prefix too, whether the functions are
+baked together or separately.
+
+```python
+from EinsteinEngine.tuning.tune_composite import CompositeTuner, DiscreteKnobTuner
+from EinsteinEngine.tuning.tune_cse import CseOptimizationTuner
+from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner
+from EinsteinEngine.tuning.tuning import Tuner
+
+
+def get_tuner() -> Tuner:
+    return CompositeTuner(CombinatorialSplitTuner(prefix='rhs_'), CombinatorialSplitTuner(prefix='aux_'),
+                          CseOptimizationTuner(),
+                          DiscreteKnobTuner('launch_bounds', ['default', (128, 2), (256, 1)]))
+```
+
+A checkpoint records each in-param by name, so the order of the sub-tuners
+does not matter. A knob records its index; its choices, in order, are recorded
+in the probe file (`space`), so a study whose choices have changed is refused
+rather than misread. The probe counts split positions with the other
+sub-tuners' out-params at the recipe's defaults: exact at the early locus,
+whose positions are the `add_eqn` calls, but at a later locus a CSE option can
+change the number of positions, so a CompositeTuner warns when a split tuner at
+a later locus is combined with a tuner that does not probe.
+
+### Batches
+
+When trials are cheaper to run together (baked on one machine, built and timed
+in one job elsewhere), drive `CheckpointedOptimizer` in batches instead of
+`maximize`:
+
+```python
+from EinsteinEngine.tuning.checkpointed_optimizer import Batch, CheckpointedOptimizer
+from EinsteinEngine.tuning.tuning import build_experiment
+
+experiment = build_experiment(tuner, recipe, checkpoint, record_probe=True)  # writes <checkpoint>.probe.json
+batch = CheckpointedOptimizer.for_batches(experiment, checkpoint).ask(8)
+with open('batch.json', 'w') as fh:
+    fh.write(batch.to_json())
+# Bake each trial (where the recipe, the tuner file, the checkpoint and its probe file are):
+#   python -m EinsteinEngine.tuning.generate_best RECIPE TUNER --checkpoint-file CHECKPOINT --batch batch.json --trial I
+# ... build and time them; then, perhaps in another process:
+with open('batch.json') as fh:
+    batch = Batch.from_json(fh.read())
+optimizer = CheckpointedOptimizer.for_batches(build_experiment(tuner, None, checkpoint), checkpoint)
+optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximized); nan: failed; None: did not run
+```
+
+- `ask(n, seed=None, pending=())` rebuilds the study from the checkpoint and
+  proposes `n` new trials with TPE and `constant_liar`, so each is proposed
+  knowing the earlier ones are running. Pass the batches still out as
+  `pending`, or the new batch can repeat their trials. Draws that are
+  infeasible or repeat a trial already proposed or told are redrawn; they stay
+  running in the throwaway study, so they act as extra liars, and the batch
+  records how many there were (`rejected`; `ask` warns when they outnumber the
+  batch). Below `n_startup_trials` told entries every draw is random, so only
+  the repeat check spreads the batch; past them, a batch large relative to the
+  history is spread mostly by the liar.
+- The batch records its seed, the number and digest of the checkpoint entries
+  it was asked against, the pending batches, `n_startup_trials` and the optuna
+  version: asking again with those, from a checkpoint holding exactly those
+  entries, gives the same trials. It also records its study: a digest of the
+  probe file's study id, counts, probe params, derived orders, search space and
+  recipe arguments, and of the in-param names (sorted, so reordering the
+  sub-tuners keeps the study). A batch is refused if the tuner's search space
+  has changed since, whether or not the probe file was rewritten.
+- `tell(batch, targets)` appends to the same checkpoint, under a lock
+  (`<checkpoint>.lock`, which can be ignored by git) and in one write, each
+  entry with the batch id and trial index. It refuses a batch
+  of another study or asked against other entries, a trial already told, and
+  params that do not fit. A None target is not written, so a trial that did
+  not run can be told later; a non-finite one is a failed run (a bad
+  configuration).
+- `record_external(params, value, source=...)` records an externally chosen
+  trial (a hand-picked configuration, say) so that TPE starts from it. Its
+  value must be measured as the study's trials are (same host, build and timing
+  protocol). It is checked like any trial (names, domains, conditions,
+  constraints), appended with its realized coordinates and its source
+  (`"external"`), and replayed on resume; the same params from the same source
+  are refused twice. External entries do not count toward the random startup
+  trials, and, being good trials as a rule, they can fill TPE's "good" set and
+  concentrate the search around them.
+- `Experiment.recipe_facing_args(params)` gives a trial's recipe-facing args;
+  `generate_best --batch FILE --trial I` runs the recipe with them, from the
+  probe file, without probing; so it does not notice a recipe edited since the
+  probe. Keep the recipe the same for the whole study. Its arguments after
+  `--` must be the probe file's `recipe_args`, so a recipe used with batches
+  must take its output location from the working directory, not from an
+  argument; run it in that directory. `remote_tuner` runs the recipe without
+  arguments, so a study whose probe file records some cannot be continued with
+  `maximize`.
+- `maximize` appends without the lock: do not run it on a checkpoint that
+  batches are told to at the same time.
+
+---
+
+## 8. Advanced domains
 
 The `(lo, hi)` tuple is shorthand for `Interval(lo, hi)`. When a plain interval
 isn't the right search space, `add_in_param` also accepts a `Domain` object or a
@@ -673,4 +808,19 @@ the far side of a `Union` gap).
 - `build_experiment(tuner, recipe, checkpoint_file, *, record_probe=False)` —
   probes and handles `<checkpoint>.probe.json` as described in section 5;
   `remote_tuner` passes `record_probe=True`.
+- `describe_space() -> Mapping[str, str]` — what the coordinates mean beyond
+  their names (e.g. a knob's choices), recorded in the probe file and checked
+  on resume (default none).
 - `get_tuning_param(name, default)` / `get_optional_tuning_param(name, default)`.
+
+### Composite studies and batches (section 7)
+
+- `CompositeTuner(*tuners)`, `DiscreteKnobTuner(name, choices, *, out_param=None)`
+  (`EinsteinEngine.tuning.tune_composite`).
+- `CombinatorialSplitTuner(..., prefix='')`, `CutPositionSplitTuner(..., prefix='')`.
+- `CheckpointedOptimizer.for_batches(experiment, checkpoint_file, n_startup_trials=10, random_state=None)`,
+  `.ask(n, *, seed=None, pending=())` → `Batch`, `.tell(batch, targets)`,
+  `.record_external(params, value, *, source)`;
+  `Batch.to_json()` / `Batch.from_json(text)`.
+- `Experiment.recipe_facing_args(params, source=...)`.
+- `generate_best RECIPE TUNER --checkpoint-file C --batch FILE --trial I`.
