@@ -236,6 +236,39 @@ def sort_exprs(expr: Tuple[Any, Any]) -> float:
     return sort_key
 
 
+def _by_magnitude(term: Tuple[Any, Any]) -> Tuple[Any, bool]:
+    """
+    Sort key that puts terms of equal |c| next to each other (positive first). The nested mixed derivative uses it
+    because sort_exprs does not order by |c|: from stencil width 7 on it interleaves terms of different |c| (the
+    width-7 first derivative sorts as 1/60, 3/20, -1/60, -3/20, 3/4, -3/4) and so leaves pairs ungrouped. The 1-D
+    derivatives keep sort_exprs here; fixing that key is a separate change.
+    """
+    return abs(term[0]), bool(term[0] < 0)
+
+
+def _pair_terms(terms: List[Tuple[Any, Any]], key: Callable[[Tuple[Any, Any]], Any] = sort_exprs) -> Expr:
+    """
+    sum c_k e_k, with adjacent terms (in the order of `key`) of equal |c| grouped in pairs, c noop(e_a - e_b) or
+    c noop(e_a + e_b), so that the difference (or sum) of the two values is formed first. noop keeps sympy from
+    distributing c. The default key is the one the 1-D derivatives have always used (see sort_exprs).
+    """
+    terms = sorted(terms, key=key)
+    val: Expr = sympify(0)
+    i = 0
+    while i < len(terms):
+        if i + 1 < len(terms) and abs(terms[i][0]) == abs(terms[i + 1][0]):
+            # We use noop for grouping because otherwise, Sympy will change things
+            if terms[i][0] != terms[i + 1][0]:
+                val += terms[i][0] * noop(terms[i][1] - terms[i + 1][1])
+            else:
+                val += terms[i][0] * noop(terms[i][1] + terms[i + 1][1])
+            i += 2
+        else:
+            val += terms[i][0] * terms[i][1]
+            i += 1
+    return val
+
+
 class ApplyDivN(Applier):
     """
     Use NRPy to calculate the stencil coefficients.
@@ -342,49 +375,18 @@ class ApplyDivN(Applier):
                         term = coefs[i]
                         new_expr += [(term, mk_term(expr.args[0], 0, 0, i - len(coefs) // 2))]
                     dxt = DZI ** 2
-                elif expr.args[1:] in ((L0, L1), (L1, L0)):
-                    coefs = self.fd_matrix.col(1)
-                    for i in range(len(coefs)):
-                        term_i = coefs[i]
-                        for j in range(len(coefs)):
-                            term = coefs[j] * term_i
-                            new_expr += [(term, mk_term(expr.args[0], i - len(coefs) // 2, j - len(coefs) // 2, 0))]
-                    dxt = DXI * DYI
-                elif expr.args[1:] in ((L0, L2), (L2, L0)):
-                    coefs = self.fd_matrix.col(1)
-                    for i in range(len(coefs)):
-                        term_i = coefs[i]
-                        for j in range(len(coefs)):
-                            term = coefs[j] * term_i
-                            new_expr += [(term, mk_term(expr.args[0], i - len(coefs) // 2, 0, j - len(coefs) // 2))]
-                    dxt = DXI * DZI
-                elif expr.args[1:] in ((L1, L2), (L2, L1)):
-                    coefs = self.fd_matrix.col(1)
-                    for i in range(len(coefs)):
-                        term_i = coefs[i]
-                        for j in range(len(coefs)):
-                            term = coefs[j] * term_i
-                            new_expr += [(term, mk_term(expr.args[0], 0, i - len(coefs) // 2, j - len(coefs) // 2))]
-                    dxt = DYI * DZI
+                elif (len(expr.args) == 3 and expr.args[1] != expr.args[2]
+                      and {expr.args[1], expr.args[2]} <= {L0, L1, L2}):
+                    # Mixed derivative: nested one-dimensional differences (see _mixed_derivative).
+                    axes = sorted(idx_to_int(cast(Idx, a)) for a in expr.args[1:])
+                    self.val = self._mixed_derivative(cast(Expr, expr.args[0]), axes[0], axes[1])
+                    self.val = self.val * (DXI, DYI, DZI)[axes[0]] * (DXI, DYI, DZI)[axes[1]]
+                    return True
                 else:
                     raise Exception()
 
             if len(new_expr) > 0:
-                new_expr = sorted(new_expr, key=sort_exprs)
-                self.val = sympify(0)
-                i = 0
-                while i < len(new_expr):
-                    if i + 1 < len(new_expr) and abs(new_expr[i][0]) == abs(new_expr[i + 1][0]):
-                        # We use noop for grouping because otherwise, Sympy will change things
-                        if new_expr[i][0] != new_expr[i + 1][0]:
-                            self.val += new_expr[i][0] * noop(new_expr[i][1] - new_expr[i + 1][1])
-                        else:
-                            self.val += new_expr[i][0] * noop(new_expr[i][1] + new_expr[i + 1][1])
-                        i += 2
-                    else:
-                        self.val += new_expr[i][0] * new_expr[i][1]
-                        i += 1
-                self.val = self.val * dxt
+                self.val = _pair_terms(new_expr) * dxt
             else:
                 print("args:", expr.args)
             if self.val is None:
@@ -393,6 +395,32 @@ class ApplyDivN(Applier):
         else:
             self.val = None
             return False
+
+    def _mixed_derivative(self, f: Expr, outer_axis: int, inner_axis: int) -> Expr:
+        """
+        The mixed second derivative (without its 1/(dx dy) factor) as nested one-dimensional first differences:
+        for each outer offset a, the inner derivative sum_b c_b f(a, b) is formed with its equal-|c| pairs
+        differenced first, (f(a, b) - f(a, -b)); then the outer derivative pairs those the same way. Pairing the
+        equal-|c| corners of the outer product instead, f(a, b) + f(-a, -b), adds nearly equal values before the
+        cancellation and loses its low bits. The weights c_a c_b are the same; only the grouping differs. The lower
+        axis is outer, so D(f, la, lb) and D(f, lb, la) are identical.
+        """
+        coefs = self.fd_matrix.col(1)
+        half = len(coefs) // 2
+
+        def at(a: int, b: int) -> Any:
+            offset = [0, 0, 0]
+            offset[outer_axis], offset[inner_axis] = a, b
+            return mk_term(f, *offset)
+
+        outer = []
+        for i in range(len(coefs)):
+            if coefs[i] == 0:
+                continue
+            inner = _pair_terms([(coefs[j], at(i - half, j - half)) for j in range(len(coefs)) if coefs[j] != 0],
+                                _by_magnitude)
+            outer.append((coefs[i], noop(inner)))
+        return _pair_terms(outer, _by_magnitude)
 
     def r(self, _expr: Expr) -> Optional[Expr]:
         return self.val
