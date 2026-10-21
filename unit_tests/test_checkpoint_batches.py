@@ -95,6 +95,11 @@ def test_ask_is_reproducible(directory: str) -> None:
     longer = opt(checkpoint).ask(8, seed=11)
     assert longer.params[:5] == first.params and longer.id != first.id
     expect_error(ValueError, lambda: opt(checkpoint).maximize(), 'ask and tell only')
+    #  More new trials than the space holds: an error, not repeats.
+    tiny = Experiment()
+    tiny.add_in_param('k', Discrete(range(3)))
+    expect_error(RuntimeError, lambda: CheckpointedOptimizer.for_batches(tiny, os.path.join(directory, 'tiny.jsonl'))
+                 .ask(4, seed=1), 'Proposed only 3 of 4')
     assert not os.path.exists(checkpoint)  # asking writes nothing
 
 
