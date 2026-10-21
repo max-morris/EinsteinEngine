@@ -630,6 +630,11 @@ optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximiz
   params that do not fit. A None target is not written, so a trial that did
   not run can be told later; a non-finite one is a failed run (a bad
   configuration).
+- `seed(params, value, source=...)` records an externally chosen trial (a
+  hand-picked configuration measured outside the study, say) so that TPE
+  starts from it. It is checked like any trial (names, domains, conditions,
+  constraints), appended with its source (`"seeded"`), and replayed on resume;
+  the same params from the same source are refused twice.
 - `Experiment.recipe_facing_args(params)` gives a trial's recipe-facing args;
   `generate_best --batch FILE --trial I` runs the recipe with them, from the
   probe file, without probing; so it does not notice a recipe edited since the
@@ -794,7 +799,7 @@ the far side of a `Union` gap).
   (`EinsteinEngine.tuning.tune_composite`).
 - `CombinatorialSplitTuner(..., prefix='')`, `CutPositionSplitTuner(..., prefix='')`.
 - `CheckpointedOptimizer.for_batches(experiment, checkpoint_file, n_startup_trials=10, random_state=None)`,
-  `.ask(n, *, seed=None, pending=())` → `Batch`, `.tell(batch, targets)`;
+  `.ask(n, *, seed=None, pending=())` → `Batch`, `.tell(batch, targets)`, `.seed(params, value, *, source)`;
   `Batch.to_json()` / `Batch.from_json(text)`.
 - `Experiment.recipe_facing_args(params, source=...)`.
 - `generate_best RECIPE TUNER --checkpoint-file C --batch FILE --trial I`.

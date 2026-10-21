@@ -24,7 +24,8 @@ Besides `maximize`, which runs one trial at a time, a study can be driven in bat
 `Batch`, which the caller runs however it likes (for example baked on one machine, built and timed on others), and
 `tell(batch, targets)` appends the results to the checkpoint. Each call rebuilds the study from the checkpoint, so the
 two may run in different processes; the batch, saved with `Batch.to_json`, carries what links them. Told entries also
-record the batch id and trial index; `read_checkpoint`, `generate_best` and `plot_tuning` ignore them.
+record the batch id and trial index; `seed` records externally chosen trials (with their source). The readers,
+`read_checkpoint`, `generate_best` and `plot_tuning`, ignore these extra keys.
 """
 
 import contextlib
@@ -37,7 +38,7 @@ import subprocess
 import time
 import urllib.request
 import warnings
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -222,6 +223,31 @@ class Batch:
         return batch
 
 
+def _append(checkpoint_file: str, lines: Sequence[str]) -> None:
+    """Append JSON lines to a checkpoint in one write (looping on a short one), then fsync."""
+    fd = os.open(checkpoint_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        data = ('\n'.join(lines) + '\n').encode()
+        while data:
+            data = data[os.write(fd, data):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+class _StoredTrial:
+    """A TrialObj that replays stored coordinates (to check a seeded trial's constraints)."""
+
+    def __init__(self, params: Mapping[str, Coord]) -> None:
+        self._params = params
+
+    def suggest_int(self, name: str, _lo: int, _hi: int, /) -> int:
+        return int(self._params[name])
+
+    def suggest_float(self, name: str, _lo: float, _hi: float, /) -> float:
+        return float(self._params[name])
+
+
 @contextlib.contextmanager
 def _locked(checkpoint_file: str, exclusive: bool = True) -> Iterator[None]:
     """Hold a lock on `<checkpoint>.lock`: exclusive for tell's check-then-append, shared for ask's reads."""
@@ -403,15 +429,40 @@ class CheckpointedOptimizer:
                 entries.append((value, *self._experiment.reconstruct_coords(batch.params[i])))
                 lines.append(json.dumps({'target': value, 'params': batch.params[i], 'batch': batch.id, 'trial': i}))
             if lines:
-                fd = os.open(self._checkpoint_file, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
-                try:
-                    data = ('\n'.join(lines) + '\n').encode()
-                    while data:
-                        data = data[os.write(fd, data):]
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
+                _append(self._checkpoint_file, lines)
         _add_trials(self._study, [(value, dict(coords), dict(specs)) for value, coords, specs in entries])
+
+    def seed(self, params: Mapping[str, Coord], value: float, *, source: str) -> None:
+        """
+        Record an externally chosen trial, for example a hand-picked configuration measured outside the study, so
+        that TPE starts from it. `params` are in-params as the checkpoint stores them (raw coordinates), and `value`
+        is its target (maximized, so `-time`; non-finite records a failed run). It is checked against the study's
+        Experiment like any trial (names, domains, conditions and constraints, which the probe shaped), then
+        appended under the lock as `{"target", "params", "seeded": source}` and replayed on resume like any entry.
+        Refuses an empty `source`, and the same params from the same source twice.
+        """
+        if not source:
+            raise ValueError("A seeded trial needs a source (where it comes from, e.g. 'round 0: v8')")
+        stored = dict(params)
+        what = f"The seeded trial from {source!r}"
+        try:
+            self._experiment.check_declared(stored, what)
+            realized, _ = self._experiment.suggest_params(_StoredTrial(stored))
+        except InfeasibleParamError as e:
+            raise ValueError(f"{what} violates a constraint: {e}") from e
+        if extra := sorted(set(stored) - set(realized)):
+            raise ValueError(f"{what} has params whose conditions do not hold for its other values: {extra}")
+        coords, specs = self._experiment.reconstruct_coords(stored)
+        target = float(value) if np.isfinite(value) else FAILED_VALUE
+        with _locked(self._checkpoint_file):
+            if os.path.exists(self._checkpoint_file):
+                with open(self._checkpoint_file) as fh:
+                    for line in fh:
+                        if line.strip() and (entry := json.loads(line)).get('seeded') == source \
+                                and entry['params'] == stored:
+                            raise RuntimeError(f"{what} is already in {self._checkpoint_file}.")
+            _append(self._checkpoint_file, [json.dumps({'target': target, 'params': stored, 'seeded': source})])
+        _add_trials(self._study, [(target, dict(coords), dict(specs))])
 
     def _objective(self, trial: optuna.Trial) -> float:
         try:
