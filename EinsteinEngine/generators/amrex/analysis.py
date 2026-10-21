@@ -72,7 +72,8 @@ class LoopAnalysis:
     params: list[str] = field(default_factory=list)
     statements: list[Statement] = field(default_factory=list)
     writes: dict[str, OutputInfo] = field(default_factory=dict)  # output component -> info
-    guards: set[str] = field(default_factory=set)  # values this loop computes that hold a guard (later loops' check)
+    guards: set[str] = field(default_factory=set)  # values this loop sets to a guard (later loops' check)
+    not_guards: set[str] = field(default_factory=set)  # values this loop sets to anything else
 
 
 def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[str],
@@ -93,7 +94,10 @@ def analyze_function(module: AMReXModule, fn: AMReXFunction, prior_writes: set[s
     prior = set(prior_writes)
     for loop_idx, eqn_list in enumerate(complex_.eqn_lists):
         loops.append(_analyze_loop(module, fn, loop_idx, nloops, eqn_list, prior, tile_index, guards))
-        guards |= loops[-1].guards
+        # Only outputs and tile temporaries carry a value to later loops; a name's latest assignment decides.
+        carried = set(module.output_bases_components()) | set(tiles)
+        guards -= loops[-1].not_guards
+        guards |= loops[-1].guards & carried
         prior |= set(loops[-1].writes)
         writes |= set(loops[-1].writes)
     return loops, tiles, writes
@@ -110,7 +114,7 @@ def _analyze_loop(module: AMReXModule, fn: AMReXFunction, loop_idx: int, nloops:
     loaded_tiles = {str(t) for t in eqn_list.preinitialized_tile_temporaries}
     if bad := sorted({str(x.new) for x in subst.substitutions} & loaded_tiles):
         raise GeneratorException(f"{where}: recycling reuses the loaded tile temporaries {bad}.")
-    loop.guards = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards)
+    loop.guards, loop.not_guards = check_guards(dict(eqn_list.sorted_eqns), set(eqn_list.temporaries), where, guards)
 
     # Every left-hand side is classified by declaration: assigning a field or a parameter is refused; an lhs declared
     # as an output is a write of that output, whether or not EE's EqnList counts it as one (it counts an lhs that a

@@ -73,7 +73,7 @@ def main() -> int:
     run = Path(sys.argv[2])
     print(f'tolerance: every output passes if max|C++ - ref| / max|ref| <= {TOLERANCE:g}')
     ok = True
-    # Kernel toy: c_u = 0, c_w = 1; outputs u_rhs -> c_u, w_rhs -> c_w; dx 0.1, kappa 1.3. Absent in a point-only
+    # Kernel toy: c_u = 0, c_w = 1, c_q = 2; outputs u_rhs, w_rhs, q_rhs; dx 0.1, kappa 1.3. Absent in a point-only
     # build (main.cpp, GATE_POINT_ONLY).
     if not (run / 'kernel_outputs.txt').exists():
         print('kernel: not built (point-only gate)')
@@ -90,7 +90,7 @@ def main() -> int:
                 vals = toys.values(cc, lambda v, o: state[(i + o[0], j + o[1], k + o[2], comps[v])],
                                    {'kappa': mpmath.mpf(1.3)}, (dx, dx, dx),
                                    tuple(mpmath.mpf(float((n + 0.5) * 0.1)) for n in (i, j, k)))
-                reference[(i, j, k)] = {'u_rhs': (0, vals['u_rhs']), 'w_rhs': (1, vals['w_rhs'])}
+                reference[(i, j, k)] = {'u_rhs': (0, vals['u_rhs']), 'w_rhs': (1, vals['w_rhs']), 'q_rhs': (2, vals['q_rhs'])}
             ok &= compare('kernel', outs, reference, label)
     # Point toy: un (u = 0, trK = 1), prim (Df = 0); outputs v_rhs -> 0, ko_u -> 1.
     un, prim = read(run / 'point_un.txt'), read(run / 'point_prim.txt')
@@ -110,7 +110,14 @@ def main() -> int:
             vals = toys.values(cc, field, {'trK0': mpmath.mpf(0.7), 'eps': mpmath.mpf(0.2)}, dxs, coords)
             reference[(i, j, k)] = {'v_rhs': (0, vals['v_rhs']), 'ko_u': (1, vals['ko_u'])}
         ok &= compare('point', outs, reference, label)
-    # R10 (docs, section 7): with a false guard (eps < 0) and a NaN in the KO stencil, ko is exactly +0 everywhere.
+    # R10 (docs, section 7): with a false guard and a NaN in its stencil, a guarded output is exactly +0 everywhere.
+    if (run / 'kernel_q_false.txt').exists():
+        lines = (run / 'kernel_q_false.txt').read_text().split()
+        values = [lines[n] for n in range(4, len(lines), 5)]
+        zero = all(v == '0' for v in values)
+        print(f'kernel q_rhs with a false guard and a NaN in its stencil: {len(values)} cells, '
+              f'{"all exactly +0" if zero else "NOT all +0"} ({"ok" if zero else "FAIL"})')
+        ok &= zero
     if (run / 'point_ko_false.txt').exists():
         lines = (run / 'point_ko_false.txt').read_text().split()
         values = [lines[n] for n in range(4, len(lines), 5)]
