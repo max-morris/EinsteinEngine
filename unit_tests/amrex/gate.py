@@ -39,10 +39,11 @@ TOLERANCE = 1e-13
 
 
 def read(path: Path) -> dict[tuple[int, int, int, int], mpmath.mpf]:
+    """The driver's values (%.17g) as the exact doubles it used, whatever mpmath's working precision is."""
     out = {}
     for line in path.read_text().splitlines():
         i, j, k, c, v = line.split()
-        out[(int(i), int(j), int(k), int(c))] = mpmath.mpf(v)
+        out[(int(i), int(j), int(k), int(c))] = mpmath.mpf(float(v))
     return out
 
 
