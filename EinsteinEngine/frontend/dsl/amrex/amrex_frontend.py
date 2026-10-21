@@ -168,8 +168,9 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
         # Raw strings, strings, numbers, character literals and comments in one left-to-right pass, so a quote in a
         # comment (or // in a string, or '"') hides nothing. A number is taken whole first, with its digit separators
         # (1'000), so that every other quote opens a character literal (case'a':).
-        raw, string = r'R"([^(\s]*)\(.*?\)\1"', r'"(?:\\.|[^"\\])*"'
-        number, char = r"(?<![\w.])\d[\w.]*(?:'\w+[\w.]*)*", r"'(?:\\.|[^'\\\n])+'"
+        prefix = r'(?:(?<!\w)(?:u8|[uUL]))?'  # encoding prefixes of string and character literals
+        raw, string = prefix + r'R"([^(\s]*)\(.*?\)\1"', prefix + r'"(?:\\.|[^"\\])*"'
+        number, char = r"(?<![\w.])\d[\w.]*(?:'\w+[\w.]*)*", prefix + r"'(?:\\.|[^'\\\n])+'"
         code = re.sub(rf'{raw}|{string}|{number}|{char}|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
         this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code)) | set(
             re.findall(r'\(\s*\*\s*this\s*\)\s*\.\s*([A-Za-z_]\w*)', code))

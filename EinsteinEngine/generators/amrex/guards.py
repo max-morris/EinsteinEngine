@@ -170,31 +170,37 @@ def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None 
 
 
 def _branches(e: sy.Basic) -> int:
-    """An upper bound on the number of branches of the fold of e on opaque conditions, the least of three: the
-    structural count (a choice's branches summed, a product's multiplied, on the DAG: linear in a nested chain of
-    choices), the product of the piece counts of the distinct choices (a choice shared by several terms counted once;
-    round 6, B B1), and 2**k for k distinct conditions, since the opaque fold drops contradictory combinations (round 6,
-    A N36). Capped at 10**9. (Round 7, A N39: each alone over-counts some legal forms.)"""
+    """An upper bound on the cartesian products piecewise_fold builds for e (before it drops duplicates), the smaller
+    of two, each capped at 10**9 (round 7, B B1):
+    - nested: a choice adds its pieces' counts, any other node multiplies its arguments' (on the DAG; exact for nested
+      choices, but counts a choice shared by several terms once per occurrence);
+    - grouped: the product, over the distinct condition tuples of the choices, of the largest piece count with that
+      tuple (piecewise_fold merges sibling choices on the same conditions; a shared choice counts once, but nested
+      choices multiply).
+    The smaller passes both a nested Max/Min chain (round 7, A N39) and a guarded sum with one choice in many terms
+    (round 6, B B1)."""
     memo: dict[sy.Basic, int] = {}
 
-    def structural(x: sy.Basic) -> int:
+    def nested(x: sy.Basic) -> int:
         if x not in memo:
             if isinstance(x, Piecewise):
-                r = sum(structural(b) for b, _ in _pieces(x))
+                r = sum(nested(b) for b, _ in _pieces(x))
             else:
                 r = 1
                 for a in x.args:
-                    r = min(r * structural(a), 10 ** 9)
+                    r = min(r * nested(a), 10 ** 9)
             memo[x] = min(r, 10 ** 9)
         return memo[x]
 
-    product = 1
-    conds: set[sy.Basic] = set()
+    groups: dict[tuple[sy.Basic, ...], int] = {}
     for x in unique_nodes(e):
         if isinstance(x, Piecewise):
-            product = min(product * len(x.args), 10 ** 9)
-            conds |= {c for _, c in _pieces(x) if c is not sy.true and c is not sy.false}
-    return int(min(structural(e), product, 2 ** min(len(conds), 30)))
+            key = tuple(c for _, c in _pieces(x))
+            groups[key] = max(groups.get(key, 0), len(x.args))
+    grouped = 1
+    for n in groups.values():
+        grouped = min(grouped * n, 10 ** 9)
+    return min(nested(e), grouped)
 
 
 def _minmax_choices(z: sy.Basic) -> sy.Basic:
