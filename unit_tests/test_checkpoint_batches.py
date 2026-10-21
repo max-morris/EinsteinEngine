@@ -239,6 +239,37 @@ def test_constant_liar(directory: str) -> None:
     assert len(xs) > len(plain), (xs, plain)
 
 
+def test_seed(directory: str) -> None:
+    """Externally chosen trials (seeded, with their source) are checked, recorded and replayed like any trial."""
+    checkpoint = os.path.join(directory, 'seed.jsonl')
+    optimizer = opt(checkpoint, n_startup_trials=2)
+    good = {'x': 13, 'odd': 1, 'knob': 2, 'rate': 0.5}
+    optimizer.seed(good, -0.1, source='round 0: hand-picked')
+    optimizer.seed({'x': 0, 'odd': 9, 'knob': 0}, float('inf'), source='round 0: hand-picked')
+    assert lines(checkpoint) == [{'target': -0.1, 'params': good, 'seeded': 'round 0: hand-picked'},
+                                 {'target': FAILED_VALUE, 'params': {'x': 0, 'odd': 9, 'knob': 0},
+                                  'seeded': 'round 0: hand-picked'}]
+    #  Refused: the same trial from the same source, a value outside its domain, an undeclared or missing param (the
+    #  rate is sampled only for knob 2), a constraint (odd must be odd), and no source.
+    expect_error(RuntimeError, lambda: optimizer.seed(good, -0.1, source='round 0: hand-picked'), 'already')
+    expect_error(ValueError, lambda: optimizer.seed({'x': 21, 'odd': 1, 'knob': 0}, 0.0, source='s'), 'x')
+    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 1, 'knob': 0, 'rate': 0.5}, 0.0, source='s'),
+                 'rate')
+    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 1, 'knob': 2}, 0.0, source='s'), 'rate')
+    expect_error(ValueError, lambda: optimizer.seed({'x': 1, 'odd': 2, 'knob': 0}, 0.0, source='s'), 'constraint')
+    expect_error(ValueError, lambda: optimizer.seed(good, 0.0, source=''), 'source')
+    assert len(lines(checkpoint)) == 2
+    #  Replayed on resume, by generate_best's best entry, and by ask, which does not repeat them.
+    assert len(read_checkpoint(experiment(), checkpoint)) == 2
+    assert load_best_params(checkpoint) == (-0.1, good)
+    resumed = opt(checkpoint, n_startup_trials=2)
+    assert resumed.n_checkpoint_loaded == 2 and resumed.max is not None and resumed.max['target'] == -0.1
+    batch = resumed.ask(4, seed=1)
+    assert batch.n_history == 2 and good not in batch.params
+    resumed.tell(batch, [objective(p) for p in batch.params])
+    assert len(lines(checkpoint)) == 6
+
+
 GENERATE_RECIPE = """\
 import json
 from EinsteinEngine.tuning.tuning import get_tuning_param
@@ -292,5 +323,6 @@ if __name__ == '__main__':
         test_tell_refusals_and_partial_tells(tmp)
         test_pending(tmp)
         test_constant_liar(tmp)
+        test_seed(tmp)
         test_generate_best_batch_trial(tmp)
     print("All checkpoint batch tests passed.")
