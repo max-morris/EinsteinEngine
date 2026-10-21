@@ -527,7 +527,70 @@ too; split predicates read that way never split.
 
 ---
 
-## 7. Advanced domains
+## 7. Composite studies and batches
+
+### Several tuners in one study
+
+`EinsteinEngine.tuning.tune_composite.CompositeTuner(*tuners)` searches several
+tuners' spaces in one study: its Experiment merges theirs, in order, and it
+probes for the union of their probe targets. A name declared by two sub-tuners
+is an error, except a probe param that both provide with the same value (one
+locus or ordering function shared by several split tuners), which the study
+keeps once. `DiscreteKnobTuner(name, choices, out_param=None)` is one discrete
+knob for code-specific choices: the in-param `name` is an index into `choices`,
+and the out-param (`out_param`, default `name`) is the chosen value.
+
+To tune the splits of several functions in one study, give each split tuner a
+`prefix`. It is prepended to every name the tuner uses: its in-params, its
+predicates, its locus and its ordering functions. With prefix `rhs_`, the
+recipe passes `rhs_auto_hard_split_predicate`, `rhs_auto_soft_split_predicate`,
+`rhs_auto_split_locus` (and any `rhs_..._ordering_fn`) to the function `rhs`.
+A `rank_by_post_population` early ordering function works with a prefix too.
+
+```python
+from EinsteinEngine.tuning.tune_composite import CompositeTuner, DiscreteKnobTuner
+from EinsteinEngine.tuning.tune_cse import CseOptimizationTuner
+from EinsteinEngine.tuning.tune_splitting import CombinatorialSplitTuner
+from EinsteinEngine.tuning.tuning import Tuner
+
+
+def get_tuner() -> Tuner:
+    return CompositeTuner(CombinatorialSplitTuner(prefix='rhs_'), CombinatorialSplitTuner(prefix='aux_'),
+                          CseOptimizationTuner(), DiscreteKnobTuner('launch_bounds', [None, (128, 2), (256, 1)]))
+```
+
+A checkpoint records each in-param by name (a knob's by its index), so resume
+a study with the same sub-tuners and the same `choices` in the same order.
+
+### Batches
+
+When trials are cheaper to run together (baked on one machine, built and timed
+in one job elsewhere), drive `CheckpointedOptimizer` in batches instead of
+`maximize`:
+
+```python
+from EinsteinEngine.tuning.checkpointed_optimizer import Batch, CheckpointedOptimizer
+from EinsteinEngine.tuning.tuning import build_experiment
+
+optimizer = CheckpointedOptimizer(None, build_experiment(tuner, recipe, checkpoint, record_probe=True), checkpoint)
+batch = optimizer.ask(8)            # 8 trials; TPE with constant_liar, seeded (batch.seed)
+open('batch.json', 'w').write(batch.to_json())
+# ... later, perhaps in another process:
+batch = Batch.from_json(open('batch.json').read())
+optimizer = CheckpointedOptimizer(None, build_experiment(tuner, None, checkpoint), checkpoint)
+optimizer.tell(batch, targets)      # targets[i] for batch.params[i]; non-finite for a failed run
+```
+
+Each call rebuilds the study from the checkpoint. A batch is reproducible from
+its seed and the checkpoint entries it was asked against, whose count and
+digest it records. `tell` appends to the same checkpoint, adding the batch id
+to each entry, and refuses a batch asked against another checkpoint or already
+told. The recipe-facing args of a trial follow from `batch.params[i]` as
+`generate_best` gets them.
+
+---
+
+## 8. Advanced domains
 
 The `(lo, hi)` tuple is shorthand for `Interval(lo, hi)`. When a plain interval
 isn't the right search space, `add_in_param` also accepts a `Domain` object or a
