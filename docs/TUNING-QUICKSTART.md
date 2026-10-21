@@ -652,8 +652,11 @@ optimizer.tell(batch, targets)  # targets[i] for batch.params[i]: -time (maximiz
   `generate_best --batch FILE --trial I` runs the recipe with them, from the
   probe file, without probing; so it does not notice a recipe edited since the
   probe. Keep the recipe the same for the whole study. Its arguments after
-  `--` must be the probe file's `recipe_args`; to choose where the recipe
-  writes, run it in that directory.
+  `--` must be the probe file's `recipe_args`, so a recipe used with batches
+  must take its output location from the working directory, not from an
+  argument; run it in that directory. `remote_tuner` runs the recipe without
+  arguments, so a study whose probe file records some cannot be continued with
+  `maximize`.
 - `maximize` appends without the lock: do not run it on a checkpoint that
   batches are told to at the same time.
 

@@ -107,8 +107,8 @@ def main() -> None:
             parser.error(f"--trial must be in 0..{len(batch.params) - 1}")
         experiment = tuning.build_experiment(tuner_inst, None, args.checkpoint_file, recipe_args=recipe_args)
         if batch.study != study_digest(experiment, args.checkpoint_file):
-            sys.exit(f"Batch {batch.id} was asked for another study than {args.checkpoint_file} (another checkpoint "
-                     f"name, probe file or set of in-params).")
+            sys.exit(f"Batch {batch.id} was asked for another study than {args.checkpoint_file} (another study id, "
+                     f"probe, search space, recipe arguments or set of in-params).")
         fixed = batch.params[args.trial]
         recipe_facing_args = experiment.recipe_facing_args(fixed, f"Trial {args.trial} of batch {batch.id}")
         print(f"Trial {args.trial} of batch {batch.id}.")

@@ -320,12 +320,14 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     for name in ranked:
         experiment.add_out_param(name, lambda _params, fn=add_eqn_order(derived_orders[name]): fn)
     experiment.described_space = space
+    #  A study moved or mirrored to another tree keeps its directory and file names; warn when those differ.
     if record_probe and recorded is not None and recorded.origin is not None and \
-            recorded.origin != os.path.abspath(checkpoint_file):
+            _last_parts(recorded.origin) != _last_parts(os.path.abspath(checkpoint_file)):
         pprint(f"Warning: the probe file {sidecar} was created for the study at {recorded.origin}. If this is another "
-               f"study (not the same one moved), it must not share that study's id: use tuning.fork_probe_file.")
+               f"study (not the same one moved or mirrored), it must not share that study's id: use "
+               f"tuning.fork_probe_file.")
     if record_probe and recorded != current:
-        from EinsteinEngine.tuning.checkpointed_optimizer import _locked, read_checkpoint  # see do_tuning
+        from EinsteinEngine.tuning.checkpointed_optimizer import checkpoint_lock, read_checkpoint  # see do_tuning
         read_checkpoint(experiment, checkpoint_file)  # raises if the checkpoint does not fit the experiment
         if recorded is not None and _count_checkpoint_entries(checkpoint_file) > 0:
             if recorded.space is None:
@@ -333,7 +335,7 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
                        f"they are taken to have been recorded against this tuner's current space.")
             if recorded.study is None:
                 pprint(f"Warning: giving the study of {sidecar} an id; batches asked before this cannot be told.")
-        with _locked(checkpoint_file):
+        with checkpoint_lock(checkpoint_file):
             if recorded is None and os.path.exists(sidecar):  # written meanwhile by another process: keep its id
                 with open(sidecar) as fh:
                     meanwhile = ProbeRecord.from_json(fh.read())
@@ -342,6 +344,10 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             with open(sidecar, 'w') as fh:
                 fh.write(current.to_json())
     return experiment
+
+
+def _last_parts(path: str) -> tuple[str, str]:
+    return os.path.basename(os.path.dirname(path)), os.path.basename(path)
 
 
 def fork_probe_file(from_checkpoint: str, to_checkpoint: str) -> None:
