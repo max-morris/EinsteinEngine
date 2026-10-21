@@ -263,11 +263,13 @@ def rank_by_post_population(ordering_fn: 'EqnOrderingFn') -> RankByPostPopulatio
 
 
 def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
-                         extra_params: Mapping[str, Any] | None = None) -> tuple[str, tuple[int, ...]]:
+                         extra_params: Mapping[str, Any] | None = None, *,
+                         prefix: str = '') -> tuple[str, tuple[int, ...]]:
     """
     Run `recipe_path` without auto splits or an early ordering function (nor a pre-population one, if `extra_params`
     provides one), with `ordering_fn` as the `ordering_fn` out-param, and rank the add_eqn calls of the function baked with it by the median post-CSE position
-    of their equations. Returns the function's name and its 0-based add_eqn order.
+    of their equations. Returns the function's name and its 0-based add_eqn order. The three ordering out-params are
+    named with `prefix`, as a split tuner with that prefix names them.
 
     Raises RuntimeError if the recipe fails, never reads a provided name, or does not bake exactly one function with
     `ordering_fn`.
@@ -275,9 +277,9 @@ def derive_add_eqn_order(recipe_path: str, ordering_fn: 'EqnOrderingFn',
     # A distinct object, so the hooks can tell the ranked function by its ordering function; pre_cse_stand_in and
     # respects_dependency_order look through the partial, so it bakes exactly as ordering_fn would.
     ranking_fn = functools.partial(ordering_fn)
-    params = {**(extra_params or {}), 'early_ordering_fn': None, 'ordering_fn': ranking_fn}
-    if 'pre_population_ordering_fn' in params:
-        params['pre_population_ordering_fn'] = None
+    params = {**(extra_params or {}), f'{prefix}early_ordering_fn': None, f'{prefix}ordering_fn': ranking_fn}
+    if f'{prefix}pre_population_ordering_fn' in params:
+        params[f'{prefix}pre_population_ordering_fn'] = None
     state = _ProbeState(recipe_path, {}, params, ranking_fn=ranking_fn)
     _run(state, 'while deriving an add_eqn order')
     _check_read(state)
