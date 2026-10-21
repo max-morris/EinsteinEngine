@@ -23,11 +23,12 @@ It provides nothing else, so the recipe's other knobs, its split predicates incl
 keep their defaults.
 """
 
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from EinsteinEngine.common.collect import DEFAULT_MAX_ITER
 from EinsteinEngine.common.cse_optimizations import CsePreset
+from EinsteinEngine.common.describe_param import describe_param
 from EinsteinEngine.common.sympywrap import CseOptimization
 from EinsteinEngine.tuning.experiment import Discrete, Experiment
 from EinsteinEngine.tuning.tuning import Tuner
@@ -55,6 +56,9 @@ class CseOptimizationTuner(Tuner):
             raise ValueError(f"CseOptimizationTuner's budgets must be positive, got {list(budgets)}")
         self.presets = list(presets)
         self.budgets = sorted(set(budgets))
+
+    def describe_space(self) -> Mapping[str, str]:
+        return {'cse_preset': describe_param(self.presets), 'cse_collect_max_iter': describe_param(self.budgets)}
 
     def _preset(self, params: dict[str, Any]) -> CsePreset:
         return self.presets[int(params['cse_preset'])]
