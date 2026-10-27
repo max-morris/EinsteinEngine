@@ -19,7 +19,7 @@ from typing import Tuple, Dict, Any, List
 
 from EinsteinEngine.common.sympywrap import mk_function, sympify, mk_idx, mk_symbol
 from sympy import Idx, Expr, Rational, Matrix
-from math import comb
+from math import comb, factorial
 from nrpy.finite_difference import setup_FD_matrix__return_inverse_lowlevel
 
 one = sympify(1)
@@ -55,8 +55,21 @@ for func in [stencil, DD, DDI, noop, div, D, muladd]:
         func.__module__ = "functions"
 
 def finite_difference_stencil(accuracy: int, ndivs: int, offset: int, la: Idx)->Expr:
+    """
+    The finite-difference stencil of the ndivs-th derivative along la, as weights on `stencil(la*k)` times
+    `DDI(la)**ndivs`. The stencil has width = accuracy + 1 points, k = i - width//2 + offset for i = 0..width-1, so
+    `accuracy` is the width minus one, not the order of accuracy. The width must be odd (accuracy even): nrpy's
+    weights for an even width belong to half-integer nodes, which these integer offsets cannot hold. The order is at
+    least width - ndivs, and at least the largest even number not above width - ndivs + 1 for a centered stencil
+    (offset 0): for example (4, 1, 0) and (4, 2, 0) are 4th order, (4, 1, 1) 4th, (4, 2, 1) 3rd and (4, 3, 0) 2nd.
+    """
+    if accuracy % 2 != 0:
+        raise ValueError(f"finite_difference_stencil: accuracy {accuracy} gives an even width; use an even accuracy")
+    if not 1 <= ndivs <= accuracy:
+        raise ValueError(f"finite_difference_stencil: ndivs {ndivs} must lie in 1..accuracy ({accuracy})")
     width = accuracy + 1
-    coefs: Matrix = setup_FD_matrix__return_inverse_lowlevel(width, offset).col(ndivs)
+    # Column ndivs of the inverse Taylor matrix holds the weights of f^(ndivs)/ndivs!; scale to f^(ndivs).
+    coefs: Matrix = setup_FD_matrix__return_inverse_lowlevel(width, offset).col(ndivs) * factorial(ndivs)
     formula = sympify(0)
     n = len(coefs)
     cdict: dict[int, List[Tuple[Rational,int]]] = dict()
