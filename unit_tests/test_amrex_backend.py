@@ -723,14 +723,21 @@ def test_round5() -> None:
     # Identifier scan (round 6, B): a character literal after a keyword, and a raw string.
     ids = AMReXModule.cpp_identifiers("switch (k) { case'a': w = R\"(gamma)\"; } h = 0x1F'FF;")
     assert 'a' not in ids and 'gamma' not in ids and 'R' not in ids and 'FF' not in ids, ids
-    # Round 7 (B B1): choices on ordered pairs of conditions in a guarded sum make piecewise_fold build a large
-    # cartesian product before it drops duplicates: refused at once, not folded for minutes.
+    # Round 7 (B B1): choices on ordered pairs of conditions in a guarded sum, where piecewise_fold would build a large
+    # cartesian product before dropping duplicates: decided quickly.
     cs = [sy.Symbol(f'q{i}') > 0 for i in range(5)]
     pairs = [(cs[p], cs[q]) for p in range(5) for q in range(5) if p != q][:14]
     wide = G + sum(Piecewise((sy.Symbol(f'xx{i}'), cp), (sy.Symbol(f'yy{i}'), cq), (sy.Symbol(f'zz{i}'), True))
                    for i, (cp, cq) in enumerate(pairs))
     t0 = time.time()
-    refuses(lambda: check_guards({t: wide, o: t * A}, {t}, 'wide'), "combinations of choices")
+    check_guards({t: wide, o: t * A}, {t}, 'wide')  # round 8: decided by enumeration (5 conditions), and legal
+    # Round 8 (B B1, A B11): shared choices nested in different orders in many terms, and a sum of products of
+    # choices on different pairs of conditions: legal, decided quickly.
+    ch = [Piecewise((sy.Symbol(f'pp{i}'), sy.Symbol(f'r{i}') > 0), (sy.Symbol(f'nn{i}'), True)) for i in range(6)]
+    shuffled = sum(ch[i % 3] * ch[(i + 1) % 3] * sy.Symbol(f'ww{i}') for i in range(14))
+    check_guards({t: G + shuffled, o: t * A}, {t}, 'shared')
+    prods = sum(ch[p] * ch[q] for p in range(6) for q in range(p + 1, 6))
+    check_guards({o: (A + G + prods) * S}, set(), 'pairs')
     assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
     # Many choices around a guard are refused, loudly, rather than folded without end.
     many = sum(Piecewise((G, sy.Symbol(f'c{i}') > 0), (sy.Symbol(f'd{i}'), True)) for i in range(12))
