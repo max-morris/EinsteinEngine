@@ -98,7 +98,8 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                  includes: Sequence[str] = (), derivative_stencil_width: int = 5, max_stencil_offset: int = 3) -> None:
         super().__init__(dimensionality=3, derivative_stencil_width=derivative_stencil_width)
         supported = ((KernelLaunchMode, MemberParams, CellCentered), (PointFunctionMode, StructParams, NodeCentered))
-        if not any(isinstance(mode, m) and isinstance(params, p) and isinstance(coordinates, c) for m, p, c in supported):
+        if not any(isinstance(mode, m) and isinstance(params, p) and isinstance(coordinates, c)
+                   for m, p, c in supported):
             raise DslException(
                 f"Unsupported combination: {type(mode).__name__} with {type(params).__name__} and "
                 f"{type(coordinates).__name__} (supported: "
@@ -164,10 +165,13 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
         """The free identifiers of C++ text: not in string literals or comments, not member names after `.`, `->` or
         `::`, not parts of numbers (the `e` of `1.0e-3`)."""
         import re
-        # Strings, character literals and comments in one left-to-right pass, so a quote in a comment (or // in a
-        # string, or '"') hides nothing. A quote after a hex digit is a digit separator (1'000), unless after u8.
-        string, char = r'"(?:\\.|[^"\\])*"', r"(?:(?<![0-9A-Fa-f])|(?<=u8))'(?:\\.|[^'\\\n])+'"
-        code = re.sub(rf'{string}|{char}|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
+        # Raw strings, strings, numbers, character literals and comments in one left-to-right pass, so a quote in a
+        # comment (or // in a string, or '"') hides nothing. A number is taken whole first, with its digit separators
+        # (1'000), so that every other quote opens a character literal (case'a':).
+        prefix = r'(?:(?<!\w)(?:u8|[uUL]))?'  # encoding prefixes of string and character literals
+        raw, string = prefix + r'R"([^(\s]*)\(.*?\)\1"', prefix + r'"(?:\\.|[^"\\])*"'
+        number, char = r"(?<![\w.])\d[\w.]*(?:'\w+[\w.]*)*", prefix + r"'(?:\\.|[^'\\\n])+'"
+        code = re.sub(rf'{raw}|{string}|{number}|{char}|//[^\n]*|/\*.*?\*/', ' ', code, flags=re.S)
         this_members = set(re.findall(r'\bthis\s*->\s*([A-Za-z_]\w*)', code)) | set(
             re.findall(r'\(\s*\*\s*this\s*\)\s*\.\s*([A-Za-z_]\w*)', code))
         code = re.sub(r'(?<![\w.])\d[\w.]*(?:[eE][+-]?\d+)?', ' ', code)
@@ -291,8 +295,8 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
             # another parameter or the spacing would read it unset.
             used = self.cpp_identifiers(init)
             if bad := sorted(used & (set(self.params) | {'DX', 'DXI', 'DYI', 'DZI', name})):
-                raise DslException(f"Parameter {name}: its init {init!r} reads {bad}, which the constructor has not set "
-                                   f"yet; compute it from the constructor arguments or the prelude.")
+                raise DslException(f"Parameter {name}: its init {init!r} reads {bad}, which the constructor has not "
+                                   f"set yet; compute it from the constructor arguments or the prelude.")
             if isinstance(self.param_scheme, MemberParams):
                 for c in self.param_scheme.ctor_checks:
                     if bad_ := sorted(self.cpp_identifiers(c.failure_condition) & {'DX', 'DXI', 'DYI', 'DZI'}):
@@ -311,7 +315,8 @@ class AMReXModule(DslFrontend[AMReXParam, AMReXDeclKwargs, AMReXFunction]):
                         auto_hard_split_predicate: Optional[Callable[[int], bool]] = None,
                         auto_soft_split_predicate: Optional[Callable[[int], bool | SoftSplitRetainmentStrategy]] = None,
                         auto_split_locus: SplitLocus = SplitLocus.Early) -> AMReXFunction:
-        """Creates a function. Kernel mode launches them in creation order; point mode emits one inline function each."""
+        """Creates a function. Kernel mode launches them in creation order; point mode emits one inline function
+        each."""
         if name in self.functions:
             raise DslException(f"Function {name} already exists.")
         if name == "compute":

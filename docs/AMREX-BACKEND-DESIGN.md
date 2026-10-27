@@ -251,11 +251,18 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
          power. The rewrite is tested on each rebuilt node: `Abs(0**k)**k` is 0.
        - Max and Min become choices on opaque conditions. This is linear: `rewrite(Piecewise)` writes every pairwise
          comparison.
-       - `piecewise_fold` runs on opaque conditions, equal conditions sharing one. The fold is then combinatorial.
-         sympy's fold would otherwise simplify the conditions it combines, which can run `trigsimp` without end.
-       - A fold estimated at more than 256 branches (`MAX_BRANCHES`) is refused, loudly.
+       - The choices are folded into one choice between the zero form's distinct values. With at most 8 distinct
+         conditions (`MAX_CONDS`), this is done by enumeration: under each of the 2**k truth assignments every choice
+         collapses to its first branch whose condition holds. Conditions are opaque, so logically related ones count
+         as independent and the values may include combinations that never occur (conservative). With more
+         conditions, sympy's `piecewise_fold` runs on opaque conditions only when the nested count (a choice adds its
+         pieces' counts, any other node multiplies) bounds its work at 256 (`MAX_BRANCHES`); otherwise the form is
+         refused, loudly. sympy's fold builds the cartesian product of a node's choices before it drops duplicates,
+         and simplifies the conditions it combines, which can run `trigsimp` without end; no estimate of its work held
+         up in review.
        - Expansion is used only while the expanded form, estimated on the DAG, stays under 2000 nodes
-         (`MAX_EXPANDED`).
+         (`MAX_EXPANDED`). A negative or fractional power of a sum counts as the power floor(|n|), since sympy
+         expands those too.
        - Every walk is over distinct nodes (the DAG), not the tree.
      - "Still a guard" is recursive: a choice with a guarded branch is zero in some region. A guard nested more than
        16 deep is refused.
@@ -278,7 +285,10 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
          without being one (`t = A + G*big`, then `(t - A)*S`) loses that cancellation and passes.
        - Identities that need expansion past the expanded-size bound, or a sympy canonical form other than the one
          the zero test reaches, are not seen.
-       - Complementary masks (`m_in*a + m_out*b`) are refused, though never zero. That is a loud false refusal.
+       - Complementary masks (`m_in*a + m_out*b`) are refused, though never zero. That is a loud false refusal. So
+         are correlated choices that the opaque conditions cannot relate, such as `(Max(G, B) + Min(G, B))*S`.
+       - Only Max, Min and choices are treated as data-region zeros of a guard. Another function that can be 0 for
+         some data while its guarded argument is 0, such as `atan2(G, b)` (0 where b > 0), is not; no recipe uses one.
        - `(1 - mask)*S`, with a mask whose branches are 1 and 0, is outside R10 by definition: the zero comes from a
          branch value, not from a guard.
      - A sum with any other term is not a guard: `A + P` is A where P is false. `DXI*(A + P)`, which the default

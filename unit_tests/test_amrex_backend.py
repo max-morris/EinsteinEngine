@@ -699,6 +699,46 @@ def test_round5() -> None:
     assert {'alpha', 'eta', 'beta'} <= ids and 'x' not in ids, ids
     refuses(lambda: (lambda cc: (cc.add_param("alpha", init="2.0 * (*this).beta"), cc.add_param("beta", init="1.0")))(
         kernel_module()), "reads it, unset")
+    # Round 6 (B B1, A N36): one choice shared by many terms is counted once by the fold's estimate (a radius floor in
+    # every term of a guarded sum), and a sum with many upwinded terms beside a guard is not refused.
+    rfloor = Piecewise((Rational(1, 10 ** 6), A < Rational(1, 10 ** 6)), (A, True))
+    shared = sum(sy.Symbol(f'w{i}') * rfloor for i in range(12)) + G
+    check_guards({o: (shared + B) * S}, set(), 'shared')
+    up = sum(Piecewise((sy.Symbol(f'p{i}'), sy.Symbol(f'b{i % 3}') > 0), (sy.Symbol(f'm{i}'), True)) for i in range(12))
+    check_guards({o: sy.Symbol('DXI') * (up + G) * S}, set(), 'upwind')
+    # Round 6 (B B2): negative and fractional powers of sums are expanded by sympy too; the estimate bounds them.
+    s12 = sum(sy.Symbol(f'z{i}') for i in range(12))
+    t0 = time.time()
+    check_guards({o: ((A + G) / s12 ** 12 + B) * S}, set(), 'negpow')
+    check_guards({o: ((A + G) * s12 ** Rational(25, 2) + B) * S}, set(), 'fracpow')
+    assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
+    # Round 7 (A N39): a chain of 20 Max/Min around a guard folds to 21 branches, not 2**20, and passes with + 2.
+    chain2 = {sy.Symbol('t0'): G}
+    for i in range(1, 21):
+        chain2[sy.Symbol(f't{i}')] = (sy.Min if i % 2 else sy.Max)(sy.Symbol(f't{i - 1}'), sy.Symbol(f'x{i}'))
+    chain2[o] = (sy.Symbol('t20') + 2) * S
+    t0 = time.time()
+    check_guards(chain2, set(chain2) - {o}, 'maxchain')
+    assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
+    # Identifier scan (round 6, B): a character literal after a keyword, and a raw string.
+    ids = AMReXModule.cpp_identifiers("switch (k) { case'a': w = R\"(gamma)\"; } h = 0x1F'FF;")
+    assert 'a' not in ids and 'gamma' not in ids and 'R' not in ids and 'FF' not in ids, ids
+    # Round 7 (B B1): choices on ordered pairs of conditions in a guarded sum, where piecewise_fold would build a large
+    # cartesian product before dropping duplicates: decided quickly.
+    cs = [sy.Symbol(f'q{i}') > 0 for i in range(5)]
+    pairs = [(cs[p], cs[q]) for p in range(5) for q in range(5) if p != q][:14]
+    wide = G + sum(Piecewise((sy.Symbol(f'xx{i}'), cp), (sy.Symbol(f'yy{i}'), cq), (sy.Symbol(f'zz{i}'), True))
+                   for i, (cp, cq) in enumerate(pairs))
+    t0 = time.time()
+    check_guards({t: wide, o: t * A}, {t}, 'wide')  # round 8: decided by enumeration (5 conditions), and legal
+    # Round 8 (B B1, A B11): shared choices nested in different orders in many terms, and a sum of products of
+    # choices on different pairs of conditions: legal, decided quickly.
+    ch = [Piecewise((sy.Symbol(f'pp{i}'), sy.Symbol(f'r{i}') > 0), (sy.Symbol(f'nn{i}'), True)) for i in range(6)]
+    shuffled = sum(ch[i % 3] * ch[(i + 1) % 3] * sy.Symbol(f'ww{i}') for i in range(14))
+    check_guards({t: G + shuffled, o: t * A}, {t}, 'shared')
+    prods = sum(ch[p] * ch[q] for p in range(6) for q in range(p + 1, 6))
+    check_guards({o: (A + G + prods) * S}, set(), 'pairs')
+    assert time.time() - t0 < 10, f'slow: {time.time() - t0:.1f} s'
     # Many choices around a guard are refused, loudly, rather than folded without end.
     many = sum(Piecewise((G, sy.Symbol(f'c{i}') > 0), (sy.Symbol(f'd{i}'), True)) for i in range(12))
     refuses(lambda: check_guards({o: many * S}, set(), 'many'), "combinations of choices")
@@ -742,6 +782,31 @@ def test_round5_reassigned() -> None:
         text(cc)
     for middle in ('none', 'overwrite', 'tile'):
         refuses(lambda: build(middle), "multiplies a guard")
+
+    # Round 6 (A N38): a copy of the old value in the overwrite's own loop (u - w = G must raise), and the must-pass
+    # control against the new value (u - q' = G - q_old is not a guard).
+    def copy_in_overwrite_loop(reader: str) -> None:
+        cc = kernel_module()
+        eps = cc.add_param("eps", init="0.1")
+        outs = {}
+        for nm in ('u', 'w', 'q', 'p'):
+            r = cc.output(f"{nm}_rhs", [])
+            outs[nm] = (cc.decl(nm, [], rhs=r), r)
+        (u, ru), (w, rw), (q, rq), (p, rp) = (outs[x] for x in 'uwqp')
+        G = Piecewise((eps, eps > 0), (0, True))
+        big = sum(Rational(1, n) * u ** n * w ** (n % 7) * q ** (n % 5) for n in range(1, 60))
+        f = cc.create_function("f")
+        f.add_eqn(rq, big)
+        f.add_eqn(ru, rq + G)
+        g = cc.create_function("g")
+        g.add_eqn(rw, rq)
+        g.add_eqn(cc.overwrite(rq), 2 * rq)
+        h = cc.create_function("h")
+        h.add_eqn(rp, (ru - (rw if reader == 'w' else rq)) * D(p, l0, l0))
+        cc.bake()
+        text(cc)
+    refuses(lambda: copy_in_overwrite_loop('w'), "multiplies a guard")
+    copy_in_overwrite_loop('q')
 
 
 def test_random_guards(trials: int = 300) -> None:
