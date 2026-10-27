@@ -23,6 +23,7 @@ non-constant factor (a hard error in both modes), and reports, as a warning, ari
 guarded branches (work that a false guard does not skip).
 """
 
+import itertools
 from typing import Collection, Mapping, cast
 
 import sympy as sy
@@ -103,7 +104,8 @@ def _is_load(expr: sy.Basic, temps: Collection[Symbol]) -> bool:
 
 MAX_INLINE = 400  # tree nodes; a larger value stays a symbol (an opaque value; review round 4, A B7)
 MAX_EXPANDED = 2000  # nodes of the expanded form, estimated; a larger zero form is not expanded (round 5, A B10)
-MAX_BRANCHES = 256  # branches of a folded zero form, estimated; more is refused, loudly (round 5, B B3)
+MAX_CONDS = 8  # distinct conditions of a zero form decided by enumeration (2**k assignments; round 8)
+MAX_BRANCHES = 256  # past MAX_CONDS: sympy's fold only under this nested count; else refused (round 5, B B3)
 MAX_DEPTH = 16
 
 
@@ -169,17 +171,22 @@ def expanded_size(e: sy.Basic, memo: dict[sy.Basic, tuple[float, float]] | None 
     return size(e)[1]
 
 
-def _branches(e: sy.Basic) -> int:
-    """An upper bound on the number of branches of the fold of e on opaque conditions: the product of the piece counts
-    of its distinct choices (a choice shared by several terms is counted once; round 6, B B1), and at most 2**k for k
-    distinct conditions, since the opaque fold drops contradictory combinations (round 6, A N36). Capped at 10**9."""
-    r = 1
-    conds: set[sy.Basic] = set()
-    for x in unique_nodes(e):
-        if isinstance(x, Piecewise):
-            r = min(r * len(x.args), 10 ** 9)
-            conds |= {c for _, c in _pieces(x) if c is not sy.true and c is not sy.false}
-    return int(min(r, 2 ** min(len(conds), 30)))
+def _nested_branches(e: sy.Basic) -> int:
+    """An upper bound on the products piecewise_fold builds for e: a choice adds its pieces' counts, any other node
+    multiplies its arguments' (on the DAG), capped at 10**9."""
+    memo: dict[sy.Basic, int] = {}
+
+    def nested(x: sy.Basic) -> int:
+        if x not in memo:
+            if isinstance(x, Piecewise):
+                r = sum(nested(b) for b, _ in _pieces(x))
+            else:
+                r = 1
+                for a in x.args:
+                    r = min(r * nested(a), 10 ** 9)
+            memo[x] = min(r, 10 ** 9)
+        return memo[x]
+    return nested(e)
 
 
 def _minmax_choices(z: sy.Basic) -> sy.Basic:
@@ -202,31 +209,49 @@ def _minmax_choices(z: sy.Basic) -> sy.Basic:
     return go(z)
 
 
-def _fold_opaque(z: sy.Basic) -> sy.Basic:
-    """piecewise_fold with every condition replaced by an opaque boolean first (equal conditions by the same one) and
-    restored after: the fold is then combinatorial. piecewise_fold otherwise simplifies the conditions it combines,
-    which can run trigsimp without end (round 5, B B3)."""
-    conds: dict[sy.Basic, sy.Basic] = {}
-    memo: dict[sy.Basic, sy.Basic] = {}
+def _fold(z: sy.Basic, where: str) -> sy.Basic:
+    """z's choices folded into one choice between its distinct values, on opaque conditions (round 8, B B1, A B11).
+    With k <= MAX_CONDS distinct conditions, by enumeration: under each of the 2**k truth assignments every choice
+    collapses to its first branch whose condition holds (a DAG rebuild), and the distinct results are the values.
+    The conditions are opaque: two that are logically related count as independent, so the values may include
+    combinations that never occur (conservative). Past MAX_CONDS, sympy's piecewise_fold on opaque conditions, only
+    when the nested count bounds its work at MAX_BRANCHES; otherwise refused. (piecewise_fold builds the cartesian
+    product of a node's choices before it drops duplicates, and simplifies the conditions it combines, which can run
+    trigsimp without end; no estimate of its work held up in review.)"""
+    conds: list[sy.Basic] = []
+    for x in unique_nodes(z):
+        if isinstance(x, Piecewise):
+            conds += [c for _, c in _pieces(x) if c is not sy.true and c is not sy.false and c not in conds]
+    if len(conds) > MAX_CONDS:
+        if _nested_branches(z) > MAX_BRANCHES:
+            raise GeneratorException(f"{where}: more than {MAX_CONDS} conditions and {MAX_BRANCHES} combinations of "
+                                     f"choices around a guard; the guard check cannot decide whether it multiplies a "
+                                     f"value by 0 (docs, section 7).")
+        dummies = {c: sy.Dummy('cond') for c in conds}  # type: ignore[no-untyped-call]
+        folded = sy.piecewise_fold(z.xreplace(dummies))  # type: ignore[no-untyped-call]
+        return cast(sy.Basic, folded.xreplace({d: c for c, d in dummies.items()}))
+    values: list[sy.Basic] = []
+    for bits in itertools.product((True, False), repeat=len(conds)):
+        assign = dict(zip(conds, bits))
+        memo: dict[sy.Basic, sy.Basic] = {}
 
-    def opaque(x: sy.Basic) -> sy.Basic:
-        if x not in memo:
-            if isinstance(x, Piecewise):
-                pieces = []
-                for e, c in _pieces(x):
-                    if c is not sy.true and c is not sy.false and c not in conds:
-                        conds[c] = sy.Dummy('cond')  # type: ignore[no-untyped-call]
-                    pieces.append((opaque(e), conds.get(c, c)))
-                memo[x] = Piecewise(*pieces)  # type: ignore[no-untyped-call]
-            elif not x.args:
-                memo[x] = x
-            else:
-                args = [opaque(a) for a in x.args]
-                memo[x] = x if all(a is b for a, b in zip(args, x.args)) else x.func(*args)
-        return memo[x]
-
-    folded = sy.piecewise_fold(opaque(z))  # type: ignore[no-untyped-call]
-    return cast(sy.Basic, folded.xreplace({d: c for c, d in conds.items()}))
+        def go(x: sy.Basic) -> sy.Basic:
+            if x not in memo:
+                if isinstance(x, Piecewise):
+                    # The first branch whose condition holds; an incomplete choice with none is NaN (no value).
+                    memo[x] = next((go(e) for e, c in _pieces(x) if c is sy.true or assign.get(c) is True), sy.nan)
+                elif not x.args:
+                    memo[x] = x
+                else:
+                    args = [go(a) for a in x.args]
+                    memo[x] = x if all(a is b for a, b in zip(args, x.args)) else x.func(*args)
+            return memo[x]
+        v = go(z)
+        if v not in values:
+            values.append(v)
+    if len(values) == 1:
+        return values[0]
+    return Piecewise(*[(v, sy.Dummy('cond')) for v in values[:-1]], (values[-1], True))  # type: ignore[no-untyped-call]
 
 
 def tree_size(e: sy.Basic, memo: dict[sy.Basic, int] | None = None) -> int:
@@ -293,11 +318,7 @@ def check_guards(eqns: Mapping[Symbol, Expr], temps: set[Symbol], where: str,
         if any(isinstance(x, (sy.Max, sy.Min)) for x in unique_nodes(z)):
             z = _minmax_choices(z)
         if any(isinstance(x, Piecewise) for x in unique_nodes(z)):
-            if _branches(z) > MAX_BRANCHES:
-                raise GeneratorException(f"{where}: more than {MAX_BRANCHES} combinations of choices around a guard; "
-                                         f"the guard check cannot decide whether it multiplies a value by 0 (docs, "
-                                         f"section 7).")
-            z = _zero_power_free(_fold_opaque(z))
+            z = _zero_power_free(_fold(z, where))
         return z
 
     def is_zero(z: sy.Basic) -> bool:

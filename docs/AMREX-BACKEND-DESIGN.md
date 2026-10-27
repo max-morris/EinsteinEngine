@@ -251,11 +251,15 @@ recipe. Version 2 handles guards in two steps, both inside the backend.
          power. The rewrite is tested on each rebuilt node: `Abs(0**k)**k` is 0.
        - Max and Min become choices on opaque conditions. This is linear: `rewrite(Piecewise)` writes every pairwise
          comparison.
-       - `piecewise_fold` runs on opaque conditions, equal conditions sharing one. The fold is then combinatorial.
-         sympy's fold would otherwise simplify the conditions it combines, which can run `trigsimp` without end.
-       - A fold estimated at more than 256 branches (`MAX_BRANCHES`) is refused, loudly. The estimate is the product
-         of the piece counts of the distinct choices (one shared by many terms counts once), and at most 2**k for k
-         distinct conditions.
+       - The choices are folded into one choice between the zero form's distinct values. With at most 8 distinct
+         conditions (`MAX_CONDS`), this is done by enumeration: under each of the 2**k truth assignments every choice
+         collapses to its first branch whose condition holds. Conditions are opaque, so logically related ones count
+         as independent and the values may include combinations that never occur (conservative). With more
+         conditions, sympy's `piecewise_fold` runs on opaque conditions only when the nested count (a choice adds its
+         pieces' counts, any other node multiplies) bounds its work at 256 (`MAX_BRANCHES`); otherwise the form is
+         refused, loudly. sympy's fold builds the cartesian product of a node's choices before it drops duplicates,
+         and simplifies the conditions it combines, which can run `trigsimp` without end; no estimate of its work held
+         up in review.
        - Expansion is used only while the expanded form, estimated on the DAG, stays under 2000 nodes
          (`MAX_EXPANDED`). A negative or fractional power of a sum counts as the power floor(|n|), since sympy
          expands those too.

@@ -31,7 +31,8 @@ from EinsteinEngine.generators.amrex.analysis import COORDS, STENCIL_FN, LoopAna
 from EinsteinEngine.generators.generator_exception import GeneratorException
 
 
-def kernel_class(module: AMReXModule, groups: Sequence[tuple[str, list[str], list[LoopAnalysis]]], used_params: set[str],
+def kernel_class(module: AMReXModule, groups: Sequence[tuple[str, list[str], list[LoopAnalysis]]],
+                 used_params: set[str],
                  banner: str) -> KernelClassDecl:
     mode = module.mode
     params = module.param_scheme
@@ -78,7 +79,8 @@ def kernel_class(module: AMReXModule, groups: Sequence[tuple[str, list[str], lis
                                             state.access.preamble(state.name), state.access.unused_markers(state.name),
                                             uses_tile=len(tiles) > 0))
         launches.append(LaunchGroup(fn_name, tiles, decls))
-    kparams = [KernelParam(p.name, p.cpp_type, p.init or '') for p in sorted(module.params.values(), key=lambda p: p.name)
+    kparams = [KernelParam(p.name, p.cpp_type, p.init or '')
+               for p in sorted(module.params.values(), key=lambda p: p.name)
                if p.name in used_params]
     return KernelClassDecl(
         name=module.name, namespace=module.namespace, includes=module.includes,
