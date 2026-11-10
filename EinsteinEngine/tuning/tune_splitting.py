@@ -19,12 +19,17 @@
 Tuners that search a recipe's auto split predicates. Besides the predicates, they provide `auto_split_locus` and the
 ordering functions they were given, which the recipe must read through `get_optional_tuning_param`. Position i means
 "split after element i at the locus"; the number of positions is found by probing the recipe.
+
+A `prefix` is prepended to every name a split tuner uses: its in-params and all its out-params (the predicates, the
+locus and the ordering functions). Several split tuners, one per function, then fit in one CompositeTuner study: with
+prefix `rhs_`, the recipe passes `rhs_auto_hard_split_predicate` and the other `rhs_` params to the function `rhs`.
 """
 
 import os
+import re
 import warnings
 from abc import abstractmethod
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import Any, Callable
 
 from EinsteinEngine.intermediate.eqn_ordering import EqnOrderingFn
@@ -52,23 +57,35 @@ class _SplitTuner(Tuner):
     """The locus and ordering functions shared by the split tuners, and the out-params that carry them."""
 
     def __init__(self, *, locus: SplitLocus, early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None,
-                 pre_population_ordering_fn: EqnOrderingFn | None, ordering_fn: EqnOrderingFn | None) -> None:
+                 pre_population_ordering_fn: EqnOrderingFn | None, ordering_fn: EqnOrderingFn | None,
+                 prefix: str) -> None:
+        if prefix and not re.fullmatch(r'[A-Za-z_]\w*_', prefix):
+            raise ValueError(f"A split tuner's prefix must be empty or an identifier ending in '_' (e.g. 'rhs_'), "
+                             f"got {prefix!r}")
         self.locus = locus
         self.early_ordering_fn = early_ordering_fn
         self.pre_population_ordering_fn = pre_population_ordering_fn
         self.ordering_fn = ordering_fn
+        self.prefix = prefix
+
+    def param_name(self, base: str) -> str:
+        """The name of one of this tuner's params, with its prefix."""
+        return self.prefix + base
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}(prefix={self.prefix!r})" if self.prefix else f"{type(self).__name__}()"
 
     def probe_targets(self) -> Collection[str]:
-        return (PROBED_PREDICATE,)
+        return (self.param_name(PROBED_PREDICATE),)
 
     def probe_params(self) -> dict[str, Any]:
         """The locus and the ordering functions that were given, which change the number of positions."""
-        params: dict[str, Any] = {'auto_split_locus': self.locus}
+        params: dict[str, Any] = {self.param_name('auto_split_locus'): self.locus}
         for name, fn in (('early_ordering_fn', self.early_ordering_fn),
                          ('pre_population_ordering_fn', self.pre_population_ordering_fn),
                          ('ordering_fn', self.ordering_fn)):
             if fn is not None:
-                params[name] = fn
+                params[self.param_name(name)] = fn
         return params
 
     def get_experiment(self) -> Experiment:
@@ -77,10 +94,11 @@ class _SplitTuner(Tuner):
                            f"result.")
 
     def get_probed_experiment(self, probe: ProbeResult) -> Experiment:
-        if PROBED_PREDICATE not in probe:
-            raise RuntimeError(f"Expected a probe result for {PROBED_PREDICATE!r}, got {dict(probe)}. Build the "
+        target = self.param_name(PROBED_PREDICATE)
+        if target not in probe:
+            raise RuntimeError(f"Expected a probe result for {target!r}, got {dict(probe)}. Build the "
                                f"experiment with tuning.build_experiment, which probes the recipe.")
-        return self._build(probe[PROBED_PREDICATE])
+        return self._build(probe[target])
 
     @abstractmethod
     def _build(self, n_positions: int) -> Experiment:
@@ -89,8 +107,8 @@ class _SplitTuner(Tuner):
 
     def _add_out_params(self, e: Experiment, hard: Callable[[dict[str, Any]], HardSplitPredicate],
                         soft: Callable[[dict[str, Any]], SoftSplitPredicate]) -> None:
-        e.add_out_param('auto_hard_split_predicate', hard)
-        e.add_out_param('auto_soft_split_predicate', soft)
+        e.add_out_param(self.param_name('auto_hard_split_predicate'), hard)
+        e.add_out_param(self.param_name('auto_soft_split_predicate'), soft)
         for name, value in self.probe_params().items():
             e.add_out_param(name, lambda _params, value=value: value)
 
@@ -99,20 +117,25 @@ class CombinatorialSplitTuner(_SplitTuner):
     """
     Search every position independently: no split, soft split (with a retainment percentile), or hard split.
     Params: `split_i` in {0: none, 1: soft, 2: hard} and `soft_retain_percentile_i` (only when `split_i` is 1), for i
-    below `n_vars` if given, otherwise the probed number of positions. With two params per position, this is only
-    practical at the early locus; use CutPositionSplitTuner elsewhere.
+    below `n_vars` if given, otherwise the probed number of positions; each name starts with `prefix`. With two params
+    per position, this is only practical at the early locus; use CutPositionSplitTuner elsewhere.
     """
 
     def __init__(self, n_vars: int | None = None, *, locus: SplitLocus = SplitLocus.Early,
                  early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None = None,
                  pre_population_ordering_fn: EqnOrderingFn | None = None,
-                 ordering_fn: EqnOrderingFn | None = None) -> None:
+                 ordering_fn: EqnOrderingFn | None = None, prefix: str = '') -> None:
         super().__init__(locus=locus, early_ordering_fn=early_ordering_fn,
-                         pre_population_ordering_fn=pre_population_ordering_fn, ordering_fn=ordering_fn)
+                         pre_population_ordering_fn=pre_population_ordering_fn, ordering_fn=ordering_fn,
+                         prefix=prefix)
         self.n_vars = n_vars
 
     def probe_targets(self) -> Collection[str]:
         return super().probe_targets() if self.n_vars is None else ()
+
+    def describe_space(self) -> Mapping[str, str]:
+        n = 'probed' if self.n_vars is None else str(self.n_vars)
+        return {self.param_name('split_*'): f'CombinatorialSplitTuner(positions={n})'}
 
     def get_experiment(self) -> Experiment:
         return super().get_experiment() if self.n_vars is None else self._build(self.n_vars)
@@ -127,19 +150,22 @@ class CombinatorialSplitTuner(_SplitTuner):
                           skip_file_prefixes=(_TUNING_DIR,))
         e = Experiment()
 
-        for i in range(n_positions):
-            e.add_in_param(f'split_{i}', (0, 2))
-            #  Python has completely insane lexical scoping, so we have to early-bind i in the lambda to capture by value
-            e.add_in_param(f'soft_retain_percentile_{i}', (0.0, 1.0), lambda params, i=i: params[f'split_{i}'] == 1)
+        splits = [self.param_name(f'split_{i}') for i in range(n_positions)]
+        retains = [self.param_name(f'soft_retain_percentile_{i}') for i in range(n_positions)]
+        for split, retain in zip(splits, retains):
+            e.add_in_param(split, (0, 2))
+            #  Python has completely insane lexical scoping, so we have to early-bind split in the lambda to capture
+            #  by value
+            e.add_in_param(retain, (0.0, 1.0), lambda params, split=split: params[split] == 1)
 
         def get_hard_split_predicate(params: dict[str, Any]) -> HardSplitPredicate:
-            return lambda i: 0 <= i < n_positions and int(params[f'split_{i}']) == 2
+            return lambda i: 0 <= i < n_positions and int(params[splits[i]]) == 2
 
         def get_soft_split_predicate(params: dict[str, Any]) -> SoftSplitPredicate:
             def f(i: int) -> bool | SoftSplitRetainmentStrategy:
-                if not 0 <= i < n_positions or int(params[f'split_{i}']) != 1:
+                if not 0 <= i < n_positions or int(params[splits[i]]) != 1:
                     return False
-                return retain_percentile(params[f'soft_retain_percentile_{i}'])
+                return retain_percentile(params[retains[i]])
             return f
 
         self._add_out_params(e, get_hard_split_predicate, get_soft_split_predicate)
@@ -150,20 +176,26 @@ class CutPositionSplitTuner(_SplitTuner):
     """
     Search the positions of `n_cuts` cuts, and the kind of each, among the probed positions. Params, for j below
     `n_cuts`: `cut_position_j` (strictly increasing), `cut_kind_j` in {0: unused, 1: soft, 2: hard}, where 0 is only
-    searched with `allow_unused_cuts`, and `cut_retain_percentile_j` (only when `cut_kind_j` is 1). The number of
-    params does not grow with the number of positions, so this suits the later loci.
+    searched with `allow_unused_cuts`, and `cut_retain_percentile_j` (only when `cut_kind_j` is 1); each name starts
+    with `prefix`. The number of params does not grow with the number of positions, so this suits the later loci.
     """
 
     def __init__(self, n_cuts: int, *, locus: SplitLocus,
                  early_ordering_fn: EqnOrderingFn | RankByPostPopulation | None = None,
                  pre_population_ordering_fn: EqnOrderingFn | None = None,
-                 ordering_fn: EqnOrderingFn | None = None, allow_unused_cuts: bool = True) -> None:
+                 ordering_fn: EqnOrderingFn | None = None, allow_unused_cuts: bool = True,
+                 prefix: str = '') -> None:
         if n_cuts < 1:
             raise ValueError(f"n_cuts must be at least 1, got {n_cuts}")
         super().__init__(locus=locus, early_ordering_fn=early_ordering_fn,
-                         pre_population_ordering_fn=pre_population_ordering_fn, ordering_fn=ordering_fn)
+                         pre_population_ordering_fn=pre_population_ordering_fn, ordering_fn=ordering_fn,
+                         prefix=prefix)
         self.n_cuts = n_cuts
         self.allow_unused_cuts = allow_unused_cuts
+
+    def describe_space(self) -> Mapping[str, str]:
+        return {self.param_name('cut_*'): f'CutPositionSplitTuner(n_cuts={self.n_cuts}, '
+                                          f'allow_unused_cuts={self.allow_unused_cuts})'}
 
     def _build(self, n_positions: int) -> Experiment:
         if n_positions < self.n_cuts:
@@ -171,9 +203,9 @@ class CutPositionSplitTuner(_SplitTuner):
                                f"{n_positions} positions at the {self.locus.name} locus.")
         e = Experiment()
 
-        positions = e.add_distinct_sorted('cut_position', self.n_cuts, (0, n_positions - 1))
-        kinds = [f'cut_kind_{j}' for j in range(self.n_cuts)]
-        retains = [f'cut_retain_percentile_{j}' for j in range(self.n_cuts)]
+        positions = e.add_distinct_sorted(self.param_name('cut_position'), self.n_cuts, (0, n_positions - 1))
+        kinds = [self.param_name(f'cut_kind_{j}') for j in range(self.n_cuts)]
+        retains = [self.param_name(f'cut_retain_percentile_{j}') for j in range(self.n_cuts)]
         for kind, retain in zip(kinds, retains):
             e.add_in_param(kind, (0 if self.allow_unused_cuts else 1, 2))
             e.add_in_param(retain, (0.0, 1.0), lambda params, kind=kind: params[kind] == 1)

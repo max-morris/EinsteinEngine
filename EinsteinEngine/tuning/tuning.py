@@ -15,13 +15,15 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import dataclasses
 import functools
 import json
 import os
 import traceback
 import typing
+import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -78,6 +80,15 @@ class Tuner(ABC):
         them."""
         return self.get_experiment()
 
+    def describe_space(self) -> Mapping[str, str]:
+        """
+        What a checkpoint's coordinates mean, beyond their names and the probe: for example the choices an index
+        param picks from, in order. Keyed by in-param name (or a name pattern), with stable descriptions
+        (`describe_param`). It is recorded in the probe sidecar, and a checkpoint with entries refuses a tuner whose
+        description differs. Default: nothing.
+        """
+        return {}
+
 
 def probe_sidecar_path(checkpoint_file: str) -> str:
     """The file next to a checkpoint that records the probe its coordinates were recorded against."""
@@ -94,12 +105,40 @@ class ProbeRecord:
     counts: ProbeResult
     probe_params: Mapping[str, str]
     derived_orders: Mapping[str, tuple[int, ...]] = field(default_factory=dict)
+    #  The tuner's describe_space(); None in a sidecar written before it was recorded (then it is not checked).
+    space: Mapping[str, str] | None = None
+    #  A random id given to the study when its sidecar is first written, and kept when it is rewritten, so that two
+    #  studies with the same tuner and recipe (e.g. one per compiler) are told apart. None in an older sidecar.
+    study: str | None = None
+    #  The arguments the recipe was probed with (its sys.argv[1:]); None in an older sidecar (taken as none).
+    recipe_args: tuple[str, ...] | None = None
+    #  The checkpoint the study was created for (absolute path when the sidecar was first written), to warn when a
+    #  sidecar is copied into another study; None in an older sidecar.
+    origin: str | None = None
 
     def to_json(self) -> str:
         obj: dict[str, Any] = {'counts': dict(self.counts), 'probe_params': dict(self.probe_params)}
         if self.derived_orders:
             obj['derived_orders'] = {name: list(order) for name, order in sorted(self.derived_orders.items())}
+        if self.space is not None:
+            obj['space'] = dict(sorted(self.space.items()))
+        if self.study is not None:
+            obj['study'] = self.study
+        if self.recipe_args is not None:
+            obj['recipe_args'] = list(self.recipe_args)
+        if self.origin is not None:
+            obj['origin'] = self.origin
         return json.dumps(obj, indent=2) + '\n'
+
+    def identity(self) -> dict[str, Any]:
+        """What identifies the study this record belongs to, in a canonical form: the study id, the probe counts, the
+        probe params, the derived orders, the search space and the recipe arguments (not the file's formatting, nor
+        where the study was created)."""
+        return {'study': self.study, 'counts': dict(sorted(self.counts.items())),
+                'probe_params': dict(sorted(self.probe_params.items())),
+                'derived_orders': {name: list(order) for name, order in sorted(self.derived_orders.items())},
+                'space': None if self.space is None else dict(sorted(self.space.items())),
+                'recipe_args': list(self.recipe_args or ())}
 
     @staticmethod
     def from_json(text: str) -> 'ProbeRecord':
@@ -114,27 +153,57 @@ class ProbeRecord:
                 for order in derived.values()):
             raise ValueError(f'Expected "derived_orders" to map probe params to lists of add_eqn indices, got '
                              f'{derived!r}')
+        space = obj.get('space')
+        if space is not None and (not isinstance(space, dict) or not all(isinstance(v, str) for v in space.values())):
+            raise ValueError(f'Expected "space" to map param names to descriptions, got {space!r}')
+        study, origin = obj.get('study'), obj.get('origin')
+        if any(x is not None and not isinstance(x, str) for x in (study, origin)):
+            raise ValueError(f'Expected "study" and "origin" to be strings, got {study!r} and {origin!r}')
+        recipe_args = obj.get('recipe_args')
+        if recipe_args is not None and (not isinstance(recipe_args, list)
+                                        or not all(isinstance(a, str) for a in recipe_args)):
+            raise ValueError(f'Expected "recipe_args" to be a list of strings, got {recipe_args!r}')
         return ProbeRecord(ProbeResult.from_counts(obj.get('counts')), dict(obj['probe_params']),
-                           {name: tuple(order) for name, order in derived.items()})
+                           {name: tuple(order) for name, order in derived.items()}, space, study,
+                           None if recipe_args is None else tuple(recipe_args), origin)
 
     def differences(self, current: 'ProbeRecord') -> list[str]:
         """How `current` differs from this (recorded) record, one phrase per difference."""
         changes: list[str] = []
         derived_was = {name: list(order) for name, order in self.derived_orders.items()}
         derived_now = {name: list(order) for name, order in current.derived_orders.items()}
+        spaces = [] if self.space is None or current.space is None else [
+            ('the search space of', self.space, current.space)]
         for kind, was, now in (('the number of split positions for', self.counts, current.counts),
                                ('the probe param', self.probe_params, current.probe_params),
                                ('the add_eqn order derived for',
-                                derived_was, derived_now)):
+                                derived_was, derived_now), *spaces):
             for name in sorted(set(was) | set(now)):
                 if was.get(name) != now.get(name):
                     changes.append(f"{kind} {name!r} was {_or_absent(was.get(name))} and is now "
                                    f"{_or_absent(now.get(name))}")
+        if list(self.recipe_args or ()) != list(current.recipe_args or ()):
+            changes.append(f"the recipe arguments were {list(self.recipe_args or ())} and are now "
+                           f"{list(current.recipe_args or ())}")
         return changes
 
 
 def _or_absent(value: object) -> str:
     return 'absent' if value is None else repr(value)
+
+
+#  The out-param a rank_by_post_population probe param must be (after a split tuner's prefix).
+EARLY_ORDERING_FN = 'early_ordering_fn'
+
+
+def early_ordering_prefix(name: str) -> str | None:
+    """The split tuner prefix of an early ordering function out-param (`early_ordering_fn` or
+    `<prefix>_early_ordering_fn`), or None if `name` is not one."""
+    if name == EARLY_ORDERING_FN:
+        return ''
+    if name.endswith('_' + EARLY_ORDERING_FN):
+        return name.removesuffix(EARLY_ORDERING_FN)
+    return None
 
 
 def _count_checkpoint_entries(checkpoint_file: str) -> int:
@@ -145,25 +214,35 @@ def _count_checkpoint_entries(checkpoint_file: str) -> int:
 
 
 def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
-                     record_probe: bool = False) -> Experiment:
+                     record_probe: bool = False, recipe_args: Sequence[str] = ()) -> Experiment:
     """
     Build `tuner`'s Experiment, probing `recipe` if the tuner has probe targets. A checkpoint's coordinates are only
-    meaningful against the probe they were recorded with, so the probe is recorded in a sidecar next to the checkpoint.
-    A `rank_by_post_population(fn)` probe param is resolved to `add_eqn_order(<order>)`, derived from the recipe unless
+    meaningful against the probe they were recorded with, and the search space the tuner describes
+    (`Tuner.describe_space`), so both are recorded in a sidecar next to the checkpoint. A
+    `rank_by_post_population(fn)` probe param is resolved to `add_eqn_order(<order>)`, derived from the recipe unless
     the sidecar records one for that param.
 
-    - Without `recipe`, the sidecar's counts and derived orders are used, so it must exist.
+    - Without `recipe`, the sidecar's counts and derived orders are used, so it must exist if the tuner probes.
     - If the sidecar does not match, this raises unless the checkpoint has no entries yet.
     - `record_probe=True` writes the sidecar when it is missing or stale, after checking that every checkpoint entry
-      loads against the new Experiment.
+      loads against the new Experiment. It always writes one: a study's id (batches need it) is made then.
+    - `recipe_args` are the recipe's own arguments (its sys.argv[1:]), which the probe runs it with and the sidecar
+      records, since they can change the equations. Without `recipe`, they must be the recorded ones.
+
+    The Experiment carries the tuner's search space (`Experiment.described_space`), for checks against the sidecar.
     """
     targets = list(tuner.probe_targets())
     params = tuner.probe_params()
+    space = dict(tuner.describe_space())
     ranked = {name: value for name, value in params.items() if isinstance(value, RankByPostPopulation)}
-    if not targets and not ranked:
-        return tuner.get_probed_experiment(EMPTY_PROBE)
-    if bad := sorted(set(ranked) - {'early_ordering_fn'}):
-        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn, not {bad}.")
+    args = tuple(recipe_args)
+    if not targets and not ranked and not space and not record_probe:
+        experiment = tuner.get_probed_experiment(EMPTY_PROBE)
+        experiment.described_space = space
+        return experiment
+    if bad := sorted(name for name in ranked if early_ordering_prefix(name) is None):
+        raise RuntimeError(f"rank_by_post_population can only be the early_ordering_fn (with a split tuner's prefix), "
+                           f"not {bad}.")
 
     sidecar = probe_sidecar_path(checkpoint_file)
     recorded: ProbeRecord | None = None
@@ -177,7 +256,9 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
 
     descriptions = {name: describe_param(value) for name, value in sorted(params.items())}
     derived_orders: Mapping[str, tuple[int, ...]]
-    if recipe is not None:
+    if not targets and not ranked:
+        counts, derived_orders = EMPTY_PROBE, {}
+    elif recipe is not None:
         orders: dict[str, tuple[int, ...]] = dict()
         for name, rule in ranked.items():
             if recorded is not None and name in recorded.derived_orders and \
@@ -187,13 +268,16 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             else:
                 pprint(f"Deriving the add_eqn order for {rule!r} from {recipe}...")
                 others = {k: v for k, v in params.items() if k not in ranked}
-                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others)
+                prefix = early_ordering_prefix(name)
+                assert prefix is not None
+                function_name, orders[name] = derive_add_eqn_order(recipe, rule.ordering_fn, others, prefix=prefix,
+                                                                   argv=args)
                 pprint(f"{function_name}: {rule!r} derived the add_eqn order {list(orders[name])}.")
         derived_orders = orders
         resolved = {**params, **{name: add_eqn_order(order) for name, order in derived_orders.items()}}
         if targets:
             pprint(f"Probing {recipe} for {targets}...")
-            counts = probe_recipe(recipe, targets, resolved)
+            counts = probe_recipe(recipe, targets, resolved, argv=args)
             pprint(f"Probe result: {dict(counts)}")
         else:
             counts = EMPTY_PROBE
@@ -209,7 +293,15 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
         raise RuntimeError(
             f"The tuner probes the recipe for {targets or sorted(ranked)}, but there is no probe file {sidecar} and "
             f"no recipe was given to probe.")
-    current = ProbeRecord(counts, descriptions, dict(derived_orders))
+    if recipe is None and recorded is not None and list(recorded.recipe_args or ()) != list(args):
+        raise RuntimeError(f"The probe file {sidecar} was recorded with the recipe arguments "
+                           f"{list(recorded.recipe_args or ())}, not {list(args)}, and there is no recipe to probe "
+                           f"again.")
+    #  The study id and origin are kept from the recorded sidecar, or made when the sidecar is first written.
+    current = ProbeRecord(counts, descriptions, dict(derived_orders), space,
+                          recorded.study if recorded is not None and recorded.study is not None else uuid.uuid4().hex,
+                          args, recorded.origin if recorded is not None and recorded.origin is not None
+                          else os.path.abspath(checkpoint_file))
 
     if recorded is not None and (changes := recorded.differences(current)):
         message = (f"The probe recorded for checkpoint {checkpoint_file} (in {sidecar}) does not match the recipe and "
@@ -227,12 +319,50 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
             f"unchanged).")
     for name in ranked:
         experiment.add_out_param(name, lambda _params, fn=add_eqn_order(derived_orders[name]): fn)
+    experiment.described_space = space
+    #  A study moved or mirrored to another tree keeps its directory and file names; warn when those differ.
+    if record_probe and recorded is not None and recorded.origin is not None and \
+            _last_parts(recorded.origin) != _last_parts(os.path.abspath(checkpoint_file)):
+        pprint(f"Warning: the probe file {sidecar} was created for the study at {recorded.origin}. If this is another "
+               f"study (not the same one moved or mirrored), it must not share that study's id: use "
+               f"tuning.fork_probe_file.")
     if record_probe and recorded != current:
-        from EinsteinEngine.tuning.checkpointed_optimizer import read_checkpoint  # see do_tuning
+        from EinsteinEngine.tuning.checkpointed_optimizer import checkpoint_lock, read_checkpoint  # see do_tuning
         read_checkpoint(experiment, checkpoint_file)  # raises if the checkpoint does not fit the experiment
-        with open(sidecar, 'w') as fh:
-            fh.write(current.to_json())
+        if recorded is not None and _count_checkpoint_entries(checkpoint_file) > 0:
+            if recorded.space is None:
+                pprint(f"Warning: recording the search space in {sidecar}, whose checkpoint already has entries: "
+                       f"they are taken to have been recorded against this tuner's current space.")
+            if recorded.study is None:
+                pprint(f"Warning: giving the study of {sidecar} an id; batches asked before this cannot be told.")
+        with checkpoint_lock(checkpoint_file):
+            if recorded is None and os.path.exists(sidecar):  # written meanwhile by another process: keep its id
+                with open(sidecar) as fh:
+                    meanwhile = ProbeRecord.from_json(fh.read())
+                current = dataclasses.replace(current, study=meanwhile.study or current.study,
+                                              origin=meanwhile.origin or current.origin)
+            with open(sidecar, 'w') as fh:
+                fh.write(current.to_json())
     return experiment
+
+
+def _last_parts(path: str) -> tuple[str, str]:
+    return os.path.basename(os.path.dirname(path)), os.path.basename(path)
+
+
+def fork_probe_file(from_checkpoint: str, to_checkpoint: str) -> None:
+    """
+    Start a new study at `to_checkpoint` from the probe file of the study at `from_checkpoint` (to reuse its probe and
+    derived orders, which can be slow to derive), with a new study id. Refuses if the new study already has a probe
+    file or entries.
+    """
+    src, dst = probe_sidecar_path(from_checkpoint), probe_sidecar_path(to_checkpoint)
+    if os.path.exists(dst) or _count_checkpoint_entries(to_checkpoint) > 0:
+        raise RuntimeError(f"The study at {to_checkpoint} already has a probe file or entries.")
+    with open(src) as fh:
+        record = ProbeRecord.from_json(fh.read())
+    with open(dst, 'w') as fh:
+        fh.write(dataclasses.replace(record, study=uuid.uuid4().hex, origin=os.path.abspath(to_checkpoint)).to_json())
 
 
 def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:

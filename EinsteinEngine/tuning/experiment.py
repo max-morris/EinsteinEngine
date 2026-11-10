@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable, OrderedDict, NamedTuple, Optional, Sequence, runtime_checkable
 
@@ -52,8 +53,10 @@ class InfeasibleParamError(Exception):
         self.param_name = param_name
         self.value = value
 
-# Split tuner params, whose indices are split positions (see tune_splitting.py).
+# Split tuner params, whose indices are split positions (see tune_splitting.py): unprefixed (the only kind older
+# checkpoints have), and after any prefix.
 _SPLIT_PARAM_RE = re.compile(r'(split|soft_retain_percentile)_\d+')
+_PREFIXED_SPLIT_PARAM_RE = re.compile(r'\w*_(split|soft_retain_percentile)_\d+')
 
 class UndeclaredParamError(ValueError):
     """A stored trial (e.g. a checkpoint entry) names params the Experiment does not declare.
@@ -70,6 +73,9 @@ class UndeclaredParamError(ValueError):
                         "the old 15-position Z4c tuner, where the recipe has 13 add_eqn calls). Convert it into a "
                         "new file with scripts/shift_checkpoint_indices.py IN OUT, adding --n-positions N to drop "
                         "the positions >= N.")
+        elif any(_PREFIXED_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+            message += (" For prefixed split params, it was probably recorded with more split positions than the "
+                        "recipe has now.")
         super().__init__(message)
         self.source = source
         self.names = list(names)
@@ -82,7 +88,7 @@ class MissingParamError(ValueError):
         if any(re.fullmatch(r'soft_retain_percentile_\d+', name) for name in names):
             message += (" A split checkpoint without soft_retain_percentile params predates them, and cannot be "
                         "replayed by the current split tuners.")
-        elif any(_SPLIT_PARAM_RE.fullmatch(name) for name in names):
+        elif any(_SPLIT_PARAM_RE.fullmatch(name) or _PREFIXED_SPLIT_PARAM_RE.fullmatch(name) for name in names):
             message += " For split params, it may have been recorded with fewer split positions than the recipe has."
         super().__init__(message)
         self.source = source
@@ -257,6 +263,23 @@ class OutParam[T]:
     name: str
     mapping: ParamMapping[T]
 
+class FixedTrial:
+    """A TrialObj whose suggest_* methods return stored coordinates (a checkpoint entry's or a batch's params).
+
+    Passing it to Experiment.suggest_params replays the stored coordinates through the experiment's conditions,
+    constraints and out-param mappings, as a live trial with those values would have gone.
+    """
+
+    def __init__(self, params: Mapping[str, ParamType]) -> None:
+        self._params = params
+
+    def suggest_int(self, name: str, _lo: int, _hi: int, /) -> int:
+        return int(self._params[name])
+
+    def suggest_float(self, name: str, _lo: float, _hi: float, /) -> float:
+        return float(self._params[name])
+
+
 class SuggestParamsResult(NamedTuple):
     realized_params: dict[str, ParamType]
     recipe_facing_args: dict[str, Any]
@@ -268,6 +291,8 @@ class Experiment:
     def __init__(self) -> None:
         self.in_params = OrderedDict()
         self.out_params = OrderedDict()
+        #  The search space its tuner described (Tuner.describe_space), set by tuning.build_experiment.
+        self.described_space: dict[str, str] | None = None
 
     @multimethod
     def add_in_param(self, param: InParam[Any]) -> None:
@@ -423,6 +448,15 @@ class Experiment:
 
         _, coords, specs = self._walk_in_params(get_coord, present=lambda name: name in stored)
         return coords, specs
+
+    def recipe_facing_args(self, stored: dict[str, ParamType], source: str = 'The stored trial') -> dict[str, Any]:
+        """The recipe-facing args of a stored trial (a checkpoint entry's or a batch's params), as a live trial with
+        those coordinates would have produced them. Raises (see `check_declared`, naming `source`) unless the params
+        fit this Experiment exactly."""
+        self.check_declared(stored, source)
+        values = dict(self.reconstruct_values(stored))
+        return {name: val for name, out_param in self.out_params.items()
+                if (val := out_param.mapping(values)) is not None}
 
     def reconstruct_values(self, stored: dict[str, ParamType]) -> OrderedDict[str, Value]:
         """Map a stored trial's raw coordinates back to their domain values.
