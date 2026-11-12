@@ -51,6 +51,14 @@ from EinsteinEngine.wizards.vanilla_f90_wizard import VanillaF90Wizard
 from EinsteinEngine.frontend.dsl.dsl_function_frontend import DslFunctionFrontend
 from EinsteinEngine.frontend.dsl.f90.vanilla_f90_frontend import VanillaF90Module
 from EinsteinEngine.generators.vanilla_f90_generator import VanillaF90Generator
+from EinsteinEngine.frontend.dsl.amrex.amrex_frontend import AMReXModule, AMReXFunction
+from EinsteinEngine.frontend.dsl.amrex.layout import ArrayParam, FieldBinder, FieldBinding, StridedPointer, \
+    Array4Call
+from EinsteinEngine.frontend.dsl.amrex.schemes import CellCentered, NodeCentered, MemberParams, StructParams, \
+    CtorArg, CtorCheck, KernelLaunchMode, PointFunctionMode
+from EinsteinEngine.frontend.dsl.amrex.naming import digit_component_names
+from EinsteinEngine.generators.amrex import AMReXGenerator
+from EinsteinEngine.wizards.amrex_wizard import AMReXWizard
 from EinsteinEngine.frontend.dsl.finite_difference import DX, DY, DZ, DT
 from EinsteinEngine.tuning.tuning import get_tuning_param, get_optional_tuning_param
 
@@ -63,6 +71,9 @@ __all__ = [
     "cbrt", "sqrt", "mk_matrix", "mk_piecewise", "log", "Relational",
     "GroupOrFunction", "ScheduleBlock", "AtOrIn",
     "CppCarpetXWizard", "ExplicitSyncBatch", "VanillaF90Wizard", "VanillaF90Generator", "VanillaF90Module", "DslFunctionFrontend",
+    "AMReXModule", "AMReXFunction", "ArrayParam", "FieldBinder", "FieldBinding", "StridedPointer", "Array4Call",
+    "CellCentered", "NodeCentered", "MemberParams", "StructParams", "CtorArg", "CtorCheck", "KernelLaunchMode",
+    "PointFunctionMode", "digit_component_names", "AMReXGenerator", "AMReXWizard",
     "parities",
     "ScheduleBin", "sympify",
     "sin", "cos", "tan", "cot", "sec", "csc",
