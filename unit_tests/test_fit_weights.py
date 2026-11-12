@@ -81,8 +81,42 @@ class TestFitWeights(unittest.TestCase):
         self.assertEqual(profile["weights"]["transcendental"]["cos"], 1)
         self.assertTrue(profile["measurements"]["identity_subtracted"])
 
+    def test_each_group_subtracts_its_own_identity(self) -> None:
+        # The one-input kernel's overhead (transcendental, 2 ns) differs from the two-input kernel's (arith, 1 ns).
+        rows = base_rows(sin=10.0) + [row("arith", "identity_stream", 1.0), row("transcendental", "identity_stream", 2.0)]
+        for r in rows:
+            if r["name"] in ("add_stream", "powvar_stream") and r["group"] in ("arith", "pow"):
+                r["ns_per_elem"] = r["ns_median"] = {"add_stream": 3.0, "powvar_stream": 9.0}[r["name"]]
+        profile = fit(rows)[0]
+        # Adjusted add is 2. sin is 10 - 2 = 8, so 4; powvar is 9 - 1 = 8 (the pow group uses arith's), so 4.
+        self.assertEqual(profile["weights"]["transcendental"]["sin"], 4)
+        self.assertEqual(profile["weights"]["pow_default"], 4)
+        self.assertEqual(profile["measurements"]["reference"]["identity_stream"],
+                         {"arith": 1.0, "transcendental": 2.0})
+
+    def test_rounds_are_paired(self) -> None:
+        # The clock ran fast in round 0 while add ran, and had slowed by the time sin ran. The per-round ratios are
+        # 16, 8 and 8, so sin is 8 adds; dividing the minima (16 / 1) would make it 16.
+        rows = base_rows()
+        for r in rows:
+            r["ns_rounds"] = [r["ns_per_elem"]] * 3
+        add = next(r for r in rows if r["name"] == "add_stream")
+        add["ns_rounds"], add["ns_per_elem"] = [1.0, 2.0, 2.0], 1.0
+        sin = next(r for r in rows if r["name"] == "sin_stream")
+        sin["ns_rounds"] = [16.0, 16.0, 16.0]
+        profile = fit(rows)[0]
+        self.assertEqual(profile["weights"]["transcendental"]["sin"], 8)
+        sin_row = next(r for r in profile["measurements"]["rows"] if r["name"] == "sin_stream")
+        self.assertEqual(sin_row["ns_rounds"], [16.0, 16.0, 16.0])
+
+    def test_rounds_must_match(self) -> None:
+        rows = base_rows()
+        next(r for r in rows if r["name"] == "sin_stream")["ns_rounds"] = [16.0, 16.0]
+        with self.assertRaisesRegex(ValueError, "same number of rounds"):
+            fit(rows)
+
     def test_identity_not_below_add_is_an_error(self) -> None:
-        with self.assertRaisesRegex(ValueError, "identity"):
+        with self.assertRaisesRegex(ValueError, "not positive in round 0"):
             fit(base_rows() + [row("arith", "identity_stream", 2.0)])
 
     def test_spread_warns(self) -> None:

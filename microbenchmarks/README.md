@@ -62,12 +62,12 @@ table to stderr and pure JSON to stdout, so this pipe works:
   | python -m EinsteinEngine.tuning.fit_weights -
 ```
 
-`--group arith,pow` selects cases. `--repeats K` and `--size N` override the
-repeat count and the stream length. `--quick` is a smoke test: do not fit a
+`--group arith,pow` selects cases. `--rounds R`, `--repeats K` and `--size N`
+override the number of rounds, the repeats per round and the stream length. `--quick` is a smoke test: do not fit a
 profile from it. `unit_tests/test_fit_weights.py` checks the fitter without
 running a benchmark.
 
-A full host run takes under a minute; a full GPU run takes a few minutes.
+A full host run takes under a minute; a full GPU run takes several minutes.
 
 ## Running from the tuner
 
@@ -91,7 +91,11 @@ Each case has two flavors where that split means something:
   independent per-thread chains, so the number is device throughput, not
   single-thread latency.
 
-Reported fields are min and median ns/element, GOPS, and a checksum. A
+The suite runs in rounds: every case is timed a few times in each round, after
+one untimed warm-up pass over the suite. Reported fields are each round's
+minimum ns/element (`ns_rounds`), their minimum and median, GOPS, and a
+checksum. The fitter divides each case by add within the same round and takes
+the median over rounds, so a clock that changes between rounds cancels out. A
 non-finite checksum aborts. Host builds keep values live with `asm volatile`.
 Device builds do the same inside the kernel and repeat each streamed math
 functor so the store cannot hide the arithmetic: 256 times per element, or
@@ -104,10 +108,12 @@ Host and device numbers are not comparable. A host stream does one operation
 per element and is memory- and loop-bound for cheap ops. A device streamed
 math kernel does 256 repetitions per element and is compute-bound, and each
 repetition also pays a perturbation FMA, a finiteness check, and an xor into
-the sink. The device arith group includes `identity_stream`, the same harness
-with a functor that returns its input. The fitter subtracts that timing
-and floors the difference at 0. Subtracting can otherwise go negative from
-noise.
+the sink. The device arith and transcendental groups each include
+`identity_stream`, the same harness with a functor that returns its input:
+arith's times the two-input kernel, transcendental's the one-input kernel.
+The fitter subtracts the row's own group's identity (arith's for the other
+groups, which use the two-input kernel) and floors the difference at 0.
+Subtracting can otherwise go negative from noise.
 
 The harness times scalar `vreal` (`double`, or `float` with
 `-DEE_VREAL_FLOAT=ON`). It does not time `Arith::simd<CCTK_REAL>`, whose
@@ -115,11 +121,12 @@ relative costs differ.
 
 The host binary pins itself to the CPU it is already running on
 (`sched_setaffinity`). It does not change the CPU governor; that needs
-privileges the process does not take. Host defaults are 2^20 stream elements,
-30 repeats, and a 128^3 grid (64^3 with `--quick`). Device defaults are 2^27
-stream elements (2^24 with `--quick`), 15 repeats, and a 512^3 grid (256^3
-with `--quick`), so launch overhead is not the result. `--size` still
-overrides the stream length. `--quick` is applied first, then an explicit
+privileges the process does not take; the rounds stand in for it. Host
+defaults are 2^20 stream elements, 10 rounds of 3 repeats, and a 128^3 grid
+(64^3 with `--quick`). Device defaults are 2^27 stream elements (2^24 with
+`--quick`), 5 rounds of 3 repeats, and a 512^3 grid (256^3 with `--quick`),
+so launch overhead is not the result. `--quick` is 2 rounds of 2 repeats with
+no warm-up pass. `--quick` is applied first, then an explicit `--rounds`,
 `--repeats` or `--size` overrides it (`--repeats 30 --quick` keeps 30).
 
 `mul_reg` and `div_reg` reset the accumulator on every repeat. A carried
@@ -158,6 +165,6 @@ is a warning. The script does not probe the machine.
 | `src/bench_transcendental.cpp` | `sin`, `cos`, `exp`, `log`, `sqrt`, `cbrt`, plus `tan`, `sinh`, `cosh`, `tanh`, `erf`. |
 | `src/bench_memory.cpp` | `Symbol` grid vs local, `Atom` baseline, stencil center / x / y / z. |
 | `src/bench_branch.cpp` | `Relational` compare, and `Piecewise` as `if_else` plus a real branch. |
-| `src/main.cpp` | Driver: `--quick`, `--repeats`, `--size`, `--json`, `--group`. |
+| `src/main.cpp` | Driver: rounds, `--quick`, `--rounds`, `--repeats`, `--size`, `--json`, `--group`. |
 | `run.sh` | Build for one target and write `results.json`; what the tuner runs. |
 | `EinsteinEngine/tuning/fit_weights.py` | Results JSON to a schema_version 1 profile. |

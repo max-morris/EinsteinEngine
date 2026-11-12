@@ -96,6 +96,8 @@ int main(int argc, char **argv) {
   bool emit_json_stdout = false;
   bool want_quick = false;
   bool repeats_set = false;
+  bool rounds_set = false;
+  int rounds = 0;
   bool size_set = false;
   int repeats = 0;
   unsigned long long size_value = 0;
@@ -110,6 +112,13 @@ int main(int argc, char **argv) {
         return 2;
       repeats = static_cast<int>(value);
       repeats_set = true;
+    } else if (std::strcmp(argv[i], "--rounds") == 0 && i + 1 < argc) {
+      unsigned long long value = 0;
+      if (!parse_positive("--rounds", argv[++i], static_cast<unsigned long long>(INT_MAX),
+                          &value))
+        return 2;
+      rounds = static_cast<int>(value);
+      rounds_set = true;
     } else if (std::strcmp(argv[i], "--size") == 0 && i + 1 < argc) {
       if (!parse_positive("--size", argv[++i], std::numeric_limits<std::size_t>::max(),
                           &size_value))
@@ -121,9 +130,10 @@ int main(int argc, char **argv) {
     } else if (std::strcmp(argv[i], "--group") == 0 && i + 1 < argc) {
       group_filter = argv[++i];
     } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
-      std::printf("usage: ee_microbench [--quick] [--repeats K] [--size N] "
+      std::printf("usage: ee_microbench [--quick] [--rounds R] [--repeats K] [--size N] "
                   "[--json f] [--group g1,g2]\n"
-                  "  --quick is applied first; --repeats and --size then override it.\n");
+                  "  The suite runs R times; each case is timed K times per round.\n"
+                  "  --quick is applied first; --rounds, --repeats and --size then override it.\n");
       return 0;
     } else {
       std::fprintf(stderr, "FATAL: unknown argument '%s'\n", argv[i]);
@@ -137,6 +147,8 @@ int main(int argc, char **argv) {
       want_quick ? ee_bench::default_config_quick() : ee_bench::default_config();
   if (repeats_set)
     cfg.repeats = repeats;
+  if (rounds_set)
+    cfg.rounds = rounds;
   if (size_set)
     cfg.n_stream = static_cast<std::size_t>(size_value);
 
@@ -183,25 +195,40 @@ int main(int argc, char **argv) {
   }
 #endif
 
-  std::vector<ee_bench::BenchResult> all;
-  auto append = [&](const std::vector<ee_bench::BenchResult> &v) {
-    all.insert(all.end(), v.begin(), v.end());
+  auto run_suite = [&](const ee_bench::BenchConfig &c) {
+    std::vector<ee_bench::BenchResult> results;
+    auto append = [&](const std::vector<ee_bench::BenchResult> &v) {
+      results.insert(results.end(), v.begin(), v.end());
+    };
+    if (want_group(group_filter, "arith"))
+      append(bench_arith(c));
+    if (want_group(group_filter, "pow"))
+      append(bench_pow(c));
+    if (want_group(group_filter, "transcendental"))
+      append(bench_transcendental(c));
+    if (want_group(group_filter, "memory"))
+      append(bench_memory(c));
+    if (want_group(group_filter, "branch"))
+      append(bench_branch(c));
+    return results;
   };
-  if (want_group(group_filter, "arith"))
-    append(bench_arith(cfg));
-  if (want_group(group_filter, "pow"))
-    append(bench_pow(cfg));
-  if (want_group(group_filter, "transcendental"))
-    append(bench_transcendental(cfg));
-  if (want_group(group_filter, "memory"))
-    append(bench_memory(cfg));
-  if (want_group(group_filter, "branch"))
-    append(bench_branch(cfg));
 
-  if (all.empty()) {
-    std::fprintf(stderr, "FATAL: no benchmarks selected\n");
-    return 2;
+  if (!want_quick) {
+    // One untimed pass over the suite, so the clocks settle before the first round.
+    ee_bench::BenchConfig warm = cfg;
+    warm.repeats = 1;
+    run_suite(warm);
   }
+  std::vector<std::vector<ee_bench::BenchResult>> rounds_results;
+  for (int r = 0; r < cfg.rounds; ++r) {
+    rounds_results.push_back(run_suite(cfg));
+    if (rounds_results.back().empty()) {
+      std::fprintf(stderr, "FATAL: no benchmarks selected\n");
+      return 2;
+    }
+    std::fprintf(stderr, "ee_microbench: round %d of %d done\n", r + 1, cfg.rounds);
+  }
+  const std::vector<ee_bench::BenchResult> all = ee_bench::combine_rounds(rounds_results);
 
   // Human table goes to stderr when JSON is requested so that stdout carries
   // pure JSON (pipe-friendly: ee_microbench --json - | fit_weights.py -).

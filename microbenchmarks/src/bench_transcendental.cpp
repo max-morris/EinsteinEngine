@@ -96,10 +96,18 @@ struct SqrtOp {
 struct CbrtOp {
   EE_HD_INLINE vreal operator()(vreal a) const { return ee_kernels::ee_cbrt(a); }
 };
+// The one-input device kernel pays the same per-repetition overhead as the two-input one, but loads one input, not
+// two. This times that overhead alone, for the fitter to subtract from this group's rows.
+struct IdentityOp {
+  EE_HD_INLINE vreal operator()(vreal a) const { return a; }
+};
 } // namespace
 
 std::vector<BenchResult> bench_transcendental(const BenchConfig &cfg) {
   std::vector<BenchResult> out;
+#if defined(EE_DEVICE_BUILD)
+  out.push_back(run_stream("identity_stream", "identity", cfg, IdentityOp{}, false));
+#endif
   out.push_back(run_stream("sin_stream", "sin", cfg, SinOp{}, true));
   out.push_back(run_stream("cos_stream", "cos", cfg, CosOp{}, true));
   out.push_back(run_stream("tan_stream", "tan", cfg, TanOp{}, true));

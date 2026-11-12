@@ -97,10 +97,13 @@ using vreal = float;
 using vreal = double;
 #endif
 
+// The driver runs the whole suite `rounds` times, so that every case is timed in every round, close in time to add.
+// A change in clock speed then affects a case and add alike, and the fitter divides within a round.
 struct BenchConfig {
   std::size_t n_stream = 1u << 20; // elements per streaming pass (~8 MiB for double)
-  int repeats = 15;                // timed repeats per case (min is reported)
-  int warmup = 2;                  // untimed warmup passes
+  int rounds = 10;                 // passes over the whole suite
+  int repeats = 3;                 // timed repeats per case in each round (the min is the round's time)
+  int warmup = 2;                  // untimed warmup passes per case in each round
   bool quick = false;              // shrink work for smoke tests
 };
 
@@ -112,9 +115,7 @@ inline BenchConfig default_config() {
   // stream length and take more repeats: a 15-sample minimum of the host
   // add loop moves around by a large fraction of the result.
   c.n_stream = std::size_t{1} << 27;
-  c.warmup = 3;
-#else
-  c.repeats = 30;
+  c.rounds = 5;
 #endif
   return c;
 }
@@ -126,7 +127,8 @@ inline BenchConfig default_config_quick() {
 #else
   c.n_stream = std::size_t{1} << 18;
 #endif
-  c.repeats = 5;
+  c.rounds = 2;
+  c.repeats = 2;
   c.warmup = 1;
   c.quick = true;
   return c;
@@ -136,8 +138,9 @@ struct BenchResult {
   std::string group;       // e.g. "arith", "pow", "transcendental", "memory", "branch"
   std::string name;        // e.g. "add_stream", "pow2_reg"
   std::string complexity_node; // sympy node this measures, e.g. "Add", "Pow[x**2]", "stencil[x]"
-  double ns_per_elem = 0.0;    // min over repeats
-  double ns_median = 0.0;
+  double ns_per_elem = 0.0;    // min over repeats (and, once combined, over rounds)
+  double ns_median = 0.0;      // median over repeats (once combined: median of the round minima)
+  std::vector<double> ns_rounds; // each round's min, once combined
   double gops = 0.0;           // 1e9 elements*ops_per_elem / seconds (ops_per_elem given below)
   int ops_per_elem = 1;
   double checksum = 0.0;       // anti-DCE sink (must be finite)
@@ -205,17 +208,47 @@ inline BenchResult summarize(std::string group, std::string node, std::string na
   return r;
 }
 
+// Combine the suite's results from every round (the same cases in the same order each round) into one result per case.
+inline std::vector<BenchResult> combine_rounds(const std::vector<std::vector<BenchResult>> &rounds) {
+  std::vector<BenchResult> out = rounds.front();
+  for (std::size_t i = 0; i < out.size(); ++i) {
+    BenchResult &r = out[i];
+    r.ns_rounds.clear();
+    std::size_t best = 0;
+    for (std::size_t k = 0; k < rounds.size(); ++k) {
+      const BenchResult &rk = rounds[k][i];
+      if (rk.group != r.group || rk.name != r.name) {
+        std::fprintf(stderr, "FATAL: round %zu ran %s/%s where round 0 ran %s/%s\n", k,
+                     rk.group.c_str(), rk.name.c_str(), r.group.c_str(), r.name.c_str());
+        std::abort();
+      }
+      r.ns_rounds.push_back(rk.ns_per_elem);
+      if (rk.ns_per_elem < rounds[best][i].ns_per_elem)
+        best = k;
+    }
+    std::vector<double> sorted = r.ns_rounds;
+    std::sort(sorted.begin(), sorted.end());
+    r.ns_per_elem = rounds[best][i].ns_per_elem;
+    r.gops = rounds[best][i].gops;
+    r.ns_median = sorted[sorted.size() / 2];
+    r.checksum = rounds.back()[i].checksum;
+  }
+  return out;
+}
+
 inline void print_json(const std::vector<BenchResult> &rs, std::FILE *f = stdout) {
   std::fprintf(f, "{\"results\":[\n");
   for (std::size_t i = 0; i < rs.size(); ++i) {
     const auto &r = rs[i];
     std::fprintf(f,
                  "  {\"group\":\"%s\",\"name\":\"%s\",\"complexity_node\":\"%s\","
-                 "\"ns_per_elem\":%.6f,\"ns_median\":%.6f,\"gops\":%.6f,"
-                 "\"ops_per_elem\":%d,\"checksum\":%.6g}%s\n",
+                 "\"ns_per_elem\":%.6g,\"ns_median\":%.6g,\"ns_rounds\":[",
                  r.group.c_str(), r.name.c_str(), r.complexity_node.c_str(), r.ns_per_elem,
-                 r.ns_median, r.gops, r.ops_per_elem, r.checksum,
-                 i + 1 < rs.size() ? "," : "");
+                 r.ns_median);
+    for (std::size_t k = 0; k < r.ns_rounds.size(); ++k)
+      std::fprintf(f, "%s%.6g", k ? "," : "", r.ns_rounds[k]);
+    std::fprintf(f, "],\"gops\":%.6f,\"ops_per_elem\":%d,\"checksum\":%.6g}%s\n", r.gops,
+                 r.ops_per_elem, r.checksum, i + 1 < rs.size() ? "," : "");
   }
   std::fprintf(f, "]}\n");
 }
