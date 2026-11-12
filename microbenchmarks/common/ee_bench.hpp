@@ -34,8 +34,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <limits>
 #include <numeric>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -100,7 +103,7 @@ using vreal = double;
 // The driver runs the whole suite `rounds` times, so that every case is timed in every round, close in time to add.
 // A change in clock speed then affects a case and add alike, and the fitter divides within a round.
 struct BenchConfig {
-  std::size_t n_stream = 1u << 20; // elements per streaming pass (~8 MiB for double)
+  std::size_t n_stream = 1u << 14; // elements per streaming pass; on the host, small enough to stay in cache
   int rounds = 10;                 // passes over the whole suite
   int repeats = 3;                 // timed repeats per case in each round (the min is the round's time)
   int warmup = 2;                  // untimed warmup passes per case in each round
@@ -125,7 +128,7 @@ inline BenchConfig default_config_quick() {
 #if defined(EE_HAVE_CUDA) || defined(EE_HAVE_HIP)
   c.n_stream = std::size_t{1} << 24;
 #else
-  c.n_stream = std::size_t{1} << 18;
+  c.n_stream = std::size_t{1} << 12;
 #endif
   c.rounds = 2;
   c.repeats = 2;
@@ -206,6 +209,82 @@ inline BenchResult summarize(std::string group, std::string node, std::string na
   r.gops = (static_cast<double>(n_elem) * ops_per_elem) / (mn / 1e9) / 1e9;
   r.checksum = checksum;
   return r;
+}
+
+// The host counterpart of the device streamed kernels (ee_device.hpp). One op per loaded element would time the
+// loads and the loop, not the op, so each element repeats the op `reps` times on a slightly perturbed input:
+// independent iterations, so this is throughput, as in an emitted expression. The xor sink keeps every result live
+// without another floating-point op. identity_stream times this harness alone, for the fitter to subtract.
+inline int stream_reps(const BenchConfig &cfg) { return cfg.quick ? 32 : 256; }
+
+inline std::uint64_t host_bits(double x) {
+  std::uint64_t u;
+  std::memcpy(&u, &x, sizeof u);
+  return u;
+}
+inline std::uint64_t host_bits(float x) {
+  std::uint32_t u;
+  std::memcpy(&u, &x, sizeof u);
+  return u;
+}
+
+template <typename F>
+inline vreal host_repeat_sink(int reps, F body) {
+  std::uint64_t s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+  bool bad = false;
+  int k = 0;
+  for (; k + 3 < reps; k += 4) {
+    const vreal z0 = body(k + 0), z1 = body(k + 1), z2 = body(k + 2), z3 = body(k + 3);
+    bad |= !std::isfinite(z0) | !std::isfinite(z1) | !std::isfinite(z2) | !std::isfinite(z3);
+    s0 ^= host_bits(z0);
+    s1 ^= host_bits(z1);
+    s2 ^= host_bits(z2);
+    s3 ^= host_bits(z3);
+  }
+  for (; k < reps; ++k) {
+    const vreal z = body(k);
+    bad |= !std::isfinite(z);
+    s0 ^= host_bits(z);
+  }
+  if (bad)
+    return std::numeric_limits<vreal>::quiet_NaN();
+  // The low bits only: a finite value that still depends on every result.
+  return static_cast<vreal>((s0 ^ s1 ^ s2 ^ s3) & 0xffffu);
+}
+
+// Time `op` on the host, as above. A two-input op reads its second input from `b`; a one-input op ignores it.
+template <typename Op>
+BenchResult host_time_stream(const char *group, const char *name, const char *node, const BenchConfig &cfg,
+                             const vreal *a, const vreal *b, std::size_t n, Op op, int ops_per_elem = 1) {
+  const int reps = stream_reps(cfg);
+  constexpr vreal eps = static_cast<vreal>(1.0e-8);
+  std::vector<vreal> c(n);
+  auto pass = [&] {
+    for (std::size_t i = 0; i < n; ++i) {
+      const vreal base = a[i];
+      if constexpr (std::is_invocable_v<Op, vreal, vreal>) {
+        const vreal other = b[i];
+        c[i] = host_repeat_sink(reps, [&](int k) { return op(base + static_cast<vreal>(k) * eps, other); });
+      } else {
+        c[i] = host_repeat_sink(reps, [&](int k) { return op(base + static_cast<vreal>(k) * eps); });
+      }
+    }
+    ee_clobber(c);
+  };
+  for (int w = 0; w < cfg.warmup; ++w)
+    pass();
+  std::vector<double> runs;
+  Timer t;
+  for (int r = 0; r < cfg.repeats; ++r) {
+    t.start();
+    pass();
+    runs.push_back(t.stop_ns());
+  }
+  double sum = 0;
+  for (std::size_t i = 0; i < n; ++i)
+    sum += static_cast<double>(c[i]);
+  ee_escape(&sum);
+  return summarize(group, node, name, runs, n * static_cast<std::size_t>(reps), ops_per_elem, sum);
 }
 
 // Combine the suite's results from every round (the same cases in the same order each round) into one result per case.

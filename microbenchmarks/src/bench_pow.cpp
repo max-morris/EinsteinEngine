@@ -42,25 +42,7 @@ BenchResult run_stream(const char *name, const char *node, const BenchConfig &cf
 #if defined(EE_DEVICE_BUILD)
   return ee_device::time_binary("pow", name, node, cfg, a.data(), b.data(), n, op, 1);
 #else
-  std::vector<vreal> c(n);
-  for (int w = 0; w < cfg.warmup; ++w)
-    for (std::size_t i = 0; i < n; ++i)
-      c[i] = op(a[i], b[i]);
-  ee_escape(c.data());
-  std::vector<double> runs;
-  ee_bench::Timer t;
-  for (int r = 0; r < cfg.repeats; ++r) {
-    t.start();
-    for (std::size_t i = 0; i < n; ++i)
-      c[i] = op(a[i], b[i]);
-    ee_clobber(c);
-    runs.push_back(t.stop_ns());
-  }
-  double sum = 0;
-  for (std::size_t i = 0; i < n; ++i)
-    sum += static_cast<double>(c[i]);
-  ee_escape(&sum);
-  return ee_bench::summarize("pow", node, name, runs, n, 1, sum);
+  return ee_bench::host_time_stream("pow", name, node, cfg, a.data(), b.data(), n, op);
 #endif
 }
 

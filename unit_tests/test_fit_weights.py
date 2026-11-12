@@ -32,9 +32,10 @@ def row(group: str, name: str, ns: float, median: float | None = None) -> dict[s
 
 
 def base_rows(**transcendental_ns: float) -> list[dict[str, Any]]:
-    """add is 2 ns. The pow group's sqrt and cbrt (4 ns) must lose to the transcendental group's."""
+    """The reference add_reg is 2 ns. The pow group's sqrt and cbrt (4 ns) must lose to the transcendental group's."""
     rows = [row("arith", name, ns) for name, ns in
-            [("add_stream", 2.0), ("sub_stream", 2.0), ("mul_stream", 2.0), ("div_stream", 3.2), ("neg_stream", 2.0)]]
+            [("add_reg", 2.0), ("add_stream", 0.5), ("sub_stream", 2.0), ("mul_stream", 2.0), ("div_stream", 3.2),
+             ("neg_stream", 2.0)]]
     rows += [row("pow", name, ns) for name, ns in
              [("pow2_stream", 2.0), ("pown16_stream", 2.0), ("pown_neg2_stream", 2.0), ("sqrt_stream", 4.0),
               ("cbrt_stream", 4.0), ("powvar_stream", 16.0)]]
@@ -71,12 +72,10 @@ class TestFitWeights(unittest.TestCase):
         trans = fit(base_rows(tan=3.2, log=5.0, cos=1.0, exp=0.8))[0]["weights"]["transcendental"]
         self.assertEqual((trans["tan"], trans["log"], trans["cos"], trans["exp"]), (2, 3, 1, 1))
 
-    def test_identity_is_subtracted(self) -> None:
+    def test_identity_is_subtracted_from_streamed_rows_only(self) -> None:
         rows = base_rows(sin=9.0, cos=1.2) + [row("arith", "identity_stream", 1.0)]
-        next(r for r in rows if r["name"] == "add_stream")["ns_per_elem"] = 3.0
-        next(r for r in rows if r["name"] == "add_stream")["ns_median"] = 3.0
         profile = fit(rows)[0]
-        # Adjusted add 2 and sin 8 give 4; cos floors at 0 and clamps to 1.
+        # add_reg (2) is not adjusted; sin is 9 - 1 = 8, so 4; cos floors at 0 and clamps to 1.
         self.assertEqual(profile["weights"]["transcendental"]["sin"], 4)
         self.assertEqual(profile["weights"]["transcendental"]["cos"], 1)
         self.assertTrue(profile["measurements"]["identity_subtracted"])
@@ -84,23 +83,22 @@ class TestFitWeights(unittest.TestCase):
     def test_each_group_subtracts_its_own_identity(self) -> None:
         # The one-input kernel's overhead (transcendental, 2 ns) differs from the two-input kernel's (arith, 1 ns).
         rows = base_rows(sin=10.0) + [row("arith", "identity_stream", 1.0), row("transcendental", "identity_stream", 2.0)]
-        for r in rows:
-            if r["name"] in ("add_stream", "powvar_stream") and r["group"] in ("arith", "pow"):
-                r["ns_per_elem"] = r["ns_median"] = {"add_stream": 3.0, "powvar_stream": 9.0}[r["name"]]
+        powvar = next(r for r in rows if r["name"] == "powvar_stream")
+        powvar["ns_per_elem"] = powvar["ns_median"] = 9.0
         profile = fit(rows)[0]
-        # Adjusted add is 2. sin is 10 - 2 = 8, so 4; powvar is 9 - 1 = 8 (the pow group uses arith's), so 4.
+        # sin is 10 - 2 = 8, so 4; powvar is 9 - 1 = 8 (the pow group uses arith's), so 4.
         self.assertEqual(profile["weights"]["transcendental"]["sin"], 4)
         self.assertEqual(profile["weights"]["pow_default"], 4)
         self.assertEqual(profile["measurements"]["reference"]["identity_stream"],
                          {"arith": 1.0, "transcendental": 2.0})
 
     def test_rounds_are_paired(self) -> None:
-        # The clock ran fast in round 0 while add ran, and had slowed by the time sin ran. The per-round ratios are
+        # The clock ran fast in round 0 while add_reg ran, and had slowed by the time sin ran. The per-round ratios are
         # 16, 8 and 8, so sin is 8 adds; dividing the minima (16 / 1) would make it 16.
         rows = base_rows()
         for r in rows:
             r["ns_rounds"] = [r["ns_per_elem"]] * 3
-        add = next(r for r in rows if r["name"] == "add_stream")
+        add = next(r for r in rows if r["name"] == "add_reg")
         add["ns_rounds"], add["ns_per_elem"] = [1.0, 2.0, 2.0], 1.0
         sin = next(r for r in rows if r["name"] == "sin_stream")
         sin["ns_rounds"] = [16.0, 16.0, 16.0]
@@ -114,10 +112,6 @@ class TestFitWeights(unittest.TestCase):
         next(r for r in rows if r["name"] == "sin_stream")["ns_rounds"] = [16.0, 16.0]
         with self.assertRaisesRegex(ValueError, "same number of rounds"):
             fit(rows)
-
-    def test_identity_not_below_add_is_an_error(self) -> None:
-        with self.assertRaisesRegex(ValueError, "not positive in round 0"):
-            fit(base_rows() + [row("arith", "identity_stream", 2.0)])
 
     def test_spread_warns(self) -> None:
         rows = base_rows()
@@ -134,7 +128,7 @@ class TestFitWeights(unittest.TestCase):
                              ("text", "JSON object or a list")]:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
                 load_results(doc)
-        with self.assertRaisesRegex(ValueError, "missing benchmark arith/add_stream"):
+        with self.assertRaisesRegex(ValueError, "missing benchmark arith/add_reg"):
             build_profile(load_results([row("pow", "powvar_stream", 2.0)]))
 
 

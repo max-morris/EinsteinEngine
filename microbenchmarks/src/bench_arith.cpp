@@ -28,40 +28,21 @@ using ee_bench::vreal;
 template <typename Op>
 BenchResult run_stream(const char *name, const char *node, const BenchConfig &cfg, Op op,
                        int ops_per_elem = 1) {
-#if defined(EE_DEVICE_BUILD)
   const std::size_t n = cfg.n_stream;
   std::vector<vreal> a(n), b(n);
   ee_bench::fill_inputs(a.data(), b.data(), n);
+#if defined(EE_DEVICE_BUILD)
   return ee_device::time_binary("arith", name, node, cfg, a.data(), b.data(), n, op, ops_per_elem);
 #else
-  const std::size_t n = cfg.n_stream;
-  std::vector<vreal> a(n), b(n), c(n);
-  ee_bench::fill_inputs(a.data(), b.data(), n);
-  for (int w = 0; w < cfg.warmup; ++w)
-    for (std::size_t i = 0; i < n; ++i)
-      c[i] = op(a[i], b[i]);
-  ee_escape(c.data());
-
-  std::vector<double> runs;
-  ee_bench::Timer t;
-  for (int r = 0; r < cfg.repeats; ++r) {
-    t.start();
-    for (std::size_t i = 0; i < n; ++i)
-      c[i] = op(a[i], b[i]);
-    ee_clobber(c);
-    runs.push_back(t.stop_ns());
-  }
-  double sum = 0;
-  for (std::size_t i = 0; i < n; ++i)
-    sum += static_cast<double>(c[i]);
-  ee_escape(&sum);
-  return ee_bench::summarize("arith", node, name, runs, n, ops_per_elem, sum);
+  return ee_bench::host_time_stream("arith", name, node, cfg, a.data(), b.data(), n, op, ops_per_elem);
 #endif
 }
 
-// Chained accumulation; REPEAT>1 amplifies ALU cost so loop overhead is negligible.
-// x is reset at every repeat. A carried multiply by 1.000002 overflows after
-// about 20 full passes, and a carried divide drifts into the subnormals.
+// Carried chains x = op(x, k) in registers: no loads, no stores, no sink, so nothing but the op is timed. This is the
+// reference the fitter divides by (add_reg). The host runs CHAINS independent chains, enough to cover the op's
+// latency, so this is throughput, as in an emitted expression; the device runs one chain per thread, and the many
+// threads cover it. x is reset at every repeat: a carried multiply by 1.000002 must not overflow, nor a carried
+// divide drift into the subnormals.
 template <typename Op>
 BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, Op op,
                     int ops_per_elem = 1) {
@@ -69,35 +50,38 @@ BenchResult run_reg(const char *name, const char *node, const BenchConfig &cfg, 
   (void)ops_per_elem;
   return ee_device::time_reg(name, node, cfg, op);
 #else
+  constexpr int CHAINS = 8;
   constexpr int REPEAT = 16;
-  std::size_t iters = cfg.quick ? (1u << 20) : (1u << 24);
-  const vreal x0 = static_cast<vreal>(1.000001);
+  const std::size_t iters = cfg.quick ? (1u << 20) : (1u << 24);
+  const std::size_t blocks = iters / (CHAINS * REPEAT);
   const vreal k = static_cast<vreal>(1.000002);
-  vreal x = x0;
-  for (std::size_t w = 0; w < 2; ++w) {
-    x = x0;
-    for (std::size_t i = 0; i < iters / 32; ++i)
-      for (int j = 0; j < 32; ++j)
-        x = op(x, k);
-  }
+  vreal x[CHAINS];
+  auto pass = [&] {
+    for (int c = 0; c < CHAINS; ++c)
+      x[c] = static_cast<vreal>(1.000001 + 1.0e-3 * c);
+    for (std::size_t i = 0; i < blocks; ++i) {
+      for (int j = 0; j < REPEAT; ++j)
+        for (int c = 0; c < CHAINS; ++c)
+          x[c] = op(x[c], k);
+      // Keeps the chains scalar: the compiler must not pack them into SIMD lanes.
+      for (int c = 0; c < CHAINS; ++c)
+        ee_clobber(x[c]);
+    }
+  };
+  for (int w = 0; w < cfg.warmup; ++w)
+    pass();
   std::vector<double> runs;
   ee_bench::Timer t;
   for (int r = 0; r < cfg.repeats; ++r) {
-    x = x0;
     t.start();
-    for (std::size_t i = 0; i < iters / REPEAT; ++i) {
-      for (int j = 0; j < REPEAT; ++j)
-        x = op(x, k);
-    }
-    ee_clobber(x);
+    pass();
     runs.push_back(t.stop_ns());
   }
-  double sum = static_cast<double>(x);
+  double sum = 0;
+  for (int c = 0; c < CHAINS; ++c)
+    sum += static_cast<double>(x[c]);
   ee_escape(&sum);
-  // Each inner step is one measured op; total elements = iters.
-  BenchResult result =
-      ee_bench::summarize("arith", node, name, runs, iters, ops_per_elem, sum);
-  return result;
+  return ee_bench::summarize("arith", node, name, runs, blocks * CHAINS * REPEAT, ops_per_elem, sum);
 #endif
 }
 
@@ -129,9 +113,9 @@ struct NegOp {
     return ee_kernels::ee_neg(a);
   }
 };
-// Device streamed kernels call op(base + k*eps, other) and then pay a
-// finiteness check and an xor sink. This functor returns that perturbed input
-// so the same harness can time the overhead alone.
+// Streamed kernels call op(base + k*eps, other) and then pay a finiteness
+// check and an xor sink. This functor returns that perturbed input so the same
+// harness can time the overhead alone.
 struct IdentityOp {
   EE_HD_INLINE ee_bench::vreal operator()(ee_bench::vreal a, ee_bench::vreal) const { return a; }
 };
@@ -139,9 +123,7 @@ struct IdentityOp {
 
 std::vector<ee_bench::BenchResult> bench_arith(const ee_bench::BenchConfig &cfg) {
   std::vector<BenchResult> out;
-#if defined(EE_DEVICE_BUILD)
   out.push_back(run_stream("identity_stream", "identity", cfg, IdentityOp{}));
-#endif
   out.push_back(run_stream("add_stream", "Add", cfg, AddOp{}));
   out.push_back(run_stream("sub_stream", "Add", cfg, SubOp{}));
   out.push_back(run_stream("mul_stream", "Mul", cfg, MulOp{}));

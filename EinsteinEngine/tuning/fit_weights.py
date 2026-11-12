@@ -20,22 +20,28 @@
 The tuner fits the results it measured on its target (see microbench.py). To fit a
 results file by hand: ``python -m EinsteinEngine.tuning.fit_weights results.json``.
 
-Add is the reference, and the unit. ee_microbench runs the whole suite in
-rounds and reports each case's time in every round (``ns_rounds``). A case's
-ratio is the median, over rounds, of its time divided by add's time in the same
-round, so a change in clock speed between rounds cancels. The stored weight is
+Add is the unit. The reference is ``arith/add_reg``: carried chains of adds in
+registers, with no loads, stores or harness, so it times the add alone (and,
+with enough independent chains, its throughput). ee_microbench runs the whole
+suite in rounds and reports each case's time in every round (``ns_rounds``). A
+case's ratio is the median, over rounds, of its time divided by add_reg's time in
+the same round, so a change in clock speed between rounds cancels. The stored
+weight is
 
     max(1, floor(median_ratio + 0.5))
 
 that is, the ratio rounded to whole adds (half up, not to even), and at least
 one add. A row without ``ns_rounds`` counts as one round of ``ns_per_elem``.
 
-Device runs time the harness with no math op as ``identity_stream``: in
-``arith`` for the two-input kernel, and in ``transcendental`` for the one-input
-kernel. Each timing used for a ratio is ``max(0, ns - identity)``, with the
-identity of the row's own group if it has one, and ``arith``'s otherwise. A
-non-positive adjusted add is fatal. Host runs omit those rows and are not
-adjusted.
+A streamed case repeats its op on each loaded element and pays a harness
+overhead per repetition, which ee_microbench times with no math op as
+``identity_stream``: in ``arith`` for the two-input kernel, and in
+``transcendental`` for the one-input kernel. A streamed timing used for a ratio
+is ``max(0, ns - identity)``, with the identity of the row's own group if it has
+one, and ``arith``'s otherwise. The overhead is several adds, so this is only
+accurate for ops that cost well above it, which are the ones fitted; it is why
+add itself is not taken from ``add_stream``. Results without identity rows are
+not adjusted.
 
 Rows are keyed by ``(group, name)``. A duplicate key is fatal, so a
 ``sqrt_stream`` in ``pow`` cannot overwrite the one in ``transcendental``.
@@ -182,26 +188,24 @@ def _pick_named(rows: dict[tuple[str, str], Row], name: str, preferred_group: st
 
 
 def _baseline(rows: dict[tuple[str, str], Row], row: Row) -> Row | None:
-    """The identity timing to subtract from `row`: its own group's, or the two-input kernel's in arith."""
+    """The identity timing to subtract from a streamed `row`: its own group's, or the two-input kernel's in arith."""
+    if row.name.endswith("_reg"):
+        return None
     return rows.get((row.group, "identity_stream"), rows.get(("arith", "identity_stream")))
 
 
-def _round_ratio(rows: dict[tuple[str, str], Row], row: Row, add: Row) -> float:
-    """The median over rounds of `row`'s adjusted time divided by add's adjusted time in the same round."""
-    row_base, add_base = _baseline(rows, row), _baseline(rows, add)
-    involved = [r for r in (row, add, row_base, add_base) if r is not None]
+def _round_ratio(rows: dict[tuple[str, str], Row], row: Row, ref: Row) -> float:
+    """The median over rounds of `row`'s adjusted time divided by the reference's time in the same round."""
+    base = _baseline(rows, row)
+    involved = [r for r in (row, ref, base) if r is not None]
     if len({len(r.ns_rounds) for r in involved}) != 1:
         raise _fatal(f"{row.group}/{row.name} and its references were not timed in the same number of rounds")
     ratios: list[float] = []
     for k in range(len(row.ns_rounds)):
-        add_ns = add.ns_rounds[k] - (add_base.ns_rounds[k] if add_base is not None else 0.0)
-        if add_ns <= 0:
-            raise _fatal(
-                f"adjusted add_stream is not positive in round {k} after subtracting identity_stream. "
-                "The identity baseline is not below add, so ratios are undefined."
-            )
-        row_ns = max(0.0, row.ns_rounds[k] - (row_base.ns_rounds[k] if row_base is not None else 0.0))
-        ratios.append(row_ns / add_ns)
+        if ref.ns_rounds[k] <= 0:
+            raise _fatal(f"{ref.group}/{ref.name} is not positive in round {k}")
+        row_ns = max(0.0, row.ns_rounds[k] - (base.ns_rounds[k] if base is not None else 0.0))
+        ratios.append(row_ns / ref.ns_rounds[k])
     return statistics.median(ratios)
 
 
@@ -222,9 +226,8 @@ def _spread_warning(row: Row) -> str | None:
 
 
 def build_profile(rows: dict[tuple[str, str], Row]) -> tuple[dict[str, Any], list[str]]:
-    add = _need(rows, "arith", "add_stream")
+    add = _need(rows, "arith", "add_reg")
     identities = {group: row for (group, name), row in rows.items() if name == "identity_stream"}
-    _round_ratio(rows, add, add)  # rejects an add that is not above its baseline
 
     warnings: list[str] = []
     for row in rows.values():
@@ -268,11 +271,11 @@ def build_profile(rows: dict[tuple[str, str], Row]) -> tuple[dict[str, Any], lis
         }
         recorded.append(entry)
 
-    scale = "max(1, floor(median over rounds of adjusted_ns / adjusted_add + 0.5))"
+    scale = "max(1, floor(median over rounds of adjusted_ns / add_reg_ns + 0.5))"
     decisions = {
         "scale": (
             f"Fitted slots use {scale}. "
-            "One adjusted add is 1."
+            "One add (arith/add_reg) is 1."
         ),
         "identity": (
             f"identity_stream ({', '.join(sorted(identities))}) was subtracted, the row's own group's if it has one "
@@ -308,11 +311,9 @@ def build_profile(rows: dict[tuple[str, str], Row]) -> tuple[dict[str, Any], lis
             "Profile fitted by EinsteinEngine.tuning.fit_weights. Fitted slots use "
             f"{scale}. Policy slots (atom, symbol_grid, symbol_local, "
             "pow_integer_floor, stencil weights, transcendental_default) are "
-            "the default model's values, not a fit of bench_memory. Device ratios "
-            "need the identity_stream rows before they are trusted. Host timings "
-            "(one op per element, memory- and loop-bound for cheap ops) and "
-            "device timings (256 reps per element, plus harness overhead) are "
-            "not comparable."
+            "the default model's values, not a fit of bench_memory. Streamed "
+            "timings have the identity_stream harness overhead subtracted; the "
+            "unit, add_reg, has none."
         ),
         "architecture": {
             "scalar_only": True,
@@ -326,7 +327,7 @@ def build_profile(rows: dict[tuple[str, str], Row]) -> tuple[dict[str, Any], lis
         "measurements": {
             "unit": "ns_per_elem; ns_rounds holds each round's min over repeats",
             "reference": {
-                "add_stream": add.ns_per_elem,
+                "add_reg": add.ns_per_elem,
                 "identity_stream": {group: row.ns_per_elem for group, row in sorted(identities.items())},
             },
             "identity_subtracted": bool(identities),

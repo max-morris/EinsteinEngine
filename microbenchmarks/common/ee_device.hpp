@@ -268,7 +268,7 @@ __device__ T repeat_sink(int reps, F body) {
   return static_cast<T>(static_cast<double>(s0 ^ s1 ^ s2 ^ s3));
 }
 
-inline int stream_reps(const ee_bench::BenchConfig &cfg) { return cfg.quick ? 32 : 256; }
+using ee_bench::stream_reps;
 
 template <typename Op>
 __global__ void binary_kernel(const ee_bench::vreal *__restrict__ a,

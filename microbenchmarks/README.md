@@ -84,36 +84,37 @@ git and are not synced to the target.
 
 Each case has two flavors where that split means something:
 
-* `*_stream`: `c[i] = f(a[i], b[i])` over a large array. This is the CarpetX
-  `grid.loop_*_device` body, which is the context the weights rank.
-* `*_reg`: a chained `x = f(x, k)` with the result kept live. This is ALU
-  throughput with no global memory in the inner loop. On a GPU it is many
-  independent per-thread chains, so the number is device throughput, not
-  single-thread latency.
+* `*_stream`: `c[i] = f(a[i], b[i])` over an array, the shape of the CarpetX
+  `grid.loop_*_device` body. One op per loaded element would time the loads
+  and the loop, not the op, so the host and the device both repeat the op on
+  each element 256 times (32 with `--quick`) on a slightly perturbed input:
+  independent repetitions, so this is throughput, as in an emitted expression.
+  The host array is small enough to stay in cache. The reported ns/element is
+  per repetition.
+* `*_reg`: carried chains `x = f(x, k)` in registers: no loads, stores or
+  harness, so only the op is timed. The host runs 8 independent chains,
+  enough to cover the latency of an add or a multiply; the device runs one
+  chain per thread, and the many threads cover it. Both are throughput.
+
+Each streamed repetition also pays a harness overhead: the perturbation FMA,
+a finiteness check, and an xor into a sink that keeps the result live. The
+arith and transcendental groups each include `identity_stream`, the same
+harness with a functor that returns its input (arith's times the two-input
+kernel, transcendental's the one-input kernel), and the fitter subtracts the
+row's own group's identity (arith's for the other groups, which use the
+two-input kernel), flooring the difference at 0. The overhead is several adds,
+so the subtraction is only accurate for ops that cost well above it, which are
+the ones the fitter uses. Add itself, the unit every weight is divided by, is
+taken from `add_reg`, which has no harness to subtract.
 
 The suite runs in rounds: every case is timed a few times in each round, after
 one untimed warm-up pass over the suite. Reported fields are each round's
 minimum ns/element (`ns_rounds`), their minimum and median, GOPS, and a
-checksum. The fitter divides each case by add within the same round and takes
-the median over rounds, so a clock that changes between rounds cancels out. A
-non-finite checksum aborts. Host builds keep values live with `asm volatile`.
-Device builds do the same inside the kernel and repeat each streamed math
-functor so the store cannot hide the arithmetic: 256 times per element, or
-32 with `--quick`. The reported ns/element is per repetition. One math op per
-element is HBM-bound on these GPUs and cannot separate libm from a load.
-Memory kernels stay at one evaluation per interior point and are
-informational: the fitter does not turn them into stencil weights.
-
-Host and device numbers are not comparable. A host stream does one operation
-per element and is memory- and loop-bound for cheap ops. A device streamed
-math kernel does 256 repetitions per element and is compute-bound, and each
-repetition also pays a perturbation FMA, a finiteness check, and an xor into
-the sink. The device arith and transcendental groups each include
-`identity_stream`, the same harness with a functor that returns its input:
-arith's times the two-input kernel, transcendental's the one-input kernel.
-The fitter subtracts the row's own group's identity (arith's for the other
-groups, which use the two-input kernel) and floors the difference at 0.
-Subtracting can otherwise go negative from noise.
+checksum. The fitter divides each case by `add_reg` within the same round and
+takes the median over rounds, so a clock that changes between rounds cancels
+out. A non-finite checksum aborts. Memory kernels stay at one evaluation per
+interior point and are informational: the fitter does not turn them into
+stencil weights.
 
 The harness times scalar `vreal` (`double`, or `float` with
 `-DEE_VREAL_FLOAT=ON`). It does not time `Arith::simd<CCTK_REAL>`, whose
@@ -122,16 +123,15 @@ relative costs differ.
 The host binary pins itself to the CPU it is already running on
 (`sched_setaffinity`). It does not change the CPU governor; that needs
 privileges the process does not take; the rounds stand in for it. Host
-defaults are 2^20 stream elements, 10 rounds of 3 repeats, and a 128^3 grid
+defaults are 2^14 stream elements (2^12 with `--quick`), 10 rounds of 3 repeats, and a 128^3 grid
 (64^3 with `--quick`). Device defaults are 2^27 stream elements (2^24 with
 `--quick`), 5 rounds of 3 repeats, and a 512^3 grid (256^3 with `--quick`),
 so launch overhead is not the result. `--quick` is 2 rounds of 2 repeats with
 no warm-up pass. `--quick` is applied first, then an explicit `--rounds`,
 `--repeats` or `--size` overrides it (`--repeats 30 --quick` keeps 30).
 
-`mul_reg` and `div_reg` reset the accumulator on every repeat. A carried
-multiply by `1.000002` overflows after about 20 passes, and a carried divide
-drifts into the subnormals. Integer powers use the same repeated-squaring
+The `_reg` chains are reset on every repeat, so a carried multiply by
+`1.000002` cannot overflow, nor a carried divide drift into the subnormals. Integer powers use the same repeated-squaring
 loop as `Arith::pown`, and the pow group times `x**-1` and `x**-2` as well
 as the positive exponents.
 
@@ -142,7 +142,7 @@ z neighbor load are each coalesced. That will not reproduce the
 `EinsteinEngine.tuning.fit_weights` writes a schema_version 1 profile. Fitted slots use
 
 ```text
-weight(op) = max(1, floor(adjusted_ns / adjusted_add + 0.5))
+weight(op) = max(1, floor(median over rounds of adjusted_ns / add_reg_ns + 0.5))
 ```
 
 that is, whole adds, rounded half up, and at least one. Fractions of an add
