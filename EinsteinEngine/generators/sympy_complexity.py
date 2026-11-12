@@ -26,7 +26,10 @@ module:
   * otherwise :data:`DEFAULT_WEIGHTS`, the hand-written model, is used.
 
 :class:`ComplexityWeights` has no numeric defaults; :data:`DEFAULT_WEIGHTS` is
-the one source of truth for the default model.
+the one source of truth for the default model. A measured profile is fitted
+from ``ee_microbench`` output on the machine it describes; the tuner does that
+on its target and records it next to its checkpoint (see
+``EinsteinEngine.tuning.microbench``). Measured profiles are never committed.
 
 This visitor is the backend-independent model. Every non-integer power,
 including ``sqrt`` and ``cbrt``, costs ``pow_default`` plus both arguments.
@@ -43,13 +46,14 @@ of that set) cost the same as ``sin``, so they do not rank cheaper than
 how a measured profile can rank ``tan`` differently from ``sin``. Any other
 call, such as ``Abs``, has no surcharge.
 
-:func:`set_weights` replaces the process-wide profile. Callers that use it
-temporarily have to restore the previous value; a later ``get_weights`` will
-not reload ``EE_COMPLEXITY_WEIGHTS`` while a profile is installed.
+:func:`use_weights` installs another profile for the duration of a ``with``
+block. A visitor reads the active profile when it is constructed.
 """
 
 import json
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from math import log2
 from pathlib import Path
@@ -128,31 +132,36 @@ def load_weights(path: Union[str, Path]) -> ComplexityWeights:
     resolved = Path(path).expanduser()
     with open(resolved, "r", encoding="utf-8") as f:
         doc = json.load(f)
+    return weights_from_profile(doc, str(resolved))
+
+
+def weights_from_profile(doc: Any, source: str) -> ComplexityWeights:
+    """Validate a parsed profile; `source` names it in errors."""
     if not isinstance(doc, dict):
-        raise ValueError(f"Weight file '{resolved}' must contain a JSON object.")
+        raise ValueError(f"Weight profile '{source}' must be a JSON object.")
     if doc.get("schema_version") != WEIGHTS_SCHEMA_VERSION:
         raise ValueError(
-            f"Weight file '{resolved}' has schema_version {doc.get('schema_version')!r}, "
+            f"Weight profile '{source}' has schema_version {doc.get('schema_version')!r}, "
             f"expected {WEIGHTS_SCHEMA_VERSION}."
         )
     raw_weights = doc.get("weights")
     if not isinstance(raw_weights, dict):
-        raise ValueError(f"Weight file '{resolved}' is missing the 'weights' object.")
+        raise ValueError(f"Weight profile '{source}' is missing the 'weights' object.")
     weights = cast(dict[str, Any], raw_weights)
 
     raw_trans = weights.get("transcendental", {})
     if not isinstance(raw_trans, dict):
-        raise ValueError(f"Weight file '{resolved}': 'transcendental' must be an object.")
+        raise ValueError(f"Weight profile '{source}': 'transcendental' must be an object.")
     transcendental: dict[str, int] = {}
     for name, value in raw_trans.items():
         if not isinstance(name, str) or isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(
-                f"Weight file '{resolved}': transcendental entry {name!r} must map "
+                f"Weight profile '{source}': transcendental entry {name!r} must map "
                 f"a function name to an int, got {value!r}."
             )
         if value < 0:
             raise ValueError(
-                f"Weight file '{resolved}': transcendental entry {name!r} must be >= 0."
+                f"Weight profile '{source}': transcendental entry {name!r} must be >= 0."
             )
         transcendental[name] = value
 
@@ -188,14 +197,16 @@ def get_weights() -> ComplexityWeights:
     return _ACTIVE_WEIGHTS
 
 
-def set_weights(weights: ComplexityWeights) -> None:
-    """Replace the process-wide weight profile.
-
-    This does not reload ``EE_COMPLEXITY_WEIGHTS``. Restore the previous
-    profile when the replacement was only meant for the current call.
-    """
+@contextmanager
+def use_weights(weights: ComplexityWeights) -> Iterator[None]:
+    """Make `weights` the active profile inside the block, and restore the previous one on exit."""
     global _ACTIVE_WEIGHTS
+    previous = _ACTIVE_WEIGHTS
     _ACTIVE_WEIGHTS = weights
+    try:
+        yield
+    finally:
+        _ACTIVE_WEIGHTS = previous
 
 
 def calculate_complexity(expr: sy.Basic, *, is_grid_variable: IsGridVariableFn) -> int:
