@@ -21,12 +21,15 @@ import os
 import traceback
 import typing
 from abc import ABC, abstractmethod
+from contextlib import nullcontext
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from EinsteinEngine.common.util import pprint
+from EinsteinEngine.generators.sympy_complexity import use_weights
 from EinsteinEngine.tuning.experiment import Experiment
+from EinsteinEngine.tuning.microbench import MicrobenchArgs, tuning_weights
 from EinsteinEngine.intermediate.eqn_ordering import add_eqn_order
 from EinsteinEngine.tuning.probe import EMPTY_PROBE, ProbeResult, RankByPostPopulation, active_params, \
     derive_add_eqn_order, describe_param, note_read, probe_recipe
@@ -235,21 +238,28 @@ def build_experiment(tuner: Tuner, recipe: str | None, checkpoint_file: str, *,
     return experiment
 
 
-def do_tuning[T: Tuner](args: RemoteFeedbackArgs, tuner: T, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:
+class TuningArgs(RemoteFeedbackArgs, MicrobenchArgs, Protocol):
+    pass
+
+
+def do_tuning(args: TuningArgs, tuner: Tuner, checkpoint_file: str, warmup_iterations: int = 10, iterations: int = 20, telegram_verbosity: int = 1) -> None:
     # Imported here: recipes import this module (for get_tuning_param) through `import EinsteinEngine`, which should not
     # load optuna.
     from EinsteinEngine.tuning.checkpointed_optimizer import CheckpointedOptimizer
-    optimizer = CheckpointedOptimizer(
-        f=functools.partial(do_tuning_run, args=args),
-        experiment=build_experiment(tuner, args.recipe, checkpoint_file, record_probe=True),
-        checkpoint_file=checkpoint_file,
-        telegram_verbosity=telegram_verbosity,
-    )
+    # Before probing: the probe and derived orders depend on the cost model too.
+    weights = tuning_weights(args, checkpoint_file, _count_checkpoint_entries(checkpoint_file))
+    with use_weights(weights) if weights is not None else nullcontext():
+        optimizer = CheckpointedOptimizer(
+            f=functools.partial(do_tuning_run, args=args),
+            experiment=build_experiment(tuner, args.recipe, checkpoint_file, record_probe=True),
+            checkpoint_file=checkpoint_file,
+            telegram_verbosity=telegram_verbosity,
+        )
 
-    if optimizer.n_checkpoint_loaded:
-        pprint(f'Resumed from checkpoint: {optimizer.n_checkpoint_loaded} observations loaded from {checkpoint_file}')
+        if optimizer.n_checkpoint_loaded:
+            pprint(f'Resumed from checkpoint: {optimizer.n_checkpoint_loaded} observations loaded from {checkpoint_file}')
 
-    optimizer.maximize(warmup_iterations=warmup_iterations, iterations=iterations)
+        optimizer.maximize(warmup_iterations=warmup_iterations, iterations=iterations)
     assert optimizer.max is not None
     pprint(f'Tuning complete. Best target: {optimizer.max}')
 

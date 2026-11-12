@@ -19,11 +19,10 @@ import argparse
 import runpy
 from typing import Protocol
 
-from EinsteinEngine.tuning.remote_feedback import RemoteFeedbackArgs
-from EinsteinEngine.tuning.tuning import Tuner, do_tuning
+from EinsteinEngine.tuning.tuning import Tuner, TuningArgs, do_tuning
 
 
-class RemoteTunerArgs(RemoteFeedbackArgs, Protocol):
+class RemoteTunerArgs(TuningArgs, Protocol):
     tuner: str
     warmup_iterations: int
     iterations: int
@@ -67,6 +66,8 @@ def main() -> None:
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine. Relative to Cactus path.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to print timing information on the remote machine. Relative to Cactus path. Must print a single number to optimize for.")
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="File to save/restore tuning progress. A tuner that probes the recipe also records the probe in <file>.probe.json and refuses to resume if the recorded probe no longer matches (see docs/TUNING-QUICKSTART.md).")
+    parser.add_argument("--microbench-command", type=str, default=None, help="Opt in to measuring the cost model's weights on the target: the command, run in --microbench-remote-path on the remote host, that builds and runs microbenchmarks/run.sh, directly or through sbatch (see docs/TUNING-QUICKSTART.md). It runs once per checkpoint; the weights are recorded in <checkpoint>.microbench.json and reused when the checkpoint resumes.")
+    parser.add_argument("--microbench-remote-path", type=str, default=None, help="Remote directory the microbenchmark sources are synced into (with rsync --delete, so give it a directory of its own).")
     parser.add_argument("--warmup-iterations", type=int, default=10, help="Number of warmup iterations.")
     parser.add_argument("--iterations", type=int, default=20, help="Number of iterations.")
     parser.add_argument(

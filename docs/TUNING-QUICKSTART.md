@@ -213,6 +213,40 @@ before it continues — so you can stop and restart freely, or bump the iteratio
 count to search longer. You'll see `Resumed from checkpoint: N observations
 loaded`.
 
+### Measuring the cost model on the target
+
+The engine ranks expressions with a cost model (`sympy_complexity.py`), and its
+weights affect ordering, temporary promotion and split retention. By default
+they are the hand-written `DEFAULT_WEIGHTS`. To use weights measured on the
+machine being tuned, pass `--microbench-command` and `--microbench-remote-path`:
+
+```bash
+    --microbench-remote-path /work/me/ee-microbench \
+    --microbench-command 'sbatch -A my_alloc -p gpu --gres=gpu:1 -t 0:20:00 -o microbench.log run.sh cuda'
+```
+
+Before probing, the tuner rsyncs `microbenchmarks/` to that path on
+`--remote-host` (with `--delete`, so give it a directory of its own), runs the
+command there, waits for the Slurm job if the command printed a job id
+(`Submitted batch job N` or cactup's `Submit finished, job id is N`; otherwise
+the command is taken to have finished the run itself), reads the
+`results.json` that `run.sh` wrote, and fits a profile from it. `run.sh cpu`,
+`run.sh cuda` or `run.sh hip` builds `ee_microbench` for that target; Makefile
+variables such as `CUDA_ARCH=90` can be set in the environment. On a machine
+without a scheduler, `--microbench-command './run.sh cpu'` runs it directly.
+
+This happens once per checkpoint. The measurements and the fitted profile are
+recorded in `<checkpoint>.microbench.json`, next to the checkpoint (ignored by
+git like the checkpoint itself), and every trial of that checkpoint uses them:
+on a resumed run they are reused, with or without the options, and
+`generate_best` uses them too. The file also records the target (host, path,
+command, and a digest of the benchmark sources). Once the checkpoint has
+entries, the tuner refuses to resume against a different target, and refuses
+to add measured weights to a checkpoint whose trials were scored with the
+default ones. A new checkpoint measures again, so the weights follow driver or
+module updates on the remote. Measured profiles are never committed; see
+`microbenchmarks/README.md` for what is measured.
+
 ### Running locally (no remote)
 
 Pass `--remote-host localhost` to skip `ssh`/`scp` entirely: the recipe is
@@ -240,7 +274,9 @@ in_params back to recipe-facing out_params. See `generate-best.sh` in the sample
 For a tuner that probes the recipe (section 5), `generate_best` probes the recipe,
 and the result must match the probe recorded next to the checkpoint, if there is
 one. The best entry is checked against the recorded probe first, so a mismatched
-checkpoint fails before the (slow) probe runs.
+checkpoint fails before the (slow) probe runs. If the search measured the cost
+model on its target, `generate_best` uses the weights recorded next to the
+checkpoint.
 
 To eyeball progress, `plot_tuning.py` renders the checkpoint's target history.
 Pass `--tuner` to plot reparameterized params as their values. For a probing
@@ -647,6 +683,8 @@ the far side of a `Union` gap).
 | `--remote-command`         | `./build.sh && ./run-all.sh`   | Build + submit; must print the Slurm job id.        |
 | `--remote-timing-command`  | `./timings.sh`                 | Prints a single number to optimize for.             |
 | `--checkpoint-file`        | `split_tuning_checkpt.jsonl`   | Trial log; resumed automatically. A probing tuner also writes `<file>.probe.json`. |
+| `--microbench-command`     | none                           | Opt in to measuring the cost model's weights on the target, once per checkpoint (`<file>.microbench.json`). |
+| `--microbench-remote-path` | none                           | Remote dir the benchmark sources are synced into.  |
 | `--warmup-iterations`      | `10`                           | Exploration trials.                                 |
 | `--iterations`             | `20`                           | Guided trials after warmup.                         |
 

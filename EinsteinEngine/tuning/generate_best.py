@@ -26,7 +26,8 @@ The tuner file is the same one used with remote_tuner: it supplies the
 Experiment that maps the checkpoint's in_params to the recipe-facing
 out_params. For a tuner that probes the recipe, the probe must match the one
 recorded next to the checkpoint, if any; the best entry is checked against
-the recorded probe before the (slow) probe runs.
+the recorded probe before the (slow) probe runs. If the tuning run measured
+the cost model's weights on its target, the recipe runs with those.
 """
 
 import argparse
@@ -35,11 +36,14 @@ import math
 import os
 import runpy
 import sys
+from contextlib import nullcontext
 from typing import Any
 
+from EinsteinEngine.generators.sympy_complexity import use_weights
 from EinsteinEngine.tuning import tuning
 from EinsteinEngine.tuning.checkpointed_optimizer import is_failed
 from EinsteinEngine.tuning.experiment import ParamType
+from EinsteinEngine.tuning.microbench import recorded_weights
 from EinsteinEngine.tuning.remote_tuner import load_tuner_from_file
 
 
@@ -97,25 +101,31 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    tuner_inst = load_tuner_from_file(args.tuner)
-    best_target, best_params = load_best_params(args.checkpoint_file)
-    source = f"The best entry in {args.checkpoint_file}"
-    if tuner_inst.probe_targets() and os.path.exists(tuning.probe_sidecar_path(args.checkpoint_file)):
+    weights = recorded_weights(args.checkpoint_file)
+    with use_weights(weights) if weights is not None else nullcontext():
+        generate_best(args.recipe, args.tuner, args.checkpoint_file)
+
+
+def generate_best(recipe: str, tuner: str, checkpoint_file: str) -> None:
+    tuner_inst = load_tuner_from_file(tuner)
+    best_target, best_params = load_best_params(checkpoint_file)
+    source = f"The best entry in {checkpoint_file}"
+    if tuner_inst.probe_targets() and os.path.exists(tuning.probe_sidecar_path(checkpoint_file)):
         #  Fail fast, before probing, if the best entry does not fit the recorded probe.
-        tuning.build_experiment(tuner_inst, None, args.checkpoint_file).check_declared(best_params, source)
-    experiment = tuning.build_experiment(tuner_inst, args.recipe, args.checkpoint_file)
+        tuning.build_experiment(tuner_inst, None, checkpoint_file).check_declared(best_params, source)
+    experiment = tuning.build_experiment(tuner_inst, recipe, checkpoint_file)
     experiment.check_declared(best_params, source)
     _, recipe_facing_args = experiment.suggest_params(_FixedTrial(best_params))
 
-    print(f"Best target {best_target} found in {args.checkpoint_file}.")
+    print(f"Best target {best_target} found in {checkpoint_file}.")
     print(f"Fixed in_params: {best_params}")
 
     #  Pin the recipe's tuning params, then run it exactly as remote_feedback
     #  does: the recipe reads these via get_tuning_param, which resolves the
     #  module-global _tuning_params.
     tuning._tuning_params = recipe_facing_args
-    sys.argv = [args.recipe]
-    runpy.run_path(args.recipe, run_name="__main__")
+    sys.argv = [recipe]
+    runpy.run_path(recipe, run_name="__main__")
 
 
 if __name__ == "__main__":
