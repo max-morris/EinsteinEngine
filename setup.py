@@ -26,8 +26,14 @@ setup(
     author='Max Morris',
     author_email='mmorris@cct.lsu.edu',
     license='AGPL-3.0-or-later',
-    packages=find_packages(include=['EinsteinEngine', 'EinsteinEngine.*']),
-    package_data={'EinsteinEngine': ['py.typed']},
+    # The microbenchmark sources ship with the package: the tuner copies them to its target (tuning/microbench.py).
+    packages=find_packages(include=['EinsteinEngine', 'EinsteinEngine.*']) + ['EinsteinEngine.microbenchmarks'],
+    package_dir={'EinsteinEngine.microbenchmarks': 'microbenchmarks'},
+    package_data={
+        'EinsteinEngine': ['py.typed'],
+        'EinsteinEngine.microbenchmarks': ['CMakeLists.txt', 'Makefile', 'run.sh', 'README.md', '.gitignore',
+                                           'common/*.hpp', 'src/*.cpp'],
+    },
     install_requires=[
         'mypy==2.3.0',
         'nrpy==2.0.18',

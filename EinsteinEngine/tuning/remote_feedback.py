@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 import traceback
+from collections.abc import Sequence
 from typing import Protocol, Any
 
 from EinsteinEngine.tuning import probe
@@ -64,21 +65,57 @@ def main() -> None:
 
     do_remote_run(args, {})
 
+class Remote:
+    """The machine trials and microbenchmarks run on: commands go over ssh, or through the local shell when the host is
+    localhost."""
+
+    def __init__(self, host: str) -> None:
+        self.host = host
+        self.is_local = host == "localhost"
+
+    def run(self, cmd: str) -> subprocess.CompletedProcess[str]:
+        invocation = ["bash", "-c", cmd] if self.is_local else ["ssh", self.host, cmd]
+        result = subprocess.run(invocation, capture_output=True, text=True)
+        if not self.is_local and result.returncode == _SSH_CONNECTION_FAILED:
+            raise RuntimeError(f"ssh to {self.host} failed:\n{result.stderr}")
+        return result
+
+    def sync(self, local_path: str, remote_path: str, extra_args: Sequence[str] = ()) -> None:
+        destination = remote_path if self.is_local else f"{self.host}:{remote_path}"
+        result = subprocess.run(
+            ["rsync", "-a", "--delete", "--itemize-changes", *extra_args, local_path, destination],
+            capture_output=True, text=True)
+        if result.returncode != 0:
+            print(result.stdout)
+            print(result.stderr)
+            raise RuntimeError("rsync failed")
+
+    def wait_for_job(self, job_id: str) -> None:
+        pprint(f"Job {job_id} submitted on {self.host} with Slurm.")
+        while True:
+            squeue_result = self.run(f"squeue -h -j {job_id}")
+            if squeue_result.returncode != 0:
+                raise RuntimeError(
+                    f"Failed while polling Slurm job {job_id}:\n{squeue_result.stdout}\n{squeue_result.stderr}")
+            # `squeue -h -j <id>` prints nothing once the job has left the queue.
+            if not squeue_result.stdout.strip():
+                break
+            pprint(f"Still waiting on job {job_id}...")
+            time.sleep(60)
+        pprint(f"Job {job_id} finished.")
+
+
+def find_job_id(output: str) -> str | None:
+    """The last Slurm job id that cactup ("Submit finished, job id is N") or sbatch ("Submitted batch job N") printed."""
+    matches = re.findall(r"(?:Submit finished, job id is|Submitted batch job) (\d+)", output)
+    return matches[-1] if matches else None
+
+
 def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -> float:
     # When the "remote" host is localhost, skip scp/ssh entirely and run
     # everything locally. rsync still runs (to a local destination path) and
     # commands are executed through the local shell instead of over ssh.
-    is_local = args.remote_host == "localhost"
-
-    def run_command(cmd: str) -> subprocess.CompletedProcess[str]:
-        if is_local:
-            invocation = ["bash", "-c", cmd]
-        else:
-            invocation = ["ssh", args.remote_host, cmd]
-        result = subprocess.run(invocation, capture_output=True, text=True)
-        if not is_local and result.returncode == _SSH_CONNECTION_FAILED:
-            raise RuntimeError(f"ssh to {args.remote_host} failed:\n{result.stderr}")
-        return result
+    remote = Remote(args.remote_host)
 
     sys.argv = [args.recipe]
     with probe.collect_refused_cuts() as refused_cuts:
@@ -94,33 +131,11 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     if refused_cuts:
         raise TrialFailed(f"The engine refused cuts this trial asked for: {'; '.join(refused_cuts)}.")
 
-    pprint("Done generating. Syncing to remote..." if not is_local else "Done generating. Syncing locally...")
+    pprint("Done generating. Syncing to remote..." if not remote.is_local else "Done generating. Syncing locally...")
+    remote.sync(args.local_path, args.remote_path)
+    pprint("Done syncing. Building..." if remote.is_local else "Done syncing to remote. Building on remote...")
 
-    rsync_destination = args.remote_path if is_local else f"{args.remote_host}:{args.remote_path}"
-    rsync_result = subprocess.run(
-        [
-            "rsync",
-            "-a",
-            "--delete",
-            "--itemize-changes",
-            args.local_path,
-            rsync_destination
-        ],
-        capture_output=True,
-        text=True
-    )
-
-    if rsync_result.returncode != 0:
-        print(rsync_result.stdout)
-        print(rsync_result.stderr)
-        raise RuntimeError("rsync failed")
-
-    pprint("Done syncing. Building..." if is_local else "Done syncing to remote. Building on remote...")
-
-    build_and_submit_result = run_command(
-        f"cd {args.remote_cactus_path} && {args.remote_command}"
-    )
-
+    build_and_submit_result = remote.run(f"cd {args.remote_cactus_path} && {args.remote_command}")
     build_and_submit_output = f"{build_and_submit_result.stdout}\n{build_and_submit_result.stderr}"
 
     if build_and_submit_result.returncode != 0:
@@ -129,37 +144,15 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
             f"{build_and_submit_output}"
         )
 
-    job_matches = re.findall(r"Submit finished, job id is (\d+)", build_and_submit_output)
-    if not job_matches:
+    slurm_job_id = find_job_id(build_and_submit_output)
+    if slurm_job_id is None:
         raise RuntimeError(
             "Could not parse Slurm job id from build/run output.\n"
             f"Output:\n{build_and_submit_output}"
         )
-    slurm_job_id = job_matches[-1]
+    remote.wait_for_job(slurm_job_id)
 
-    pprint(f"Job {slurm_job_id} submitted on {args.remote_host} with Slurm.")
-
-    while True:
-        squeue_result = run_command(f"squeue -h -j {slurm_job_id}")
-
-        if squeue_result.returncode != 0:
-            raise RuntimeError(
-                f"Failed while polling Slurm job {slurm_job_id}:\n"
-                f"{squeue_result.stdout}\n{squeue_result.stderr}"
-            )
-
-        # `squeue -h -j <id>` prints nothing once the job has left the queue.
-        if not squeue_result.stdout.strip():
-            break
-
-        pprint(f"Still waiting on job {slurm_job_id}...")
-        time.sleep(60)
-
-    pprint(f"Job {slurm_job_id} finished.")
-
-    timing_result = run_command(
-        f"cd {args.remote_cactus_path} && {args.remote_timing_command}"
-    )
+    timing_result = remote.run(f"cd {args.remote_cactus_path} && {args.remote_timing_command}")
     timing_output = f"{timing_result.stdout}\n{timing_result.stderr}"
     if timing_result.returncode != 0:
         raise TrialFailed(f"Remote timing run failed:\n{timing_output}")

@@ -28,7 +28,7 @@ jobs:
       - name: Set Up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.16"  # 3.13.18 from setup-python has no ssl in the ee-tester container
 
       - name: Install Python Dependencies
         run: |

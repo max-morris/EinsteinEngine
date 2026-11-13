@@ -1,0 +1,5 @@
+# Build trees and results stay on the machine that made them. The tuner's rsync reads this file too.
+/ee_microbench
+/build*/
+/results.json
+/results.json.tmp
