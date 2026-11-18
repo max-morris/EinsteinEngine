@@ -114,6 +114,6 @@ def kreiss_oliger_stencil(stencil_width: int, la: Idx) -> Expr:
             formula += coef * noop(stencil(la * offset1) + s2 * stencil(la * offset2))
         else:
             formula += s1 * coef * noop(stencil(la * offset1) + s1 * s2 * stencil(la * offset2))
-    prefactor = sign * 2 ** (2 * n)
+    prefactor = 2 ** (2 * n)
     result: Expr = formula * sign * Rational(1, prefactor) * DDI(la)
     return result
