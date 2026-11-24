@@ -90,7 +90,7 @@ CarpetX::output_boundary_points = no
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::gt_m1
   CottonmouthZ4c4m::HamCons
   CottonmouthZ4c4m::MomCons
 "

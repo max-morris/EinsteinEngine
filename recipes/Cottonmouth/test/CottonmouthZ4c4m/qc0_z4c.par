@@ -89,7 +89,7 @@ CarpetX::out_tsv_vars = "
   CottonmouthZ4c4m::chi
   CottonmouthZ4c4m::trK
   CottonmouthZ4c4m::evo_Gammat
-  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::gt_m1
   CottonmouthZ4c4m::At
   CottonmouthZ4c4m::evo_lapse
   CottonmouthZ4c4m::evo_shift
