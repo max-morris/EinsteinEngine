@@ -89,14 +89,14 @@ CarpetX::out_performance = no
 
 CarpetX::out_norm_omit_unstable = no
 CarpetX::out_norm_vars          = "
-  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::gt_m1
   CottonmouthZ4c4m::HamCons
   CottonmouthZ4c4m::MomCons
 "
 
 CarpetX::out_tsv      = no
 CarpetX::out_tsv_vars = "
-  CottonmouthZ4c4m::gt
+  CottonmouthZ4c4m::gt_m1
   CottonmouthZ4c4m::HamCons
   CottonmouthZ4c4m::MomCons
 "
