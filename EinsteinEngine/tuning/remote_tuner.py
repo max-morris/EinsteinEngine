@@ -19,7 +19,7 @@ import argparse
 import runpy
 from typing import Protocol
 
-from EinsteinEngine.tuning.remote_feedback import add_sync_delete_argument
+from EinsteinEngine.tuning.remote_feedback import add_poll_command_argument, add_sync_delete_argument
 from EinsteinEngine.tuning.tuning import Tuner, TuningArgs, do_tuning
 
 
@@ -66,6 +66,7 @@ def main() -> None:
     parser.add_argument("--remote-cactus-path", type=str, required=True, help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine. Relative to Cactus path.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to print timing information on the remote machine. Relative to Cactus path. Must print a single number to optimize for.")
+    add_poll_command_argument(parser)
     add_sync_delete_argument(parser)
     parser.add_argument("--checkpoint-file", type=str, default="split_tuning_checkpt.jsonl", help="File to save/restore tuning progress. A tuner that probes the recipe also records the probe in <file>.probe.json and refuses to resume if the recorded probe no longer matches (see docs/TUNING-QUICKSTART.md).")
     parser.add_argument("--microbench-command", type=str, default=None, help="Opt in to measuring the cost model's weights on the target: the command, run in --microbench-remote-path on the remote host, that builds and runs microbenchmarks/run.sh, directly or through sbatch (see docs/TUNING-QUICKSTART.md). It runs once per checkpoint; the weights are recorded in <checkpoint>.microbench.json and reused when the checkpoint resumes.")

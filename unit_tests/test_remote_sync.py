@@ -19,7 +19,6 @@
 
 import argparse
 import os
-import stat
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -51,24 +50,16 @@ class TestRemoteSync(unittest.TestCase):
         self.recipe = os.path.join(self.dir.name, 'recipe.py')
         with open(self.recipe, 'w') as fh:
             fh.write(_RECIPE)
-        # The build "submits" job 7, which has already left the queue: squeue prints nothing.
-        bin_dir = os.path.join(self.dir.name, 'bin')
-        os.makedirs(bin_dir)
-        squeue = os.path.join(bin_dir, 'squeue')
-        with open(squeue, 'w') as fh:
-            fh.write('#!/bin/sh\n')
-        os.chmod(squeue, os.stat(squeue).st_mode | stat.S_IXUSR)
-        self.saved_path = os.environ['PATH']
-        os.environ['PATH'] = f'{bin_dir}{os.pathsep}{self.saved_path}'
 
     def tearDown(self) -> None:
-        os.environ['PATH'] = self.saved_path
         self.dir.cleanup()
 
     def args(self, sync_delete: bool) -> Any:
         return SimpleNamespace(recipe=self.recipe, local_path=f'{self.local}/', remote_host='localhost',
                                remote_path=f'{self.remote}/', remote_cactus_path=self.dir.name,
                                remote_command="echo 'Submitted batch job 7'", remote_timing_command='echo 2.5',
+                               # Job 7 has already left the queue: the poll prints nothing.
+                               remote_poll_command='true',
                                checkpoint_file=os.path.join(self.dir.name, 'checkpt.jsonl'), sync_delete=sync_delete)
 
     def trial(self, sync_delete: bool, trial: int, files: list[str]) -> None:
