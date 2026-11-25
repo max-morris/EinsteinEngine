@@ -166,7 +166,14 @@ What each trial does, in order (see `remote_feedback.py:do_remote_run`):
    engine refused any auto split the trial asked for (a cut guard; see
    [EQUATION-ORDERING.md](EQUATION-ORDERING.md), section 5), the trial fails
    here, before anything is synced or built.
-2. `rsync --delete` `--local-path` → `--remote-path`.
+2. `rsync --delete` `--local-path` → `--remote-path`. `--delete` removes every
+   file in `--remote-path` that is not in `--local-path`, so by default
+   `--remote-path` must hold only generated code. To mix the generated code
+   into an existing source tree, pass `--no-sync-delete`: the sync then only
+   adds and updates files. A file that an earlier trial generated and this one
+   did not then stays in `--remote-path`, so make sure the build does not pick
+   such files up (a Cactus build compiles only the sources `make.code.defn`
+   lists).
 3. Run `--remote-command` under `--remote-cactus-path`; parse the Slurm job id
    from a line matching `Submit finished, job id is <N>`.
 4. Poll the job every 60 s with `--remote-poll-command` (default

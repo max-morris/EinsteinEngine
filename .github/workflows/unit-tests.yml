@@ -47,6 +47,7 @@ jobs:
           python unit_tests/test_fit_weights.py
           python unit_tests/test_microbench.py
           python unit_tests/test_remote_feedback.py
+          python unit_tests/test_remote_sync.py
           python unit_tests/test_cse_optimizations.py
           python unit_tests/test_collect.py
           python unit_tests/test_tune_cse.py

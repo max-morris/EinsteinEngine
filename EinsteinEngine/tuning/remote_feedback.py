@@ -71,6 +71,7 @@ class RemoteFeedbackArgs(Protocol):
     remote_timing_command: str
     remote_poll_command: str
     checkpoint_file: str
+    sync_delete: bool
 
 
 def main() -> None:
@@ -84,10 +85,21 @@ def main() -> None:
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine. Must print a single number to optimize for.")
     add_poll_command_argument(parser)
+    add_sync_delete_argument(parser)
 
     args = parser.parse_args()
 
     do_remote_run(args, {})
+
+
+def add_sync_delete_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--sync-delete", action=argparse.BooleanOptionalAction, default=True,
+        help="Whether syncing --local-path to --remote-path deletes the files in --remote-path that are not in "
+             "--local-path (rsync --delete; the default). Pass --no-sync-delete when --remote-path is an existing "
+             "source tree the generated code is mixed into; files a previous trial generated and this one did not "
+             "then stay behind.")
+
 
 class Remote:
     """The machine trials and microbenchmarks run on: commands go over ssh, or through the local shell when the host is
@@ -105,10 +117,13 @@ class Remote:
             raise RuntimeError(f"ssh to {self.host} failed:\n{result.stderr}")
         return result
 
-    def sync(self, local_path: str, remote_path: str, extra_args: Sequence[str] = ()) -> None:
+    def sync(self, local_path: str, remote_path: str, extra_args: Sequence[str] = (), *, delete: bool = True) -> None:
+        """rsync `local_path` to `remote_path`; with `delete`, files in `remote_path` that `local_path` lacks are
+        removed."""
         destination = remote_path if self.is_local else f"{self.host}:{remote_path}"
         result = subprocess.run(
-            ["rsync", "-a", "--delete", "--itemize-changes", *extra_args, local_path, destination],
+            ["rsync", "-a", *(["--delete"] if delete else []), "--itemize-changes", *extra_args, local_path,
+             destination],
             capture_output=True, text=True)
         if result.returncode != 0:
             print(result.stdout)
@@ -159,7 +174,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
         raise TrialFailed(f"The engine refused cuts this trial asked for: {'; '.join(refused_cuts)}.")
 
     pprint("Done generating. Syncing to remote..." if not remote.is_local else "Done generating. Syncing locally...")
-    remote.sync(args.local_path, args.remote_path)
+    remote.sync(args.local_path, args.remote_path, delete=args.sync_delete)
     pprint("Done syncing. Building..." if remote.is_local else "Done syncing to remote. Building on remote...")
 
     build_and_submit_result = remote.run(f"cd {args.remote_cactus_path} && {args.remote_command}")
