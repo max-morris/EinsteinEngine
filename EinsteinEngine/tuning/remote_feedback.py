@@ -38,6 +38,28 @@ class TrialFailed(RuntimeError):
 # ssh exits with 255 when the connection itself fails, whatever the remote command did.
 _SSH_CONNECTION_FAILED = 255
 
+JOB_ID_PLACEHOLDER = "{job_id}"
+DEFAULT_POLL_COMMAND = f"squeue -h -j {JOB_ID_PLACEHOLDER}"
+POLL_INTERVAL_S = 60
+
+
+def poll_command(template: str) -> str:
+    """Validate a --remote-poll-command template (an argparse type)."""
+    if JOB_ID_PLACEHOLDER not in template:
+        raise argparse.ArgumentTypeError(f"the poll command must contain {JOB_ID_PLACEHOLDER}, which is replaced by "
+                                         f"the Slurm job id: {template!r}")
+    return template
+
+
+def add_poll_command_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--remote-poll-command", type=poll_command, default=DEFAULT_POLL_COMMAND,
+        help=f"Command run on the remote host every {POLL_INTERVAL_S} s to poll a submitted Slurm job, with "
+             f"{JOB_ID_PLACEHOLDER} replaced by its id. It must exit 0 and print nothing once the job has left the "
+             f"queue, and print something while it is queued or running. Override it where Slurm needs a setup "
+             f"first, e.g. 'source /path/to/setup.sh && squeue -h -j {JOB_ID_PLACEHOLDER}'. "
+             f"Default: '{DEFAULT_POLL_COMMAND}'.")
+
 
 class RemoteFeedbackArgs(Protocol):
     recipe: str
@@ -47,6 +69,7 @@ class RemoteFeedbackArgs(Protocol):
     remote_cactus_path: str
     remote_command: str
     remote_timing_command: str
+    remote_poll_command: str
     checkpoint_file: str
 
 
@@ -60,6 +83,7 @@ def main() -> None:
     parser.add_argument("--remote-cactus-path", type=str, required=True, help="Remote path containing the Cactus installation.")
     parser.add_argument("--remote-command", type=str, default="./build.sh && ./run-all.sh", help="Command to build and run on the remote machine.")
     parser.add_argument("--remote-timing-command", type=str, default="./timings.sh", help="Command to run timing on the remote machine. Must print a single number to optimize for.")
+    add_poll_command_argument(parser)
 
     args = parser.parse_args()
 
@@ -67,11 +91,12 @@ def main() -> None:
 
 class Remote:
     """The machine trials and microbenchmarks run on: commands go over ssh, or through the local shell when the host is
-    localhost."""
+    localhost. `poll_command` is the --remote-poll-command template that polls a submitted Slurm job."""
 
-    def __init__(self, host: str) -> None:
+    def __init__(self, host: str, poll_command: str = DEFAULT_POLL_COMMAND) -> None:
         self.host = host
         self.is_local = host == "localhost"
+        self.poll_command = poll_command
 
     def run(self, cmd: str) -> subprocess.CompletedProcess[str]:
         invocation = ["bash", "-c", cmd] if self.is_local else ["ssh", self.host, cmd]
@@ -92,16 +117,18 @@ class Remote:
 
     def wait_for_job(self, job_id: str) -> None:
         pprint(f"Job {job_id} submitted on {self.host} with Slurm.")
+        # Substituted with replace, not str.format, so that the shell's own braces (${VAR}, awk '{...}') pass through.
+        cmd = self.poll_command.replace(JOB_ID_PLACEHOLDER, job_id)
         while True:
-            squeue_result = self.run(f"squeue -h -j {job_id}")
-            if squeue_result.returncode != 0:
+            poll_result = self.run(cmd)
+            if poll_result.returncode != 0:
                 raise RuntimeError(
-                    f"Failed while polling Slurm job {job_id}:\n{squeue_result.stdout}\n{squeue_result.stderr}")
-            # `squeue -h -j <id>` prints nothing once the job has left the queue.
-            if not squeue_result.stdout.strip():
+                    f"Failed while polling Slurm job {job_id} with '{cmd}':\n{poll_result.stdout}\n{poll_result.stderr}")
+            # Like `squeue -h -j <id>`, the poll command prints nothing once the job has left the queue.
+            if not poll_result.stdout.strip():
                 break
             pprint(f"Still waiting on job {job_id}...")
-            time.sleep(60)
+            time.sleep(POLL_INTERVAL_S)
         pprint(f"Job {job_id} finished.")
 
 
@@ -115,7 +142,7 @@ def do_remote_run(args: RemoteFeedbackArgs, globals_to_inject: dict[str, Any]) -
     # When the "remote" host is localhost, skip scp/ssh entirely and run
     # everything locally. rsync still runs (to a local destination path) and
     # commands are executed through the local shell instead of over ssh.
-    remote = Remote(args.remote_host)
+    remote = Remote(args.remote_host, args.remote_poll_command)
 
     sys.argv = [args.recipe]
     with probe.collect_refused_cuts() as refused_cuts:

@@ -53,6 +53,7 @@ RESULTS_FILE = 'results.json'
 
 class MicrobenchArgs(Protocol):
     remote_host: str
+    remote_poll_command: str
     microbench_remote_path: str | None
     microbench_command: str | None
 
@@ -189,7 +190,7 @@ def tuning_weights(args: MicrobenchArgs, checkpoint_file: str, n_entries: int) -
         raise RuntimeError(f"Checkpoint {checkpoint_file} has entries scored with the default weights, so it cannot "
                            f"switch to measured ones. Use a new checkpoint file to tune with --microbench-command.")
 
-    results = run_microbenchmarks(Remote(target.host), target.remote_path, target.command)
+    results = run_microbenchmarks(Remote(target.host, args.remote_poll_command), target.remote_path, target.command)
     profile, warnings = build_profile(load_results(results))
     for warning in warnings:
         pprint(f"Warning: {warning}")

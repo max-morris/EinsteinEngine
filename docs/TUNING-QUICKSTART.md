@@ -169,7 +169,9 @@ What each trial does, in order (see `remote_feedback.py:do_remote_run`):
 2. `rsync --delete` `--local-path` → `--remote-path`.
 3. Run `--remote-command` under `--remote-cactus-path`; parse the Slurm job id
    from a line matching `Submit finished, job id is <N>`.
-4. Poll `squeue` every 60 s until the job leaves the queue.
+4. Poll the job every 60 s with `--remote-poll-command` (default
+   `squeue -h -j {job_id}`) until it prints nothing, i.e. the job has left the
+   queue. See [Polling Slurm](#polling-slurm) to customize it.
 5. Run `--remote-timing-command`; its stdout must be a **single number**, which
    is taken as the value to optimize for. All format-specific parsing lives in
    the timing script, so any run layout can be supported by editing that script
@@ -181,9 +183,30 @@ fails validation), the engine refuses a requested cut, or the remote build,
 run or timing fails. A failed trial is recorded in the checkpoint with a
 sentinel target (`-1e9`), counts toward the budget, is never picked as the
 best, and steers the search away from that region. Other errors (rsync errors,
-ssh connection failures, no Slurm job id in the output, a failed `squeue`)
+ssh connection failures, no Slurm job id in the output, a failed poll command)
 stop the tuning run instead; the checkpoint keeps the completed trials, so
 rerun to resume.
+
+### Polling Slurm
+
+The tuner runs one Slurm command itself: the poll that waits for the job that
+`--remote-command` (or `--microbench-command`) submitted. Its default,
+`squeue -h -j {job_id}`, assumes `squeue` is on the `PATH` of a
+non-interactive ssh session. Where it is not, or where Slurm needs a setup
+script sourced first (as on Hummel2), give the tuner the command to run with
+`--remote-poll-command`:
+
+```bash
+    --remote-poll-command 'source /path/to/slurm-setup.sh && squeue -h -j {job_id}'
+```
+
+`{job_id}` is replaced by the job id (it is required, and other braces, such
+as `${VAR}`, are left to the shell). The command runs on `--remote-host` every
+60 s, over ssh, so in your home directory there. It must exit 0 and print
+something while the job is queued or running, and print nothing once the job
+has left the queue; a nonzero exit stops the tuning run. The same setup belongs in your own
+`--remote-command` and `--microbench-command` when they call `sbatch`; those
+are your strings already, so the tuner does not add anything to them.
 
 ### Timing on a GPU
 
@@ -682,6 +705,7 @@ the far side of a `Union` gap).
 | `--remote-cactus-path`     | required                       | Cactus install dir the commands run under.         |
 | `--remote-command`         | `./build.sh && ./run-all.sh`   | Build + submit; must print the Slurm job id.        |
 | `--remote-timing-command`  | `./timings.sh`                 | Prints a single number to optimize for.             |
+| `--remote-poll-command`    | `squeue -h -j {job_id}`        | Polls the submitted job; prints nothing once it has left the queue. |
 | `--checkpoint-file`        | `split_tuning_checkpt.jsonl`   | Trial log; resumed automatically. A probing tuner also writes `<file>.probe.json`. |
 | `--microbench-command`     | none                           | Opt in to measuring the cost model's weights on the target, once per checkpoint (`<file>.microbench.json`). |
 | `--microbench-remote-path` | none                           | Remote dir the benchmark sources are synced into.  |
