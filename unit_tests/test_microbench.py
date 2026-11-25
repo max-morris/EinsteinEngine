@@ -26,7 +26,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from EinsteinEngine.tuning.microbench import microbench_sidecar_path, recorded_weights, tuning_weights
-from EinsteinEngine.tuning.remote_feedback import find_job_id
+from EinsteinEngine.tuning.remote_feedback import DEFAULT_POLL_COMMAND, find_job_id
 from test_fit_weights import base_rows
 
 
@@ -45,8 +45,8 @@ class TestMicrobench(unittest.TestCase):
         if sin_ns is not None:
             results = json.dumps({'results': base_rows(sin=sin_ns)})
             command += f" && printf '%s' {shlex.quote(results)} > results.json"
-        return SimpleNamespace(remote_host='localhost', microbench_remote_path=os.path.join(self.dir.name, remote),
-                               microbench_command=command)
+        return SimpleNamespace(remote_host='localhost', remote_poll_command=DEFAULT_POLL_COMMAND,
+                               microbench_remote_path=os.path.join(self.dir.name, remote), microbench_command=command)
 
     def n_runs(self) -> int:
         if not os.path.exists(self.runs):
